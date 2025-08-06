@@ -1,0 +1,65 @@
+[project]
+name = "remote-telescope"
+version = "0.1.0"
+description = "Remotely control a telescope while it polls for tasks, collects and edge processes data, and delivers results and data for further processing."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [{ name = "Christopher Stevens", email = "chris@citra.space" }]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "black",
+  "pre-commit",
+  "isort",
+  "mypy",
+  "flake8",
+  "flake8-pytest-style",
+  "remote-telescope[test]",
+]
+test = ["pytest", "pytest-cov", "mockito"]
+build = ["build"]
+docs = ["sphinx", "sphinx-autodoc-typehints", "sphinx-markdown-builder"]
+deploy = ["twine"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.force-include]
+"docs" = "remote-telescope/docs"
+
+[tool.black]
+line-length = 120
+force-exclude = '''
+^/(
+  (
+      \.eggs
+    | \.git
+    | \.pytest_cache
+    | \.tox
+    | dist
+    | data
+  )/
+)
+'''
+
+[tool.isort]
+profile = "black"
+filter_files = true
+line_length = 120
+skip = ["__init__.py"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+addopts = [
+  "--cov=remote-telescope",
+  "--cov-report=term-missing",
+  "--cov-report=xml",
+  "--cov-branch",
+  "--import-mode=importlib",
+]
+
+[tool.coverage.run]
+omit = ["tests/*", "__init__.py"]

@@ -1,0 +1,34 @@
+repos:
+
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v4.4.0
+  hooks:
+  - id: check-added-large-files
+    exclude: data
+  - id: check-case-conflict
+  - id: check-yaml
+  - id: debug-statements
+  - id: end-of-file-fixer
+    exclude: data
+  - id: trailing-whitespace
+    exclude: data
+
+- repo: https://github.com/pycqa/isort
+  rev: 5.12.0
+  hooks:
+    - id: isort
+
+- repo: https://github.com/psf/black
+  rev: 22.12.0
+  hooks:
+    - id: black
+
+- repo: https://github.com/pre-commit/mirrors-mypy
+  rev: v0.942
+  hooks:
+    - id: mypy
+
+- repo: https://github.com/PyCQA/flake8
+  rev: 5.0.4
+  hooks:
+    - id: flake8
