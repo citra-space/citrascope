@@ -1,12 +1,15 @@
 [project]
-name = "remote-telescope"
+name = "citrascope"
 version = "0.1.0"
 description = "Remotely control a telescope while it polls for tasks, collects and edge processes data, and delivers results and data for further processing."
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
 authors = [{ name = "Christopher Stevens", email = "chris@citra.space" }]
-dependencies = []
+dependencies = [
+  "pydantic-settings",
+  "python-json-logger"
+]
 
 [project.optional-dependencies]
 dev = [
@@ -16,7 +19,7 @@ dev = [
   "mypy",
   "flake8",
   "flake8-pytest-style",
-  "remote-telescope[test]",
+  "citrascope[test]",
 ]
 test = ["pytest", "pytest-cov", "mockito"]
 build = ["build"]
@@ -28,7 +31,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.force-include]
-"docs" = "remote-telescope/docs"
+"docs" = "citrascope/docs"
 
 [tool.black]
 line-length = 120

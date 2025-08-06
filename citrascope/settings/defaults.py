@@ -1,0 +1,2 @@
+UNDEFINED_STRING = "undefined"
+UNDEFINED_INT = -1
