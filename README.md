@@ -20,20 +20,25 @@ pip install .
 This project uses a command-line interface (CLI) built with [Click](https://click.palletsprojects.com/). To run the CLI:
 
 ```sh
-python -m citrascope
+python -m citrascope start
 ```
 
 When the app starts, it will load and display the current settings.
 
 ### Configuring Settings
 
-Settings are managed via environment variables with the prefix `CITRA_API_`. For example:
+Settings are managed via environment variables with the prefix `CITRA_API_`. You must configure your personal access token. For example:
+
+```sh
+export CITRA_API_PERSONAL_ACCESS_TOKEN="your-token"
+```
+
+These are also available for overriding via your .env file:
 
 ```sh
 export CITRA_API_HOST="your-api-host"
 export CITRA_API_PORT=1234
-export CITRA_API_PERSONAL_ACCESS_TOKEN="your-token"
 export CITRA_API_USE_SSL=true
 ```
 
-You can set these variables in your shell or in a `.env` file if you use a tool like [python-dotenv](https://pypi.org/project/python-dotenv/).
+You can set these variables in your shell or in a `.env` file.
