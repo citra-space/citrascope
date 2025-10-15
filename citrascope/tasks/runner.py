@@ -11,7 +11,7 @@ class TaskManager:
         self.logger = logger
         self.task_heap = []  # min-heap by start time
         self.task_ids = set()
-        self.heap_lock = threading.Lock()
+        self.heap_lock = threading.RLock()
         self._stop_event = threading.Event()
 
     def poll_tasks(self):
@@ -39,6 +39,7 @@ class TaskManager:
                         added += 1
                 if added > 0:
                     self.logger.info(self._heap_summary("Added tasks"))
+                self.logger.info(self._heap_summary("Polled tasks"))
                 self._stop_event.wait(30)
 
     def task_runner(self):
