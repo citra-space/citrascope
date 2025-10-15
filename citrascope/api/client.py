@@ -1,6 +1,23 @@
 import httpx
 
 class CitraApiClient:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def __del__(self):
+        self.close()
+
+    def close(self):
+        if hasattr(self, 'client') and self.client is not None:
+            try:
+                self.client.close()
+            except Exception:
+                pass
+            self.client = None
+
     def __init__(self, host: str, token: str, use_ssl: bool = True, logger=None):
         self.base_url = f"{'https' if use_ssl else 'http'}://{host}"
         self.token = token
@@ -27,8 +44,21 @@ class CitraApiClient:
             if self.logger:
                 self.logger.error(f"Error connecting to Citra API: {e}")
             return False
-        finally:
-            self.close()
 
-    def close(self):
-        self.client.close()
+    def check_telescope_id(self, telescope_id):
+        try:
+            resp = self.client.get(f"/telescopes/{telescope_id}")
+            if self.logger:
+                self.logger.info(f"Telescope check response: {resp.status_code} {resp.text}")
+            if resp.status_code == 200:
+                if self.logger:
+                    self.logger.info("Telescope ID is valid.")
+                return True
+            else:
+                if self.logger:
+                    self.logger.error(f"Telescope ID check failed: {resp.status_code} {resp.text}")
+                return False
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Error checking telescope ID: {e}")
+            return False

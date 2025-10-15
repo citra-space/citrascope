@@ -30,8 +30,12 @@ def cli(ctx, dev):
 @click.pass_context
 def start(ctx):
     client = ctx.obj["client"]
+    settings = ctx.obj["settings"]
     if not client.check_api_key():
         CITRASCOPE_LOGGER.error("Aborting: could not authenticate with Citra API.")
+        return
+    if not client.check_telescope_id(settings.telescope_id):
+        CITRASCOPE_LOGGER.error("Aborting: telescope_id is not valid on the server.")
         return
     CITRASCOPE_LOGGER.info("Starting remote telescope...")
 
