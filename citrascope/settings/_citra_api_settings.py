@@ -5,16 +5,25 @@ from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.settings.defaults import UNDEFINED_INT, UNDEFINED_STRING
 
 
+
+
 class CitraAPISettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="CITRA_API_",
         env_nested_delimiter="__",
     )
 
-    host: str = UNDEFINED_STRING
+    # Default to production API
+    host: str = "app.citra.space"
     port: int = UNDEFINED_INT
     personal_access_token: str = UNDEFINED_STRING
-    use_ssl: bool = False
+    use_ssl: bool = True
+
+    def __init__(self, dev: bool = False, **kwargs):
+        super().__init__(**kwargs)
+        if dev:
+            self.host = "dev.app.citra.space"
+            CITRASCOPE_LOGGER.info("Using development API endpoint.")
 
     def model_post_init(self, __context) -> None:
         # log the host value
