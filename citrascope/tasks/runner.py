@@ -39,7 +39,7 @@ class TaskManager:
                         added += 1
                 if added > 0:
                     self.logger.info(self._heap_summary("Added tasks"))
-            time.sleep(30)
+                self._stop_event.wait(30)
 
     def task_runner(self):
         while not self._stop_event.is_set():
@@ -54,7 +54,7 @@ class TaskManager:
                     completed += 1
                 if completed > 0:
                     self.logger.info(self._heap_summary("Completed tasks"))
-            time.sleep(1)
+                self._stop_event.wait(1)
     def _heap_summary(self, event):
         with self.heap_lock:
             summary = f"{event}: {len(self.task_heap)} tasks in queue. "
