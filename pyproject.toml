@@ -9,7 +9,8 @@ authors = [{ name = "Christopher Stevens", email = "chris@citra.space" }]
 dependencies = [
   "pydantic-settings",
   "python-json-logger",
-  "click"
+  "click",
+  "requests"
 ]
 
 [project.optional-dependencies]
