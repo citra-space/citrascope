@@ -1,8 +1,9 @@
 from dotenv import load_dotenv
 load_dotenv()
+
 from citrascope.api.client import CitraApiClient
-
-
+from citrascope.tasks.runner import TaskManager
+import time
 import click
 from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.settings._citra_api_settings import CitraAPISettings
@@ -37,7 +38,17 @@ def start(ctx):
     if not client.check_telescope_id(settings.telescope_id):
         CITRASCOPE_LOGGER.error("Aborting: telescope_id is not valid on the server.")
         return
-    CITRASCOPE_LOGGER.info("Starting remote telescope...")
+
+    task_manager = TaskManager(client, settings.telescope_id, CITRASCOPE_LOGGER)
+    task_manager.start()
+
+    CITRASCOPE_LOGGER.info("Starting telescope task daemon... (press Ctrl+C to exit)")
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        CITRASCOPE_LOGGER.info("Shutting down daemon.")
+        task_manager.stop()
 
 
 cli()

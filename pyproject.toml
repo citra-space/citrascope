@@ -11,7 +11,8 @@ dependencies = [
   "python-json-logger",
   "click",
   "requests",
-  "httpx"
+  "httpx",
+  "python-dateutil"
 ]
 
 [project.optional-dependencies]
