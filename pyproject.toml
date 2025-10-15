@@ -10,7 +10,8 @@ dependencies = [
   "pydantic-settings",
   "python-json-logger",
   "click",
-  "requests"
+  "requests",
+  "httpx"
 ]
 
 [project.optional-dependencies]

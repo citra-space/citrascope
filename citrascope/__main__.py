@@ -1,6 +1,6 @@
 from dotenv import load_dotenv
 load_dotenv()
-import requests
+from citrascope.api.client import CitraApiClient
 
 
 import click
@@ -13,11 +13,10 @@ from citrascope.settings._citra_api_settings import CitraAPISettings
 
 
 def check_api_key(settings):
-    url = f"https://{settings.host}/auth/personal-access-tokens"
-    headers = {"Authorization": f"Bearer {settings.personal_access_token}"}
+    client = CitraApiClient(settings.host, settings.personal_access_token, settings.use_ssl)
     try:
-        resp = requests.get(url, headers=headers, timeout=10)
-        # CITRASCOPE_LOGGER.info(f"API key check response: {resp.status_code} {resp.text}")
+        resp = client.check_api_key()
+        CITRASCOPE_LOGGER.info(f"API key check response: {resp.status_code} {resp.text}")
         if resp.status_code == 200:
             CITRASCOPE_LOGGER.info("API key is valid. Connected to Citra API.")
             return True
@@ -27,6 +26,8 @@ def check_api_key(settings):
     except Exception as e:
         CITRASCOPE_LOGGER.error(f"Error connecting to Citra API: {e}")
         return False
+    finally:
+        client.close()
 
 @click.group()
 @click.option('--dev', is_flag=True, default=False, help="Use the development API (dev.app.citra.space)")
@@ -39,9 +40,10 @@ def cli(ctx, dev):
     ctx.obj = settings
 
 
-@cli.group("start")
+
+@cli.command("start")
 def start():
-    CITRASCOPE_LOGGER.info(f"Starting remote telescope...")  # noqa
+    CITRASCOPE_LOGGER.info("Starting remote telescope...")
 
 
 cli()
