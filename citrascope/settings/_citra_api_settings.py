@@ -14,6 +14,7 @@ class CitraAPISettings(BaseSettings):
     port: int = 443
     personal_access_token: str = UNDEFINED_STRING
     use_ssl: bool = True
+    telescope_id: str = UNDEFINED_STRING
 
     def __init__(self, dev: bool = False, **kwargs):
         super().__init__(**kwargs)
@@ -28,7 +29,12 @@ class CitraAPISettings(BaseSettings):
         else:
             CITRASCOPE_LOGGER.info(f"{self.__class__.__name__} host is {self.host}")
 
-        # log the host value
         if self.personal_access_token == UNDEFINED_STRING:
             CITRASCOPE_LOGGER.warning(f"{self.__class__.__name__} personal_access_token has not been set")
             exit(1)
+
+        if self.telescope_id == UNDEFINED_STRING:
+            CITRASCOPE_LOGGER.warning(f"{self.__class__.__name__} telescope_id has not been set")
+            exit(1)
+        else:
+            CITRASCOPE_LOGGER.info(f"{self.__class__.__name__} telescope_id is {self.telescope_id}")

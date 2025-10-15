@@ -27,10 +27,12 @@ When the app starts, it will load and display the current settings.
 
 ### Configuring Settings
 
-Settings are managed via environment variables with the prefix `CITRA_API_`. You must configure your personal access token. For example:
+
+Settings are managed via environment variables with the prefix `CITRA_API_`. You must configure your personal access token and telescope ID. For example:
 
 ```sh
 export CITRA_API_PERSONAL_ACCESS_TOKEN="your-token"
+export CITRA_API_TELESCOPE_ID="your-telescope-id"
 ```
 
 These are also available for overriding via your .env file:
