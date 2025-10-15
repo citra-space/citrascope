@@ -1,0 +1,16 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: citrascope dev start",
+            "type": "python",
+            "request": "launch",
+            "module": "citrascope",
+            "args": ["--dev", "start"],
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
+    ]
+}

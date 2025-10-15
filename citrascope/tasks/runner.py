@@ -27,20 +27,20 @@ class TaskManager:
                     if tid and task_start and tid not in self.task_ids:
                         try:
                             start_epoch = int(dtparser.isoparse(task_start).timestamp())
-                            stop_epoch = int(dtparser.isoparse(task_stop).timestamp()) if task_stop else None
+                            stop_epoch = int(dtparser.isoparse(task_stop).timestamp()) if task_stop else 0
                         except Exception:
                             self.logger.error(f"Could not parse taskStart/taskStop for task {tid}")
                             continue
-                        if stop_epoch is not None and stop_epoch < now:
+                        if stop_epoch and stop_epoch < now:
                             self.logger.debug(f"Skipping past task {tid} that ended at {task_stop}")
                             continue  # Skip tasks whose end date has passed
-                        heapq.heappush(self.task_heap, (start_epoch, tid, task))
+                        heapq.heappush(self.task_heap, (start_epoch, stop_epoch, tid, task))
                         self.task_ids.add(tid)
                         added += 1
                 if added > 0:
                     self.logger.info(self._heap_summary("Added tasks"))
                 self.logger.info(self._heap_summary("Polled tasks"))
-                self._stop_event.wait(30)
+            self._stop_event.wait(30)
 
     def task_runner(self):
         while not self._stop_event.is_set():
@@ -48,7 +48,7 @@ class TaskManager:
             completed = 0
             with self.heap_lock:
                 while self.task_heap and self.task_heap[0][0] <= now:
-                    _, tid, task = heapq.heappop(self.task_heap)
+                    _, _, tid, task = heapq.heappop(self.task_heap)
                     self.logger.info(f"Starting task {tid} at {datetime.now().isoformat()}: {task}")
                     # TODO: Implement actual task execution logic here
                     self.task_ids.discard(tid)
@@ -62,7 +62,7 @@ class TaskManager:
             if self.task_heap:
                 summary += "Next: " + ", ".join([
                     f"{tid} at {datetime.fromtimestamp(start).isoformat()}"
-                    for start, tid, _ in self.task_heap[:3]
+                    for start, stop, tid, _ in self.task_heap[:3]
                 ])
                 if len(self.task_heap) > 3:
                     summary += f", ... ({len(self.task_heap)-3} more)"
