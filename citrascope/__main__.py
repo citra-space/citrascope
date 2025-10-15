@@ -10,39 +10,29 @@ from citrascope.settings._citra_api_settings import CitraAPISettings
 
 
 
-
-
-def check_api_key(settings):
-    client = CitraApiClient(settings.host, settings.personal_access_token, settings.use_ssl)
-    try:
-        resp = client.check_api_key()
-        CITRASCOPE_LOGGER.info(f"API key check response: {resp.status_code} {resp.text}")
-        if resp.status_code == 200:
-            CITRASCOPE_LOGGER.info("API key is valid. Connected to Citra API.")
-            return True
-        else:
-            CITRASCOPE_LOGGER.error(f"API key check failed: {resp.status_code} {resp.text}")
-            return False
-    except Exception as e:
-        CITRASCOPE_LOGGER.error(f"Error connecting to Citra API: {e}")
-        return False
-    finally:
-        client.close()
-
 @click.group()
 @click.option('--dev', is_flag=True, default=False, help="Use the development API (dev.app.citra.space)")
 @click.pass_context
+
 def cli(ctx, dev):
     # Load settings and print them at startup
     settings = CitraAPISettings(dev=dev)
-    check_api_key(settings)
-    # Store settings in context for subcommands if needed
-    ctx.obj = settings
+    CITRASCOPE_LOGGER.info(f"CitraAPISettings host is {settings.host}")
+    CITRASCOPE_LOGGER.info(f"CitraAPISettings telescope_id is {settings.telescope_id}")
+    client = CitraApiClient(settings.host, settings.personal_access_token, settings.use_ssl, CITRASCOPE_LOGGER)
+    # Store both settings and client in context for subcommands
+    ctx.obj = {"settings": settings, "client": client}
+
 
 
 
 @cli.command("start")
-def start():
+@click.pass_context
+def start(ctx):
+    client = ctx.obj["client"]
+    if not client.check_api_key():
+        CITRASCOPE_LOGGER.error("Aborting: could not authenticate with Citra API.")
+        return
     CITRASCOPE_LOGGER.info("Starting remote telescope...")
 
 

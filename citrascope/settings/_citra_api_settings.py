@@ -24,17 +24,6 @@ class CitraAPISettings(BaseSettings):
 
     def model_post_init(self, __context) -> None:
         # log the host value
-        if self.host == UNDEFINED_STRING:
-            CITRASCOPE_LOGGER.warning(f"{self.__class__.__name__} host has not been set")
-        else:
-            CITRASCOPE_LOGGER.info(f"{self.__class__.__name__} host is {self.host}")
-
-        if self.personal_access_token == UNDEFINED_STRING:
-            CITRASCOPE_LOGGER.warning(f"{self.__class__.__name__} personal_access_token has not been set")
-            exit(1)
-
-        if self.telescope_id == UNDEFINED_STRING:
-            CITRASCOPE_LOGGER.warning(f"{self.__class__.__name__} telescope_id has not been set")
-            exit(1)
-        else:
-            CITRASCOPE_LOGGER.info(f"{self.__class__.__name__} telescope_id is {self.telescope_id}")
+            if self.personal_access_token == UNDEFINED_STRING:
+                CITRASCOPE_LOGGER.warning(f"{self.__class__.__name__} personal_access_token has not been set")
+                exit(1)
