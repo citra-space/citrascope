@@ -13,8 +13,10 @@ load_dotenv()
 
 @click.group()
 @click.option("--dev", is_flag=True, default=False, help="Use the development API (dev.app.citra.space)")
+@click.option("--log-level", default="INFO", help="Set logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
 @click.pass_context
-def cli(ctx, dev):
+def cli(ctx, dev, log_level):
+    CITRASCOPE_LOGGER.setLevel(log_level)
     # Load settings and print them at startup
     settings = CitraAPISettings(dev=dev)
     CITRASCOPE_LOGGER.info(f"CitraAPISettings host is {settings.host}")
