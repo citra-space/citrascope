@@ -13,7 +13,31 @@ Before running the project, install the required dependencies. It is recommended
 python3 -m venv .venv
 source .venv/bin/activate
 pip install .
+
+# To install development dependencies (for code style, linting, and pre-commit hooks), run:
+
+```sh
+pip install '.[dev]'
 ```
+```
+
+### Setting up Pre-commit Hooks
+
+This project uses [pre-commit](https://pre-commit.com/) to run code quality checks (like Flake8, Black, isort, etc.) automatically before each commit.
+
+After installing the dev dependencies, enable the hooks with:
+
+```sh
+pre-commit install
+```
+
+You can manually run all pre-commit checks on all files with:
+
+```sh
+pre-commit run --all-files
+```
+
+This ensures code style and quality checks are enforced for all contributors.
 
 ## Running the Project
 
