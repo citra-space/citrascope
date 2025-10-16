@@ -27,6 +27,14 @@ class CitraIndiClient(PyIndi.BaseClient):
     def updateProperty(self, p):
         """Emmited when a new property value arrives from INDI server."""
         self.logger.debug(f"update property {p.getName()} as {p.getTypeAsString()} for device {p.getDeviceName()}")
+        if self.our_scope is not None and p.getDeviceName() == self.our_scope.getDeviceName():
+            value = None
+            changed_type = p.getTypeAsString()
+            if changed_type == "INDI_TEXT":
+                value = self.our_scope.getText(p.getName())[0].value
+            if changed_type == "INDI_NUMBER":
+                value = self.our_scope.getNumber(p.getName())[0].value
+            self.logger.debug(f"Scope '{self.our_scope.getDeviceName()}' property {p.getName()} updated value: {value}")
 
     def removeProperty(self, p):
         """Emmited when a property is deleted for an INDI driver."""

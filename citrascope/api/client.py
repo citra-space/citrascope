@@ -2,21 +2,6 @@ import httpx
 
 
 class CitraApiClient:
-    def get_telescope_tasks(self, telescope_id):
-        try:
-            resp = self.client.get(f"/telescopes/{telescope_id}/tasks")
-            if self.logger:
-                self.logger.debug(f"Tasks fetch response: {resp.status_code} {resp.text}")
-            if resp.status_code == 200:
-                self.logger.info(f"Found {len(resp.json())} tasks from API.")
-                return resp.json()
-            else:
-                return []
-        except Exception as e:
-            if self.logger:
-                self.logger.error(f"Error fetching tasks: {e}")
-            return []
-
     def __enter__(self):
         return self
 
@@ -32,13 +17,14 @@ class CitraApiClient:
                 self.client.close()
             except Exception:
                 pass
-            self.client = None
 
     def __init__(self, host: str, token: str, use_ssl: bool = True, logger=None):
         self.base_url = ("https" if use_ssl else "http") + "://" + host
         self.token = token
         self.logger = logger
-        self.client = httpx.Client(base_url=self.base_url, headers={"Authorization": f"Bearer {self.token}"})
+        self.client: httpx.Client = httpx.Client(
+            base_url=self.base_url, headers={"Authorization": f"Bearer {self.token}"}
+        )
 
     def check_api_key(self):
         try:
@@ -66,7 +52,7 @@ class CitraApiClient:
             if resp.status_code == 200:
                 if self.logger:
                     self.logger.info("Telescope ID is valid.")
-                return True
+                return resp.json()
             else:
                 if self.logger:
                     self.logger.error(f"Telescope ID check failed: {resp.status_code} {resp.text}")
@@ -91,4 +77,38 @@ class CitraApiClient:
         except Exception as e:
             if self.logger:
                 self.logger.error(f"Error fetching satellite {satellite_id}: {e}")
+            return None
+
+    def get_telescope_tasks(self, telescope_id):
+        try:
+            resp = self.client.get(f"/telescopes/{telescope_id}/tasks")
+            if self.logger:
+                self.logger.debug(f"Tasks fetch response: {resp.status_code} {resp.text}")
+            if resp.status_code == 200:
+                self.logger.info(f"Found {len(resp.json())} tasks from API.")
+                return resp.json()
+            else:
+                return []
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Error fetching tasks: {e}")
+            return []
+
+    def get_ground_station(self, ground_station_id):
+        """Fetch ground station details from /ground-stations/{ground_station_id}"""
+        try:
+            resp = self.client.get(f"/ground-stations/{ground_station_id}")
+            if self.logger:
+                self.logger.debug(f"Ground station fetch response: {resp.status_code} {resp.text}")
+            if resp.status_code == 200:
+                return resp.json()
+            else:
+                if self.logger:
+                    self.logger.error(
+                        f"Failed to fetch ground station {ground_station_id}: {resp.status_code} {resp.text}"
+                    )
+                return None
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Error fetching ground station {ground_station_id}: {e}")
             return None

@@ -1,26 +1,31 @@
 import heapq
+import random
 import threading
 import time
 from datetime import datetime
 
+import PyIndi
 from dateutil import parser as dtparser
+from skyfield.api import EarthSatellite, Topos, load
 
 from citrascope.tasks.task import Task
 
 
 class TaskManager:
-    def __init__(self, client, telescope_id, logger):
+    def __init__(self, client, telescope_record, ground_station_record, logger, indi_client):
         self.client = client
-        self.telescope_id = telescope_id
+        self.telescope_record = telescope_record
+        self.ground_station_record = ground_station_record
         self.logger = logger
         self.task_heap = []  # min-heap by start time
         self.task_ids = set()
+        self.indi_client = indi_client
         self.heap_lock = threading.RLock()
         self._stop_event = threading.Event()
 
     def poll_tasks(self):
         while not self._stop_event.is_set():
-            tasks = self.client.get_telescope_tasks(self.telescope_id)
+            tasks = self.client.get_telescope_tasks(self.telescope_record["id"])
             added = 0
             now = int(time.time())
             with self.heap_lock:
@@ -89,11 +94,31 @@ class TaskManager:
             elsets,
             key=lambda e: dtparser.isoparse(e["creationEpoch"])
             if e.get("creationEpoch")
-            else dtparser.isoparse("1970-01-01T00:00:00Z"),
+            else dtparser.isoparse("1970-01-01T00:00:00Z"),  # TODO: this is whack and should just bail
         )
         self.logger.info(f"Most recent elset for {task.satelliteId}: {most_recent_elset}")
 
+        # Derive the RA/DEC from the most recent elset
+        ts = load.timescale()
+        eph = load("de421.bsp")
+
+        observer = eph["earth"] + Topos(
+            latitude_degrees=self.ground_station_record["latitude"],
+            longitude_degrees=self.ground_station_record["longitude"],
+            elevation_m=self.ground_station_record["altitude"],
+        )
+
+        # fake some RADEC numbers for now
+        ra = random.uniform(0, 24)
+        dec = random.uniform(0, 90)
+
         # Drive the telescope to point at the satellite as it passes overhead
+        coords = self.indi_client.our_scope.getNumber("EQUATORIAL_EOD_COORD")
+        self.logger.info(f"Telescope currently pointed to RA: {coords[0].value} hours, DEC: {coords[1].value} degrees")
+        coords[0].setValue(ra)  # RA in hours
+        coords[1].setValue(dec)  # DEC in degrees
+        self.logger.info(f"Slewing telescope to RA: {ra} hours, DEC: {dec} degrees")
+        self.indi_client.sendNewNumber(coords)
 
         return True
 

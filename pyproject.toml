@@ -15,6 +15,7 @@ dependencies = [
   "python-dateutil",
   "types-python-dateutil",
   "pyindi-client",
+  "skyfield",
 ]
 
 [project.optional-dependencies]

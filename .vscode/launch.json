@@ -11,6 +11,15 @@
             "args": ["--dev", "start"],
             "console": "integratedTerminal",
             "justMyCode": true
+        },
+        {
+            "name": "Python: citrascope dev start DEBUG logging",
+            "type": "python",
+            "request": "launch",
+            "module": "citrascope",
+            "args": ["--dev", "--log-level", "DEBUG", "start"],
+            "console": "integratedTerminal",
+            "justMyCode": true
         }
     ]
 }

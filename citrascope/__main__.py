@@ -23,21 +23,29 @@ def cli(ctx, dev, log_level):
     settings = CitraScopeSettings(dev=dev)
     CITRASCOPE_LOGGER.info(f"CitraAPISettings host is {settings.host}")
     CITRASCOPE_LOGGER.info(f"CitraAPISettings telescope_id is {settings.telescope_id}")
-    client = CitraApiClient(settings.host, settings.personal_access_token, settings.use_ssl, CITRASCOPE_LOGGER)
-    # Store both settings and client in context for subcommands
-    ctx.obj = {"settings": settings, "client": client}
+    api_client = CitraApiClient(settings.host, settings.personal_access_token, settings.use_ssl, CITRASCOPE_LOGGER)
+    # Store both settings and api_client in context for subcommands
+    ctx.obj = {"settings": settings, "api_client": api_client}
 
 
 @cli.command("start")
 @click.pass_context
 def start(ctx):
-    client = ctx.obj["client"]
+    api_client: CitraApiClient = ctx.obj["api_client"]
     settings = ctx.obj["settings"]
-    if not client.check_api_key():
+    if not api_client.check_api_key():
         CITRASCOPE_LOGGER.error("Aborting: could not authenticate with Citra API.")
         return
-    if not client.check_telescope_id(settings.telescope_id):
+    citra_telescope_record = api_client.check_telescope_id(settings.telescope_id)
+    ctx.citra_telescope_record = citra_telescope_record
+    if not citra_telescope_record:
         CITRASCOPE_LOGGER.error("Aborting: telescope_id is not valid on the server.")
+        return
+
+    # get ground station from api
+    ground_station = api_client.get_ground_station(citra_telescope_record["groundStationId"])
+    if not ground_station:
+        CITRASCOPE_LOGGER.error("Aborting: could not get ground station info from the server.")
         return
 
     # INDI server connection
@@ -60,7 +68,7 @@ def start(ctx):
             indi_client.our_scope = device
             CITRASCOPE_LOGGER.info("Found configured Telescope on INDI server!")
 
-    task_manager = TaskManager(client, settings.telescope_id, CITRASCOPE_LOGGER)
+    task_manager = TaskManager(api_client, citra_telescope_record, ground_station, CITRASCOPE_LOGGER, indi_client)
     task_manager.start()
 
     CITRASCOPE_LOGGER.info("Starting telescope task daemon... (press Ctrl+C to exit)")
