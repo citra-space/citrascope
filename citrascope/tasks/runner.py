@@ -53,24 +53,49 @@ class TaskManager:
             completed = 0
             with self.heap_lock:
                 while self.task_heap and self.task_heap[0][0] <= now:
-                    _, _, tid, task = heapq.heappop(self.task_heap)
+                    _, _, tid, task = self.task_heap[0]
                     self.logger.info(f"Starting task {tid} at {datetime.now().isoformat()}: {task}")
 
-                    # Fetch satellite data for this task
-                    satellite_data = self.client.get_satellite(task.satelliteId)
-                    if satellite_data:
-                        self.logger.debug(f"Satellite data for {task.satelliteId}: {satellite_data}")
+                    observation_succeeded = self._observe_satellite(task)
+
+                    if observation_succeeded:
+                        self.logger.info(f"Completed observation task {tid} successfully.")
+                        heapq.heappop(self.task_heap)
+                        self.task_ids.discard(tid)
+                        completed += 1
                     else:
-                        self.logger.error(f"Could not fetch satellite data for {task.satelliteId}")
+                        self.logger.error(f"Observation task {tid} failed.")
 
-                    # drive the telescope to point at the satelite as it passes overhead
-
-                    # TODO: Implement actual task execution logic here
-                    # self.task_ids.discard(tid)
-                    # completed += 1
                 if completed > 0:
                     self.logger.info(self._heap_summary("Completed tasks"))
             self._stop_event.wait(1)
+
+    def _observe_satellite(self, task: Task):
+
+        # Fetch satellite data for this task
+        satellite_data = self.client.get_satellite(task.satelliteId)
+        if not satellite_data:
+            self.logger.error(f"Could not fetch satellite data for {task.satelliteId}")
+            return False
+        # self.logger.debug(f"Satellite data for {task.satelliteId}: {satellite_data}") #toooooo much spam to log atm
+
+        # Get the most recent TLE (elset) for the satellite
+        elsets = satellite_data.get("elsets", [])
+        if not elsets:
+            self.logger.error(f"No elsets found for satellite {task.satelliteId}")
+            return False
+
+        most_recent_elset = max(
+            elsets,
+            key=lambda e: dtparser.isoparse(e["creationEpoch"])
+            if e.get("creationEpoch")
+            else dtparser.isoparse("1970-01-01T00:00:00Z"),
+        )
+        self.logger.info(f"Most recent elset for {task.satelliteId}: {most_recent_elset}")
+
+        # Drive the telescope to point at the satellite as it passes overhead
+
+        return True
 
     def _heap_summary(self, event):
         with self.heap_lock:
