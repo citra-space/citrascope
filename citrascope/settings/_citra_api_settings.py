@@ -4,18 +4,23 @@ from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.settings.defaults import UNDEFINED_STRING
 
 
-class CitraAPISettings(BaseSettings):
+class CitraScopeSettings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_prefix="CITRA_API_",
+        env_prefix="CITRASCOPE_",
         env_nested_delimiter="__",
     )
 
     # Default to production API
     host: str = "api.citra.space"
     port: int = 443
+
     personal_access_token: str = UNDEFINED_STRING
     use_ssl: bool = True
     telescope_id: str = UNDEFINED_STRING
+
+    indi_server_url: str = "localhost"
+    indi_server_port: int = 7624
+    indi_telescope_name: str = UNDEFINED_STRING
 
     def __init__(self, dev: bool = False, **kwargs):
         super().__init__(**kwargs)

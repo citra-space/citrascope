@@ -1,3 +1,4 @@
+import sys
 import time
 
 import click
@@ -5,8 +6,9 @@ from dotenv import load_dotenv
 
 from citrascope.api.client import CitraApiClient
 from citrascope.logging import CITRASCOPE_LOGGER
-from citrascope.settings._citra_api_settings import CitraAPISettings
+from citrascope.settings._citra_api_settings import CitraScopeSettings
 from citrascope.tasks.runner import TaskManager
+from indi.CitraIndiClient import CitraIndiClient
 
 load_dotenv()
 
@@ -18,7 +20,7 @@ load_dotenv()
 def cli(ctx, dev, log_level):
     CITRASCOPE_LOGGER.setLevel(log_level)
     # Load settings and print them at startup
-    settings = CitraAPISettings(dev=dev)
+    settings = CitraScopeSettings(dev=dev)
     CITRASCOPE_LOGGER.info(f"CitraAPISettings host is {settings.host}")
     CITRASCOPE_LOGGER.info(f"CitraAPISettings telescope_id is {settings.telescope_id}")
     client = CitraApiClient(settings.host, settings.personal_access_token, settings.use_ssl, CITRASCOPE_LOGGER)
@@ -37,6 +39,26 @@ def start(ctx):
     if not client.check_telescope_id(settings.telescope_id):
         CITRASCOPE_LOGGER.error("Aborting: telescope_id is not valid on the server.")
         return
+
+    # INDI server connection
+    CITRASCOPE_LOGGER.info(f"Connecting to INDI server at {settings.indi_server_url}: {settings.indi_server_port}")
+    indi_client = CitraIndiClient(CITRASCOPE_LOGGER)
+    indi_client.setServer(settings.indi_server_url, int(settings.indi_server_port))
+    print("Connecting and waiting 1 sec")
+    if not indi_client.connectServer():
+        print(f"No INDI server running on {indi_client.getHost()}:{indi_client.getPort()}")
+        sys.exit(1)
+
+    # Waiting for discover devices
+    time.sleep(1)
+
+    CITRASCOPE_LOGGER.info("List of INDI devices")
+    deviceList = indi_client.getDevices()
+    for device in deviceList:
+        CITRASCOPE_LOGGER.info(f"   > {device.getDeviceName()}")
+        if device.getDeviceName() == settings.indi_telescope_name:
+            indi_client.our_scope = device
+            CITRASCOPE_LOGGER.info("Found configured Telescope on INDI server!")
 
     task_manager = TaskManager(client, settings.telescope_id, CITRASCOPE_LOGGER)
     task_manager.start()
