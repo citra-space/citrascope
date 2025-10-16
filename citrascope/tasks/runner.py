@@ -5,6 +5,8 @@ from datetime import datetime
 
 from dateutil import parser as dtparser
 
+from citrascope.tasks.task import Task
+
 
 class TaskManager:
     def __init__(self, client, telescope_id, logger):
@@ -22,10 +24,11 @@ class TaskManager:
             added = 0
             now = int(time.time())
             with self.heap_lock:
-                for task in tasks:
-                    tid = task.get("id")
-                    task_start = task.get("taskStart")
-                    task_stop = task.get("taskStop")
+                for task_dict in tasks:
+                    task = Task.from_dict(task_dict)
+                    tid = task.id
+                    task_start = task.taskStart
+                    task_stop = task.taskStop
                     if tid and task_start and tid not in self.task_ids:
                         try:
                             start_epoch = int(dtparser.isoparse(task_start).timestamp())
@@ -52,9 +55,14 @@ class TaskManager:
                 while self.task_heap and self.task_heap[0][0] <= now:
                     _, _, tid, task = heapq.heappop(self.task_heap)
                     self.logger.info(f"Starting task {tid} at {datetime.now().isoformat()}: {task}")
+
+                    # go get the satelite's data, including it's two-line-element (TLE) set
+
+                    # drive the telescope to point at the satelite as it passes overhead
+
                     # TODO: Implement actual task execution logic here
-                    self.task_ids.discard(tid)
-                    completed += 1
+                    # self.task_ids.discard(tid)
+                    # completed += 1
                 if completed > 0:
                     self.logger.info(self._heap_summary("Completed tasks"))
                 self._stop_event.wait(1)

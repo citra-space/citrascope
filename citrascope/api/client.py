@@ -6,8 +6,7 @@ class CitraApiClient:
         try:
             resp = self.client.get(f"/telescopes/{telescope_id}/tasks")
             if self.logger:
-                # self.logger.info(f"Tasks fetch response: {resp.status_code} {resp.text}")
-                pass
+                self.logger.debug(f"Tasks fetch response: {resp.status_code} {resp.text}")
             if resp.status_code == 200:
                 self.logger.info(f"Found {len(resp.json())} tasks from API.")
                 return resp.json()
