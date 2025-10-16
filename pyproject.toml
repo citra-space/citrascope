@@ -13,7 +13,8 @@ dependencies = [
   "requests",
   "httpx",
   "python-dateutil",
-  "types-python-dateutil"
+  "types-python-dateutil",
+  "pyindi-client",
 ]
 
 [project.optional-dependencies]
