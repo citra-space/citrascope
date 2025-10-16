@@ -36,7 +36,7 @@ class CitraApiClient:
             self.client = None
 
     def __init__(self, host: str, token: str, use_ssl: bool = True, logger=None):
-        self.base_url = "https" if use_ssl else "http" + "://" + host
+        self.base_url = ("https" if use_ssl else "http") + "://" + host
         self.token = token
         self.logger = logger
         self.client = httpx.Client(base_url=self.base_url, headers={"Authorization": f"Bearer {self.token}"})
