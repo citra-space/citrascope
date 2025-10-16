@@ -12,7 +12,8 @@ dependencies = [
   "click",
   "requests",
   "httpx",
-  "python-dateutil"
+  "python-dateutil",
+  "types-python-dateutil"
 ]
 
 [project.optional-dependencies]

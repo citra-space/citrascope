@@ -1,20 +1,19 @@
+import time
+
+import click
 from dotenv import load_dotenv
-load_dotenv()
 
 from citrascope.api.client import CitraApiClient
-from citrascope.tasks.runner import TaskManager
-import time
-import click
 from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.settings._citra_api_settings import CitraAPISettings
+from citrascope.tasks.runner import TaskManager
 
-
+load_dotenv()
 
 
 @click.group()
-@click.option('--dev', is_flag=True, default=False, help="Use the development API (dev.app.citra.space)")
+@click.option("--dev", is_flag=True, default=False, help="Use the development API (dev.app.citra.space)")
 @click.pass_context
-
 def cli(ctx, dev):
     # Load settings and print them at startup
     settings = CitraAPISettings(dev=dev)
@@ -23,8 +22,6 @@ def cli(ctx, dev):
     client = CitraApiClient(settings.host, settings.personal_access_token, settings.use_ssl, CITRASCOPE_LOGGER)
     # Store both settings and client in context for subcommands
     ctx.obj = {"settings": settings, "client": client}
-
-
 
 
 @cli.command("start")

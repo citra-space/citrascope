@@ -1,5 +1,6 @@
 import httpx
 
+
 class CitraApiClient:
     def get_telescope_tasks(self, telescope_id):
         try:
@@ -16,6 +17,7 @@ class CitraApiClient:
             if self.logger:
                 self.logger.error(f"Error fetching tasks: {e}")
             return []
+
     def __enter__(self):
         return self
 
@@ -26,7 +28,7 @@ class CitraApiClient:
         self.close()
 
     def close(self):
-        if hasattr(self, 'client') and self.client is not None:
+        if hasattr(self, "client") and self.client is not None:
             try:
                 self.client.close()
             except Exception:
@@ -34,13 +36,10 @@ class CitraApiClient:
             self.client = None
 
     def __init__(self, host: str, token: str, use_ssl: bool = True, logger=None):
-        self.base_url = f"{'https' if use_ssl else 'http'}://{host}"
+        self.base_url = "https" if use_ssl else "http" + "://" + host
         self.token = token
         self.logger = logger
-        self.client = httpx.Client(
-            base_url=self.base_url,
-            headers={"Authorization": f"Bearer {self.token}"}
-        )
+        self.client = httpx.Client(base_url=self.base_url, headers={"Authorization": f"Bearer {self.token}"})
 
     def check_api_key(self):
         try:

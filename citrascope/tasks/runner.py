@@ -1,8 +1,10 @@
+import heapq
 import threading
 import time
-import heapq
 from datetime import datetime
+
 from dateutil import parser as dtparser
+
 
 class TaskManager:
     def __init__(self, client, telescope_id, logger):
@@ -56,14 +58,17 @@ class TaskManager:
                 if completed > 0:
                     self.logger.info(self._heap_summary("Completed tasks"))
                 self._stop_event.wait(1)
+
     def _heap_summary(self, event):
         with self.heap_lock:
             summary = f"{event}: {len(self.task_heap)} tasks in queue. "
             if self.task_heap:
-                summary += "Next: " + ", ".join([
-                    f"{tid} at {datetime.fromtimestamp(start).isoformat()}"
-                    for start, stop, tid, _ in self.task_heap[:3]
-                ])
+                summary += "Next: " + ", ".join(
+                    [
+                        f"{tid} at {datetime.fromtimestamp(start).isoformat()}"
+                        for start, stop, tid, _ in self.task_heap[:3]
+                    ]
+                )
                 if len(self.task_heap) > 3:
                     summary += f", ... ({len(self.task_heap)-3} more)"
             else:
