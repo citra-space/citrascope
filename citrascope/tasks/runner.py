@@ -56,7 +56,12 @@ class TaskManager:
                     _, _, tid, task = heapq.heappop(self.task_heap)
                     self.logger.info(f"Starting task {tid} at {datetime.now().isoformat()}: {task}")
 
-                    # go get the satelite's data, including it's two-line-element (TLE) set
+                    # Fetch satellite data for this task
+                    satellite_data = self.client.get_satellite(task.satelliteId)
+                    if satellite_data:
+                        self.logger.debug(f"Satellite data for {task.satelliteId}: {satellite_data}")
+                    else:
+                        self.logger.error(f"Could not fetch satellite data for {task.satelliteId}")
 
                     # drive the telescope to point at the satelite as it passes overhead
 
@@ -65,7 +70,7 @@ class TaskManager:
                     # completed += 1
                 if completed > 0:
                     self.logger.info(self._heap_summary("Completed tasks"))
-                self._stop_event.wait(1)
+            self._stop_event.wait(1)
 
     def _heap_summary(self, event):
         with self.heap_lock:

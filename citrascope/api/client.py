@@ -75,3 +75,20 @@ class CitraApiClient:
             if self.logger:
                 self.logger.error(f"Error checking telescope ID: {e}")
             return False
+
+    def get_satellite(self, satellite_id):
+        """Fetch satellite details from /satellites/{satellite_id}"""
+        try:
+            resp = self.client.get(f"/satellites/{satellite_id}")
+            if self.logger:
+                self.logger.debug(f"Satellite fetch response: {resp.status_code} {resp.text}")
+            if resp.status_code == 200:
+                return resp.json()
+            else:
+                if self.logger:
+                    self.logger.error(f"Failed to fetch satellite {satellite_id}: {resp.status_code} {resp.text}")
+                return None
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Error fetching satellite {satellite_id}: {e}")
+            return None
