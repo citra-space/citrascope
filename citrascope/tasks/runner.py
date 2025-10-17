@@ -42,7 +42,7 @@ class TaskManager:
                             self.logger.error(f"Could not parse taskStart/taskStop for task {tid}")
                             continue
                         if stop_epoch and stop_epoch < now:
-                            self.logger.debug(f"Skipping past task {tid} that ended at {task_stop}")
+                            self.logger.info(f"Skipping past task {tid} that ended at {task_stop}")
                             continue  # Skip tasks whose end date has passed
                         heapq.heappush(self.task_heap, (start_epoch, stop_epoch, tid, task))
                         self.task_ids.add(tid)
@@ -50,7 +50,7 @@ class TaskManager:
                 if added > 0:
                     self.logger.info(self._heap_summary("Added tasks"))
                 self.logger.info(self._heap_summary("Polled tasks"))
-            self._stop_event.wait(30)
+            self._stop_event.wait(15)
 
     def task_runner(self):
         while not self._stop_event.is_set():
@@ -96,7 +96,7 @@ class TaskManager:
             if e.get("creationEpoch")
             else dtparser.isoparse("1970-01-01T00:00:00Z"),  # TODO: this is whack and should just bail
         )
-        self.logger.info(f"Most recent elset for {task.satelliteId}: {most_recent_elset}")
+        self.logger.debug(f"Most recent elset for {task.satelliteId}: {most_recent_elset}")
 
         # Derive the RA/DEC from the most recent elset
         ts = load.timescale()
@@ -108,8 +108,8 @@ class TaskManager:
             elevation_m=self.ground_station_record["altitude"],
         )
 
-        satellite = EarthSatellite(most_recent_elset.tle[0], most_recent_elset.tle[1], satellite_data["name"], ts)
-        geocentric = satellite.at(ts)
+        satellite = EarthSatellite(most_recent_elset["tle"][0], most_recent_elset["tle"][1], satellite_data["name"], ts)
+        geocentric = satellite.at(ts.now())
         ra, dec, distance = geocentric.radec()
 
         # fake some RADEC numbers for now
@@ -117,12 +117,32 @@ class TaskManager:
         # dec = random.uniform(0, 90)
 
         # Drive the telescope to point at the satellite as it passes overhead
-        coords = self.indi_client.our_scope.getNumber("EQUATORIAL_EOD_COORD")
-        self.logger.info(f"Telescope currently pointed to RA: {coords[0].value} hours, DEC: {coords[1].value} degrees")
-        coords[0].setValue(ra)  # RA in hours
-        coords[1].setValue(dec)  # DEC in degrees
-        self.logger.info(f"Slewing telescope to RA: {ra} hours, DEC: {dec} degrees")
-        self.indi_client.sendNewNumber(coords)
+        telescope_radec = self.indi_client.our_scope.getNumber("EQUATORIAL_EOD_COORD")
+        self.logger.info(
+            f"Telescope currently pointed to RA: {telescope_radec[0].value} hours, DEC: {telescope_radec[1].value} degrees"
+        )
+        telescope_radec[0].setValue(ra.hours)  # RA in hours
+        telescope_radec[1].setValue(dec.degrees)  # DEC in degrees
+        self.logger.info(
+            f"Slewing telescope to point at sat '{satellite_data['name']}', RA: {ra} hours, DEC: {dec} degrees"
+        )
+        self.indi_client.sendNewNumber(telescope_radec)
+
+        # wait for slew to complete
+        while telescope_radec.getState() == PyIndi.IPS_BUSY:
+            self.logger.info(
+                f"Scope Moving towards {satellite_data['name']}, now at {telescope_radec[0].value}, {telescope_radec[1].value}"
+            )
+            time.sleep(2)
+        self.logger.info(
+            f"Telescope now pointed to RA: {telescope_radec[0].value}/{ra.hours} hours, DEC: {telescope_radec[1].value}/{dec.degrees} degrees"
+        )
+
+        # perhaps start tracking object now? maybe do another fine-tune for the final shot?
+
+        # take image...
+        self.logger.info(f"Taking image of satellite '{satellite_data['name']}' for task {task.id}")
+        time.sleep(2)  # simulate time taken to capture image
 
         return True
 

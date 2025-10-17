@@ -36,6 +36,8 @@ def start(ctx):
     if not api_client.check_api_key():
         CITRASCOPE_LOGGER.error("Aborting: could not authenticate with Citra API.")
         return
+
+    # get telescope from api
     citra_telescope_record = api_client.check_telescope_id(settings.telescope_id)
     ctx.citra_telescope_record = citra_telescope_record
     if not citra_telescope_record:
@@ -55,7 +57,7 @@ def start(ctx):
     print("Connecting and waiting 1 sec")
     if not indi_client.connectServer():
         print(f"No INDI server running on {indi_client.getHost()}:{indi_client.getPort()}")
-        sys.exit(1)
+        return
 
     # Waiting for discover devices
     time.sleep(1)
