@@ -14,11 +14,13 @@ class CitraIndiClient(PyIndi.BaseClient):
 
     def newDevice(self, d):
         """Emmited when a new device is created from INDI server."""
-        self.logger.debug(f"new device {d.getDeviceName()}")
+        self.logger.info(f"new device {d.getDeviceName()}")
+        # TODO: if it's the scope we want, set our_scope
 
     def removeDevice(self, d):
         """Emmited when a device is deleted from INDI server."""
-        self.logger.debug(f"remove device {d.getDeviceName()}")
+        self.logger.info(f"remove device {d.getDeviceName()}")
+        # TODO: if it's our_scope, set our_scope to None, and react accordingly
 
     def newProperty(self, p):
         """Emmited when a new property is created for an INDI driver."""
@@ -46,8 +48,8 @@ class CitraIndiClient(PyIndi.BaseClient):
 
     def serverConnected(self):
         """Emmited when the server is connected."""
-        self.logger.debug(f"INDI Server connected ({self.getHost()}:{self.getPort()})")
+        self.logger.info(f"INDI Server connected ({self.getHost()}:{self.getPort()})")
 
     def serverDisconnected(self, code):
         """Emmited when the server gets disconnected."""
-        self.logger.debug(f"INDI Server disconnected (exit code = {code},{self.getHost()}:{self.getPort()})")
+        self.logger.info(f"INDI Server disconnected (exit code = {code},{self.getHost()}:{self.getPort()})")

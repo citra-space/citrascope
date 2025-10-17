@@ -108,9 +108,13 @@ class TaskManager:
             elevation_m=self.ground_station_record["altitude"],
         )
 
+        satellite = EarthSatellite(most_recent_elset.tle[0], most_recent_elset.tle[1], satellite_data["name"], ts)
+        geocentric = satellite.at(ts)
+        ra, dec, distance = geocentric.radec()
+
         # fake some RADEC numbers for now
-        ra = random.uniform(0, 24)
-        dec = random.uniform(0, 90)
+        # ra = random.uniform(0, 24)
+        # dec = random.uniform(0, 90)
 
         # Drive the telescope to point at the satellite as it passes overhead
         coords = self.indi_client.our_scope.getNumber("EQUATORIAL_EOD_COORD")
