@@ -9,14 +9,13 @@ from citrascope.settings._citrascope_settings import CitraScopeSettings
 @click.option("--log-level", default="INFO", help="Set logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
 @click.pass_context
 def cli(ctx, dev, log_level):
-    ctx.obj = {"dev": dev, "log_level": log_level}
+    ctx.obj = {"settings": CitraScopeSettings(dev=dev, log_level=log_level)}
 
 
 @cli.command("start")
 @click.pass_context
 def start(ctx):
-    settings = CitraScopeSettings(dev=ctx.obj["dev"], log_level=ctx.obj["log_level"])
-    daemon = CitraScopeDaemon(settings)
+    daemon = CitraScopeDaemon(ctx.obj["settings"])
     daemon.run()
 
 
