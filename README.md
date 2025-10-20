@@ -2,6 +2,10 @@
 
 Remotely control a telescope while it polls for tasks, collects observations, and delivers data for further processing.
 
+_Features_
+ - Connects to Citra.space's API and identifies itself as an online telescope
+ - Connects to configured INDI telescope and camera hardware
+ - Acts as a task daemon carrying out and remitting photography tasks
 
 ## Developing with Dev Containers
 

@@ -5,10 +5,10 @@ import click
 from dotenv import load_dotenv
 
 from citrascope.api.client import CitraApiClient
+from citrascope.indi.CitraIndiClient import CitraIndiClient
 from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.settings._citra_api_settings import CitraScopeSettings
 from citrascope.tasks.runner import TaskManager
-from indi.CitraIndiClient import CitraIndiClient
 
 load_dotenv()
 
