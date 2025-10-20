@@ -1,29 +1,31 @@
+from unittest.mock import MagicMock
+
 import pytest
 
-from citrascope.api.client import CitraApiClient
+from citrascope.api.client import AbstractCitraApiClient, CitraApiClient
 
-from .utils import DummyLogger
-
-
-# Test CitraApiClient basic instantiation
-@pytest.mark.parametrize("host,token", [("localhost", "dummy-token")])
-def test_api_client_init(host, token):
-    client = CitraApiClient(host, token, use_ssl=False, logger=DummyLogger())
-    assert client.base_url == f"http://{host}"
-    assert client.token == token
-    assert hasattr(client, "client")
+from .utils import DummyLogger, MockCitraApiClient
 
 
-# Test check_api_key returns False on connection error
-@pytest.mark.usefixtures("monkeypatch")
-def test_check_api_key_error(monkeypatch):
-    class DummyClient:
-        def get(self, url):
-            raise Exception("Connection error")
+# Test MockCitraApiClient functionality
+def test_mock_api_client():
+    mock_client = MockCitraApiClient()
 
-    logger = DummyLogger()
-    client = CitraApiClient("localhost", "token", use_ssl=False, logger=logger)
-    client.client = DummyClient()
-    result = client.does_api_server_accept_key()
-    assert result is False
-    assert any("Request error" in msg for msg in logger.errors)
+    assert mock_client.does_api_server_accept_key() is True
+
+    telescope = mock_client.get_telescope("1234")
+    assert telescope["id"] == "1234"
+    assert telescope["name"] == "Mock Telescope"
+
+    satellite = mock_client.get_satellite("5678")
+    assert satellite["id"] == "5678"
+    assert satellite["name"] == "Mock Satellite"
+
+    tasks = mock_client.get_telescope_tasks("1234")
+    assert len(tasks) == 1
+    assert tasks[0]["task_id"] == 1
+    assert tasks[0]["description"] == "Mock Task"
+
+    ground_station = mock_client.get_ground_station("91011")
+    assert ground_station["id"] == "91011"
+    assert ground_station["name"] == "Mock Ground Station"

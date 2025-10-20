@@ -1,6 +1,7 @@
 import time
+from typing import Optional
 
-from citrascope.api.client import CitraApiClient
+from citrascope.api.client import AbstractCitraApiClient, CitraApiClient
 from citrascope.indi.CitraIndiClient import CitraIndiClient
 from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.settings._citrascope_settings import CitraScopeSettings
@@ -8,12 +9,12 @@ from citrascope.tasks.runner import TaskManager
 
 
 class CitraScopeDaemon:
-    def __init__(self, dev: bool, log_level: str):
+    def __init__(self, dev: bool, log_level: str, api_client: Optional[AbstractCitraApiClient] = None):
         self.dev = dev
         self.log_level = log_level
         CITRASCOPE_LOGGER.setLevel(log_level)
         self.settings = CitraScopeSettings(dev=dev)
-        self.api_client = CitraApiClient(
+        self.api_client = api_client or CitraApiClient(
             self.settings.host,
             self.settings.personal_access_token,
             self.settings.use_ssl,

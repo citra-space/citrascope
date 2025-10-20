@@ -1,7 +1,31 @@
+from abc import ABC, abstractmethod
+
 import httpx
 
 
-class CitraApiClient:
+class AbstractCitraApiClient(ABC):
+    @abstractmethod
+    def does_api_server_accept_key(self):
+        pass
+
+    @abstractmethod
+    def get_telescope(self, telescope_id):
+        pass
+
+    @abstractmethod
+    def get_satellite(self, satellite_id):
+        pass
+
+    @abstractmethod
+    def get_telescope_tasks(self, telescope_id):
+        pass
+
+    @abstractmethod
+    def get_ground_station(self, ground_station_id):
+        pass
+
+
+class CitraApiClient(AbstractCitraApiClient):
     def __init__(self, host: str, token: str, use_ssl: bool = True, logger=None):
         self.base_url = ("https" if use_ssl else "http") + "://" + host
         self.token = token

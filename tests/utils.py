@@ -1,14 +1,68 @@
+"""
+Utility classes and functions for testing.
+
+This module contains helper classes and mock implementations to facilitate testing.
+
+Classes:
+    DummyLogger: A simple logger implementation for capturing log messages during tests.
+    MockCitraApiClient: A mock implementation of AbstractCitraApiClient for testing purposes.
+"""
+
+from citrascope.api.client import AbstractCitraApiClient
+
+
 class DummyLogger:
+    """
+    A simple logger implementation for capturing log messages during tests.
+
+    Attributes:
+        infos (list): Captures info-level log messages.
+        errors (list): Captures error-level log messages.
+        debugs (list): Captures debug-level log messages.
+    """
+
     def __init__(self):
         self.infos = []
         self.errors = []
         self.debugs = []
 
     def info(self, msg):
+        """Log an info-level message."""
         self.infos.append(msg)
 
     def error(self, msg):
+        """Log an error-level message."""
         self.errors.append(msg)
 
     def debug(self, msg):
+        """Log a debug-level message."""
         self.debugs.append(msg)
+
+
+class MockCitraApiClient(AbstractCitraApiClient):
+    """
+    A mock implementation of AbstractCitraApiClient for testing purposes.
+
+    This class provides mock responses for API client methods, allowing tests to run
+    without making actual HTTP requests.
+    """
+
+    def does_api_server_accept_key(self):
+        """Simulate API key validation."""
+        return True
+
+    def get_telescope(self, telescope_id):
+        """Simulate fetching a telescope by ID."""
+        return {"id": telescope_id, "name": "Mock Telescope"}
+
+    def get_satellite(self, satellite_id):
+        """Simulate fetching a satellite by ID."""
+        return {"id": satellite_id, "name": "Mock Satellite"}
+
+    def get_telescope_tasks(self, telescope_id):
+        """Simulate fetching tasks for a telescope."""
+        return [{"task_id": 1, "description": "Mock Task"}]
+
+    def get_ground_station(self, ground_station_id):
+        """Simulate fetching a ground station by ID."""
+        return {"id": ground_station_id, "name": "Mock Ground Station"}
