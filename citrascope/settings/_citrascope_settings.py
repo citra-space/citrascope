@@ -23,8 +23,11 @@ class CitraScopeSettings(BaseSettings):
     indi_server_port: int = 7624
     indi_telescope_name: str = UNDEFINED_STRING
 
-    def __init__(self, dev: bool = False, **kwargs):
+    log_level: str = "INFO"
+
+    def __init__(self, dev: bool = False, log_level: str = "INFO", **kwargs):
         super().__init__(**kwargs)
+        self.log_level = log_level
         if dev:
             self.host = "dev.api.citra.space"
             CITRASCOPE_LOGGER.info("Using development API endpoint.")

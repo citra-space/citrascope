@@ -1,6 +1,7 @@
 import click
 
 from citrascope.citra_scope_daemon import CitraScopeDaemon
+from citrascope.settings._citrascope_settings import CitraScopeSettings
 
 
 @click.group()
@@ -14,9 +15,8 @@ def cli(ctx, dev, log_level):
 @cli.command("start")
 @click.pass_context
 def start(ctx):
-    dev = ctx.obj["dev"]
-    log_level = ctx.obj["log_level"]
-    daemon = CitraScopeDaemon(dev, log_level)
+    settings = CitraScopeSettings(dev=ctx.obj["dev"], log_level=ctx.obj["log_level"])
+    daemon = CitraScopeDaemon(settings)
     daemon.run()
 
 

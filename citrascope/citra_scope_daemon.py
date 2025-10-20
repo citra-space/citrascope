@@ -12,15 +12,12 @@ from citrascope.tasks.runner import TaskManager
 class CitraScopeDaemon:
     def __init__(
         self,
-        dev: bool,
-        log_level: str,
+        settings: CitraScopeSettings,
         api_client: Optional[AbstractCitraApiClient] = None,
         hardware_adapter: Optional[AstroHardwareAdapter] = None,
     ):
-        self.dev = dev
-        self.log_level = log_level
-        CITRASCOPE_LOGGER.setLevel(log_level)
-        self.settings = CitraScopeSettings(dev=dev)
+        self.settings = settings
+        CITRASCOPE_LOGGER.setLevel(self.settings.log_level)
         self.api_client = api_client or CitraApiClient(
             self.settings.host,
             self.settings.personal_access_token,
