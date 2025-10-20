@@ -1,11 +1,19 @@
-
-# Remote Telescope
+# CitraScope
 
 Remotely control a telescope while it polls for tasks, collects observations, and delivers data for further processing.
 
 
-## Installation
+## Developing with Dev Containers
 
+If you are developing on macOS or Windows, you should use the provided [VS Code Dev Container](https://code.visualstudio.com/docs/devcontainers/containers) setup. The devcontainer provides a full Linux environment, which is required for the `pyindi-client` dependency to work. This is necessary because `pyindi-client` only works on Linux, and will not function natively on Mac or Windows.
+
+By opening this project in VS Code and choosing "Reopen in Container" (or using the Dev Containers extension), you can develop and run the project seamlessly, regardless of your host OS.
+
+The devcontainer also ensures all required system dependencies (like `cmake` and `libdbus-1-dev`) are installed automatically.
+
+---
+
+## Installation
 
 Before running the project, install the required dependencies. It is recommended to use a virtual environment:
 
@@ -16,9 +24,8 @@ pip install .
 
 # To install development dependencies (for code style, linting, and pre-commit hooks), run:
 
-```sh
 pip install '.[dev]'
-```
+
 ```
 
 ### Setting up Pre-commit Hooks
@@ -47,24 +54,40 @@ This project uses a command-line interface (CLI) built with [Click](https://clic
 python -m citrascope start
 ```
 
-When the app starts, it will load and display the current settings.
+You can also add the --dev switch to have it connect to the Citra Dev server.
+
+
+### Running and Debugging with VS Code
+
+If you are using Visual Studio Code, you can run or debug the project directly using the pre-configured launch options in `.vscode/launch.json`:
+
+- **Python: citrascope dev start** — Runs the main entry point with development options.
+- **Python: citrascope dev start DEBUG logging** — Runs with development options and sets log level to DEBUG for more detailed output.
+
+To use these, open the Run and Debug panel in VS Code, select the desired configuration, and click the Run or Debug button. This is a convenient way to start or debug the app without manually entering commands.
 
 ### Configuring Settings
 
 
-Settings are managed via environment variables with the prefix `CITRA_API_`. You must configure your personal access token and telescope ID. For example:
+Settings are managed via environment variables with the prefix `CITRASCOPE_`. You must configure your personal access token and telescope ID, as well as INDI server details. You can set these variables in your shell or in a `.env` file at the project root.
 
-```sh
-export CITRA_API_PERSONAL_ACCESS_TOKEN="your-token"
-export CITRA_API_TELESCOPE_ID="your-telescope-id"
+Example `.env` file:
+
+```env
+CITRASCOPE_PERSONAL_ACCESS_TOKEN=citra_pat_xxx
+CITRASCOPE_TELESCOPE_ID=xxx
+# CITRASCOPE_INDI_SERVER_URL=127.0.0.1
+CITRASCOPE_INDI_SERVER_URL=host.docker.internal  # use with devcontainer for accessing a localhost indi server
+CITRASCOPE_INDI_SERVER_PORT=7624
+CITRASCOPE_INDI_TELESCOPE_NAME=Telescope Simulator
 ```
 
-These are also available for overriding via your .env file:
+**Variable descriptions:**
 
-```sh
-export CITRA_API_HOST="your-api-host"
-export CITRA_API_PORT=1234
-export CITRA_API_USE_SSL=true
-```
+- `CITRASCOPE_PERSONAL_ACCESS_TOKEN`: Your CitraScope personal access token (required)
+- `CITRASCOPE_TELESCOPE_ID`: Your telescope ID (required)
+- `CITRASCOPE_INDI_SERVER_URL`: Hostname or IP address of the INDI server (default: `host.docker.internal` for devcontainers, or `127.0.0.1` for local)
+- `CITRASCOPE_INDI_SERVER_PORT`: Port for the INDI server (default: `7624`)
+- `CITRASCOPE_INDI_TELESCOPE_NAME`: Name of the INDI telescope device (default: `Telescope Simulator`)
 
-You can set these variables in your shell or in a `.env` file.
+You can copy `.env.example` to `.env` and tweak your values.
