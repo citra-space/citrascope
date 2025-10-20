@@ -16,6 +16,7 @@ dependencies = [
   "types-python-dateutil",
   "pyindi-client",
   "skyfield",
+  "pytest-cov",
 ]
 
 [project.optional-dependencies]
@@ -64,7 +65,7 @@ skip = ["__init__.py"]
 [tool.pytest.ini_options]
 pythonpath = ["."]
 addopts = [
-  "--cov=remote-telescope",
+  "--cov=citrascope",
   "--cov-report=term-missing",
   "--cov-report=xml",
   "--cov-branch",

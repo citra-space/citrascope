@@ -95,3 +95,13 @@ CITRASCOPE_INDI_TELESCOPE_NAME=Telescope Simulator
 - `CITRASCOPE_INDI_TELESCOPE_NAME`: Name of the INDI telescope device (default: `Telescope Simulator`)
 
 You can copy `.env.example` to `.env` and tweak your values.
+
+## Running Tests
+
+This project uses [pytest](https://pytest.org/) for unit testing. All tests are located in the `tests/` directory.
+
+To run tests manually:
+
+```bash
+pytest
+```
