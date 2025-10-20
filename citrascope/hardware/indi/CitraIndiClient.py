@@ -1,9 +1,11 @@
 import PyIndi
 
+from citrascope.hardware.astro_hardware_adapter import AstroHardwareAdapter
+
 
 # The IndiClient class which inherits from the module PyIndi.BaseClient class
 # Note that all INDI constants are accessible from the module as PyIndi.CONSTANTNAME
-class CitraIndiClient(PyIndi.BaseClient):
+class CitraIndiClient(PyIndi.BaseClient, AstroHardwareAdapter):
 
     our_scope = None
 
@@ -53,3 +55,27 @@ class CitraIndiClient(PyIndi.BaseClient):
     def serverDisconnected(self, code):
         """Emmited when the server gets disconnected."""
         self.logger.info(f"INDI Server disconnected (exit code = {code},{self.getHost()}:{self.getPort()})")
+
+    def connect(self, host: str, port: int) -> bool:
+        self.setServer(host, port)
+        return self.connectServer()
+
+    def list_devices(self):
+        return self.getDevices()
+
+    def select_device(self, device_name: str) -> bool:
+        devices = self.list_devices()
+        for device in devices:
+            if device.getDeviceName() == device_name:
+                self.our_scope = device
+                return True
+        return False
+
+    def update_device_property(self, device_name: str, property_name: str, value):
+        if self.our_scope and self.our_scope.getDeviceName() == device_name:
+            # Assuming INDI_NUMBER type for simplicity
+            self.our_scope.getNumber(property_name)[0].value = value
+            self.sendNewNumber(self.our_scope.getNumber(property_name))
+
+    def disconnect(self):
+        self.disconnectServer()

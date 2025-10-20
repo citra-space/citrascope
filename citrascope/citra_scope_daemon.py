@@ -2,14 +2,21 @@ import time
 from typing import Optional
 
 from citrascope.api.client import AbstractCitraApiClient, CitraApiClient
-from citrascope.indi.CitraIndiClient import CitraIndiClient
+from citrascope.hardware.astro_hardware_adapter import AstroHardwareAdapter
+from citrascope.hardware.indi.CitraIndiClient import CitraIndiClient
 from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.settings._citrascope_settings import CitraScopeSettings
 from citrascope.tasks.runner import TaskManager
 
 
 class CitraScopeDaemon:
-    def __init__(self, dev: bool, log_level: str, api_client: Optional[AbstractCitraApiClient] = None):
+    def __init__(
+        self,
+        dev: bool,
+        log_level: str,
+        api_client: Optional[AbstractCitraApiClient] = None,
+        hardware_adapter: Optional[AstroHardwareAdapter] = None,
+    ):
         self.dev = dev
         self.log_level = log_level
         CITRASCOPE_LOGGER.setLevel(log_level)
@@ -20,6 +27,7 @@ class CitraScopeDaemon:
             self.settings.use_ssl,
             CITRASCOPE_LOGGER,
         )
+        self.hardware_adapter = hardware_adapter or CitraIndiClient(CITRASCOPE_LOGGER)
 
     def run(self):
         CITRASCOPE_LOGGER.info(f"CitraAPISettings host is {self.settings.host}")
@@ -40,27 +48,22 @@ class CitraScopeDaemon:
             return
 
         CITRASCOPE_LOGGER.info(
-            f"Connecting to INDI server at {self.settings.indi_server_url}: {self.settings.indi_server_port}"
+            f"Connecting to hardware server at {self.settings.indi_server_url}: {self.settings.indi_server_port}"
         )
-        indi_client = CitraIndiClient(CITRASCOPE_LOGGER)
-        indi_client.setServer(self.settings.indi_server_url, int(self.settings.indi_server_port))
-        print("Connecting and waiting 1 sec")
-        if not indi_client.connectServer():
-            print(f"No INDI server running on {indi_client.getHost()}:{indi_client.getPort()}")
-            return
+        self.hardware_adapter.connect(self.settings.indi_server_url, int(self.settings.indi_server_port))
 
         time.sleep(1)
 
-        CITRASCOPE_LOGGER.info("List of INDI devices")
-        deviceList = indi_client.getDevices()
-        for device in deviceList:
+        CITRASCOPE_LOGGER.info("List of hardware devices")
+        device_list = self.hardware_adapter.list_devices() or []
+        for device in device_list:
             CITRASCOPE_LOGGER.info(f"   > {device.getDeviceName()}")
             if device.getDeviceName() == self.settings.indi_telescope_name:
-                indi_client.our_scope = device
-                CITRASCOPE_LOGGER.info("Found configured Telescope on INDI server!")
+                self.hardware_adapter.select_device(device.getDeviceName())
+                CITRASCOPE_LOGGER.info("Found configured Telescope on hardware server!")
 
         task_manager = TaskManager(
-            self.api_client, citra_telescope_record, ground_station, CITRASCOPE_LOGGER, indi_client
+            self.api_client, citra_telescope_record, ground_station, CITRASCOPE_LOGGER, self.hardware_adapter
         )
         task_manager.start()
 

@@ -1,6 +1,6 @@
 import pytest
 
-from citrascope.indi.CitraIndiClient import CitraIndiClient
+from citrascope.hardware.indi.CitraIndiClient import CitraIndiClient
 
 from .utils import DummyLogger
 
