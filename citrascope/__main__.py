@@ -33,7 +33,7 @@ def cli(ctx, dev, log_level):
 def start(ctx):
     api_client: CitraApiClient = ctx.obj["api_client"]
     settings = ctx.obj["settings"]
-    if not api_client.check_api_key():
+    if not api_client.does_api_server_accept_key():
         CITRASCOPE_LOGGER.error("Aborting: could not authenticate with Citra API.")
         return
 

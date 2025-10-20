@@ -24,6 +24,6 @@ def test_check_api_key_error(monkeypatch):
     logger = DummyLogger()
     client = CitraApiClient("localhost", "token", use_ssl=False, logger=logger)
     client.client = DummyClient()
-    result = client.check_api_key()
+    result = client.does_api_server_accept_key()
     assert result is False
-    assert any("Error connecting" in msg for msg in logger.errors)
+    assert any("Request error" in msg for msg in logger.errors)
