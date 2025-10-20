@@ -35,7 +35,7 @@ class CitraApiClient:
         response = self._request("GET", "/auth/personal-access-tokens")
         return response is not None
 
-    def check_telescope_id(self, telescope_id):
+    def get_telescope(self, telescope_id):
         """Check if the telescope ID is valid."""
         return self._request("GET", f"/telescopes/{telescope_id}")
 

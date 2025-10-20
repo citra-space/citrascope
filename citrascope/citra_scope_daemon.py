@@ -28,7 +28,7 @@ class CitraScopeDaemon:
             CITRASCOPE_LOGGER.error("Aborting: could not authenticate with Citra API.")
             return
 
-        citra_telescope_record = self.api_client.check_telescope_id(self.settings.telescope_id)
+        citra_telescope_record = self.api_client.get_telescope(self.settings.telescope_id)
         if not citra_telescope_record:
             CITRASCOPE_LOGGER.error("Aborting: telescope_id is not valid on the server.")
             return
