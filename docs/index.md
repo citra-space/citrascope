@@ -15,7 +15,7 @@ It connects to the Citra.space API and INDI hardware to execute observation task
   Communicates with Citra.space for authentication, telescope, satellite, and ground station data.
 - **Task Management:** `citrascope/tasks/runner.py`
   Polls for tasks, schedules, and executes observations.
-- **Settings:** `citrascope/settings/_citra_api_settings.py`
+- **Settings:** `citrascope/settings/_citrascope_settings.py`
   Loads configuration from environment variables.
 
 ## Configuration

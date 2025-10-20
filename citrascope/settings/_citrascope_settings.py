@@ -1,7 +1,8 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from citrascope.logging import CITRASCOPE_LOGGER
-from citrascope.settings.defaults import UNDEFINED_STRING
+
+UNDEFINED_STRING = "undefined"
 
 
 class CitraScopeSettings(BaseSettings):
