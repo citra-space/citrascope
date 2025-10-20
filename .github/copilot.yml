@@ -1,0 +1,45 @@
+# GitHub Copilot Custom Instructions for citrascope
+
+instructions:
+  overview: |
+    This project is a Python package for interacting with astronomical data and services. It includes modules for API clients, INDI client integration, logging, settings management, and task execution. Tests are located in the `tests/` directory.
+
+  coding_guidelines: |
+    - Follow PEP8 for Python code style.
+    - Use type hints for all public functions and methods.
+    - Write docstrings for all modules, classes, and functions.
+    - Prefer logging via the custom logger in `citrascope/logging/` over print statements.
+    - Organize code into logical modules as per the existing structure.
+
+  directory_structure: |
+    - `citrascope/api/`: API client code
+    - `citrascope/indi/`: INDI client integration
+    - `citrascope/logging/`: Logging utilities
+    - `citrascope/settings/`: Settings and configuration
+    - `citrascope/tasks/`: Task runner and definitions
+    - `tests/`: Unit and integration tests
+    - `docs/`: Project documentation
+
+  testing: |
+    - All new features and bug fixes should include corresponding tests in `tests/`.
+    - Use pytest for running tests.
+    - Test files should be named `test_*.py`.
+
+  copilot_usage: |
+    - When implementing new features, follow the module structure and add tests.
+    - For bug fixes, describe the issue and expected behavior in comments or commit messages.
+    - For refactoring, ensure no breaking changes and all tests pass.
+    - Use Copilot to suggest code, refactor, and generate tests, but always review suggestions for correctness and style.
+
+  common_tasks: |
+    - Add new API integrations in `citrascope/api/`.
+    - Extend INDI client features in `citrascope/indi/`.
+    - Update logging logic in `citrascope/logging/`.
+    - Change settings in `citrascope/settings/`.
+    - Add or modify tasks in `citrascope/tasks/`.
+    - Write or update tests in `tests/`.
+
+  additional_notes: |
+    - Keep dependencies minimal and update `pyproject.toml` as needed.
+    - Document any major changes in `docs/index.md`.
+    - Use pre-commit hooks for code quality.
