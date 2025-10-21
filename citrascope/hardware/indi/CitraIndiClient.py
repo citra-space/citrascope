@@ -7,7 +7,7 @@ from citrascope.hardware.astro_hardware_adapter import AstroHardwareAdapter
 # Note that all INDI constants are accessible from the module as PyIndi.CONSTANTNAME
 class CitraIndiClient(PyIndi.BaseClient, AstroHardwareAdapter):
 
-    our_scope = None
+    our_scope: PyIndi.BaseDevice
 
     def __init__(self, CITRA_LOGGER):
         super(CitraIndiClient, self).__init__()
@@ -31,7 +31,11 @@ class CitraIndiClient(PyIndi.BaseClient, AstroHardwareAdapter):
     def updateProperty(self, p):
         """Emmited when a new property value arrives from INDI server."""
         self.logger.debug(f"update property {p.getName()} as {p.getTypeAsString()} for device {p.getDeviceName()}")
-        if self.our_scope is not None and p.getDeviceName() == self.our_scope.getDeviceName():
+        if (
+            hasattr(self, "our_scope")
+            and self.our_scope is not None
+            and p.getDeviceName() == self.our_scope.getDeviceName()
+        ):
             value = None
             changed_type = p.getTypeAsString()
             if changed_type == "INDI_TEXT":
@@ -56,26 +60,45 @@ class CitraIndiClient(PyIndi.BaseClient, AstroHardwareAdapter):
         """Emmited when the server gets disconnected."""
         self.logger.info(f"INDI Server disconnected (exit code = {code},{self.getHost()}:{self.getPort()})")
 
+    # ========================= AstroHardwareAdapter Methods =========================
+
     def connect(self, host: str, port: int) -> bool:
         self.setServer(host, port)
         return self.connectServer()
 
     def list_devices(self):
-        return self.getDevices()
+        names = []
+        for device in self.getDevices():
+            names.append(device.getDeviceName())
+        return names
 
-    def select_device(self, device_name: str) -> bool:
-        devices = self.list_devices()
+    def select_camera(self, device_name: str) -> bool:
+        devices = self.getDevices()
         for device in devices:
             if device.getDeviceName() == device_name:
                 self.our_scope = device
                 return True
         return False
 
-    def update_device_property(self, device_name: str, property_name: str, value):
-        if self.our_scope and self.our_scope.getDeviceName() == device_name:
-            # Assuming INDI_NUMBER type for simplicity
-            self.our_scope.getNumber(property_name)[0].value = value
-            self.sendNewNumber(self.our_scope.getNumber(property_name))
-
     def disconnect(self):
         self.disconnectServer()
+
+    def point_telescope(self, ra: float, dec: float):
+        """Point the telescope to the specified RA/Dec coordinates."""
+        telescope_radec = self.our_scope.getNumber("EQUATORIAL_EOD_COORD")
+        telescope_radec[0].setValue(ra)  # RA in hours
+        telescope_radec[1].setValue(dec)  # DEC in degrees
+        self.sendNewNumber(telescope_radec)
+
+    def get_telescope_direction(self) -> tuple[float, float]:
+        """Read the current telescope direction (RA, Dec)."""
+        telescope_radec = self.our_scope.getNumber("EQUATORIAL_EOD_COORD")
+        self.logger.info(
+            f"Telescope currently pointed to RA: {telescope_radec[0].value} hours, DEC: {telescope_radec[1].value} degrees"
+        )
+        return telescope_radec[0].value, telescope_radec[1].value
+
+    def telescope_is_moving(self) -> bool:
+        """Check if the telescope is currently moving."""
+        telescope_radec = self.our_scope.getNumber("EQUATORIAL_EOD_COORD")
+        return telescope_radec.getState() == PyIndi.IPS_BUSY

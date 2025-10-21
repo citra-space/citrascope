@@ -4,22 +4,22 @@ import threading
 import time
 from datetime import datetime
 
-import PyIndi
 from dateutil import parser as dtparser
 from skyfield.api import EarthSatellite, Topos, load
 
+from citrascope.hardware.astro_hardware_adapter import AstroHardwareAdapter
 from citrascope.tasks.task import Task
 
 
 class TaskManager:
-    def __init__(self, client, telescope_record, ground_station_record, logger, indi_client):
+    def __init__(self, client, telescope_record, ground_station_record, logger, hardware_adapter: AstroHardwareAdapter):
         self.client = client
         self.telescope_record = telescope_record
         self.ground_station_record = ground_station_record
         self.logger = logger
         self.task_heap = []  # min-heap by start time
         self.task_ids = set()
-        self.indi_client = indi_client
+        self.hardware_adapter = hardware_adapter
         self.heap_lock = threading.RLock()
         self._stop_event = threading.Event()
 
@@ -92,9 +92,11 @@ class TaskManager:
 
         most_recent_elset = max(
             elsets,
-            key=lambda e: dtparser.isoparse(e["creationEpoch"])
-            if e.get("creationEpoch")
-            else dtparser.isoparse("1970-01-01T00:00:00Z"),  # TODO: this is whack and should just bail
+            key=lambda e: (
+                dtparser.isoparse(e["creationEpoch"])
+                if e.get("creationEpoch")
+                else dtparser.isoparse("1970-01-01T00:00:00Z")
+            ),  # TODO: this is whack and should just bail
         )
         self.logger.debug(f"Most recent elset for {task.satelliteId}: {most_recent_elset}")
 
@@ -110,32 +112,28 @@ class TaskManager:
 
         satellite = EarthSatellite(most_recent_elset["tle"][0], most_recent_elset["tle"][1], satellite_data["name"], ts)
         geocentric = satellite.at(ts.now())
-        ra, dec, distance = geocentric.radec()
+        target_ra, target_dec, distance = geocentric.radec()
 
         # fake some RADEC numbers for now
         # ra = random.uniform(0, 24)
         # dec = random.uniform(0, 90)
 
         # Drive the telescope to point at the satellite as it passes overhead
-        telescope_radec = self.indi_client.our_scope.getNumber("EQUATORIAL_EOD_COORD")
+        current_ra, current_dec = self.hardware_adapter.get_telescope_direction()
+
+        self.logger.info(f"Telescope currently pointed to RA: {current_ra} hours, DEC: {current_dec} degrees")
         self.logger.info(
-            f"Telescope currently pointed to RA: {telescope_radec[0].value} hours, DEC: {telescope_radec[1].value} degrees"
+            f"Slewing telescope to point at sat '{satellite_data['name']}', RA: {target_ra} hours, DEC: {target_dec} degrees"
         )
-        telescope_radec[0].setValue(ra.hours)  # RA in hours
-        telescope_radec[1].setValue(dec.degrees)  # DEC in degrees
-        self.logger.info(
-            f"Slewing telescope to point at sat '{satellite_data['name']}', RA: {ra} hours, DEC: {dec} degrees"
-        )
-        self.indi_client.sendNewNumber(telescope_radec)
+        self.hardware_adapter.point_telescope(target_ra.hours, target_dec.degrees)  # type: ignore
 
         # wait for slew to complete
-        while telescope_radec.getState() == PyIndi.IPS_BUSY:
-            self.logger.info(
-                f"Scope Moving towards {satellite_data['name']}, now at {telescope_radec[0].value}, {telescope_radec[1].value}"
-            )
+        while self.hardware_adapter.telescope_is_moving():
+            current_ra, current_dec = self.hardware_adapter.get_telescope_direction()
+            self.logger.info(f"Scope Moving towards {satellite_data['name']}, now at {current_ra}, {current_dec}")
             time.sleep(2)
         self.logger.info(
-            f"Telescope now pointed to RA: {telescope_radec[0].value}/{ra.hours} hours, DEC: {telescope_radec[1].value}/{dec.degrees} degrees"
+            f"Telescope now pointed to RA: {current_ra}/{target_ra.hours} hours, DEC: {current_dec}/{target_dec.degrees} degrees"
         )
 
         # perhaps start tracking object now? maybe do another fine-tune for the final shot?

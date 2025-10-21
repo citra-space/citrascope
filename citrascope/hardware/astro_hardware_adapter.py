@@ -15,21 +15,31 @@ class AstroHardwareAdapter(ABC):
         pass
 
     @abstractmethod
-    def list_devices(self):
+    def disconnect(self):
+        """Disconnect from the hardware server."""
+        pass
+
+    @abstractmethod
+    def list_devices(self) -> list[str]:
         """List all connected devices."""
         pass
 
     @abstractmethod
-    def select_device(self, device_name: str) -> bool:
-        """Select a specific device by name."""
+    def select_camera(self, device_name: str) -> bool:
+        """Select a specific camera by name."""
         pass
 
     @abstractmethod
-    def update_device_property(self, device_name: str, property_name: str, value):
-        """Update a property of a specific device."""
+    def point_telescope(self, ra: float, dec: float):
+        """Point the telescope to the specified RA/Dec coordinates."""
         pass
 
     @abstractmethod
-    def disconnect(self):
-        """Disconnect from the hardware server."""
+    def get_telescope_direction(self) -> tuple[float, float]:
+        """Read the current telescope direction (RA, Dec)."""
+        pass
+
+    @abstractmethod
+    def telescope_is_moving(self) -> bool:
+        """Check if the telescope is currently moving."""
         pass

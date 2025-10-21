@@ -53,11 +53,11 @@ class CitraScopeDaemon:
 
         CITRASCOPE_LOGGER.info("List of hardware devices")
         device_list = self.hardware_adapter.list_devices() or []
-        for device in device_list:
-            CITRASCOPE_LOGGER.info(f"   > {device.getDeviceName()}")
-            if device.getDeviceName() == self.settings.indi_telescope_name:
-                self.hardware_adapter.select_device(device.getDeviceName())
-                CITRASCOPE_LOGGER.info("Found configured Telescope on hardware server!")
+        if not self.settings.indi_telescope_name in device_list:
+            CITRASCOPE_LOGGER.error("Aborting: could not find configured telescope on hardware server.")
+            return
+        self.hardware_adapter.select_camera(self.settings.indi_telescope_name)
+        CITRASCOPE_LOGGER.info("Found configured Telescope on hardware server!")
 
         task_manager = TaskManager(
             self.api_client, citra_telescope_record, ground_station, CITRASCOPE_LOGGER, self.hardware_adapter
