@@ -30,6 +30,7 @@ class CitraScopeDaemon:
         CITRASCOPE_LOGGER.info(f"CitraAPISettings host is {self.settings.host}")
         CITRASCOPE_LOGGER.info(f"CitraAPISettings telescope_id is {self.settings.telescope_id}")
 
+        # check api for valid key, telescope and ground station
         if not self.api_client.does_api_server_accept_key():
             CITRASCOPE_LOGGER.error("Aborting: could not authenticate with Citra API.")
             return
@@ -44,20 +45,32 @@ class CitraScopeDaemon:
             CITRASCOPE_LOGGER.error("Aborting: could not get ground station info from the server.")
             return
 
+        # connect to hardware server
         CITRASCOPE_LOGGER.info(
             f"Connecting to hardware server at {self.settings.indi_server_url}: {self.settings.indi_server_port}"
         )
         self.hardware_adapter.connect(self.settings.indi_server_url, int(self.settings.indi_server_port))
-
         time.sleep(1)
-
         CITRASCOPE_LOGGER.info("List of hardware devices")
         device_list = self.hardware_adapter.list_devices() or []
+
+        # check for telescope
         if not self.settings.indi_telescope_name in device_list:
-            CITRASCOPE_LOGGER.error("Aborting: could not find configured telescope on hardware server.")
+            CITRASCOPE_LOGGER.error(
+                f"Aborting: could not find configured telescope ({self.settings.indi_telescope_name}) on hardware server."
+            )
             return
-        self.hardware_adapter.select_camera(self.settings.indi_telescope_name)
-        CITRASCOPE_LOGGER.info("Found configured Telescope on hardware server!")
+        self.hardware_adapter.select_telescope(self.settings.indi_telescope_name)
+        CITRASCOPE_LOGGER.info(f"Found configured Telescope ({self.settings.indi_telescope_name}) on hardware server!")
+
+        # check for camera
+        if not self.settings.indi_camera_name in device_list:
+            CITRASCOPE_LOGGER.error(
+                f"Aborting: could not find configured camera ({self.settings.indi_camera_name}) on hardware server."
+            )
+            return
+        self.hardware_adapter.select_camera(self.settings.indi_camera_name)
+        CITRASCOPE_LOGGER.info(f"Found configured Camera ({self.settings.indi_camera_name}) on hardware server!")
 
         task_manager = TaskManager(
             self.api_client, citra_telescope_record, ground_station, CITRASCOPE_LOGGER, self.hardware_adapter

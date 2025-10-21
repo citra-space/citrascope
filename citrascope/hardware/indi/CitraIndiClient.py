@@ -8,6 +8,7 @@ from citrascope.hardware.astro_hardware_adapter import AstroHardwareAdapter
 class CitraIndiClient(PyIndi.BaseClient, AstroHardwareAdapter):
 
     our_scope: PyIndi.BaseDevice
+    our_camera: PyIndi.BaseDevice
 
     def __init__(self, CITRA_LOGGER):
         super(CitraIndiClient, self).__init__()
@@ -50,7 +51,11 @@ class CitraIndiClient(PyIndi.BaseClient, AstroHardwareAdapter):
 
     def newMessage(self, d, m):
         """Emmited when a new message arrives from INDI server."""
-        self.logger.debug(f"new Message {d.messageQueue(m)}")
+        msg = d.messageQueue(m)
+        if "error" in msg.lower():
+            self.logger.error(f"new Message {msg}")
+        else:
+            self.logger.debug(f"new Message {msg}")
 
     def serverConnected(self):
         """Emmited when the server is connected."""
@@ -59,6 +64,12 @@ class CitraIndiClient(PyIndi.BaseClient, AstroHardwareAdapter):
     def serverDisconnected(self, code):
         """Emmited when the server gets disconnected."""
         self.logger.info(f"INDI Server disconnected (exit code = {code},{self.getHost()}:{self.getPort()})")
+
+    def newBLOB(self, bp):
+        for b in bp:
+            with open("image.fits", "wb") as f:
+                f.write(b.getblob())
+                print("Saved image.fits")
 
     # ========================= AstroHardwareAdapter Methods =========================
 
@@ -72,7 +83,7 @@ class CitraIndiClient(PyIndi.BaseClient, AstroHardwareAdapter):
             names.append(device.getDeviceName())
         return names
 
-    def select_camera(self, device_name: str) -> bool:
+    def select_telescope(self, device_name: str) -> bool:
         devices = self.getDevices()
         for device in devices:
             if device.getDeviceName() == device_name:
@@ -86,9 +97,13 @@ class CitraIndiClient(PyIndi.BaseClient, AstroHardwareAdapter):
     def point_telescope(self, ra: float, dec: float):
         """Point the telescope to the specified RA/Dec coordinates."""
         telescope_radec = self.our_scope.getNumber("EQUATORIAL_EOD_COORD")
-        telescope_radec[0].setValue(ra)  # RA in hours
-        telescope_radec[1].setValue(dec)  # DEC in degrees
-        self.sendNewNumber(telescope_radec)
+        new_ra = float(ra)
+        telescope_radec[0].setValue(new_ra)  # RA in hours
+        telescope_radec[1].setValue(float(dec))  # DEC in degrees
+        try:
+            self.sendNewNumber(telescope_radec)
+        except Exception as e:
+            self.logger.error(f"Error sending new RA/DEC to telescope: {e}")
 
     def get_telescope_direction(self) -> tuple[float, float]:
         """Read the current telescope direction (RA, Dec)."""
@@ -102,3 +117,25 @@ class CitraIndiClient(PyIndi.BaseClient, AstroHardwareAdapter):
         """Check if the telescope is currently moving."""
         telescope_radec = self.our_scope.getNumber("EQUATORIAL_EOD_COORD")
         return telescope_radec.getState() == PyIndi.IPS_BUSY
+
+    def select_camera(self, device_name: str) -> bool:
+        """Select a specific camera by name."""
+        devices = self.getDevices()
+        for device in devices:
+            if device.getDeviceName() == device_name:
+                self.our_camera = device
+                self.setBLOBMode(PyIndi.B_ALSO, device_name, None)
+                return True
+        return False
+
+    def take_image(self):
+        """Capture an image with the currently selected camera."""
+
+        ccd_exposure = self.our_camera.getNumber("CCD_EXPOSURE")
+        ccd_exposure[0].setValue(1.0)
+        self.sendNewNumber(ccd_exposure)
+
+    def is_camera_busy(self) -> bool:
+        """Check if the camera is currently busy taking an image."""
+        ccd_exposure = self.our_camera.getNumber("CCD_EXPOSURE")
+        return ccd_exposure.getState() == PyIndi.IPS_BUSY

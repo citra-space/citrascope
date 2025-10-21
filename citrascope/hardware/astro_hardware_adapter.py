@@ -25,7 +25,7 @@ class AstroHardwareAdapter(ABC):
         pass
 
     @abstractmethod
-    def select_camera(self, device_name: str) -> bool:
+    def select_telescope(self, device_name: str) -> bool:
         """Select a specific camera by name."""
         pass
 
@@ -42,4 +42,14 @@ class AstroHardwareAdapter(ABC):
     @abstractmethod
     def telescope_is_moving(self) -> bool:
         """Check if the telescope is currently moving."""
+        pass
+
+    @abstractmethod
+    def select_camera(self, device_name: str) -> bool:
+        """Select a specific camera by name."""
+        pass
+
+    @abstractmethod
+    def take_image(self):
+        """Capture an image with the currently selected camera."""
         pass

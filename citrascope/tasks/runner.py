@@ -140,7 +140,7 @@ class TaskManager:
 
         # take image...
         self.logger.info(f"Taking image of satellite '{satellite_data['name']}' for task {task.id}")
-        time.sleep(2)  # simulate time taken to capture image
+        self.hardware_adapter.take_image()
 
         return True
 

@@ -22,6 +22,7 @@ class CitraScopeSettings(BaseSettings):
     indi_server_url: str = "localhost"
     indi_server_port: int = 7624
     indi_telescope_name: str = UNDEFINED_STRING
+    indi_camera_name: str = UNDEFINED_STRING
 
     log_level: str = "INFO"
 
