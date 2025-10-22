@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from citrascope.api.client import AbstractCitraApiClient, CitraApiClient
+from citrascope.api.citra_api_client import AbstractCitraApiClient, CitraApiClient
 
 from .utils import DummyLogger, MockCitraApiClient
 

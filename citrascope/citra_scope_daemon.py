@@ -1,7 +1,7 @@
 import time
 from typing import Optional
 
-from citrascope.api.client import AbstractCitraApiClient, CitraApiClient
+from citrascope.api.citra_api_client import AbstractCitraApiClient, CitraApiClient
 from citrascope.hardware.astro_hardware_adapter import AstroHardwareAdapter
 from citrascope.hardware.indi.CitraIndiClient import CitraIndiClient
 from citrascope.logging import CITRASCOPE_LOGGER
