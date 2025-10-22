@@ -1,12 +1,11 @@
 import heapq
 import os
-import random
 import threading
 import time
 from datetime import datetime
 
 from dateutil import parser as dtparser
-from skyfield.api import EarthSatellite, Topos, load
+from skyfield.api import EarthSatellite, Topos, load, wgs84
 
 from citrascope.hardware.astro_hardware_adapter import AstroHardwareAdapter
 from citrascope.tasks.task import Task
@@ -47,6 +46,9 @@ class TaskManager:
                         if stop_epoch and stop_epoch < now:
                             self.logger.info(f"Skipping past task {tid} that ended at {task_stop}")
                             continue  # Skip tasks whose end date has passed
+                        if task.status not in ["Pending", "Scheduled"]:
+                            self.logger.info(f"Skipping task {tid} with status {task.status}")
+                            continue  # Only schedule pending/scheduled tasks
                         heapq.heappush(self.task_heap, (start_epoch, stop_epoch, tid, task))
                         self.task_ids.add(tid)
                         added += 1
@@ -104,22 +106,21 @@ class TaskManager:
         self.logger.debug(f"Most recent elset for {task.satelliteId}: {most_recent_elset}")
 
         # Derive the RA/DEC from the most recent elset
-        ts = load.timescale()
-        eph = load("de421.bsp")
+        # Killer docs: https://rhodesmill.org/skyfield/earth-satellites.html
 
-        observer = eph["earth"] + Topos(
-            latitude_degrees=self.ground_station_record["latitude"],
-            longitude_degrees=self.ground_station_record["longitude"],
+        ts = load.timescale()
+        ground_station = wgs84.latlon(
+            self.ground_station_record["latitude"],
+            self.ground_station_record["longitude"],
             elevation_m=self.ground_station_record["altitude"],
         )
 
         satellite = EarthSatellite(most_recent_elset["tle"][0], most_recent_elset["tle"][1], satellite_data["name"], ts)
-        geocentric = satellite.at(ts.now())
-        target_ra, target_dec, distance = geocentric.radec()
 
-        # fake some RADEC numbers for now
-        # ra = random.uniform(0, 24)
-        # dec = random.uniform(0, 90)
+        difference = satellite - ground_station
+        topocentric = difference.at(ts.now())
+
+        target_ra, target_dec, _ = topocentric.radec()
 
         # Drive the telescope to point at the satellite as it passes overhead
         current_ra, current_dec = self.hardware_adapter.get_telescope_direction()
