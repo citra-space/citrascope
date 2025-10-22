@@ -12,8 +12,10 @@ from citrascope.tasks.task import Task
 
 
 class TaskManager:
-    def __init__(self, client, telescope_record, ground_station_record, logger, hardware_adapter: AstroHardwareAdapter):
-        self.client = client
+    def __init__(
+        self, api_client, telescope_record, ground_station_record, logger, hardware_adapter: AstroHardwareAdapter
+    ):
+        self.api_client = api_client
         self.telescope_record = telescope_record
         self.ground_station_record = ground_station_record
         self.logger = logger
@@ -25,7 +27,7 @@ class TaskManager:
 
     def poll_tasks(self):
         while not self._stop_event.is_set():
-            tasks = self.client.get_telescope_tasks(self.telescope_record["id"])
+            tasks = self.api_client.get_telescope_tasks(self.telescope_record["id"])
             added = 0
             now = int(time.time())
             with self.heap_lock:
@@ -78,7 +80,7 @@ class TaskManager:
     def _observe_satellite(self, task: Task):
 
         # Fetch satellite data for this task
-        satellite_data = self.client.get_satellite(task.satelliteId)
+        satellite_data = self.api_client.get_satellite(task.satelliteId)
         if not satellite_data:
             self.logger.error(f"Could not fetch satellite data for {task.satelliteId}")
             return False
@@ -140,8 +142,24 @@ class TaskManager:
 
         # take image...
         self.logger.info(f"Taking image of satellite '{satellite_data['name']}' for task {task.id}")
-        self.hardware_adapter.take_image()
+        self.hardware_adapter.take_image(task.id)
 
+        filepath = f"images/citra_task_{task.id}_image.fits"
+
+        upload_result = self.api_client.upload_image(task.id, self.telescope_record["id"], filepath)
+
+        if upload_result:
+            self.logger.info(f"Successfully uploaded image for task {task.id}")
+        else:
+            self.logger.error(f"Failed to upload image for task {task.id}")
+
+        # Mark task done
+        marked_complete = self.api_client.mark_task_complete(task.id)
+        if not marked_complete:
+            self.logger.error(f"Failed to mark task {task.id} as complete.")
+            return False
+
+        self.logger.info(f"Marked task {task.id} as complete.")
         return True
 
     def _heap_summary(self, event):

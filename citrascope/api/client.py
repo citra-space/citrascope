@@ -1,3 +1,4 @@
+import os
 from abc import ABC, abstractmethod
 
 import httpx
@@ -74,3 +75,48 @@ class CitraApiClient(AbstractCitraApiClient):
     def get_ground_station(self, ground_station_id):
         """Fetch ground station details from /ground-stations/{ground_station_id}"""
         return self._request("GET", f"/ground-stations/{ground_station_id}")
+
+    def upload_image(self, task_id, telescope_id, filepath):
+        """Upload an image file for a given task."""
+        signed_url_response = self._request(
+            "POST", f"/my/images?filename=citra_task_{task_id}_image.fits&telescope_id={telescope_id}&task_id={task_id}"
+        )
+        if not signed_url_response or "uploadUrl" not in signed_url_response:
+            if self.logger:
+                self.logger.error("Failed to get signed URL for image upload.")
+            return None
+
+        upload_url = signed_url_response["uploadUrl"]
+        fields = signed_url_response["fields"]
+
+        # Prepare the multipart form data
+        files = {"file": (os.path.basename(filepath), open(filepath, "rb"), "application/fits")}
+        data = fields  # Fields provided in the signed URL response
+
+        # Perform the POST request to upload the file
+        try:
+            response = httpx.post(upload_url, data=data, files=files)
+            if self.logger:
+                self.logger.debug(f"Image upload response: {response.status_code} {response.text}")
+            response.raise_for_status()
+            return signed_url_response.get("resultsUrl")  # Return the results URL if needed
+        except httpx.RequestError as e:
+            if self.logger:
+                self.logger.error(f"Failed to upload image: {e}")
+            return None
+        finally:
+            # Ensure the file is closed after the upload
+            files["file"][1].close()
+
+    def mark_task_complete(self, task_id):
+        """Mark a task as complete using the API."""
+        try:
+            body = {"status": "Succeeded"}
+            response = self._request("PUT", f"/tasks/{task_id}", json=body)
+            if self.logger:
+                self.logger.debug(f"Marked task {task_id} as complete: {response}")
+            return response
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Failed to mark task {task_id} as complete: {e}")
+            return None

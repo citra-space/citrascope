@@ -1,4 +1,5 @@
 import os
+import time
 
 import PyIndi
 
@@ -11,6 +12,8 @@ class CitraIndiClient(PyIndi.BaseClient, AstroHardwareAdapter):
 
     our_scope: PyIndi.BaseDevice
     our_camera: PyIndi.BaseDevice
+
+    _current_task_id: str = ""
 
     def __init__(self, CITRA_LOGGER):
         super(CitraIndiClient, self).__init__()
@@ -54,10 +57,10 @@ class CitraIndiClient(PyIndi.BaseClient, AstroHardwareAdapter):
             self.logger.debug(f"Received BLOB of format {format}, size {size}, length {bloblen}")
             os.makedirs("images", exist_ok=True)
             for b in blobProperty:
-                with open("images/citra_image.fits", "wb") as f:
-                    bloob = b.getblobdata()
-                    f.write(bloob)
-                    print("Saved citra_image.fits")
+                with open(f"images/citra_task_{self._current_task_id}_image.fits", "wb") as f:
+                    f.write(b.getblobdata())
+                    print(f"Saved citra_task_{self._current_task_id}_image.fits")
+            self._current_task_id = ""
 
     def removeProperty(self, p):
         """Emmited when a property is deleted for an INDI driver."""
@@ -142,12 +145,18 @@ class CitraIndiClient(PyIndi.BaseClient, AstroHardwareAdapter):
                 return True
         return False
 
-    def take_image(self):
+    def take_image(self, task_id: str):
         """Capture an image with the currently selected camera."""
 
+        self._current_task_id = task_id
         ccd_exposure = self.our_camera.getNumber("CCD_EXPOSURE")
         ccd_exposure[0].setValue(1.0)
         self.sendNewNumber(ccd_exposure)
+
+        time.sleep(1.0)  # this sleeping feels whack. Better to have a proper event system.
+        while self.is_camera_busy() and self._current_task_id != "":
+            self.logger.info("Waiting for camera to finish exposure...")
+            time.sleep(2.0)
 
     def is_camera_busy(self) -> bool:
         """Check if the camera is currently busy taking an image."""
