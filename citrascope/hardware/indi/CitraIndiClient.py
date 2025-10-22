@@ -1,3 +1,5 @@
+import os
+
 import PyIndi
 
 from citrascope.hardware.astro_hardware_adapter import AstroHardwareAdapter
@@ -44,6 +46,18 @@ class CitraIndiClient(PyIndi.BaseClient, AstroHardwareAdapter):
             if changed_type == "INDI_NUMBER":
                 value = self.our_scope.getNumber(p.getName())[0].value
             self.logger.debug(f"Scope '{self.our_scope.getDeviceName()}' property {p.getName()} updated value: {value}")
+        if p.getType() == PyIndi.INDI_BLOB:
+            blobProperty = self.our_camera.getBLOB(p.getName())
+            format = blobProperty[0].getFormat()
+            bloblen = blobProperty[0].getBlobLen()
+            size = blobProperty[0].getSize()
+            self.logger.debug(f"Received BLOB of format {format}, size {size}, length {bloblen}")
+            os.makedirs("images", exist_ok=True)
+            for b in blobProperty:
+                with open("images/citra_image.fits", "wb") as f:
+                    bloob = b.getblobdata()
+                    f.write(bloob)
+                    print("Saved citra_image.fits")
 
     def removeProperty(self, p):
         """Emmited when a property is deleted for an INDI driver."""

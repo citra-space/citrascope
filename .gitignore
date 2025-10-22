@@ -137,3 +137,5 @@ as_headers/
 
 certs/
 de421.bsp
+citra_image.fits
+/images/*
