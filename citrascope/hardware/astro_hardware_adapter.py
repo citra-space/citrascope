@@ -50,6 +50,6 @@ class AstroHardwareAdapter(ABC):
         pass
 
     @abstractmethod
-    def take_image(self, task_id: str):
-        """Capture an image with the currently selected camera."""
+    def take_image(self, task_id: str) -> str:
+        """Capture an image with the currently selected camera. Returns the file path of the saved image."""
         pass

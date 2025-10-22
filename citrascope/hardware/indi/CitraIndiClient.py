@@ -14,6 +14,7 @@ class CitraIndiClient(PyIndi.BaseClient, AstroHardwareAdapter):
     our_camera: PyIndi.BaseDevice
 
     _current_task_id: str = ""
+    _last_saved_filename: str = ""
 
     def __init__(self, CITRA_LOGGER):
         super(CitraIndiClient, self).__init__()
@@ -56,10 +57,11 @@ class CitraIndiClient(PyIndi.BaseClient, AstroHardwareAdapter):
             size = blobProperty[0].getSize()
             self.logger.debug(f"Received BLOB of format {format}, size {size}, length {bloblen}")
             os.makedirs("images", exist_ok=True)
+            self._last_saved_filename = f"images/citra_task_{self._current_task_id}_image.fits"
             for b in blobProperty:
-                with open(f"images/citra_task_{self._current_task_id}_image.fits", "wb") as f:
+                with open(self._last_saved_filename, "wb") as f:
                     f.write(b.getblobdata())
-                    print(f"Saved citra_task_{self._current_task_id}_image.fits")
+                    self.logger.info(f"Saved {self._last_saved_filename}")
             self._current_task_id = ""
 
     def removeProperty(self, p):
@@ -157,6 +159,10 @@ class CitraIndiClient(PyIndi.BaseClient, AstroHardwareAdapter):
         while self.is_camera_busy() and self._current_task_id != "":
             self.logger.info("Waiting for camera to finish exposure...")
             time.sleep(2.0)
+
+        filename = self._last_saved_filename
+        self._last_saved_filename = ""
+        return filename
 
     def is_camera_busy(self) -> bool:
         """Check if the camera is currently busy taking an image."""

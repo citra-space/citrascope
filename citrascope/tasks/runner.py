@@ -144,9 +144,7 @@ class TaskManager:
 
         # take image...
         self.logger.info(f"Taking image of satellite '{satellite_data['name']}' for task {task.id}")
-        self.hardware_adapter.take_image(task.id)
-
-        filepath = f"images/citra_task_{task.id}_image.fits"
+        filepath = self.hardware_adapter.take_image(task.id)
 
         upload_result = self.api_client.upload_image(task.id, self.telescope_record["id"], filepath)
 
@@ -165,6 +163,14 @@ class TaskManager:
         # Mark task done
         marked_complete = self.api_client.mark_task_complete(task.id)
         if not marked_complete:
+            # get the task again from the api to see if it is already marked complete
+            # TODO: this will have to change to use the outstanding telescope tasks endpoint later and see if the current task is absent
+            task_check = self.api_client.get_telescope_tasks(self.telescope_record["id"])
+            for t in task_check:
+                if t["id"] == task.id and t.get("status") == "Succeeded":
+                    self.logger.info(f"Task {task.id} is already marked complete.")
+                    return True
+
             self.logger.error(f"Failed to mark task {task.id} as complete.")
             return False
 
