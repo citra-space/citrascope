@@ -139,3 +139,4 @@ certs/
 de421.bsp
 citra_image.fits
 /images/*
+.DS_Store

@@ -1,4 +1,5 @@
 import heapq
+import os
 import random
 import threading
 import time
@@ -152,6 +153,13 @@ class TaskManager:
             self.logger.info(f"Successfully uploaded image for task {task.id}")
         else:
             self.logger.error(f"Failed to upload image for task {task.id}")
+
+        # delete local file after upload
+        try:
+            os.remove(filepath)
+            self.logger.info(f"Deleted local image file {filepath} after upload.")
+        except Exception as e:
+            self.logger.error(f"Failed to delete local image file {filepath}: {e}")
 
         # Mark task done
         marked_complete = self.api_client.mark_task_complete(task.id)
