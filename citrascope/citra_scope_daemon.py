@@ -3,7 +3,7 @@ from typing import Optional
 
 from citrascope.api.citra_api_client import AbstractCitraApiClient, CitraApiClient
 from citrascope.hardware.astro_hardware_adapter import AstroHardwareAdapter
-from citrascope.hardware.indi.CitraIndiClient import IndiAdapter
+from citrascope.hardware.indi.indi_adapter import IndiAdapter
 from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.settings._citrascope_settings import CitraScopeSettings
 from citrascope.tasks.runner import TaskManager
