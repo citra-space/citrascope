@@ -8,7 +8,7 @@ from citrascope.hardware.astro_hardware_adapter import AstroHardwareAdapter
 
 # The IndiClient class which inherits from the module PyIndi.BaseClient class
 # Note that all INDI constants are accessible from the module as PyIndi.CONSTANTNAME
-class CitraIndiClient(PyIndi.BaseClient, AstroHardwareAdapter):
+class IndiAdapter(PyIndi.BaseClient, AstroHardwareAdapter):
 
     our_scope: PyIndi.BaseDevice
     our_camera: PyIndi.BaseDevice
@@ -17,7 +17,7 @@ class CitraIndiClient(PyIndi.BaseClient, AstroHardwareAdapter):
     _last_saved_filename: str = ""
 
     def __init__(self, CITRA_LOGGER):
-        super(CitraIndiClient, self).__init__()
+        super(IndiAdapter, self).__init__()
         self.logger = CITRA_LOGGER
         self.logger.debug("creating an instance of IndiClient")
 

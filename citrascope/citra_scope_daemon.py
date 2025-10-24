@@ -3,7 +3,7 @@ from typing import Optional
 
 from citrascope.api.citra_api_client import AbstractCitraApiClient, CitraApiClient
 from citrascope.hardware.astro_hardware_adapter import AstroHardwareAdapter
-from citrascope.hardware.indi.CitraIndiClient import CitraIndiClient
+from citrascope.hardware.indi.CitraIndiClient import IndiAdapter
 from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.settings._citrascope_settings import CitraScopeSettings
 from citrascope.tasks.runner import TaskManager
@@ -24,7 +24,7 @@ class CitraScopeDaemon:
             self.settings.use_ssl,
             CITRASCOPE_LOGGER,
         )
-        self.hardware_adapter = hardware_adapter or CitraIndiClient(CITRASCOPE_LOGGER)
+        self.hardware_adapter = hardware_adapter or IndiAdapter(CITRASCOPE_LOGGER)
 
     def run(self):
         CITRASCOPE_LOGGER.info(f"CitraAPISettings host is {self.settings.host}")
