@@ -5,10 +5,9 @@ import time
 from datetime import datetime
 
 from dateutil import parser as dtparser
-from skyfield.api import EarthSatellite, Topos, load, wgs84
 
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
-from citrascope.tasks.base_telescope_task import StaticTelescopeTask, TrackingTelescopeTask
+from citrascope.tasks.scope.static_telescope_task import StaticTelescopeTask
 from citrascope.tasks.task import Task
 
 
