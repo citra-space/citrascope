@@ -76,7 +76,7 @@ class AbstractBaseTelescopeTask(ABC):
 
 
 class StaticTelescopeTask(AbstractBaseTelescopeTask):
-    def execute(self, tolerance_deg: float = 0.1, max_iterations: int = 5):
+    def execute(self, tolerance_deg: float = 0.05, max_iterations: int = 5):
         satellite_data, most_recent_elset = self.fetch_satellite_and_elset()
         if not satellite_data or not most_recent_elset:
             return False
@@ -90,9 +90,12 @@ class StaticTelescopeTask(AbstractBaseTelescopeTask):
             self.hardware_adapter.point_telescope(target_ra.hours, target_dec.degrees)
             while self.hardware_adapter.telescope_is_moving():
                 self.logger.info(f"Scope moving towards {sat_name}...")
-                time.sleep(2)
+                time.sleep(1)
             # Get current telescope position
             current_ra, current_dec = self.hardware_adapter.get_telescope_direction()
+            target_ra, target_dec, _ = self.get_target_radec(
+                satellite_data, most_recent_elset
+            )  ## get where object should be now...
             # Compute pointing error in degrees
             ra_error = abs(current_ra - target_ra.hours) * 15  # RA in hours, convert to degrees
             dec_error = abs(current_dec - target_dec.degrees)
