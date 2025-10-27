@@ -17,6 +17,7 @@ dependencies = [
   "pyindi-client",
   "skyfield",
   "pytest-cov",
+  "dbus_fast",
 ]
 
 [project.optional-dependencies]

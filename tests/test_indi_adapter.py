@@ -1,6 +1,6 @@
 import pytest
 
-from citrascope.hardware.indi.indi_adapter import IndiAdapter
+from citrascope.hardware.indi_adapter import IndiAdapter
 
 from .utils import DummyLogger
 
@@ -24,7 +24,7 @@ class DummyProperty:
 @pytest.mark.usefixtures("monkeypatch")
 def test_new_device_logs(monkeypatch):
     logger = DummyLogger()
-    client = IndiAdapter(logger)
+    client = IndiAdapter(logger, "", 1234)
     device = DummyDevice()
     client.newDevice(device)
     assert any("new device" in msg for msg in logger.infos)
@@ -33,7 +33,7 @@ def test_new_device_logs(monkeypatch):
 @pytest.mark.usefixtures("monkeypatch")
 def test_new_property_logs(monkeypatch):
     logger = DummyLogger()
-    client = IndiAdapter(logger)
+    client = IndiAdapter(logger, "", 1234)
     prop = DummyProperty()
     client.newProperty(prop)
     assert any("new property" in msg for msg in logger.debugs)

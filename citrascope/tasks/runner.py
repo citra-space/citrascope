@@ -7,13 +7,18 @@ from datetime import datetime
 from dateutil import parser as dtparser
 from skyfield.api import EarthSatellite, Topos, load, wgs84
 
-from citrascope.hardware.astro_hardware_adapter import AstroHardwareAdapter
+from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
 from citrascope.tasks.task import Task
 
 
 class TaskManager:
     def __init__(
-        self, api_client, telescope_record, ground_station_record, logger, hardware_adapter: AstroHardwareAdapter
+        self,
+        api_client,
+        telescope_record,
+        ground_station_record,
+        logger,
+        hardware_adapter: AbstractAstroHardwareAdapter,
     ):
         self.api_client = api_client
         self.telescope_record = telescope_record

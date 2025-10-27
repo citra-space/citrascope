@@ -2,8 +2,9 @@ import time
 from typing import Optional
 
 from citrascope.api.citra_api_client import AbstractCitraApiClient, CitraApiClient
-from citrascope.hardware.astro_hardware_adapter import AstroHardwareAdapter
-from citrascope.hardware.indi.indi_adapter import IndiAdapter
+from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
+from citrascope.hardware.ekos_debus_adapter import EkosDbusAdapter
+from citrascope.hardware.indi_adapter import IndiAdapter
 from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.settings._citrascope_settings import CitraScopeSettings
 from citrascope.tasks.runner import TaskManager
@@ -14,7 +15,7 @@ class CitraScopeDaemon:
         self,
         settings: CitraScopeSettings,
         api_client: Optional[AbstractCitraApiClient] = None,
-        hardware_adapter: Optional[AstroHardwareAdapter] = None,
+        hardware_adapter: Optional[AbstractAstroHardwareAdapter] = None,
     ):
         self.settings = settings
         CITRASCOPE_LOGGER.setLevel(self.settings.log_level)
@@ -24,7 +25,10 @@ class CitraScopeDaemon:
             self.settings.use_ssl,
             CITRASCOPE_LOGGER,
         )
-        self.hardware_adapter = hardware_adapter or IndiAdapter(CITRASCOPE_LOGGER)
+        self.hardware_adapter = hardware_adapter or IndiAdapter(
+            CITRASCOPE_LOGGER, self.settings.indi_server_url, int(self.settings.indi_server_port)
+        )
+        # self.hardware_adapter = hardware_adapter or EkosDbusAdapter(CITRASCOPE_LOGGER)
 
     def run(self):
         CITRASCOPE_LOGGER.info(f"CitraAPISettings host is {self.settings.host}")
@@ -46,10 +50,8 @@ class CitraScopeDaemon:
             return
 
         # connect to hardware server
-        CITRASCOPE_LOGGER.info(
-            f"Connecting to hardware server at {self.settings.indi_server_url}: {self.settings.indi_server_port}"
-        )
-        self.hardware_adapter.connect(self.settings.indi_server_url, int(self.settings.indi_server_port))
+        CITRASCOPE_LOGGER.info(f"Connecting to hardware server with {type(self.hardware_adapter).__name__}...")
+        self.hardware_adapter.connect()  # TODO: change this to not have url, port
         time.sleep(1)
         CITRASCOPE_LOGGER.info("List of hardware devices")
         device_list = self.hardware_adapter.list_devices() or []

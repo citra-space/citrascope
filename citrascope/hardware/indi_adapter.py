@@ -3,12 +3,12 @@ import time
 
 import PyIndi
 
-from citrascope.hardware.astro_hardware_adapter import AstroHardwareAdapter
+from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
 
 
 # The IndiClient class which inherits from the module PyIndi.BaseClient class
 # Note that all INDI constants are accessible from the module as PyIndi.CONSTANTNAME
-class IndiAdapter(PyIndi.BaseClient, AstroHardwareAdapter):
+class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
 
     our_scope: PyIndi.BaseDevice
     our_camera: PyIndi.BaseDevice
@@ -16,10 +16,12 @@ class IndiAdapter(PyIndi.BaseClient, AstroHardwareAdapter):
     _current_task_id: str = ""
     _last_saved_filename: str = ""
 
-    def __init__(self, CITRA_LOGGER):
+    def __init__(self, CITRA_LOGGER, host: str, port: int):
         super(IndiAdapter, self).__init__()
         self.logger = CITRA_LOGGER
         self.logger.debug("creating an instance of IndiClient")
+        self.host = host
+        self.port = port
 
     def newDevice(self, d):
         """Emmited when a new device is created from INDI server."""
@@ -92,8 +94,8 @@ class IndiAdapter(PyIndi.BaseClient, AstroHardwareAdapter):
 
     # ========================= AstroHardwareAdapter Methods =========================
 
-    def connect(self, host: str, port: int) -> bool:
-        self.setServer(host, port)
+    def connect(self) -> bool:
+        self.setServer(self.host, self.port)
         return self.connectServer()
 
     def list_devices(self):
