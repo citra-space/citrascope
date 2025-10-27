@@ -8,6 +8,7 @@ from dateutil import parser as dtparser
 from skyfield.api import EarthSatellite, Topos, load, wgs84
 
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
+from citrascope.tasks.base_telescope_task import StaticTelescopeTask, TrackingTelescopeTask
 from citrascope.tasks.task import Task
 
 
@@ -49,10 +50,10 @@ class TaskManager:
                             self.logger.error(f"Could not parse taskStart/taskStop for task {tid}")
                             continue
                         if stop_epoch and stop_epoch < now:
-                            self.logger.info(f"Skipping past task {tid} that ended at {task_stop}")
+                            self.logger.debug(f"Skipping past task {tid} that ended at {task_stop}")
                             continue  # Skip tasks whose end date has passed
                         if task.status not in ["Pending", "Scheduled"]:
-                            self.logger.info(f"Skipping task {tid} with status {task.status}")
+                            self.logger.debug(f"Skipping task {tid} with status {task.status}")
                             continue  # Only schedule pending/scheduled tasks
                         heapq.heappush(self.task_heap, (start_epoch, stop_epoch, tid, task))
                         self.task_ids.add(tid)
@@ -86,101 +87,15 @@ class TaskManager:
             self._stop_event.wait(1)
 
     def _observe_satellite(self, task: Task):
-
-        # Fetch satellite data for this task
-        satellite_data = self.api_client.get_satellite(task.satelliteId)
-        if not satellite_data:
-            self.logger.error(f"Could not fetch satellite data for {task.satelliteId}")
-            return False
-        # self.logger.debug(f"Satellite data for {task.satelliteId}: {satellite_data}") #toooooo much spam to log atm
-
-        # Get the most recent TLE (elset) for the satellite
-        elsets = satellite_data.get("elsets", [])
-        if not elsets:
-            self.logger.error(f"No elsets found for satellite {task.satelliteId}")
-            return False
-
-        most_recent_elset = max(
-            elsets,
-            key=lambda e: (
-                dtparser.isoparse(e["creationEpoch"])
-                if e.get("creationEpoch")
-                else dtparser.isoparse("1970-01-01T00:00:00Z")
-            ),  # TODO: this is whack and should just bail
+        # For now, select StaticTelescopeTask; in the future, select based on task type/params
+        # Example: if hasattr(task, 'tracking') and task.tracking:
+        #     obs_task = TrackingTelescopeTask(...)
+        # else:
+        #     obs_task = StaticTelescopeTask(...)
+        obs_task = StaticTelescopeTask(
+            self.api_client, self.hardware_adapter, self.logger, self.telescope_record, self.ground_station_record, task
         )
-        self.logger.debug(f"Most recent elset for {task.satelliteId}: {most_recent_elset}")
-
-        # Derive the RA/DEC from the most recent elset
-        # Killer docs: https://rhodesmill.org/skyfield/earth-satellites.html
-
-        ts = load.timescale()
-        ground_station = wgs84.latlon(
-            self.ground_station_record["latitude"],
-            self.ground_station_record["longitude"],
-            elevation_m=self.ground_station_record["altitude"],
-        )
-
-        satellite = EarthSatellite(most_recent_elset["tle"][0], most_recent_elset["tle"][1], satellite_data["name"], ts)
-
-        difference = satellite - ground_station
-        topocentric = difference.at(ts.now())
-
-        target_ra, target_dec, _ = topocentric.radec()
-
-        # Drive the telescope to point at the satellite as it passes overhead
-        current_ra, current_dec = self.hardware_adapter.get_telescope_direction()
-
-        self.logger.info(f"Telescope currently pointed to RA: {current_ra} hours, DEC: {current_dec} degrees")
-        self.logger.info(
-            f"Slewing telescope to point at sat '{satellite_data['name']}', RA: {target_ra} hours, DEC: {target_dec} degrees"
-        )
-        self.hardware_adapter.point_telescope(target_ra.hours, target_dec.degrees)  # type: ignore
-
-        # wait for slew to complete
-        while self.hardware_adapter.telescope_is_moving():
-            current_ra, current_dec = self.hardware_adapter.get_telescope_direction()
-            self.logger.info(f"Scope Moving towards {satellite_data['name']}, now at {current_ra}, {current_dec}")
-            time.sleep(2)
-        self.logger.info(
-            f"Telescope now pointed to RA: {current_ra}/{target_ra.hours} hours, DEC: {current_dec}/{target_dec.degrees} degrees"
-        )
-
-        # perhaps start tracking object now? maybe do another fine-tune for the final shot?
-
-        # take image...
-        self.logger.info(f"Taking image of satellite '{satellite_data['name']}' for task {task.id}")
-        filepath = self.hardware_adapter.take_image(task.id)
-
-        upload_result = self.api_client.upload_image(task.id, self.telescope_record["id"], filepath)
-
-        if upload_result:
-            self.logger.info(f"Successfully uploaded image for task {task.id}")
-        else:
-            self.logger.error(f"Failed to upload image for task {task.id}")
-
-        # delete local file after upload
-        try:
-            os.remove(filepath)
-            self.logger.info(f"Deleted local image file {filepath} after upload.")
-        except Exception as e:
-            self.logger.error(f"Failed to delete local image file {filepath}: {e}")
-
-        # Mark task done
-        marked_complete = self.api_client.mark_task_complete(task.id)
-        if not marked_complete:
-            # get the task again from the api to see if it is already marked complete
-            # TODO: this will have to change to use the outstanding telescope tasks endpoint later and see if the current task is absent
-            task_check = self.api_client.get_telescope_tasks(self.telescope_record["id"])
-            for t in task_check:
-                if t["id"] == task.id and t.get("status") == "Succeeded":
-                    self.logger.info(f"Task {task.id} is already marked complete.")
-                    return True
-
-            self.logger.error(f"Failed to mark task {task.id} as complete.")
-            return False
-
-        self.logger.info(f"Marked task {task.id} as complete.")
-        return True
+        return obs_task.execute()
 
     def _heap_summary(self, event):
         with self.heap_lock:
