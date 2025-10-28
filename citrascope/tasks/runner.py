@@ -32,60 +32,72 @@ class TaskManager:
 
     def poll_tasks(self):
         while not self._stop_event.is_set():
-            tasks = self.api_client.get_telescope_tasks(self.telescope_record["id"])
-            added = 0
-            now = int(time.time())
-            with self.heap_lock:
-                for task_dict in tasks:
-                    try:
-                        task = Task.from_dict(task_dict)
-                        tid = task.id
-                        task_start = task.taskStart
-                        task_stop = task.taskStop
-                        if tid and task_start and tid not in self.task_ids:
-                            try:
-                                start_epoch = int(dtparser.isoparse(task_start).timestamp())
-                                stop_epoch = int(dtparser.isoparse(task_stop).timestamp()) if task_stop else 0
-                            except Exception:
-                                self.logger.error(f"Could not parse taskStart/taskStop for task {tid}")
-                                continue
-                            if stop_epoch and stop_epoch < now:
-                                self.logger.debug(f"Skipping past task {tid} that ended at {task_stop}")
-                                continue  # Skip tasks whose end date has passed
-                            if task.status not in ["Pending", "Scheduled"]:
-                                self.logger.debug(f"Skipping task {tid} with status {task.status}")
-                                continue  # Only schedule pending/scheduled tasks
-                            heapq.heappush(self.task_heap, (start_epoch, stop_epoch, tid, task))
-                            self.task_ids.add(tid)
-                            added += 1
-                    except Exception as e:
-                        self.logger.error(f"Error adding task {tid} to heap: {e}")
-                if added > 0:
-                    self.logger.info(self._heap_summary("Added tasks"))
-                self.logger.info(self._heap_summary("Polled tasks"))
+            try:
+                tasks = self.api_client.get_telescope_tasks(self.telescope_record["id"])
+                added = 0
+                now = int(time.time())
+                with self.heap_lock:
+                    for task_dict in tasks:
+                        try:
+                            task = Task.from_dict(task_dict)
+                            tid = task.id
+                            task_start = task.taskStart
+                            task_stop = task.taskStop
+                            if tid and task_start and tid not in self.task_ids:
+                                try:
+                                    start_epoch = int(dtparser.isoparse(task_start).timestamp())
+                                    stop_epoch = int(dtparser.isoparse(task_stop).timestamp()) if task_stop else 0
+                                except Exception:
+                                    self.logger.error(f"Could not parse taskStart/taskStop for task {tid}")
+                                    continue
+                                if stop_epoch and stop_epoch < now:
+                                    self.logger.debug(f"Skipping past task {tid} that ended at {task_stop}")
+                                    continue  # Skip tasks whose end date has passed
+                                if task.status not in ["Pending", "Scheduled"]:
+                                    self.logger.debug(f"Skipping task {tid} with status {task.status}")
+                                    continue  # Only schedule pending/scheduled tasks
+                                heapq.heappush(self.task_heap, (start_epoch, stop_epoch, tid, task))
+                                self.task_ids.add(tid)
+                                added += 1
+                        except Exception as e:
+                            self.logger.error(f"Error adding task {tid} to heap: {e}", exc_info=True)
+                    if added > 0:
+                        self.logger.info(self._heap_summary("Added tasks"))
+                    self.logger.info(self._heap_summary("Polled tasks"))
+            except Exception as e:
+                self.logger.error(f"Exception in poll_tasks loop: {e}", exc_info=True)
+                time.sleep(5)  # avoid tight error loop
             self._stop_event.wait(15)
 
     def task_runner(self):
         while not self._stop_event.is_set():
-            now = int(time.time())
-            completed = 0
-            with self.heap_lock:
-                while self.task_heap and self.task_heap[0][0] <= now:
-                    _, _, tid, task = self.task_heap[0]
-                    self.logger.info(f"Starting task {tid} at {datetime.now().isoformat()}: {task}")
+            try:
+                now = int(time.time())
+                completed = 0
+                with self.heap_lock:
+                    while self.task_heap and self.task_heap[0][0] <= now:
+                        _, _, tid, task = self.task_heap[0]
+                        self.logger.info(f"Starting task {tid} at {datetime.now().isoformat()}: {task}")
 
-                    observation_succeeded = self._observe_satellite(task)
+                        try:
+                            observation_succeeded = self._observe_satellite(task)
+                        except Exception as e:
+                            self.logger.error(f"Exception during observation for task {tid}: {e}", exc_info=True)
+                            observation_succeeded = False
 
-                    if observation_succeeded:
-                        self.logger.info(f"Completed observation task {tid} successfully.")
-                        heapq.heappop(self.task_heap)
-                        self.task_ids.discard(tid)
-                        completed += 1
-                    else:
-                        self.logger.error(f"Observation task {tid} failed.")
+                        if observation_succeeded:
+                            self.logger.info(f"Completed observation task {tid} successfully.")
+                            heapq.heappop(self.task_heap)
+                            self.task_ids.discard(tid)
+                            completed += 1
+                        else:
+                            self.logger.error(f"Observation task {tid} failed.")
 
-                if completed > 0:
-                    self.logger.info(self._heap_summary("Completed tasks"))
+                    if completed > 0:
+                        self.logger.info(self._heap_summary("Completed tasks"))
+            except Exception as e:
+                self.logger.error(f"Exception in task_runner loop: {e}", exc_info=True)
+                time.sleep(5)  # avoid tight error loop
             self._stop_event.wait(1)
 
     def _observe_satellite(self, task: Task):
