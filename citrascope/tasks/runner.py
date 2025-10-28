@@ -29,6 +29,7 @@ class TaskManager:
         self.hardware_adapter = hardware_adapter
         self.heap_lock = threading.RLock()
         self._stop_event = threading.Event()
+        self.current_task_id = None  # Track currently executing task
 
     def poll_tasks(self):
         while not self._stop_event.is_set():
@@ -43,7 +44,8 @@ class TaskManager:
                             tid = task.id
                             task_start = task.taskStart
                             task_stop = task.taskStop
-                            if tid and task_start and tid not in self.task_ids:
+                            # Skip if task is in heap or is currently being executed
+                            if tid and task_start and tid not in self.task_ids and tid != self.current_task_id:
                                 try:
                                     start_epoch = int(dtparser.isoparse(task_start).timestamp())
                                     stop_epoch = int(dtparser.isoparse(task_stop).timestamp()) if task_stop else 0
@@ -79,11 +81,14 @@ class TaskManager:
                         _, _, tid, task = self.task_heap[0]
                         self.logger.info(f"Starting task {tid} at {datetime.now().isoformat()}: {task}")
 
+                        self.current_task_id = tid  # Mark as in-flight
                         try:
                             observation_succeeded = self._observe_satellite(task)
                         except Exception as e:
                             self.logger.error(f"Exception during observation for task {tid}: {e}", exc_info=True)
                             observation_succeeded = False
+
+                        self.current_task_id = None  # Clear after done (success or fail)
 
                         if observation_succeeded:
                             self.logger.info(f"Completed observation task {tid} successfully.")
