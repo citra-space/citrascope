@@ -1,6 +1,11 @@
 import logging
 
 
+class ExcludeHttpRequestFilter(logging.Filter):
+    def filter(self, record):
+        return "HTTP Request:" not in record.getMessage()
+
+
 class ColoredFormatter(logging.Formatter):
     COLORS = {
         "DEBUG": "\033[94m",  # Blue
@@ -21,6 +26,7 @@ CITRASCOPE_LOGGER = logging.getLogger()
 CITRASCOPE_LOGGER.setLevel(logging.INFO)
 
 handler = logging.StreamHandler()
+handler.addFilter(ExcludeHttpRequestFilter())
 log_format = "%(asctime)s %(levelname)s %(message)s"
 date_format = "%Y-%m-%d %H:%M:%S"
 formatter = ColoredFormatter(fmt=log_format, datefmt=date_format)
