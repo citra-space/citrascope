@@ -11,13 +11,10 @@ class StaticTelescopeTask(AbstractBaseTelescopeTask):
 
         self.logger.debug(f"Using TLE {satellite_data['most_recent_elset']['tle']}")
 
-        max_angular_distance_deg = 0.5
+        max_angular_distance_deg = 0.3
         attempts = 0
         max_attempts = 10
-        current_angular_distance_deg = None
-        while attempts < max_attempts and (
-            current_angular_distance_deg is None or current_angular_distance_deg > max_angular_distance_deg
-        ):
+        while attempts < max_attempts:
             attempts += 1
             # estimate slew time
             est_slew_time = self.predict_slew_time_seconds(satellite_data)
@@ -29,8 +26,8 @@ class StaticTelescopeTask(AbstractBaseTelescopeTask):
             slew_start_time = time.time()
             self.hardware_adapter.point_telescope(future_sat_position[0].hours, future_sat_position[1].degrees)
             while self.hardware_adapter.telescope_is_moving():
-                self.logger.info(f"Scope moving towards {satellite_data['name']}...")
-                time.sleep(1)
+                self.logger.debug(f"Scope moving towards {satellite_data['name']}...")
+                time.sleep(0.1)
 
             self.logger.info(
                 f"Telescope slew done, took {time.time() - slew_start_time:.1f} sec, off by {abs((time.time() - slew_start_time) - est_slew_time):.1f} sec."
@@ -45,6 +42,9 @@ class StaticTelescopeTask(AbstractBaseTelescopeTask):
                 current_satellite_position[1].degrees,
             )
             self.logger.info(f"Current angular distance to satellite is {current_angular_distance_deg:.3f} degrees.")
+            if current_angular_distance_deg <= max_angular_distance_deg:
+                self.logger.info("Telescope is within acceptable range of target.")
+                break
 
         # shoot your shot
         self.logger.info("Taking image...")
