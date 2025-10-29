@@ -9,6 +9,8 @@ from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHar
 # The IndiClient class which inherits from the module PyIndi.BaseClient class
 # Note that all INDI constants are accessible from the module as PyIndi.CONSTANTNAME
 class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
+    # Minimum angular distance (degrees) to consider a move significant for slew rate measurement
+    _slew_min_distance_deg: float = 2.0
 
     our_scope: PyIndi.BaseDevice
     our_camera: PyIndi.BaseDevice
@@ -115,24 +117,26 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
     def disconnect(self):
         self.disconnectServer()
 
-    def point_telescope(self, ra: float, dec: float):
-        """Point the telescope to the specified RA/Dec coordinates."""
+    def _do_point_telescope(self, ra: float, dec: float):
+        """Hardware-specific implementation to point the telescope to the specified RA/Dec coordinates."""
         telescope_radec = self.our_scope.getNumber("EQUATORIAL_EOD_COORD")
         new_ra = float(ra)
+        new_dec = float(dec)
         telescope_radec[0].setValue(new_ra)  # RA in hours
-        telescope_radec[1].setValue(float(dec))  # DEC in degrees
+        telescope_radec[1].setValue(new_dec)  # DEC in degrees
         try:
             self.sendNewNumber(telescope_radec)
         except Exception as e:
             self.logger.error(f"Error sending new RA/DEC to telescope: {e}")
+            return
 
     def get_telescope_direction(self) -> tuple[float, float]:
-        """Read the current telescope direction (RA, Dec)."""
+        """Read the current telescope direction (RA degrees, DEC degrees)."""
         telescope_radec = self.our_scope.getNumber("EQUATORIAL_EOD_COORD")
         self.logger.info(
-            f"Telescope currently pointed to RA: {telescope_radec[0].value} hours, DEC: {telescope_radec[1].value} degrees"
+            f"Telescope currently pointed to RA: {telescope_radec[0].value * 15.0} degrees, DEC: {telescope_radec[1].value} degrees"
         )
-        return telescope_radec[0].value, telescope_radec[1].value
+        return telescope_radec[0].value * 15.0, telescope_radec[1].value
 
     def telescope_is_moving(self) -> bool:
         """Check if the telescope is currently moving."""

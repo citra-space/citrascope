@@ -1,7 +1,64 @@
+import math
 from abc import ABC, abstractmethod
 
 
 class AbstractAstroHardwareAdapter(ABC):
+
+    logger = None  # Optional logger, can be set by subclasses
+
+    _slew_min_distance_deg: float = 2.0
+    scope_slew_rate_degrees_per_second: float = 0.0
+
+    def point_telescope(self, ra: float, dec: float):
+        """Point the telescope to the specified RA/Dec coordinates, and dynamically measure slew rate if move is significant."""
+        import time
+
+        start_time = time.time()
+        start_ra, start_dec = self.get_telescope_direction()
+        self._do_point_telescope(ra, dec)
+        while self.telescope_is_moving():
+            time.sleep(0.2)
+        end_time = time.time()
+        end_ra, end_dec = self.get_telescope_direction()
+        dt = end_time - start_time
+        distance = self.angular_distance(start_ra, start_dec, end_ra, end_dec)
+
+        # if slew was significant, measure and store slew rate
+        if distance >= self._slew_min_distance_deg and dt > 0:
+            measured_rate = distance / dt  # deg/sec
+            if self.logger:
+                self.logger.info(f"Measured slew: {distance:.2f} deg in {dt:.2f} s = {measured_rate:.3f} deg/s")
+            # Subtract 2 seconds as overhead buffer from the time, if applicable
+            effective_dt = dt - 2.0 if dt > 2.0 else dt
+            if effective_dt > 0:
+                self.scope_slew_rate_degrees_per_second = distance / effective_dt
+            else:
+                self.scope_slew_rate_degrees_per_second = measured_rate
+
+    @abstractmethod
+    def _do_point_telescope(self, ra: float, dec: float):
+        """Hardware-specific implementation to point the telescope."""
+        pass
+
+    def angular_distance(
+        self, ra1_degrees: float, dec1_degrees: float, ra2_degrees: float, dec2_degrees: float
+    ) -> float:  # TODO: move this out of the hardware adapter... this isn't hardware stuff
+        """Compute angular distance between two (RA hours, Dec deg) points in degrees."""
+
+        # Convert to radians
+        ra1_rad = math.radians(ra1_degrees)
+        ra2_rad = math.radians(ra2_degrees)
+        dec1_rad = math.radians(dec1_degrees)
+        dec2_rad = math.radians(dec2_degrees)
+        # Spherical law of cosines
+        cos_angle = math.sin(dec1_rad) * math.sin(dec2_rad) + math.cos(dec1_rad) * math.cos(dec2_rad) * math.cos(
+            ra1_rad - ra2_rad
+        )
+        # Clamp for safety
+        cos_angle = min(1.0, max(-1.0, cos_angle))
+        angle_rad = math.acos(cos_angle)
+        return math.degrees(angle_rad)
+
     """
     Abstract base class for controlling astrophotography hardware.
 
@@ -30,13 +87,8 @@ class AbstractAstroHardwareAdapter(ABC):
         pass
 
     @abstractmethod
-    def point_telescope(self, ra: float, dec: float):
-        """Point the telescope to the specified RA/Dec coordinates."""
-        pass
-
-    @abstractmethod
     def get_telescope_direction(self) -> tuple[float, float]:
-        """Read the current telescope direction (RA, Dec)."""
+        """Read the current telescope direction (RA degrees, DEC degrees)."""
         pass
 
     @abstractmethod

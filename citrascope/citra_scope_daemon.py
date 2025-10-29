@@ -63,6 +63,7 @@ class CitraScopeDaemon:
             )
             return
         self.hardware_adapter.select_telescope(self.settings.indi_telescope_name)
+        self.hardware_adapter.scope_slew_rate_degrees_per_second = citra_telescope_record["maxSlewRate"]
         CITRASCOPE_LOGGER.info(f"Found configured Telescope ({self.settings.indi_telescope_name}) on hardware server!")
 
         # check for camera
