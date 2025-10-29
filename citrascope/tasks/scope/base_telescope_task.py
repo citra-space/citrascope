@@ -99,45 +99,21 @@ class AbstractBaseTelescopeTask(ABC):
         satellite = EarthSatellite(most_recent_elset["tle"][0], most_recent_elset["tle"][1], satellite_data["name"], ts)
         return ground_station, satellite, ts
 
-    def get_target_radec(self, satellite_data):
+    def get_target_radec(self, satellite_data, seconds_from_now: float = 0.0):
         ground_station, satellite, ts = self._get_skyfield_ground_station_and_satellite(satellite_data)
         difference = satellite - ground_station
-        topocentric = difference.at(ts.now())
+        topocentric = difference.at(ts.now() + seconds_from_now)
         target_ra, target_dec, _ = topocentric.radec()
         return target_ra, target_dec
 
-    def get_predicted_slew_time_and_sat_radec(
-        self, satellite_data, margin_time_sec: float = 5.0
-    ) -> tuple[float, tuple[Angle, Angle]]:
-        """
-        Estimate the slew time (in seconds) required to move from the current telescope position
-        to the predicted satellite position after the slew time.
-        """
-
-        # Get current directions
+    def predict_slew_time_seconds(self, satellite_data):
         current_scope_ra, current_scope_dec = self.hardware_adapter.get_telescope_direction()
         current_target_ra, current_target_dec = self.get_target_radec(satellite_data)
 
-        # Compute angular distance in degrees between current scope position and target position
-        ra_diff_deg = abs((current_target_ra.degrees - current_scope_ra))  # Convert hours to degrees
+        ra_diff_deg = abs((current_target_ra.degrees - current_scope_ra))
         dec_diff_deg = abs(current_target_dec.degrees - current_scope_dec)
-        angular_distance_deg = (ra_diff_deg**2 + dec_diff_deg**2) ** 0.5
 
-        # Estimate slew time based on hardware's measured slew rate
-        if self.hardware_adapter.scope_slew_rate_degrees_per_second <= 0.0:
-            estimated_slew_time_sec = 60.0  # Default to 60 seconds if unknown
-            self.logger.warning("Scope slew rate unknown, defaulting estimated slew time to 60 seconds.")
+        if ra_diff_deg > dec_diff_deg:
+            return ra_diff_deg / self.hardware_adapter.scope_slew_rate_degrees_per_second
         else:
-            estimated_slew_time_sec = angular_distance_deg / self.hardware_adapter.scope_slew_rate_degrees_per_second
-
-        # calculate future position after estimated slew time + margin
-        ground_station, satellite, ts = self._get_skyfield_ground_station_and_satellite(satellite_data)
-        future_time = ts.now() + (estimated_slew_time_sec + margin_time_sec) / 86400.0  # convert seconds to days
-        difference = satellite - ground_station
-        topocentric = difference.at(future_time)
-        target_ra, target_dec, _ = topocentric.radec()
-
-        self.logger.info(
-            f"Estimated slew time: {estimated_slew_time_sec:.1f} sec for {angular_distance_deg:.2f} deg move"
-        )
-        return estimated_slew_time_sec, (target_ra, target_dec)
+            return dec_diff_deg / self.hardware_adapter.scope_slew_rate_degrees_per_second

@@ -9,48 +9,42 @@ class StaticTelescopeTask(AbstractBaseTelescopeTask):
         if not satellite_data or satellite_data.get("most_recent_elset") is None:
             raise ValueError("Could not fetch valid satellite data or TLE.")
 
-        self.logger.info(f"Using TLE {satellite_data['most_recent_elset']['tle']}")
-        sat_name = satellite_data["name"]
+        self.logger.debug(f"Using TLE {satellite_data['most_recent_elset']['tle']}")
 
-        # get predicted position and slew time
-        desired_slew_time_margin_sec = 5.0
-        estimated_slew_time_sec, (predicted_ra, predicted_dec) = self.get_predicted_slew_time_and_sat_radec(
-            satellite_data, desired_slew_time_margin_sec
-        )
+        max_angular_distance_deg = 0.5
+        attempts = 0
+        max_attempts = 10
+        current_angular_distance_deg = None
+        while attempts < max_attempts and (
+            current_angular_distance_deg is None or current_angular_distance_deg > max_angular_distance_deg
+        ):
+            attempts += 1
+            # estimate slew time
+            est_slew_time = self.predict_slew_time_seconds(satellite_data)
+            self.logger.info(f"Estimated slew time is {est_slew_time:.1f} sec.")
 
-        # move the scope
-        slew_start_time = time.time()
-        self.hardware_adapter.point_telescope(predicted_ra.hours, predicted_dec.degrees)
-        while self.hardware_adapter.telescope_is_moving():
-            self.logger.info(f"Scope moving towards {sat_name}...")
-            time.sleep(1)
+            future_sat_position = self.get_target_radec(satellite_data)
 
-        current_scope_ra, current_scope_dec = self.hardware_adapter.get_telescope_direction()
-        self.logger.info(
-            f"Telescope slew done, took {time.time() - slew_start_time:.1f} sec. Pointed to {current_scope_ra:.3f} deg, Dec: {current_scope_dec:.3f}"
-        )
-        self.logger.info(
-            f"Estimated slew time was off by {abs((time.time() - slew_start_time) - estimated_slew_time_sec - desired_slew_time_margin_sec):.1f} sec."
-        )
-
-        # while the sat moves, check it has moved within tolerance or is now moving away
-        aiming_tolerance_deg = 0.1
-        max_iterations = 10
-        for iteration in range(max_iterations):
-            sat_radec = self.get_target_radec(satellite_data)
-            angular_distance_deg = self.hardware_adapter.angular_distance(
-                current_scope_ra, current_scope_dec, sat_radec[0].degrees, sat_radec[1].degrees
-            )
-            self.logger.info(f"Angular distance to target: {angular_distance_deg:.3f} deg")
-
-            if angular_distance_deg <= aiming_tolerance_deg:
-                self.logger.info(f"Target within tolerance of {aiming_tolerance_deg} deg.")
-                break
+            # move the scope
+            slew_start_time = time.time()
+            self.hardware_adapter.point_telescope(future_sat_position[0].hours, future_sat_position[1].degrees)
+            while self.hardware_adapter.telescope_is_moving():
+                self.logger.info(f"Scope moving towards {satellite_data['name']}...")
+                time.sleep(1)
 
             self.logger.info(
-                f"Waiting 1 second before re-checking position... (iteration {iteration + 1}/{max_iterations})"
+                f"Telescope slew done, took {time.time() - slew_start_time:.1f} sec, off by {abs((time.time() - slew_start_time) - est_slew_time):.1f} sec."
             )
-            time.sleep(1)
+
+            current_scope_ra, current_scope_dec = self.hardware_adapter.get_telescope_direction()
+            current_satellite_position = self.get_target_radec(satellite_data)
+            current_angular_distance_deg = self.hardware_adapter.angular_distance(
+                current_scope_ra,
+                current_scope_dec,
+                current_satellite_position[0].degrees,
+                current_satellite_position[1].degrees,
+            )
+            self.logger.info(f"Current angular distance to satellite is {current_angular_distance_deg:.3f} degrees.")
 
         # shoot your shot
         self.logger.info("Taking image...")

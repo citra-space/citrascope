@@ -10,30 +10,9 @@ class AbstractAstroHardwareAdapter(ABC):
     scope_slew_rate_degrees_per_second: float = 0.0
 
     def point_telescope(self, ra: float, dec: float):
-        """Point the telescope to the specified RA/Dec coordinates, and dynamically measure slew rate if move is significant."""
-        import time
-
-        start_time = time.time()
-        start_ra, start_dec = self.get_telescope_direction()
+        """Point the telescope to the specified RA/Dec coordinates."""
+        # separated out to allow pre/post processing if needed
         self._do_point_telescope(ra, dec)
-        while self.telescope_is_moving():
-            time.sleep(0.2)
-        end_time = time.time()
-        end_ra, end_dec = self.get_telescope_direction()
-        dt = end_time - start_time
-        distance = self.angular_distance(start_ra, start_dec, end_ra, end_dec)
-
-        # if slew was significant, measure and store slew rate
-        if distance >= self._slew_min_distance_deg and dt > 0:
-            measured_rate = distance / dt  # deg/sec
-            if self.logger:
-                self.logger.info(f"Measured slew: {distance:.2f} deg in {dt:.2f} s = {measured_rate:.3f} deg/s")
-            # Subtract 2 seconds as overhead buffer from the time, if applicable
-            effective_dt = dt - 2.0 if dt > 2.0 else dt
-            if effective_dt > 0:
-                self.scope_slew_rate_degrees_per_second = distance / effective_dt
-            else:
-                self.scope_slew_rate_degrees_per_second = measured_rate
 
     @abstractmethod
     def _do_point_telescope(self, ra: float, dec: float):
