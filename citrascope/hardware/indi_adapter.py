@@ -133,7 +133,7 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
     def get_telescope_direction(self) -> tuple[float, float]:
         """Read the current telescope direction (RA degrees, DEC degrees)."""
         telescope_radec = self.our_scope.getNumber("EQUATORIAL_EOD_COORD")
-        self.logger.info(
+        self.logger.debug(
             f"Telescope currently pointed to RA: {telescope_radec[0].value * 15.0} degrees, DEC: {telescope_radec[1].value} degrees"
         )
         return telescope_radec[0].value * 15.0, telescope_radec[1].value

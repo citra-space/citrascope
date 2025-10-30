@@ -102,13 +102,14 @@ class AbstractBaseTelescopeTask(ABC):
     def get_target_radec(self, satellite_data, seconds_from_now: float = 0.0):
         ground_station, satellite, ts = self._get_skyfield_ground_station_and_satellite(satellite_data)
         difference = satellite - ground_station
-        topocentric = difference.at(ts.now() + seconds_from_now)
+        days_to_add = seconds_from_now / (24 * 60 * 60)  # Skyfield uses days
+        topocentric = difference.at(ts.now() + days_to_add)
         target_ra, target_dec, _ = topocentric.radec()
         return target_ra, target_dec
 
-    def predict_slew_time_seconds(self, satellite_data):
+    def predict_slew_time_seconds(self, satellite_data, seconds_from_now: float = 0.0) -> float:
         current_scope_ra, current_scope_dec = self.hardware_adapter.get_telescope_direction()
-        current_target_ra, current_target_dec = self.get_target_radec(satellite_data)
+        current_target_ra, current_target_dec = self.get_target_radec(satellite_data, seconds_from_now)
 
         ra_diff_deg = abs((current_target_ra.degrees - current_scope_ra))
         dec_diff_deg = abs(current_target_dec.degrees - current_scope_dec)
@@ -117,3 +118,34 @@ class AbstractBaseTelescopeTask(ABC):
             return ra_diff_deg / self.hardware_adapter.scope_slew_rate_degrees_per_second
         else:
             return dec_diff_deg / self.hardware_adapter.scope_slew_rate_degrees_per_second
+
+    def estimate_lead_position(
+        self,
+        satellite_data: dict,
+        max_iterations: int = 5,
+        tolerance: float = 0.1,
+    ):
+        """
+        Iteratively estimate the future RA/Dec where the satellite will be when the telescope finishes slewing.
+
+        Args:
+            satellite_data: Satellite data dict.
+            max_iterations: Maximum number of iterations.
+            tolerance: Convergence threshold in seconds.
+
+        Returns:
+            Tuple of (target_ra, target_dec, estimated_slew_time)
+        """
+        # Get initial estimate
+        est_slew_time = self.predict_slew_time_seconds(satellite_data)
+        for _ in range(max_iterations):
+            future_radec = self.get_target_radec(satellite_data, est_slew_time)
+            try:
+                new_slew_time = self.predict_slew_time_seconds(satellite_data, est_slew_time)
+            except TypeError:
+                # Fallback for legacy predict_slew_time_seconds signature
+                new_slew_time = self.predict_slew_time_seconds(satellite_data)
+            if abs(new_slew_time - est_slew_time) < tolerance:
+                break
+            est_slew_time = new_slew_time
+        return future_radec[0], future_radec[1], est_slew_time
