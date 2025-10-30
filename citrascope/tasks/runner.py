@@ -76,20 +76,23 @@ class TaskManager:
             try:
                 now = int(time.time())
                 completed = 0
-                with self.heap_lock:
-                    while self.task_heap and self.task_heap[0][0] <= now:
+                while True:
+                    with self.heap_lock:
+                        if not (self.task_heap and self.task_heap[0][0] <= now):
+                            break
                         _, _, tid, task = self.task_heap[0]
                         self.logger.info(f"Starting task {tid} at {datetime.now().isoformat()}: {task}")
-
                         self.current_task_id = tid  # Mark as in-flight
-                        try:
-                            observation_succeeded = self._observe_satellite(task)
-                        except Exception as e:
-                            self.logger.error(f"Exception during observation for task {tid}: {e}", exc_info=True)
-                            observation_succeeded = False
 
+                    # Observation is now outside the lock!
+                    try:
+                        observation_succeeded = self._observe_satellite(task)
+                    except Exception as e:
+                        self.logger.error(f"Exception during observation for task {tid}: {e}", exc_info=True)
+                        observation_succeeded = False
+
+                    with self.heap_lock:
                         self.current_task_id = None  # Clear after done (success or fail)
-
                         if observation_succeeded:
                             self.logger.info(f"Completed observation task {tid} successfully.")
                             heapq.heappop(self.task_heap)
@@ -98,8 +101,8 @@ class TaskManager:
                         else:
                             self.logger.error(f"Observation task {tid} failed.")
 
-                    if completed > 0:
-                        self.logger.info(self._heap_summary("Completed tasks"))
+                if completed > 0:
+                    self.logger.info(self._heap_summary("Completed tasks"))
             except Exception as e:
                 self.logger.error(f"Exception in task_runner loop: {e}", exc_info=True)
                 time.sleep(5)  # avoid tight error loop
