@@ -122,15 +122,19 @@ class TaskManager:
     def _heap_summary(self, event):
         with self.heap_lock:
             summary = f"{event}: {len(self.task_heap)} tasks in queue. "
+            next_tasks = []
             if self.task_heap:
-                summary += "Next: " + ", ".join(
-                    [
-                        f"{tid} at {datetime.fromtimestamp(start).isoformat()}"
-                        for start, stop, tid, _ in self.task_heap[:3]
-                    ]
-                )
+                next_tasks = [
+                    f"{tid} at {datetime.fromtimestamp(start).isoformat()}"
+                    for start, stop, tid, _ in self.task_heap[:3]
+                ]
                 if len(self.task_heap) > 3:
-                    summary += f", ... ({len(self.task_heap)-3} more)"
+                    next_tasks.append(f"... ({len(self.task_heap)-3} more)")
+            if self.current_task_id is not None:
+                # Show the current in-flight task at the front
+                summary += f"Current: {self.current_task_id}. "
+            if next_tasks and len(next_tasks) > 1 and self.current_task_id != next_tasks[0].split()[0]:
+                summary += "Next: " + ", ".join(next_tasks)
             else:
                 summary += "No tasks scheduled."
             return summary
