@@ -17,7 +17,7 @@ dependencies = [
   "pyindi-client",
   "skyfield",
   "pytest-cov",
-  "dbus_fast",
+  "cedar-solve @ git+https://github.com/smroid/cedar-solve.git",
 ]
 
 [project.optional-dependencies]
@@ -75,3 +75,6 @@ addopts = [
 
 [tool.coverage.run]
 omit = ["tests/*", "__init__.py"]
+
+[tool.hatch.metadata]
+allow-direct-references = true

@@ -3,7 +3,6 @@ from typing import Optional
 
 from citrascope.api.citra_api_client import AbstractCitraApiClient, CitraApiClient
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
-from citrascope.hardware.ekos_debus_adapter import EkosDbusAdapter
 from citrascope.hardware.indi_adapter import IndiAdapter
 from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.settings._citrascope_settings import CitraScopeSettings
@@ -28,7 +27,6 @@ class CitraScopeDaemon:
         self.hardware_adapter = hardware_adapter or IndiAdapter(
             CITRASCOPE_LOGGER, self.settings.indi_server_url, int(self.settings.indi_server_port)
         )
-        # self.hardware_adapter = hardware_adapter or EkosDbusAdapter(CITRASCOPE_LOGGER)
 
     def run(self):
         CITRASCOPE_LOGGER.info(f"CitraAPISettings host is {self.settings.host}")

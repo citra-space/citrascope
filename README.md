@@ -14,7 +14,7 @@ If you are developing on macOS or Windows, you should use the provided [VS Code 
 
 By opening this project in VS Code and choosing "Reopen in Container" (or using the Dev Containers extension), you can develop and run the project seamlessly, regardless of your host OS.
 
-The devcontainer also ensures all required system dependencies (like `cmake` and `libdbus-1-dev`) are installed automatically.
+The devcontainer also ensures all required system dependencies (like `cmake`) are installed automatically.
 
 ---
 
