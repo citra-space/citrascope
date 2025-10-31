@@ -49,6 +49,5 @@ class StaticTelescopeTask(AbstractBaseTelescopeTask):
                 break
 
         # Take the image
-        self.logger.info("Taking image...")
-        filepath = self.hardware_adapter.take_image(self.task.id)
+        filepath = self.hardware_adapter.take_image(self.task.id, 2.0)  # 2 second exposure
         return self.upload_image_and_mark_complete(filepath)

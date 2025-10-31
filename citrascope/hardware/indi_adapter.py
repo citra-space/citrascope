@@ -153,18 +153,18 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
                 return True
         return False
 
-    def take_image(self, task_id: str):
+    def take_image(self, task_id: str, exposure_duration_seconds=1.0):
         """Capture an image with the currently selected camera."""
 
+        self.logger.info(f"Taking {exposure_duration_seconds} second exposure...")
         self._current_task_id = task_id
         ccd_exposure = self.our_camera.getNumber("CCD_EXPOSURE")
-        ccd_exposure[0].setValue(1.0)
+        ccd_exposure[0].setValue(exposure_duration_seconds)
         self.sendNewNumber(ccd_exposure)
 
-        time.sleep(1.0)  # this sleeping feels whack. Better to have a proper event system.
         while self.is_camera_busy() and self._current_task_id != "":
-            self.logger.info("Waiting for camera to finish exposure...")
-            time.sleep(2.0)
+            self.logger.debug("Waiting for camera to finish exposure...")
+            time.sleep(0.2)
 
         filename = self._last_saved_filename
         self._last_saved_filename = ""
