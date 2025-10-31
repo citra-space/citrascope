@@ -84,3 +84,13 @@ class AbstractAstroHardwareAdapter(ABC):
     def take_image(self, task_id: str, exposure_duration_seconds=1.0) -> str:
         """Capture an image with the currently selected camera. Returns the file path of the saved image."""
         pass
+
+    @abstractmethod
+    def set_custom_tracking_rate(self, ra_rate: float, dec_rate: float):
+        """Set the tracking rate for the telescope in RA and Dec (arcseconds per second)."""
+        pass
+
+    @abstractmethod
+    def get_tracking_rate(self) -> tuple[float, float]:
+        """Get the current tracking rate for the telescope in RA and Dec (arcseconds per second)."""
+        pass

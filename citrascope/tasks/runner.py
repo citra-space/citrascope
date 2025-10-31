@@ -8,6 +8,7 @@ from dateutil import parser as dtparser
 
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
 from citrascope.tasks.scope.static_telescope_task import StaticTelescopeTask
+from citrascope.tasks.scope.tracking_telescope_task import TrackingTelescopeTask
 from citrascope.tasks.task import Task
 
 
@@ -109,15 +110,20 @@ class TaskManager:
             self._stop_event.wait(1)
 
     def _observe_satellite(self, task: Task):
-        # For now, select StaticTelescopeTask; in the future, select based on task type/params
-        # Example: if hasattr(task, 'tracking') and task.tracking:
-        #     obs_task = TrackingTelescopeTask(...)
-        # else:
-        #     obs_task = StaticTelescopeTask(...)
-        obs_task = StaticTelescopeTask(
+
+        # stake a still
+        static_task = StaticTelescopeTask(
             self.api_client, self.hardware_adapter, self.logger, self.telescope_record, self.ground_station_record, task
         )
-        return obs_task.execute()
+        static_task.execute()
+
+        # track the sat for a while with longer exposure
+        # tracking_task = TrackingTelescopeTask(
+        #     self.api_client, self.hardware_adapter, self.logger, self.telescope_record, self.ground_station_record, task
+        # )
+        # tracking_task.execute()
+
+        return
 
     def _heap_summary(self, event):
         with self.heap_lock:

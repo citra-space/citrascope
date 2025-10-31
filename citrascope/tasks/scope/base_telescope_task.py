@@ -99,17 +99,25 @@ class AbstractBaseTelescopeTask(ABC):
         satellite = EarthSatellite(most_recent_elset["tle"][0], most_recent_elset["tle"][1], satellite_data["name"], ts)
         return ground_station, satellite, ts
 
-    def get_target_radec(self, satellite_data, seconds_from_now: float = 0.0):
+    def get_target_radec_and_rates(self, satellite_data, seconds_from_now: float = 0.0):
         ground_station, satellite, ts = self._get_skyfield_ground_station_and_satellite(satellite_data)
         difference = satellite - ground_station
         days_to_add = seconds_from_now / (24 * 60 * 60)  # Skyfield uses days
         topocentric = difference.at(ts.now() + days_to_add)
         target_ra, target_dec, _ = topocentric.radec()
-        return target_ra, target_dec
+
+        # determine ra/dec travel rates
+        rates = topocentric.frame_latlon_and_rates(
+            ground_station
+        )  # TODO can this be collapsed with .radec() call above?
+        target_dec_rate = rates[4]
+        target_ra_rate = rates[3]
+
+        return target_ra, target_dec, target_ra_rate, target_dec_rate
 
     def predict_slew_time_seconds(self, satellite_data, seconds_from_now: float = 0.0) -> float:
         current_scope_ra, current_scope_dec = self.hardware_adapter.get_telescope_direction()
-        current_target_ra, current_target_dec = self.get_target_radec(satellite_data, seconds_from_now)
+        current_target_ra, current_target_dec, _, _ = self.get_target_radec_and_rates(satellite_data, seconds_from_now)
 
         ra_diff_deg = abs((current_target_ra.degrees - current_scope_ra))
         dec_diff_deg = abs(current_target_dec.degrees - current_scope_dec)
@@ -118,6 +126,47 @@ class AbstractBaseTelescopeTask(ABC):
             return ra_diff_deg / self.hardware_adapter.scope_slew_rate_degrees_per_second
         else:
             return dec_diff_deg / self.hardware_adapter.scope_slew_rate_degrees_per_second
+
+    def point_to_lead_position(self, satellite_data):
+
+        self.logger.debug(f"Using TLE {satellite_data['most_recent_elset']['tle']}")
+
+        max_angular_distance_deg = 0.3
+        attempts = 0
+        max_attempts = 10
+        while attempts < max_attempts:
+            attempts += 1
+            # Estimate lead position and slew time
+            lead_ra, lead_dec, est_slew_time = self.estimate_lead_position(satellite_data)
+            self.logger.info(
+                f"Pointing ahead to RA: {lead_ra.hours:.4f}h, DEC: {lead_dec.degrees:.4f}°, estimated slew time: {est_slew_time:.1f}s"
+            )
+
+            # Move the scope
+            slew_start_time = time.time()
+            self.hardware_adapter.point_telescope(lead_ra.hours, lead_dec.degrees)
+            while self.hardware_adapter.telescope_is_moving():
+                self.logger.debug(f"Slewing to lead position for {satellite_data['name']}...")
+                time.sleep(0.1)
+
+            slew_duration = time.time() - slew_start_time
+            self.logger.info(
+                f"Telescope slew done, took {slew_duration:.1f} sec, off by {abs(slew_duration - est_slew_time):.1f} sec."
+            )
+
+            # Check angular distance to satellite's current position
+            current_scope_ra, current_scope_dec = self.hardware_adapter.get_telescope_direction()
+            current_satellite_position = self.get_target_radec_and_rates(satellite_data)
+            current_angular_distance_deg = self.hardware_adapter.angular_distance(
+                current_scope_ra,
+                current_scope_dec,
+                current_satellite_position[0].degrees,
+                current_satellite_position[1].degrees,
+            )
+            self.logger.info(f"Current angular distance to satellite is {current_angular_distance_deg:.3f} degrees.")
+            if current_angular_distance_deg <= max_angular_distance_deg:
+                self.logger.info("Telescope is within acceptable range of target.")
+                break
 
     def estimate_lead_position(
         self,
@@ -139,7 +188,7 @@ class AbstractBaseTelescopeTask(ABC):
         # Get initial estimate
         est_slew_time = self.predict_slew_time_seconds(satellite_data)
         for _ in range(max_iterations):
-            future_radec = self.get_target_radec(satellite_data, est_slew_time)
+            future_radec = self.get_target_radec_and_rates(satellite_data, est_slew_time)
             try:
                 new_slew_time = self.predict_slew_time_seconds(satellite_data, est_slew_time)
             except TypeError:

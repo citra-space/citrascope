@@ -174,3 +174,41 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
         """Check if the camera is currently busy taking an image."""
         ccd_exposure = self.our_camera.getNumber("CCD_EXPOSURE")
         return ccd_exposure.getState() == PyIndi.IPS_BUSY
+
+    def set_custom_tracking_rate(self, ra_rate: float, dec_rate: float):
+        """Set the tracking rate for the telescope in RA and Dec (arcseconds per second)."""
+        self.logger.info(f"Setting tracking rate: RA {ra_rate} arcseconds/s, Dec {dec_rate} arcseconds/s")
+        try:
+
+            track_state_prop = self.our_scope.getSwitch("TELESCOPE_TRACK_STATE")
+            track_state_prop[0].setState(PyIndi.ISS_OFF)
+            self.sendNewSwitch(track_state_prop)
+
+            track_mode_prop = self.our_scope.getSwitch("TELESCOPE_TRACK_MODE")
+            track_mode_prop[0].setState(PyIndi.ISS_OFF)  # TRACK_SIDEREAL
+            track_mode_prop[1].setState(PyIndi.ISS_OFF)  # TRACK_SOLAR
+            track_mode_prop[2].setState(PyIndi.ISS_OFF)  # TRACK_LUNAR
+            track_mode_prop[3].setState(PyIndi.ISS_ON)  # TRACK_CUSTOM
+            self.sendNewSwitch(track_mode_prop)
+
+            indi_tracking_rate = self.our_scope.getNumber("TELESCOPE_TRACK_RATE")
+            self.logger.info(
+                f"Current INDI tracking rates: 0: {indi_tracking_rate[0].value} 1: {indi_tracking_rate[1].value}"
+            )
+            indi_tracking_rate[0].setValue(ra_rate)
+            indi_tracking_rate[1].setValue(dec_rate)
+            self.sendNewNumber(indi_tracking_rate)
+
+            track_state_prop[0].setState(PyIndi.ISS_ON)  # Turn tracking ON
+            self.sendNewSwitch(track_state_prop)
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Error setting tracking rates: {e}")
+            return False
+
+    def get_tracking_rate(self) -> tuple[float, float]:
+        """Get the current tracking rate for the telescope in RA and Dec (arcseconds per second)."""
+        ra_rate = self.our_scope.getNumber("TELESCOPE_TRACK_RATE_RA")[0].value
+        dec_rate = self.our_scope.getNumber("TELESCOPE_TRACK_RATE_DEC")[0].value
+        return ra_rate, dec_rate
