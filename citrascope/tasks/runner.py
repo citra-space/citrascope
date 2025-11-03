@@ -115,15 +115,13 @@ class TaskManager:
         static_task = StaticTelescopeTask(
             self.api_client, self.hardware_adapter, self.logger, self.telescope_record, self.ground_station_record, task
         )
-        static_task.execute()
+        return static_task.execute()
 
         # track the sat for a while with longer exposure
         # tracking_task = TrackingTelescopeTask(
         #     self.api_client, self.hardware_adapter, self.logger, self.telescope_record, self.ground_station_record, task
         # )
-        # tracking_task.execute()
-
-        return
+        # return tracking_task.execute()
 
     def _heap_summary(self, event):
         with self.heap_lock:
