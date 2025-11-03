@@ -16,8 +16,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install indi prerequisites
-        run: sudo apt-get update && sudo apt-get install -y libglib2.0-dev libdbus-1-dev
+      - name: Install project prerequisites
+        run: sudo apt-get update && sudo apt-get install -y libglib2.0-dev libdbus-1-dev libjpeg-dev zlib1g-dev
       - name: Install dependencies
         run: |
           pip install --upgrade pip
