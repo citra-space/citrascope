@@ -119,8 +119,8 @@ class AbstractBaseTelescopeTask(ABC):
         current_scope_ra, current_scope_dec = self.hardware_adapter.get_telescope_direction()
         current_target_ra, current_target_dec, _, _ = self.get_target_radec_and_rates(satellite_data, seconds_from_now)
 
-        ra_diff_deg = abs((current_target_ra.degrees - current_scope_ra))
-        dec_diff_deg = abs(current_target_dec.degrees - current_scope_dec)
+        ra_diff_deg = abs((current_target_ra.degrees - current_scope_ra))  # type: ignore
+        dec_diff_deg = abs(current_target_dec.degrees - current_scope_dec)  # type: ignore
 
         if ra_diff_deg > dec_diff_deg:
             return ra_diff_deg / self.hardware_adapter.scope_slew_rate_degrees_per_second
@@ -144,7 +144,7 @@ class AbstractBaseTelescopeTask(ABC):
 
             # Move the scope
             slew_start_time = time.time()
-            self.hardware_adapter.point_telescope(lead_ra.hours, lead_dec.degrees)
+            self.hardware_adapter.point_telescope(lead_ra.hours, lead_dec.degrees)  # type: ignore
             while self.hardware_adapter.telescope_is_moving():
                 self.logger.debug(f"Slewing to lead position for {satellite_data['name']}...")
                 time.sleep(0.1)
@@ -154,14 +154,19 @@ class AbstractBaseTelescopeTask(ABC):
                 f"Telescope slew done, took {slew_duration:.1f} sec, off by {abs(slew_duration - est_slew_time):.1f} sec."
             )
 
+            # check our alignment against the starfield
+            is_aligned = self.hardware_adapter.perform_alignment(lead_ra.degrees, lead_dec.degrees)  # type: ignore
+            if not is_aligned:
+                continue  # try again with the new alignment offsets
+
             # Check angular distance to satellite's current position
             current_scope_ra, current_scope_dec = self.hardware_adapter.get_telescope_direction()
             current_satellite_position = self.get_target_radec_and_rates(satellite_data)
             current_angular_distance_deg = self.hardware_adapter.angular_distance(
                 current_scope_ra,
                 current_scope_dec,
-                current_satellite_position[0].degrees,
-                current_satellite_position[1].degrees,
+                current_satellite_position[0].degrees,  # type: ignore
+                current_satellite_position[1].degrees,  # type: ignore
             )
             self.logger.info(f"Current angular distance to satellite is {current_angular_distance_deg:.3f} degrees.")
             if current_angular_distance_deg <= max_angular_distance_deg:

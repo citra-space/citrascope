@@ -94,3 +94,17 @@ class AbstractAstroHardwareAdapter(ABC):
     def get_tracking_rate(self) -> tuple[float, float]:
         """Get the current tracking rate for the telescope in RA and Dec (arcseconds per second)."""
         pass
+
+    @abstractmethod
+    def perform_alignment(self, target_ra: float, target_dec: float) -> bool:
+        """
+        Perform plate-solving-based alignment to adjust the telescope's position.
+
+        Args:
+            target_ra (float): The target Right Ascension (RA) in degrees.
+            target_dec (float): The target Declination (Dec) in degrees.
+
+        Returns:
+            bool: True if alignment was successful, False otherwise.
+        """
+        pass

@@ -17,7 +17,7 @@ dependencies = [
   "pyindi-client",
   "skyfield",
   "pytest-cov",
-  "cedar-solve @ git+https://github.com/smroid/cedar-solve.git",
+  "pixelemon",
 ]
 
 [project.optional-dependencies]

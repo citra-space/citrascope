@@ -1,7 +1,14 @@
 import os
 import time
+from pathlib import Path
 
 import PyIndi
+import tetra3
+from pixelemon import Telescope, TelescopeImage, TetraSolver
+from pixelemon.optics import WilliamsMiniCat51
+from pixelemon.optics._base_optical_assembly import BaseOpticalAssembly
+from pixelemon.sensors import IMX174
+from pixelemon.sensors._base_sensor import BaseSensor
 
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
 
@@ -18,12 +25,17 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
     _current_task_id: str = ""
     _last_saved_filename: str = ""
 
+    _alignment_offset_ra: float = 0.0
+    _alignment_offset_dec: float = 0.0
+
     def __init__(self, CITRA_LOGGER, host: str, port: int):
         super(IndiAdapter, self).__init__()
         self.logger = CITRA_LOGGER
         self.logger.debug("creating an instance of IndiClient")
         self.host = host
         self.port = port
+
+        TetraSolver.high_memory()
 
     def newDevice(self, d):
         """Emmited when a new device is created from INDI server."""
@@ -54,19 +66,23 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
             if changed_type == "INDI_NUMBER":
                 value = self.our_scope.getNumber(p.getName())[0].value
             self.logger.debug(f"Scope '{self.our_scope.getDeviceName()}' property {p.getName()} updated value: {value}")
+
         if p.getType() == PyIndi.INDI_BLOB:
             blobProperty = self.our_camera.getBLOB(p.getName())
             format = blobProperty[0].getFormat()
             bloblen = blobProperty[0].getBlobLen()
             size = blobProperty[0].getSize()
             self.logger.debug(f"Received BLOB of format {format}, size {size}, length {bloblen}")
-            os.makedirs("images", exist_ok=True)
-            self._last_saved_filename = f"images/citra_task_{self._current_task_id}_image.fits"
-            for b in blobProperty:
-                with open(self._last_saved_filename, "wb") as f:
-                    f.write(b.getblobdata())
-                    self.logger.info(f"Saved {self._last_saved_filename}")
-            self._current_task_id = ""
+
+            # if there's a task underway, save the image to a file
+            if self._current_task_id != "":
+                os.makedirs("images", exist_ok=True)
+                self._last_saved_filename = f"images/citra_task_{self._current_task_id}_image.fits"
+                for b in blobProperty:
+                    with open(self._last_saved_filename, "wb") as f:
+                        f.write(b.getblobdata())
+                        self.logger.info(f"Saved {self._last_saved_filename}")
+                self._current_task_id = ""
 
     def removeProperty(self, p):
         """Emmited when a property is deleted for an INDI driver."""
@@ -212,3 +228,48 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
         ra_rate = self.our_scope.getNumber("TELESCOPE_TRACK_RATE_RA")[0].value
         dec_rate = self.our_scope.getNumber("TELESCOPE_TRACK_RATE_DEC")[0].value
         return ra_rate, dec_rate
+
+    def perform_alignment(self, target_ra: float, target_dec: float) -> bool:
+        """
+        Perform plate-solving-based alignment to adjust the telescope's position.
+
+        Args:
+            target_ra (float): The target Right Ascension (RA) in degrees.
+            target_dec (float): The target Declination (Dec) in degrees.
+
+        Returns:
+            bool: True if alignment was successful, False otherwise.
+        """
+
+        # take alignment exposure
+        alignment_filename = self.take_image("alignment", 1.0)
+
+        # this needs to be made configurable
+        sim_ccd = BaseSensor(
+            x_pixel_count=1280,
+            y_pixel_count=1024,
+            pixel_width=5.86,
+            pixel_height=5.86,
+        )
+        sim_scope = BaseOpticalAssembly(image_circle_diameter=9.2, focal_length=700, focal_ratio=5.8)
+        telescope = Telescope(sensor=sim_ccd, optics=sim_scope)
+
+        image = TelescopeImage.from_fits_file(Path(alignment_filename), telescope)
+
+        solve = image.plate_solve
+
+        self.logger.debug(f"Plate solving result: {solve}")
+
+        if solve is None:  # type: ignore
+            self.logger.error("Plate solving failed.")
+            return False
+
+        self.logger.info(f"Solved RA: {solve.right_ascension:.4f}, Solved Dec: {solve.declination:.4f} in {solve.solve_time:.2f} seconds, false prob: {solve.false_positive_probability}")  # type: ignore
+        self._alignment_offset_dec = solve.declination - target_dec
+        self._alignment_offset_ra = solve.right_ascension - target_ra
+
+        self.logger.info(
+            f"Alignment offsets set to RA: {self._alignment_offset_ra} degrees, Dec: {self._alignment_offset_dec} degrees"
+        )
+
+        return True
