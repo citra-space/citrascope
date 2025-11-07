@@ -49,7 +49,7 @@ class CitraScopeDaemon:
 
         # connect to hardware server
         CITRASCOPE_LOGGER.info(f"Connecting to hardware server with {type(self.hardware_adapter).__name__}...")
-        self.hardware_adapter.connect()  # TODO: change this to not have url, port
+        self.hardware_adapter.connect()
         time.sleep(1)
         CITRASCOPE_LOGGER.info("List of hardware devices")
         device_list = self.hardware_adapter.list_devices() or []
