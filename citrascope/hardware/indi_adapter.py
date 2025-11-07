@@ -251,7 +251,7 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
             pixel_width=5.86,
             pixel_height=5.86,
         )
-        sim_scope = BaseOpticalAssembly(image_circle_diameter=9.2, focal_length=700, focal_ratio=5.8)
+        sim_scope = BaseOpticalAssembly(image_circle_diameter=9.61, focal_length=300, focal_ratio=6)
         telescope = Telescope(sensor=sim_ccd, optics=sim_scope)
         image = TelescopeImage.from_fits_file(Path(alignment_filename), telescope)
 
@@ -262,12 +262,12 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
 
         self.logger.debug(f"Plate solving result: {solve}")
 
-        if solve is None:  # type: ignore
+        if solve is None:
             self.logger.error("Plate solving failed.")
             return False
 
         self.logger.info(
-            f"From {solve.number_of_stars} stars, solved RA: {solve.right_ascension:.4f}deg, Solved Dec: {solve.declination:.4f}deg in {solve.solve_time:.2f} ms, "
+            f"From {solve.number_of_stars} stars, solved RA: {solve.right_ascension:.4f}deg, Solved Dec: {solve.declination:.4f}deg in {solve.solve_time:.2f}ms, "
             + f"false prob: {solve.false_positive_probability}, est fov: {solve.estimated_horizontal_fov:.3f}"
         )
         self._alignment_offset_dec = solve.declination - target_dec
