@@ -20,6 +20,9 @@ dependencies = [
   "pixelemon",
 ]
 
+[project.scripts]
+citrascope = "citrascope.__main__:cli"
+
 [project.optional-dependencies]
 dev = [
   "black",
