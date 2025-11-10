@@ -1,9 +1,10 @@
 # syntax=docker/dockerfile:1
 FROM python:3.12
 
-# Install system dependencies
+
+# Install system dependencies (match devcontainer setup)
 RUN apt-get update && \
-    apt-get install -y git libdbus-1-dev libglib2.0-dev && \
+    apt-get install -y git cmake libdbus-1-dev libglib2.0-dev libjpeg-dev zlib1g-dev && \
     rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -13,8 +14,9 @@ WORKDIR /app
 # Copy local code into the image
 COPY . /app
 
-# Install Python dependencies
-RUN pip install .
+
+# Upgrade pip and install Python dependencies
+RUN python3 -m pip install --upgrade pip && pip install .
 
 # Environment variables (can be overridden at runtime)
 ENV CITRASCOPE_PERSONAL_ACCESS_TOKEN=""
