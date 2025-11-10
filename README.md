@@ -1,5 +1,3 @@
-pip install '.[dev]'
-
 # CitraScope
 [![Pytest](https://github.com/citra-space/citrascope/actions/workflows/pytest.yml/badge.svg)](https://github.com/citra-space/citrascope/actions/workflows/pytest.yml)
 
