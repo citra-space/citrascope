@@ -155,9 +155,9 @@ class AbstractBaseTelescopeTask(ABC):
             )
 
             # check our alignment against the starfield
-            is_aligned = self.hardware_adapter.perform_alignment(lead_ra.degrees, lead_dec.degrees)  # type: ignore
-            if not is_aligned:
-                continue  # try again with the new alignment offsets
+            # is_aligned = self.hardware_adapter.perform_alignment(lead_ra.degrees, lead_dec.degrees)  # type: ignore
+            # if not is_aligned:
+            #     continue  # try again with the new alignment offsets
 
             # Check angular distance to satellite's current position
             current_scope_ra, current_scope_dec = self.hardware_adapter.get_telescope_direction()
