@@ -43,7 +43,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.force-include]
-"docs" = "citrascope/docs"
+"docs" = "docs"
 
 [tool.black]
 line-length = 120
