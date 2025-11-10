@@ -54,35 +54,41 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
     def updateProperty(self, p):
         """Emmited when a new property value arrives from INDI server."""
         self.logger.debug(f"update property {p.getName()} as {p.getTypeAsString()} for device {p.getDeviceName()}")
-        if (
-            hasattr(self, "our_scope")
-            and self.our_scope is not None
-            and p.getDeviceName() == self.our_scope.getDeviceName()
-        ):
-            value = None
-            changed_type = p.getTypeAsString()
-            if changed_type == "INDI_TEXT":
-                value = self.our_scope.getText(p.getName())[0].value
-            if changed_type == "INDI_NUMBER":
-                value = self.our_scope.getNumber(p.getName())[0].value
-            self.logger.debug(f"Scope '{self.our_scope.getDeviceName()}' property {p.getName()} updated value: {value}")
+        try:
 
-        if p.getType() == PyIndi.INDI_BLOB:
-            blobProperty = self.our_camera.getBLOB(p.getName())
-            format = blobProperty[0].getFormat()
-            bloblen = blobProperty[0].getBlobLen()
-            size = blobProperty[0].getSize()
-            self.logger.debug(f"Received BLOB of format {format}, size {size}, length {bloblen}")
+            if (
+                hasattr(self, "our_scope")
+                and self.our_scope is not None
+                and p.getDeviceName() == self.our_scope.getDeviceName()
+            ):
+                value = None
+                changed_type = p.getTypeAsString()
+                if changed_type == "INDI_TEXT":
+                    value = self.our_scope.getText(p.getName())[0].value
+                if changed_type == "INDI_NUMBER":
+                    value = self.our_scope.getNumber(p.getName())[0].value
+                self.logger.debug(
+                    f"Scope '{self.our_scope.getDeviceName()}' property {p.getName()} updated value: {value}"
+                )
 
-            # if there's a task underway, save the image to a file
-            if self._current_task_id != "":
-                os.makedirs("images", exist_ok=True)
-                self._last_saved_filename = f"images/citra_task_{self._current_task_id}_image.fits"
-                for b in blobProperty:
-                    with open(self._last_saved_filename, "wb") as f:
-                        f.write(b.getblobdata())
-                        self.logger.info(f"Saved {self._last_saved_filename}")
-                self._current_task_id = ""
+            if p.getType() == PyIndi.INDI_BLOB:
+                blobProperty = self.our_camera.getBLOB(p.getName())
+                format = blobProperty[0].getFormat()
+                bloblen = blobProperty[0].getBlobLen()
+                size = blobProperty[0].getSize()
+                self.logger.debug(f"Received BLOB of format {format}, size {size}, length {bloblen}")
+
+                # if there's a task underway, save the image to a file
+                if self._current_task_id != "":
+                    os.makedirs("images", exist_ok=True)
+                    self._last_saved_filename = f"images/citra_task_{self._current_task_id}_image.fits"
+                    for b in blobProperty:
+                        with open(self._last_saved_filename, "wb") as f:
+                            f.write(b.getblobdata())
+                            self.logger.info(f"Saved {self._last_saved_filename}")
+                    self._current_task_id = ""
+        except Exception as e:
+            self.logger.error(f"Error processing updated property {p.getName()}: {e}")
 
     def removeProperty(self, p):
         """Emmited when a property is deleted for an INDI driver."""
