@@ -1,4 +1,4 @@
-name: Publish Python 🐍 package
+name: Publish Python Package
 
 on:
   release:
