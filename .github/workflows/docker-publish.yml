@@ -1,12 +1,17 @@
 name: Build and Push Docker Image
 
 on:
-  push:
-    branches: [main]
+  workflow_run:
+    workflows: ["Integration Tests"]  # Wait for integration tests to complete
+    types:
+      - completed
+  workflow_dispatch:  # Allow manual triggering
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    # Only run if integration tests succeeded
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
