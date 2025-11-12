@@ -14,7 +14,13 @@ services:
       - "8080:8080"
     environment:
       - FLASK_ENV=development
-    entrypoint: /bin/bash -c "pip install flask && python3 /mock_citra_server.py"
+    entrypoint: /bin/bash -c "apt-get update && apt-get install -y curl && pip install flask && python3 /mock_citra_server.py"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
   citrascope-test:
     build:
@@ -27,8 +33,10 @@ services:
       - CITRASCOPE_API_URL=http://mock-citra-server:8080
       - CITRASCOPE_INDI_SERVER_URL=test_indi
     depends_on:
-      - indi
-      - mock-citra-server
+      indi:
+        condition: service_started
+      mock-citra-server:
+        condition: service_healthy
     command: ["pytest", "-m", "integration", "tests/integration"]
     volumes:
       - ../..:/app
