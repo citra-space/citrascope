@@ -1,5 +1,5 @@
 # CitraScope
-[![Pytest](https://github.com/citra-space/citrascope/actions/workflows/pytest.yml/badge.svg)](https://github.com/citra-space/citrascope/actions/workflows/pytest.yml) [![Build and Push Docker Image](https://github.com/citra-space/citrascope/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/citra-space/citrascope/actions/workflows/docker-publish.yml) [![Publish Python 🐍 package](https://github.com/citra-space/citrascope/actions/workflows/publish.yml/badge.svg)](https://github.com/citra-space/citrascope/actions/workflows/publish.yml)
+[![Pytest](https://github.com/citra-space/citrascope/actions/workflows/pytest.yml/badge.svg)](https://github.com/citra-space/citrascope/actions/workflows/pytest.yml) [![Build and Push Docker Image](https://github.com/citra-space/citrascope/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/citra-space/citrascope/actions/workflows/docker-publish.yml) [![Publish Python 🐍 package](https://github.com/citra-space/citrascope/actions/workflows/publish.yml/badge.svg)](https://github.com/citra-space/citrascope/actions/workflows/publish.yml)source venv/bin/activate
 
 Remotely control a telescope while it polls for tasks, collects observations, and delivers data for further processing.
 

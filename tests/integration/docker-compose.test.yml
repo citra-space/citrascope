@@ -1,0 +1,34 @@
+version: '3.8'
+services:
+  indi:
+    image: ehippy/indiserver:latest
+    container_name: test_indi
+    restart: unless-stopped
+
+  mock-citra-server:
+    image: python:3.12
+    container_name: mock-citra-server
+    volumes:
+      - ./mock_citra_server.py:/mock_citra_server.py
+    ports:
+      - "8080:8080"
+    environment:
+      - FLASK_ENV=development
+    entrypoint: /bin/bash -c "pip install flask && python3 /mock_citra_server.py"
+
+  citrascope-test:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: citrascope-test
+    environment:
+      - CITRASCOPE_PERSONAL_ACCESS_TOKEN=${CITRASCOPE_PERSONAL_ACCESS_TOKEN}
+      - CITRASCOPE_TELESCOPE_ID=${CITRASCOPE_TELESCOPE_ID}
+      - CITRASCOPE_API_URL=http://mock-citra-server:8080
+      - CITRASCOPE_INDI_SERVER_URL=test_indi
+    depends_on:
+      - indi
+      - mock-citra-server
+    command: ["pytest", "-m", "integration", "tests/integration"]
+    volumes:
+      - ../..:/app

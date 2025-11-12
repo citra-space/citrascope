@@ -24,7 +24,7 @@ jobs:
           pip install .[dev,test]
       - name: Run pytest with coverage
         run: |
-          pytest --cov=citrascope --cov-report=term-missing --cov-report=xml --cov-branch
+          pytest -m "not integration" --cov=citrascope --cov-report=term-missing --cov-report=xml --cov-branch
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         with:
