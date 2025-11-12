@@ -141,20 +141,60 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
 
     def _do_point_telescope(self, ra: float, dec: float):
         """Hardware-specific implementation to point the telescope to the specified RA/Dec coordinates."""
+        # Check if telescope is selected
+        if not hasattr(self, "our_scope") or self.our_scope is None:
+            self.logger.error("No telescope selected. Call select_telescope() first.")
+            return
+
+        # Get the property
         telescope_radec = self.our_scope.getNumber("EQUATORIAL_EOD_COORD")
+
+        # Check if property exists and is valid
+        if not telescope_radec:
+            self.logger.error("EQUATORIAL_EOD_COORD property not found on telescope")
+            return
+
+        # Check if property is ready (not busy)
+        if telescope_radec.getState() == PyIndi.IPS_BUSY:
+            self.logger.warning("Telescope is currently busy, waiting for it to be ready...")
+            # Could add a wait loop here if needed
+
+        # Check if property has the expected number of elements
+        if len(telescope_radec) < 2:
+            self.logger.error(f"EQUATORIAL_EOD_COORD has {len(telescope_radec)} elements, expected 2")
+            return
+
         new_ra = float(ra)
         new_dec = float(dec)
         telescope_radec[0].setValue(new_ra)  # RA in hours
         telescope_radec[1].setValue(new_dec)  # DEC in degrees
+
         try:
             self.sendNewNumber(telescope_radec)
+            self.logger.info(f"Sent telescope coordinates: RA={new_ra}h, DEC={new_dec}°")
         except Exception as e:
             self.logger.error(f"Error sending new RA/DEC to telescope: {e}")
             return
 
     def get_telescope_direction(self) -> tuple[float, float]:
         """Read the current telescope direction (RA degrees, DEC degrees)."""
+        # Check if telescope is selected
+        if not hasattr(self, "our_scope") or self.our_scope is None:
+            self.logger.error("No telescope selected. Call select_telescope() first.")
+            return (0.0, 0.0)
+
         telescope_radec = self.our_scope.getNumber("EQUATORIAL_EOD_COORD")
+
+        if not telescope_radec:
+            self.logger.error("EQUATORIAL_EOD_COORD property not found on telescope")
+            self.logger.error("Could not read telescope coordinates")
+            return (0.0, 0.0)
+
+        if len(telescope_radec) < 2:
+            self.logger.error(f"EQUATORIAL_EOD_COORD has {len(telescope_radec)} elements, expected 2")
+            self.logger.error("Could not read telescope coordinates")
+            return (0.0, 0.0)
+
         self.logger.debug(
             f"Telescope currently pointed to RA: {telescope_radec[0].value * 15.0} degrees, DEC: {telescope_radec[1].value} degrees"
         )
@@ -162,7 +202,14 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
 
     def telescope_is_moving(self) -> bool:
         """Check if the telescope is currently moving."""
+        if not hasattr(self, "our_scope") or self.our_scope is None:
+            return False
+
         telescope_radec = self.our_scope.getNumber("EQUATORIAL_EOD_COORD")
+
+        if not telescope_radec:
+            return False
+
         return telescope_radec.getState() == PyIndi.IPS_BUSY
 
     def select_camera(self, device_name: str) -> bool:
