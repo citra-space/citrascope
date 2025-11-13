@@ -109,8 +109,14 @@ To use these, open the Run and Debug panel in VS Code, select the desired config
 
 This project uses [pytest](https://pytest.org/) for unit testing. All tests are located in the `tests/` directory.
 
-To run tests manually:
+To run unit tests manually, within your devcontainer run:
 
 ```bash
 pytest
+```
+
+The integration tests run in a dockerized context and as such can't run within the devcontainer. Instead, run this in your desktop's terminal:
+
+```bash
+docker compose -f docker-compose.test.yml up --build --abort-on-container-exit
 ```

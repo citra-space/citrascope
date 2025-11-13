@@ -163,6 +163,12 @@ def get_tasks():
     return jsonify({"tasks": [{"id": "test-task", "type": "track", "status": "pending"}]}), 200
 
 
+# New endpoint: update last_connection_epoch for telescope
+@app.route("/telescopes", methods=["PUT"])
+def update_last_connection_epoch():
+    return jsonify("telescope_id"), 200
+
+
 print("Mock Citra server is running...")
 
 if __name__ == "__main__":

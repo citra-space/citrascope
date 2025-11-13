@@ -2,7 +2,7 @@ import heapq
 import os
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 from dateutil import parser as dtparser
 
@@ -78,10 +78,8 @@ class TaskManager:
         PUT to /telescopes to report this telescope as online.
         """
         telescope_id = self.telescope_record["id"]
-        iso_timestamp = datetime.utcnow().isoformat()
-        body = [{"id": telescope_id, "last_connection_epoch": iso_timestamp}]
-        # Assumes api_client has a put_telescope_status method
-        self.api_client.put_telescope_status(body)
+        iso_timestamp = datetime.now(timezone.utc).isoformat()
+        self.api_client.put_telescope_status([{"id": telescope_id, "last_connection_epoch": iso_timestamp}])
         self.logger.debug(f"Reported online status for telescope {telescope_id} at {iso_timestamp}")
 
     def task_runner(self):
