@@ -29,7 +29,6 @@ def test_daemon_full_lifecycle(caplog):
     This should work identically in both devcontainer and Docker environments.
     """
     # Capture all log levels
-    caplog.set_level(logging.DEBUG)
 
     # Use environment variables like the real daemon does
     mock_server_url = os.environ.get("CITRASCOPE_API_URL", "http://localhost:8080")
@@ -48,7 +47,6 @@ def test_daemon_full_lifecycle(caplog):
         indi_telescope_name="Telescope Simulator",
         indi_camera_name="CCD Simulator",
         use_ssl=False,
-        log_level="DEBUG",  # Use DEBUG to see everything
     )
 
     # Create the daemon

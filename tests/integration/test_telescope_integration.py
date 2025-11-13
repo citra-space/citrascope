@@ -36,7 +36,6 @@ def test_move_telescope():
 
     # Create a simple logger for the test
     logger = logging.getLogger("test_indi")
-    logger.setLevel(logging.DEBUG)
 
     # Get INDI server hostname (test_indi in Docker, localhost otherwise)
     indi_host = os.environ.get("CITRASCOPE_INDI_SERVER_URL", "localhost")
