@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from flask import Flask, jsonify, request  # type: ignore
 
 app = Flask(__name__)
@@ -55,6 +57,12 @@ def get_telescope_tasks(telescope_id):
     """Return mock tasks for the telescope."""
     # Return a tracking task only if it hasn't been completed
     if "test-task-001" not in completed_tasks:
+        # Create timestamps: task started 1 minute ago, ends in 29 minutes
+        now = datetime.now(timezone.utc)
+        task_start = now - timedelta(minutes=1)
+        task_stop = now + timedelta(minutes=29)
+        creation_epoch = now - timedelta(minutes=2)
+
         return (
             jsonify(
                 [
@@ -62,8 +70,29 @@ def get_telescope_tasks(telescope_id):
                         "id": "test-task-001",
                         "type": "Track",
                         "status": "Pending",
+                        "creationEpoch": creation_epoch.isoformat().replace("+00:00", "Z"),
+                        "updateEpoch": now.isoformat().replace("+00:00", "Z"),
+                        "taskStart": task_start.isoformat().replace("+00:00", "Z"),
+                        "taskStop": task_stop.isoformat().replace("+00:00", "Z"),
+                        "userId": "d8a153a0-00f1-70e8-1054-823dcd09ee63",
+                        "username": "test-user",
                         "satelliteId": "test-satellite-123",
+                        "satelliteName": "Test Satellite (ISS)",
                         "telescopeId": telescope_id,
+                        "telescopeName": "Test Telescope",
+                        "antennaId": None,
+                        "antennaName": None,
+                        "groundStationId": "test-ground-station-123",
+                        "groundStationName": "Test Ground Station",
+                        "priority": 0,
+                        "scheduledStart": None,
+                        "scheduledStop": None,
+                        "rangeKm": None,
+                        "rangeRateKmS": None,
+                        "rightAscension": None,
+                        "rightAscensionRate": None,
+                        "declination": None,
+                        "declinationRate": None,
                     }
                 ]
             ),

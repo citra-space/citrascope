@@ -94,4 +94,14 @@ def test_daemon_full_lifecycle(caplog):
         # If task started, we should see pointing or other task-related logs
         assert "Pointing ahead to RA:" in log_output or "Polled tasks" in log_output, "Should have task-related logs"
 
+    # Verify the daemon actually executes tracking tasks
+    assert "Added tasks:" in log_output, "Should find a task from the api"
+    assert "Starting task" in log_output, "Should start the task"
+
+    assert "Telescope slew done" in log_output, "Should complete telescope slew"
+    assert "Current angular distance to satellite" in log_output, "Should track satellite position"
+    assert "Taking 2.0 second exposure" in log_output, "Should take exposures during tracking"
+
+    assert "Completed observation task" in log_output, "Should complete task"
+
     print("\n✅ Daemon test completed without crashes or critical errors")

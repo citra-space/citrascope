@@ -133,6 +133,19 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
         for device in devices:
             if device.getDeviceName() == device_name:
                 self.our_scope = device
+
+                # Connect the telescope device if not already connected
+                connect_prop = device.getSwitch("CONNECTION")
+                if connect_prop:
+                    if not device.isConnected():
+                        self.logger.info(f"Connecting telescope device: {device_name}")
+                        connect_prop[0].setState(PyIndi.ISS_ON)  # CONNECT
+                        connect_prop[1].setState(PyIndi.ISS_OFF)  # DISCONNECT
+                        self.sendNewSwitch(connect_prop)
+                        time.sleep(1)  # Give device time to connect
+                    else:
+                        self.logger.debug(f"Telescope device {device_name} already connected")
+
                 return True
         return False
 
@@ -219,17 +232,53 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
             if device.getDeviceName() == device_name:
                 self.our_camera = device
                 self.setBLOBMode(PyIndi.B_ALSO, device_name, None)
+
+                # Connect the camera device if not already connected
+                connect_prop = device.getSwitch("CONNECTION")
+                if connect_prop:
+                    if not device.isConnected():
+                        self.logger.info(f"Connecting camera device: {device_name}")
+                        connect_prop[0].setState(PyIndi.ISS_ON)  # CONNECT
+                        connect_prop[1].setState(PyIndi.ISS_OFF)  # DISCONNECT
+                        self.sendNewSwitch(connect_prop)
+                        time.sleep(1)  # Give device time to connect
+                    else:
+                        self.logger.debug(f"Camera device {device_name} already connected")
+
                 return True
         return False
 
     def take_image(self, task_id: str, exposure_duration_seconds=1.0):
         """Capture an image with the currently selected camera."""
 
+        # Check if camera is selected
+        if not hasattr(self, "our_camera") or self.our_camera is None:
+            self.logger.error("No camera selected. Call select_camera() first.")
+            return None
+
+        # Get the CCD_EXPOSURE property
+        ccd_exposure = self.our_camera.getNumber("CCD_EXPOSURE")
+
+        # Check if property exists and is valid
+        if not ccd_exposure:
+            self.logger.error("CCD_EXPOSURE property not found on camera")
+            return None
+
+        # Check if property has at least one element
+        if len(ccd_exposure) < 1:
+            self.logger.error(f"CCD_EXPOSURE has {len(ccd_exposure)} elements, expected at least 1")
+            return None
+
         self.logger.info(f"Taking {exposure_duration_seconds} second exposure...")
         self._current_task_id = task_id
-        ccd_exposure = self.our_camera.getNumber("CCD_EXPOSURE")
-        ccd_exposure[0].setValue(exposure_duration_seconds)
-        self.sendNewNumber(ccd_exposure)
+
+        try:
+            ccd_exposure[0].setValue(exposure_duration_seconds)
+            self.sendNewNumber(ccd_exposure)
+        except Exception as e:
+            self.logger.error(f"Error sending exposure command to camera: {e}")
+            self._current_task_id = ""
+            return None
 
         while self.is_camera_busy() and self._current_task_id != "":
             self.logger.debug("Waiting for camera to finish exposure...")
@@ -241,7 +290,16 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
 
     def is_camera_busy(self) -> bool:
         """Check if the camera is currently busy taking an image."""
+        # Check if camera is selected
+        if not hasattr(self, "our_camera") or self.our_camera is None:
+            return False
+
         ccd_exposure = self.our_camera.getNumber("CCD_EXPOSURE")
+
+        # Check if property exists
+        if not ccd_exposure:
+            return False
+
         return ccd_exposure.getState() == PyIndi.IPS_BUSY
 
     def set_custom_tracking_rate(self, ra_rate: float, dec_rate: float):
