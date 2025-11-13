@@ -66,3 +66,7 @@ class MockCitraApiClient(AbstractCitraApiClient):
     def get_ground_station(self, ground_station_id):
         """Simulate fetching a ground station by ID."""
         return {"id": ground_station_id, "name": "Mock Ground Station"}
+
+    def put_telescope_status(self, body):
+        """Mock PUT to /telescopes for online status reporting."""
+        return {"status": "ok", "body": body}

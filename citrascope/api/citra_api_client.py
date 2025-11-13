@@ -6,6 +6,20 @@ from .abstract_api_client import AbstractCitraApiClient
 
 
 class CitraApiClient(AbstractCitraApiClient):
+    def put_telescope_status(self, body):
+        """
+        PUT to /telescopes to report online status.
+        """
+        try:
+            response = self._request("PUT", "/telescopes", json=body)
+            if self.logger:
+                self.logger.debug(f"PUT /telescopes: {response}")
+            return response
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Failed PUT /telescopes: {e}")
+            return None
+
     def __init__(self, host: str, token: str, use_ssl: bool = True, logger=None):
         self.base_url = ("https" if use_ssl else "http") + "://" + host
         self.token = token

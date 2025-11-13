@@ -21,3 +21,10 @@ class AbstractCitraApiClient(ABC):
     @abstractmethod
     def get_ground_station(self, ground_station_id):
         pass
+
+    @abstractmethod
+    def put_telescope_status(self, body):
+        """
+        PUT to /telescopes to report online status.
+        """
+        pass

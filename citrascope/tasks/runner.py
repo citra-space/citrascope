@@ -35,6 +35,7 @@ class TaskManager:
     def poll_tasks(self):
         while not self._stop_event.is_set():
             try:
+                self._report_online()
                 tasks = self.api_client.get_telescope_tasks(self.telescope_record["id"])
                 added = 0
                 now = int(time.time())
@@ -71,6 +72,17 @@ class TaskManager:
                 self.logger.error(f"Exception in poll_tasks loop: {e}", exc_info=True)
                 time.sleep(5)  # avoid tight error loop
             self._stop_event.wait(15)
+
+    def _report_online(self):
+        """
+        PUT to /telescopes to report this telescope as online.
+        """
+        telescope_id = self.telescope_record["id"]
+        iso_timestamp = datetime.utcnow().isoformat()
+        body = [{"id": telescope_id, "last_connection_epoch": iso_timestamp}]
+        # Assumes api_client has a put_telescope_status method
+        self.api_client.put_telescope_status(body)
+        self.logger.debug(f"Reported online status for telescope {telescope_id} at {iso_timestamp}")
 
     def task_runner(self):
         while not self._stop_event.is_set():

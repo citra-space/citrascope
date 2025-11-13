@@ -356,6 +356,10 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
             # take alignment exposure
             alignment_filename = self.take_image("alignment", 5.0)
 
+            if alignment_filename is None:
+                self.logger.error("Failed to take alignment image.")
+                return False
+
             # this needs to be made configurable
             sim_ccd = BaseSensor(
                 x_pixel_count=1280,
