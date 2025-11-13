@@ -32,11 +32,12 @@ services:
       - CITRASCOPE_TELESCOPE_ID=${CITRASCOPE_TELESCOPE_ID}
       - CITRASCOPE_API_URL=http://mock-citra-server:8080
       - CITRASCOPE_INDI_SERVER_URL=test_indi
+      - PYTHONUNBUFFERED=1
     depends_on:
       indi:
         condition: service_started
       mock-citra-server:
         condition: service_healthy
-    command: ["pytest", "-m", "integration", "tests/integration"]
+    command: ["pytest", "-m", "integration", "-v", "-s", "--log-cli-level=INFO", "tests/integration"]
     volumes:
       - ../..:/app
