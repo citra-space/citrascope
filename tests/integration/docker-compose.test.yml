@@ -17,7 +17,7 @@ services:
     entrypoint: /bin/bash -c "apt-get update && apt-get install -y curl && pip install flask && python3 /mock_citra_server.py"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 2s
+      interval: 10s
       timeout: 3s
       retries: 10
       start_period: 5s
