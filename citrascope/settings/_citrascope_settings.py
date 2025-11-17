@@ -19,10 +19,17 @@ class CitraScopeSettings(BaseSettings):
     use_ssl: bool = True
     telescope_id: str = UNDEFINED_STRING
 
+    # Hardware adapter selection
+    hardware_adapter: str = "indi"  # Options: "indi", "nina"
+
+    # INDI adapter settings
     indi_server_url: str = "localhost"
     indi_server_port: int = 7624
     indi_telescope_name: str = UNDEFINED_STRING
     indi_camera_name: str = UNDEFINED_STRING
+
+    # NINA Advanced API adapter settings
+    nina_url_prefix: str = "http://nina:1888/v2/api"
 
     log_level: str = "INFO"
     keep_images: bool = False

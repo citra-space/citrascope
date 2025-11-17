@@ -28,12 +28,14 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
     _alignment_offset_ra: float = 0.0
     _alignment_offset_dec: float = 0.0
 
-    def __init__(self, CITRA_LOGGER, host: str, port: int):
+    def __init__(self, CITRA_LOGGER, host: str, port: int, telescope_name: str = "", camera_name: str = ""):
         super(IndiAdapter, self).__init__()
         self.logger = CITRA_LOGGER
         self.logger.debug("creating an instance of IndiClient")
         self.host = host
         self.port = port
+        self.telescope_name = telescope_name
+        self.camera_name = camera_name
 
         # TetraSolver.high_memory()
 
@@ -120,7 +122,39 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
 
     def connect(self) -> bool:
         self.setServer(self.host, self.port)
-        return self.connectServer()
+        connected = self.connectServer()
+
+        if not connected:
+            self.logger.error("Failed to connect to INDI server")
+            return False
+
+        time.sleep(1)  # Give server time to enumerate devices
+
+        # Auto-select telescope if name provided
+        if self.telescope_name:
+            device_list = self.list_devices()
+            if self.telescope_name not in device_list:
+                self.logger.error(f"Could not find configured telescope ({self.telescope_name}) on INDI server.")
+                return False
+
+            if not self.select_telescope(self.telescope_name):
+                self.logger.error(f"Failed to select telescope: {self.telescope_name}")
+                return False
+            self.logger.info(f"Found and connected to telescope: {self.telescope_name}")
+
+        # Auto-select camera if name provided
+        if self.camera_name:
+            device_list = self.list_devices()
+            if self.camera_name not in device_list:
+                self.logger.error(f"Could not find configured camera ({self.camera_name}) on INDI server.")
+                return False
+
+            if not self.select_camera(self.camera_name):
+                self.logger.error(f"Failed to select camera: {self.camera_name}")
+                return False
+            self.logger.info(f"Found and connected to camera: {self.camera_name}")
+
+        return True
 
     def list_devices(self):
         names = []

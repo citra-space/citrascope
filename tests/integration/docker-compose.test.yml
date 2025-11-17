@@ -32,6 +32,7 @@ services:
       - CITRASCOPE_TELESCOPE_ID=${CITRASCOPE_TELESCOPE_ID}
       - CITRASCOPE_API_URL=http://mock-citra-server:8080
       - CITRASCOPE_INDI_SERVER_URL=test_indi
+      - CITRASCOPE_HARDWARE_ADAPTER=indi
       - PYTHONUNBUFFERED=1
     depends_on:
       indi:

@@ -4,6 +4,7 @@ from typing import Optional
 from citrascope.api.citra_api_client import AbstractCitraApiClient, CitraApiClient
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
 from citrascope.hardware.indi_adapter import IndiAdapter
+from citrascope.hardware.nina_adv_http_adapter import NinaAdvancedHttpAdapter
 from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.settings._citrascope_settings import CitraScopeSettings
 from citrascope.tasks.runner import TaskManager
@@ -24,9 +25,25 @@ class CitraScopeDaemon:
             self.settings.use_ssl,
             CITRASCOPE_LOGGER,
         )
-        self.hardware_adapter = hardware_adapter or IndiAdapter(
-            CITRASCOPE_LOGGER, self.settings.indi_server_url, int(self.settings.indi_server_port)
-        )
+        self.hardware_adapter = hardware_adapter or self._create_hardware_adapter()
+
+    def _create_hardware_adapter(self) -> AbstractAstroHardwareAdapter:
+        """Factory method to create the appropriate hardware adapter based on settings."""
+        if self.settings.hardware_adapter == "indi":
+            return IndiAdapter(
+                CITRASCOPE_LOGGER,
+                self.settings.indi_server_url,
+                int(self.settings.indi_server_port),
+                self.settings.indi_telescope_name,
+                self.settings.indi_camera_name,
+            )
+        elif self.settings.hardware_adapter == "nina":
+            return NinaAdvancedHttpAdapter(CITRASCOPE_LOGGER, self.settings.nina_url_prefix)
+        else:
+            raise ValueError(
+                f"Unknown hardware adapter type: {self.settings.hardware_adapter}. "
+                f"Valid options are: 'indi', 'nina'"
+            )
 
     def run(self):
         CITRASCOPE_LOGGER.info(f"CitraAPISettings host is {self.settings.host}")
@@ -48,33 +65,15 @@ class CitraScopeDaemon:
             return
 
         # connect to hardware server
-        CITRASCOPE_LOGGER.info(f"Connecting to hardware server with {type(self.hardware_adapter).__name__}...")
-        self.hardware_adapter.connect()
-        time.sleep(1)
-        CITRASCOPE_LOGGER.info("List of hardware devices")
-        device_list = self.hardware_adapter.list_devices() or []
-
-        # check for telescope
-        if not self.settings.indi_telescope_name in device_list:
-            CITRASCOPE_LOGGER.error(
-                f"Aborting: could not find configured telescope ({self.settings.indi_telescope_name}) on hardware server."
-            )
+        CITRASCOPE_LOGGER.info(f"Connecting to hardware with {type(self.hardware_adapter).__name__}...")
+        if not self.hardware_adapter.connect():
+            CITRASCOPE_LOGGER.error("Aborting: failed to connect to hardware.")
             return
-        self.hardware_adapter.select_telescope(self.settings.indi_telescope_name)
+
         self.hardware_adapter.scope_slew_rate_degrees_per_second = citra_telescope_record["maxSlewRate"]
         CITRASCOPE_LOGGER.info(
-            f"Found configured Telescope ({self.settings.indi_telescope_name}) on hardware server"
-            + f" (slew rate: {self.hardware_adapter.scope_slew_rate_degrees_per_second} deg/sec)"
+            f"Hardware connected. Slew rate: {self.hardware_adapter.scope_slew_rate_degrees_per_second} deg/sec"
         )
-
-        # check for camera
-        if not self.settings.indi_camera_name in device_list:
-            CITRASCOPE_LOGGER.error(
-                f"Aborting: could not find configured camera ({self.settings.indi_camera_name}) on hardware server."
-            )
-            return
-        self.hardware_adapter.select_camera(self.settings.indi_camera_name)
-        CITRASCOPE_LOGGER.info(f"Found configured Camera ({self.settings.indi_camera_name}) on hardware server!")
 
         task_manager = TaskManager(
             self.api_client,
