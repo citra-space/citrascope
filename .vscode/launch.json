@@ -13,6 +13,15 @@
             "justMyCode": false
         },
         {
+            "name": "Python: citrascope dev start, keep images",
+            "type": "python",
+            "request": "launch",
+            "module": "citrascope",
+            "args": ["--dev", "--keep-images", "start"],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "Python: citrascope dev start DEBUG logging",
             "type": "python",
             "request": "launch",

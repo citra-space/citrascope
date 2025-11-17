@@ -17,6 +17,7 @@ class AbstractBaseTelescopeTask(ABC):
         telescope_record,
         ground_station_record,
         task,
+        keep_images: bool = False,
     ):
         self.api_client = api_client
         self.hardware_adapter: AbstractAstroHardwareAdapter = hardware_adapter
@@ -24,6 +25,7 @@ class AbstractBaseTelescopeTask(ABC):
         self.telescope_record = telescope_record
         self.ground_station_record = ground_station_record
         self.task = task
+        self.keep_images = keep_images
 
     def fetch_satellite(self) -> dict | None:
         satellite_data = self.api_client.get_satellite(self.task.satelliteId)
@@ -61,11 +63,14 @@ class AbstractBaseTelescopeTask(ABC):
             self.logger.info(f"Successfully uploaded image for task {self.task.id}")
         else:
             self.logger.error(f"Failed to upload image for task {self.task.id}")
-        try:
-            os.remove(filepath)
-            self.logger.info(f"Deleted local image file {filepath} after upload.")
-        except Exception as e:
-            self.logger.error(f"Failed to delete local image file {filepath}: {e}")
+        if not self.keep_images:
+            try:
+                os.remove(filepath)
+                self.logger.info(f"Deleted local image file {filepath} after upload.")
+            except Exception as e:
+                self.logger.error(f"Failed to delete local image file {filepath}: {e}")
+        else:
+            self.logger.info(f"Keeping local image file {filepath} (--keep-images flag set).")
         marked_complete = self.api_client.mark_task_complete(self.task.id)
         if not marked_complete:
             task_check = self.api_client.get_telescope_tasks(self.telescope_record["id"])

@@ -77,7 +77,12 @@ class CitraScopeDaemon:
         CITRASCOPE_LOGGER.info(f"Found configured Camera ({self.settings.indi_camera_name}) on hardware server!")
 
         task_manager = TaskManager(
-            self.api_client, citra_telescope_record, ground_station, CITRASCOPE_LOGGER, self.hardware_adapter
+            self.api_client,
+            citra_telescope_record,
+            ground_station,
+            CITRASCOPE_LOGGER,
+            self.hardware_adapter,
+            self.settings.keep_images,
         )
         task_manager.start()
 

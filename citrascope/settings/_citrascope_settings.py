@@ -25,10 +25,12 @@ class CitraScopeSettings(BaseSettings):
     indi_camera_name: str = UNDEFINED_STRING
 
     log_level: str = "INFO"
+    keep_images: bool = False
 
-    def __init__(self, dev: bool = False, log_level: str = "INFO", **kwargs):
+    def __init__(self, dev: bool = False, log_level: str = "INFO", keep_images: bool = False, **kwargs):
         super().__init__(**kwargs)
         self.log_level = log_level
+        self.keep_images = keep_images
         if dev:
             self.host = "dev.api.citra.space"
             CITRASCOPE_LOGGER.info("Using development API endpoint.")

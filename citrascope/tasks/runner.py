@@ -20,6 +20,7 @@ class TaskManager:
         ground_station_record,
         logger,
         hardware_adapter: AbstractAstroHardwareAdapter,
+        keep_images: bool = False,
     ):
         self.api_client = api_client
         self.telescope_record = telescope_record
@@ -31,6 +32,7 @@ class TaskManager:
         self.heap_lock = threading.RLock()
         self._stop_event = threading.Event()
         self.current_task_id = None  # Track currently executing task
+        self.keep_images = keep_images
 
     def poll_tasks(self):
         while not self._stop_event.is_set():
@@ -123,7 +125,13 @@ class TaskManager:
 
         # stake a still
         static_task = StaticTelescopeTask(
-            self.api_client, self.hardware_adapter, self.logger, self.telescope_record, self.ground_station_record, task
+            self.api_client,
+            self.hardware_adapter,
+            self.logger,
+            self.telescope_record,
+            self.ground_station_record,
+            task,
+            self.keep_images,
         )
         return static_task.execute()
 
