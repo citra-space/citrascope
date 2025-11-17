@@ -78,8 +78,8 @@ def test_daemon_full_lifecycle(caplog):
 
     # Assert on key log messages that indicate successful operation
     assert "INDI Server connected" in log_output, "Should connect to INDI server"
-    assert "Found configured Telescope (Telescope Simulator)" in log_output, "Should find telescope"
-    assert "Found configured Camera (CCD Simulator)" in log_output, "Should find camera"
+    assert "Found and connected to telescope: Telescope Simulator" in log_output, "Should find telescope"
+    assert "Found and connected to camera: CCD Simulator" in log_output, "Should find camera"
     assert "Starting telescope task daemon" in log_output, "Should start task daemon"
 
     # Should NOT have these error messages
