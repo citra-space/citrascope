@@ -35,7 +35,7 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
         self.host = host
         self.port = port
 
-        TetraSolver.high_memory()
+        # TetraSolver.high_memory()
 
     def newDevice(self, d):
         """Emmited when a new device is created from INDI server."""
@@ -238,15 +238,115 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
                 if connect_prop:
                     if not device.isConnected():
                         self.logger.info(f"Connecting camera device: {device_name}")
-                        connect_prop[0].setState(PyIndi.ISS_ON)  # CONNECT
-                        connect_prop[1].setState(PyIndi.ISS_OFF)  # DISCONNECT
-                        self.sendNewSwitch(connect_prop)
-                        time.sleep(1)  # Give device time to connect
+                        self._set_switch(device, "CONNECTION", "CONNECT")
+                        time.sleep(2)  # Give device time to connect
                     else:
                         self.logger.debug(f"Camera device {device_name} already connected")
 
+                # Configure camera parameters
+                self._configure_camera_params()
+
                 return True
         return False
+
+    def _configure_camera_params(self):
+        """Initialize camera parameters to match EKOS behavior."""
+        if not hasattr(self, "our_camera") or self.our_camera is None:
+            return
+
+        self._set_switch(self.our_camera, "CONNECTION", "CONNECT")
+        self._set_switch(self.our_camera, "CCD_FRAME_TYPE", "FRAME_LIGHT")
+        self._set_switch(self.our_camera, "UPLOAD_MODE", "UPLOAD_CLIENT")
+        self._set_switch(
+            self.our_camera, "CCD_TRANSFER_FORMAT", "FORMAT_FITS"
+        )  # No ISwitch '' in CCD Simulator.CCD_TRANSFER_FORMAT..?
+        self._set_switch(self.our_camera, "CCD_COMPRESSION", "INDI_DISABLED")
+
+        self._set_numbers(
+            self.our_camera,
+            "CCD_BINNING",
+            {
+                "HOR_BIN": 1,
+                "VER_BIN": 1,
+            },
+        )
+
+        # Get CCD_INFO to find max dimensions
+        ccd_info = self.our_camera.getNumber("CCD_INFO")
+        max_x = None
+        max_y = None
+        if ccd_info:
+            for item in ccd_info:
+                if item.getName() == "CCD_MAX_X":
+                    max_x = item.value
+                elif item.getName() == "CCD_MAX_Y":
+                    max_y = item.value
+
+        if max_x and max_y:
+            self._set_numbers(
+                self.our_camera,
+                "CCD_FRAME",
+                {
+                    "X": 0,
+                    "Y": 0,
+                    "WIDTH": max_x,
+                    "HEIGHT": max_y,
+                },
+            )
+
+    def _set_switch(self, device, property_name: str, switch_name: str) -> bool:
+        svp = device.getSwitch(property_name)
+        if svp is None:
+            return False
+
+        available_names = [item.getName() for item in svp]
+        if switch_name not in available_names:
+            self.logger.warning(f"INDI Switch '{property_name}' only supports {available_names}, not '{switch_name}'")
+            return False
+
+        # Turn everything OFF
+        for item in svp:
+            item.setState(PyIndi.ISS_OFF)
+
+        # Turn the desired one ON
+        matched = False
+        for item in svp:
+            item_name = item.getName()
+            if item_name == switch_name:
+                item.setState(PyIndi.ISS_ON)
+                matched = True
+                break
+
+        if not matched:
+            return False
+
+        # Send updated vector
+        result = self.sendNewSwitch(svp)
+        return True
+
+    def _set_numbers(self, device, property_name: str, values: dict) -> bool:
+        """
+        values: { "ELEMENT_NAME": value, ... }
+        """
+        nvp = device.getNumber(property_name)
+        if nvp is None:
+            return False
+
+        # Map element names → items
+        items = {item.getName(): item for item in nvp}
+
+        # Ensure all requested elements exist
+        for name in values.keys():
+            if name not in items:
+                return False  # or raise
+
+        # Set values
+        for name, val in values.items():
+            items[name].setValue(float(val))
+
+        # Send once
+        result = self.sendNewNumber(nvp)
+        return True
 
     def take_image(self, task_id: str, exposure_duration_seconds=1.0):
         """Capture an image with the currently selected camera."""
