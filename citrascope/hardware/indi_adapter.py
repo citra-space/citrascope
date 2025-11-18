@@ -10,7 +10,7 @@ from pixelemon.optics._base_optical_assembly import BaseOpticalAssembly
 from pixelemon.sensors import IMX174
 from pixelemon.sensors._base_sensor import BaseSensor
 
-from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
+from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter, ObservationStrategy
 
 
 # The IndiClient class which inherits from the module PyIndi.BaseClient class
@@ -531,3 +531,9 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
         except Exception as e:
             self.logger.error(f"Error during alignment: {e}")
             return False
+
+    def get_observation_strategy(self) -> ObservationStrategy:
+        return ObservationStrategy.MANUAL
+
+    def perform_observation_sequence(self, task_id, satellite_data) -> str:
+        raise NotImplementedError

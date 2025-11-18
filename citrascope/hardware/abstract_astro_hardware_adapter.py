@@ -1,5 +1,11 @@
 import math
 from abc import ABC, abstractmethod
+from enum import Enum
+
+
+class ObservationStrategy(Enum):
+    MANUAL = 1
+    SEQUENCE_TO_CONTROLLER = 2
 
 
 class AbstractAstroHardwareAdapter(ABC):
@@ -44,6 +50,16 @@ class AbstractAstroHardwareAdapter(ABC):
     This adapter provides a common interface for interacting with telescopes, cameras,
     filter wheels, focus dials, and other astrophotography devices.
     """
+
+    @abstractmethod
+    def get_observation_strategy(self) -> ObservationStrategy:
+        """Get the current observation strategy from the hardware."""
+        pass
+
+    @abstractmethod
+    def perform_observation_sequence(self, task_id, satellite_data) -> str:
+        """For hardware driven by sequences, perform the observation sequence and return image path."""
+        pass
 
     @abstractmethod
     def connect(self) -> bool:

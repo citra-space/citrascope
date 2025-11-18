@@ -38,7 +38,9 @@ class CitraScopeDaemon:
                 self.settings.indi_camera_name,
             )
         elif self.settings.hardware_adapter == "nina":
-            return NinaAdvancedHttpAdapter(CITRASCOPE_LOGGER, self.settings.nina_url_prefix)
+            return NinaAdvancedHttpAdapter(
+                CITRASCOPE_LOGGER, self.settings.nina_url_prefix, self.settings.nina_scp_command_template
+            )
         else:
             raise ValueError(
                 f"Unknown hardware adapter type: {self.settings.hardware_adapter}. "

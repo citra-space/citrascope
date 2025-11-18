@@ -124,12 +124,12 @@
                     "Attempts": 1
                   },
                   {
-                    "$id": "64",
+                    "$id": "20",
                     "$type": "NINA.Joko.Plugin.Orbitals.SequenceItems.ManualTLEContainer, NINA.Joko.Plugin.Orbitals",
-                    "TLEData": "",
+                    "TLEData": "{{TLE_DATA}}",
                     "OffsetExpanded": false,
                     "OffsetCoordinates": {
-                      "$id": "65",
+                      "$id": "21",
                       "$type": "NINA.Joko.Plugin.Orbitals.Utility.InputCoordinatesEx, NINA.Joko.Plugin.Orbitals",
                       "RAHours": 0,
                       "RAMinutes": 0,
@@ -141,13 +141,13 @@
                       "DecSeconds": 0.0
                     },
                     "Target": {
-                      "$id": "66",
+                      "$id": "22",
                       "$type": "NINA.Astrometry.InputTarget, NINA.Astrometry",
                       "Expanded": true,
-                      "TargetName": "AMC-6                   ",
+                      "TargetName": "{{SATELLITE_NAME}}",
                       "PositionAngle": 0.0,
                       "InputCoordinates": {
-                        "$id": "67",
+                        "$id": "23",
                         "$type": "NINA.Astrometry.InputCoordinates, NINA.Astrometry",
                         "RAHours": 3,
                         "RAMinutes": 33,
@@ -161,60 +161,93 @@
                     "Strategy": {
                       "$type": "NINA.Sequencer.Container.ExecutionStrategy.SequentialStrategy, NINA.Sequencer"
                     },
-                    "Name": "AMC-6                   ",
+                    "Name": "{{SATELLITE_NAME}}",
                     "Conditions": {
-                      "$id": "68",
+                      "$id": "24",
                       "$type": "System.Collections.ObjectModel.ObservableCollection`1[[NINA.Sequencer.Conditions.ISequenceCondition, NINA.Sequencer]], System.ObjectModel",
                       "$values": []
                     },
                     "IsExpanded": true,
                     "Items": {
-                      "$id": "69",
+                      "$id": "25",
                       "$type": "System.Collections.ObjectModel.ObservableCollection`1[[NINA.Sequencer.SequenceItem.ISequenceItem, NINA.Sequencer]], System.ObjectModel",
                       "$values": [
                         {
-                          "$id": "70",
+                          "$id": "26",
                           "$type": "DaleGhent.NINA.PlaneWaveTools.TLE.TLEControl, PlaneWave Tools",
-                          "Line1": "1 26580U 00067A   25307.65283764  .00000101  00000+0  00000+0 0  9992",
-                          "Line2": "2 26580   0.0707  71.4070 0004077 160.3861 271.3748  1.00272040 91636",
-                          "Axis0Distance": 0.42,
-                          "Axis1Distance": -0.0,
+                          "Line1": "{{TLE_LINE1}}",
+                          "Line2": "{{TLE_LINE2}}",
+                          "Axis0Distance": -0.14,
+                          "Axis1Distance": -0.01,
                           "Parent": {
-                            "$ref": "64"
+                            "$ref": "20"
                           },
                           "ErrorBehavior": 0,
                           "Attempts": 1
                         },
                         {
-                          "$id": "71",
+                          "$id": "27",
                           "$type": "NINA.Sequencer.SequenceItem.FilterWheel.SwitchFilter, NINA.Sequencer",
                           "Filter": {
-                            "$ref": "28"
+                            "$id": "28",
+                            "$type": "NINA.Core.Model.Equipment.FilterInfo, NINA.Core",
+                            "_name": "Clear",
+                            "_focusOffset": 0,
+                            "_position": 0,
+                            "_autoFocusExposureTime": -1.0,
+                            "_autoFocusFilter": true,
+                            "FlatWizardFilterSettings": {
+                              "$id": "29",
+                              "$type": "NINA.Core.Model.Equipment.FlatWizardFilterSettings, NINA.Core",
+                              "FlatWizardMode": 0,
+                              "HistogramMeanTarget": 0.5,
+                              "HistogramTolerance": 0.1,
+                              "MaxFlatExposureTime": 30.0,
+                              "MinFlatExposureTime": 0.01,
+                              "MaxAbsoluteFlatDeviceBrightness": 32767,
+                              "MinAbsoluteFlatDeviceBrightness": 0,
+                              "Gain": -1,
+                              "Offset": -1,
+                              "Binning": {
+                                "$id": "30",
+                                "$type": "NINA.Core.Model.Equipment.BinningMode, NINA.Core",
+                                "X": 1,
+                                "Y": 1
+                              }
+                            },
+                            "_autoFocusBinning": {
+                              "$id": "31",
+                              "$type": "NINA.Core.Model.Equipment.BinningMode, NINA.Core",
+                              "X": 1,
+                              "Y": 1
+                            },
+                            "_autoFocusGain": -1,
+                            "_autoFocusOffset": -1
                           },
                           "Parent": {
-                            "$ref": "64"
+                            "$ref": "20"
                           },
                           "ErrorBehavior": 0,
                           "Attempts": 1
                         },
                         {
-                          "$id": "72",
+                          "$id": "32",
                           "$type": "NINA.Sequencer.SequenceItem.Focuser.MoveFocuserAbsolute, NINA.Sequencer",
-                          "Position": 8133,
+                          "Position": {{FOCUS_CLEAR}},
                           "Parent": {
-                            "$ref": "64"
+                            "$ref": "20"
                           },
                           "ErrorBehavior": 0,
                           "Attempts": 1
                         },
                         {
-                          "$id": "73",
+                          "$id": "33",
                           "$type": "NINA.Sequencer.SequenceItem.Imaging.TakeExposure, NINA.Sequencer",
                           "ExposureTime": 1.0,
                           "Gain": -1,
                           "Offset": -1,
                           "Binning": {
-                            "$id": "74",
+                            "$id": "34",
                             "$type": "NINA.Core.Model.Equipment.BinningMode, NINA.Core",
                             "X": 4,
                             "Y": 4
@@ -222,163 +255,295 @@
                           "ImageType": "LIGHT",
                           "ExposureCount": 130,
                           "Parent": {
-                            "$ref": "64"
+                            "$ref": "20"
                           },
                           "ErrorBehavior": 0,
                           "Attempts": 1
                         },
                         {
-                          "$id": "75",
+                          "$id": "35",
                           "$type": "NINA.Sequencer.SequenceItem.FilterWheel.SwitchFilter, NINA.Sequencer",
                           "Filter": {
-                            "$ref": "36"
+                            "$id": "36",
+                            "$type": "NINA.Core.Model.Equipment.FilterInfo, NINA.Core",
+                            "_name": "g",
+                            "_focusOffset": 1086,
+                            "_position": 3,
+                            "_autoFocusExposureTime": -1.0,
+                            "_autoFocusFilter": false,
+                            "FlatWizardFilterSettings": {
+                              "$id": "37",
+                              "$type": "NINA.Core.Model.Equipment.FlatWizardFilterSettings, NINA.Core",
+                              "FlatWizardMode": 0,
+                              "HistogramMeanTarget": 0.5,
+                              "HistogramTolerance": 0.1,
+                              "MaxFlatExposureTime": 30.0,
+                              "MinFlatExposureTime": 0.01,
+                              "MaxAbsoluteFlatDeviceBrightness": 32767,
+                              "MinAbsoluteFlatDeviceBrightness": 0,
+                              "Gain": -1,
+                              "Offset": -1,
+                              "Binning": {
+                                "$id": "38",
+                                "$type": "NINA.Core.Model.Equipment.BinningMode, NINA.Core",
+                                "X": 1,
+                                "Y": 1
+                              }
+                            },
+                            "_autoFocusBinning": {
+                              "$id": "39",
+                              "$type": "NINA.Core.Model.Equipment.BinningMode, NINA.Core",
+                              "X": 1,
+                              "Y": 1
+                            },
+                            "_autoFocusGain": -1,
+                            "_autoFocusOffset": -1
                           },
                           "Parent": {
-                            "$ref": "64"
+                            "$ref": "20"
                           },
                           "ErrorBehavior": 0,
                           "Attempts": 1
                         },
                         {
-                          "$id": "76",
+                          "$id": "40",
                           "$type": "NINA.Sequencer.SequenceItem.Focuser.MoveFocuserAbsolute, NINA.Sequencer",
-                          "Position": 9219,
+                          "Position": {{FOCUS_G}},
                           "Parent": {
-                            "$ref": "64"
+                            "$ref": "20"
                           },
                           "ErrorBehavior": 0,
                           "Attempts": 1
                         },
                         {
-                          "$id": "77",
+                          "$id": "41",
                           "$type": "NINA.Sequencer.SequenceItem.Imaging.TakeExposure, NINA.Sequencer",
                           "ExposureTime": 1.0,
                           "Gain": -1,
                           "Offset": -1,
                           "Binning": {
-                            "$ref": "74"
+                            "$ref": "34"
                           },
                           "ImageType": "LIGHT",
                           "ExposureCount": 130,
                           "Parent": {
-                            "$ref": "64"
+                            "$ref": "20"
                           },
                           "ErrorBehavior": 0,
                           "Attempts": 1
                         },
                         {
-                          "$id": "78",
+                          "$id": "42",
                           "$type": "NINA.Sequencer.SequenceItem.FilterWheel.SwitchFilter, NINA.Sequencer",
                           "Filter": {
-                            "$ref": "43"
+                            "$id": "43",
+                            "$type": "NINA.Core.Model.Equipment.FilterInfo, NINA.Core",
+                            "_name": "r",
+                            "_focusOffset": 1072,
+                            "_position": 2,
+                            "_autoFocusExposureTime": -1.0,
+                            "_autoFocusFilter": false,
+                            "FlatWizardFilterSettings": {
+                              "$id": "44",
+                              "$type": "NINA.Core.Model.Equipment.FlatWizardFilterSettings, NINA.Core",
+                              "FlatWizardMode": 0,
+                              "HistogramMeanTarget": 0.5,
+                              "HistogramTolerance": 0.1,
+                              "MaxFlatExposureTime": 30.0,
+                              "MinFlatExposureTime": 0.01,
+                              "MaxAbsoluteFlatDeviceBrightness": 32767,
+                              "MinAbsoluteFlatDeviceBrightness": 0,
+                              "Gain": -1,
+                              "Offset": -1,
+                              "Binning": {
+                                "$id": "45",
+                                "$type": "NINA.Core.Model.Equipment.BinningMode, NINA.Core",
+                                "X": 1,
+                                "Y": 1
+                              }
+                            },
+                            "_autoFocusBinning": {
+                              "$id": "46",
+                              "$type": "NINA.Core.Model.Equipment.BinningMode, NINA.Core",
+                              "X": 1,
+                              "Y": 1
+                            },
+                            "_autoFocusGain": -1,
+                            "_autoFocusOffset": -1
                           },
                           "Parent": {
-                            "$ref": "64"
+                            "$ref": "20"
                           },
                           "ErrorBehavior": 0,
                           "Attempts": 1
                         },
                         {
-                          "$id": "79",
+                          "$id": "47",
                           "$type": "NINA.Sequencer.SequenceItem.Focuser.MoveFocuserAbsolute, NINA.Sequencer",
-                          "Position": 9205,
+                          "Position": {{FOCUS_R}},
                           "Parent": {
-                            "$ref": "64"
+                            "$ref": "20"
                           },
                           "ErrorBehavior": 0,
                           "Attempts": 1
                         },
                         {
-                          "$id": "80",
+                          "$id": "48",
                           "$type": "NINA.Sequencer.SequenceItem.Imaging.TakeExposure, NINA.Sequencer",
                           "ExposureTime": 1.0,
                           "Gain": -1,
                           "Offset": -1,
                           "Binning": {
-                            "$ref": "74"
+                            "$ref": "34"
                           },
                           "ImageType": "LIGHT",
                           "ExposureCount": 130,
                           "Parent": {
-                            "$ref": "64"
+                            "$ref": "20"
                           },
                           "ErrorBehavior": 0,
                           "Attempts": 1
                         },
                         {
-                          "$id": "81",
+                          "$id": "49",
                           "$type": "NINA.Sequencer.SequenceItem.FilterWheel.SwitchFilter, NINA.Sequencer",
                           "Filter": {
-                            "$ref": "50"
+                            "$id": "50",
+                            "$type": "NINA.Core.Model.Equipment.FilterInfo, NINA.Core",
+                            "_name": "i",
+                            "_focusOffset": 1011,
+                            "_position": 4,
+                            "_autoFocusExposureTime": -1.0,
+                            "_autoFocusFilter": false,
+                            "FlatWizardFilterSettings": {
+                              "$id": "51",
+                              "$type": "NINA.Core.Model.Equipment.FlatWizardFilterSettings, NINA.Core",
+                              "FlatWizardMode": 0,
+                              "HistogramMeanTarget": 0.5,
+                              "HistogramTolerance": 0.1,
+                              "MaxFlatExposureTime": 30.0,
+                              "MinFlatExposureTime": 0.01,
+                              "MaxAbsoluteFlatDeviceBrightness": 32767,
+                              "MinAbsoluteFlatDeviceBrightness": 0,
+                              "Gain": -1,
+                              "Offset": -1,
+                              "Binning": {
+                                "$id": "52",
+                                "$type": "NINA.Core.Model.Equipment.BinningMode, NINA.Core",
+                                "X": 1,
+                                "Y": 1
+                              }
+                            },
+                            "_autoFocusBinning": {
+                              "$id": "53",
+                              "$type": "NINA.Core.Model.Equipment.BinningMode, NINA.Core",
+                              "X": 1,
+                              "Y": 1
+                            },
+                            "_autoFocusGain": -1,
+                            "_autoFocusOffset": -1
                           },
                           "Parent": {
-                            "$ref": "64"
+                            "$ref": "20"
                           },
                           "ErrorBehavior": 0,
                           "Attempts": 1
                         },
                         {
-                          "$id": "82",
+                          "$id": "54",
                           "$type": "NINA.Sequencer.SequenceItem.Focuser.MoveFocuserAbsolute, NINA.Sequencer",
-                          "Position": 9144,
+                          "Position": {{FOCUS_I}},
                           "Parent": {
-                            "$ref": "64"
+                            "$ref": "20"
                           },
                           "ErrorBehavior": 0,
                           "Attempts": 1
                         },
                         {
-                          "$id": "83",
+                          "$id": "55",
                           "$type": "NINA.Sequencer.SequenceItem.Imaging.TakeExposure, NINA.Sequencer",
                           "ExposureTime": 1.0,
                           "Gain": -1,
                           "Offset": -1,
                           "Binning": {
-                            "$ref": "74"
+                            "$ref": "34"
                           },
                           "ImageType": "LIGHT",
                           "ExposureCount": 130,
                           "Parent": {
-                            "$ref": "64"
+                            "$ref": "20"
                           },
                           "ErrorBehavior": 0,
                           "Attempts": 1
                         },
                         {
-                          "$id": "84",
+                          "$id": "56",
                           "$type": "NINA.Sequencer.SequenceItem.FilterWheel.SwitchFilter, NINA.Sequencer",
                           "Filter": {
-                            "$ref": "57"
+                            "$id": "57",
+                            "$type": "NINA.Core.Model.Equipment.FilterInfo, NINA.Core",
+                            "_name": "z-s",
+                            "_focusOffset": 1034,
+                            "_position": 1,
+                            "_autoFocusExposureTime": -1.0,
+                            "_autoFocusFilter": false,
+                            "FlatWizardFilterSettings": {
+                              "$id": "58",
+                              "$type": "NINA.Core.Model.Equipment.FlatWizardFilterSettings, NINA.Core",
+                              "FlatWizardMode": 0,
+                              "HistogramMeanTarget": 0.5,
+                              "HistogramTolerance": 0.1,
+                              "MaxFlatExposureTime": 30.0,
+                              "MinFlatExposureTime": 0.01,
+                              "MaxAbsoluteFlatDeviceBrightness": 32767,
+                              "MinAbsoluteFlatDeviceBrightness": 0,
+                              "Gain": -1,
+                              "Offset": -1,
+                              "Binning": {
+                                "$id": "59",
+                                "$type": "NINA.Core.Model.Equipment.BinningMode, NINA.Core",
+                                "X": 1,
+                                "Y": 1
+                              }
+                            },
+                            "_autoFocusBinning": {
+                              "$id": "60",
+                              "$type": "NINA.Core.Model.Equipment.BinningMode, NINA.Core",
+                              "X": 1,
+                              "Y": 1
+                            },
+                            "_autoFocusGain": -1,
+                            "_autoFocusOffset": -1
                           },
                           "Parent": {
-                            "$ref": "64"
+                            "$ref": "20"
                           },
                           "ErrorBehavior": 0,
                           "Attempts": 1
                         },
                         {
-                          "$id": "85",
+                          "$id": "61",
                           "$type": "NINA.Sequencer.SequenceItem.Focuser.MoveFocuserAbsolute, NINA.Sequencer",
-                          "Position": 9167,
+                          "Position": {{FOCUS_Z}},
                           "Parent": {
-                            "$ref": "64"
+                            "$ref": "20"
                           },
                           "ErrorBehavior": 0,
                           "Attempts": 1
                         },
                         {
-                          "$id": "86",
+                          "$id": "62",
                           "$type": "NINA.Sequencer.SequenceItem.Imaging.TakeExposure, NINA.Sequencer",
                           "ExposureTime": 1.0,
                           "Gain": -1,
                           "Offset": -1,
                           "Binning": {
-                            "$ref": "74"
+                            "$ref": "34"
                           },
                           "ImageType": "LIGHT",
-                          "ExposureCount": 129,
+                          "ExposureCount": 130,
                           "Parent": {
-                            "$ref": "64"
+                            "$ref": "20"
                           },
                           "ErrorBehavior": 0,
                           "Attempts": 1
@@ -386,7 +551,7 @@
                       ]
                     },
                     "Triggers": {
-                      "$id": "87",
+                      "$id": "63",
                       "$type": "System.Collections.ObjectModel.ObservableCollection`1[[NINA.Sequencer.Trigger.ISequenceTrigger, NINA.Sequencer]], System.ObjectModel",
                       "$values": []
                     },

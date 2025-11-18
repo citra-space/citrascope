@@ -1,10 +1,10 @@
-import json
+import base64
 import os
 import time
 
 import requests
 
-from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
+from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter, ObservationStrategy
 
 
 class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
@@ -15,6 +15,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         self,
         LOGGER,
         url_prefix="http://nina:1888/v2/api",
+        scp_command_template="pwd",
         cam_url="/equipment/camera/",
         filterwheel_url="/equipment/filterwheel/",
         focuser_url="/equipment/focuser/",
@@ -25,12 +26,19 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         super().__init__()
         self.logger = LOGGER
         self.url_prefix = url_prefix
+        self.scp_command_template = scp_command_template
         self.cam_url = cam_url
         self.filterwheel_url = filterwheel_url
         self.focuser_url = focuser_url
         self.mount_url = mount_url
         self.safetymon_url = safetymon_url
         self.sequence_url = sequence_url
+
+        self.focus_g = 9000
+        self.focus_r = 9000
+        self.focus_i = 9000
+        self.focus_z = 9000
+        self.focus_clear = 8000
 
     def do_autofocus(self):
 
@@ -48,24 +56,25 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
         time.sleep(60)
 
-        focus_g, psf_g = self._auto_focus_one_filter("g", 9000)
-        self.logger.info("Focus g: ", focus_g, "PSF g: ", psf_g)
-        focus_r, psf_r = self._auto_focus_one_filter("r", 9000)
-        self.logger.info("Focus r: ", focus_r, "PSF r: ", psf_r)
-        focus_i, psf_i = self._auto_focus_one_filter("i", 9000)
-        self.logger.info("Focus i: ", focus_i, "PSF i: ", psf_i)
-        focus_z, psf_z = self._auto_focus_one_filter("z-s", 9000)
-        self.logger.info("Focus z: ", focus_z, "PSF z: ", psf_z)
-        focus_clear, psf_clear = self._auto_focus_one_filter("Clear", 8000)
-        self.logger.info("Focus clear: ", focus_clear, "PSF clear: ", psf_clear)
+        self.focus_g, psf_g = self._auto_focus_one_filter("g", 9000)
+        self.logger.info("Focus g: ", self.focus_g, "PSF g: ", psf_g)
+        self.focus_r, psf_r = self._auto_focus_one_filter("r", 9000)
+        self.logger.info("Focus r: ", self.focus_r, "PSF r: ", psf_r)
+        self.focus_i, psf_i = self._auto_focus_one_filter("i", 9000)
+        self.logger.info("Focus i: ", self.focus_i, "PSF i: ", psf_i)
+        self.focus_z, psf_z = self._auto_focus_one_filter("z-s", 9000)
+        self.logger.info("Focus z: ", self.focus_z, "PSF z: ", psf_z)
+        self.focus_clear, psf_clear = self._auto_focus_one_filter("Clear", 8000)
+        self.logger.info("Focus clear: ", self.focus_clear, "PSF clear: ", psf_clear)
 
-        self.logger.info("Clear: ", focus_clear, " HFR: ", psf_clear)
-        self.logger.info("g: ", focus_g, " HFR: ", psf_g)
-        self.logger.info("r: ", focus_r, " HFR: ", psf_r)
-        self.logger.info("i: ", focus_i, " HFR: ", psf_i)
-        self.logger.info("z: ", focus_z, " HFR: ", psf_z)
+        self.logger.info("Clear: ", self.focus_clear, " HFR: ", psf_clear)
+        self.logger.info("g: ", self.focus_g, " HFR: ", psf_g)
+        self.logger.info("r: ", self.focus_r, " HFR: ", psf_r)
+        self.logger.info("i: ", self.focus_i, " HFR: ", psf_i)
+        self.logger.info("z: ", self.focus_z, " HFR: ", psf_z)
 
     # autofocus routine
+    # TODO: make this configurable as to which filters are where and what's desired to be included
     def _auto_focus_one_filter(self, filtername: str, fcpos: int) -> tuple[int, int]:
         if filtername == "Clear":
             filterId = 0
@@ -208,7 +217,122 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
     def perform_alignment(self, target_ra: float, target_dec: float) -> bool:
         return True  # TODO: make real
 
-    def _get_sequence_template(self) -> dict:
+    def _get_sequence_template(self) -> str:
+        """Load the sequence template as a string for placeholder replacement."""
         template_path = os.path.join(os.path.dirname(__file__), "nina_adv_http_survey_template.json")
         with open(template_path, "r") as f:
-            return json.load(f)
+            return f.read()
+
+    def get_observation_strategy(self) -> ObservationStrategy:
+        return ObservationStrategy.SEQUENCE_TO_CONTROLLER
+
+    def perform_observation_sequence(self, task_id, satellite_data) -> str:
+        """Create and execute a NINA sequence for the given satellite.
+
+        Args:
+            task_id: Unique identifier for this observation task
+            satellite_data: Satellite data including TLE information
+
+        Returns:
+            str: Path to the captured image
+        """
+        elset = satellite_data["most_recent_elset"]
+
+        # Load template as string
+        template_str = self._get_sequence_template()
+
+        # Replace placeholders with actual values
+        tle_data = f"{elset['tle'][0]}\\n{elset['tle'][1]}"
+        template_str = template_str.replace("{{TLE_DATA}}", tle_data)
+        template_str = template_str.replace("{{TLE_LINE1}}", elset["tle"][0])
+        template_str = template_str.replace("{{TLE_LINE2}}", elset["tle"][1])
+        template_str = template_str.replace("{{SATELLITE_NAME}}", satellite_data["name"])
+        template_str = template_str.replace("{{FOCUS_CLEAR}}", str(self.focus_clear))
+        template_str = template_str.replace("{{FOCUS_G}}", str(self.focus_g))
+        template_str = template_str.replace("{{FOCUS_R}}", str(self.focus_r))
+        template_str = template_str.replace("{{FOCUS_I}}", str(self.focus_i))
+        template_str = template_str.replace("{{FOCUS_Z}}", str(self.focus_z))
+
+        # Save customized sequence locally
+        sequence_filename = f"nina_sequence_{task_id}.json"
+        with open(sequence_filename, "w") as f:
+            f.write(template_str)
+
+        self.logger.info(f"Created NINA sequence file: {sequence_filename}")
+
+        # Copy sequence to NINA computer
+        scp_cmd = self.scp_command_template.format(sequence_filename=sequence_filename)
+        result = os.system(scp_cmd)
+        if result != 0:
+            self.logger.error(f"Failed to copy sequence to NINA: exit code {result}")
+            raise RuntimeError("Failed to copy sequence file to NINA")
+
+        self.logger.info(f"Copied sequence to NINA computer")
+
+        # Load and start the sequence
+        sequence_name = sequence_filename.replace(".json", "")
+
+        load_response = requests.get(f"{self.url_prefix}{self.sequence_url}load?sequenceName={sequence_name}").json()
+        if not load_response.get("Success"):
+            self.logger.error(f"Failed to load sequence: {load_response.get('Error')}")
+            raise RuntimeError("Failed to load NINA sequence")
+
+        self.logger.info(f"Loaded sequence: {sequence_name}")
+
+        start_response = requests.get(f"{self.url_prefix}{self.sequence_url}start").json()
+        if not start_response.get("Success"):
+            self.logger.error(f"Failed to start sequence: {start_response.get('Error')}")
+            raise RuntimeError("Failed to start NINA sequence")
+
+        self.logger.info(f"Started NINA sequence")
+
+        timeout_minutes = 30
+        poll_interval_seconds = 15
+        elapsed_time = 0
+        while elapsed_time < timeout_minutes * 60:
+            status_response = requests.get(f"{self.url_prefix}{self.sequence_url}json").json()
+            if not status_response.get("Success"):
+                self.logger.warning(f"Failed to get sequence status: {status_response.get('Error')}")
+
+            if (
+                status_response["Response"][0]["status"] == "Complete"
+            ):  # TODO: verify this is the correct field and value
+                self.logger.info(f"NINA sequence completed")
+                break
+
+            self.logger.info(f"NINA sequence still running... waiting")
+            time.sleep(poll_interval_seconds)
+            elapsed_time += poll_interval_seconds
+        else:
+            self.logger.error(f"NINA sequence did not complete within timeout of {timeout_minutes} minutes")
+            raise RuntimeError("NINA sequence timeout")
+
+        # Get the most recent image from NINA (index 0) in raw FITS format
+        self.logger.info(f"Retrieving image from NINA...")
+        image_response = requests.get(
+            f"{self.url_prefix}/image/0",  # TODO: confirm 0 is the latest image... could be backwards?
+            params={"raw_fits": "true"},
+        )
+
+        if image_response.status_code != 200:
+            self.logger.error(f"Failed to retrieve image: HTTP {image_response.status_code}")
+            raise RuntimeError("Failed to retrieve image from NINA")
+
+        image_data = image_response.json()
+        if not image_data.get("Success"):
+            self.logger.error(f"Failed to get image: {image_data.get('Error')}")
+            raise RuntimeError(f"Failed to get image from NINA: {image_data.get('Error')}")
+
+        # Decode base64 FITS data and save to file
+        fits_base64 = image_data["Response"]
+        fits_bytes = base64.b64decode(fits_base64)
+
+        os.makedirs("images", exist_ok=True)
+        filepath = f"images/citra_task_{task_id}_image.fits"
+
+        with open(filepath, "wb") as f:
+            f.write(fits_bytes)
+
+        self.logger.info(f"Saved FITS image to {filepath}")
+
+        return filepath
