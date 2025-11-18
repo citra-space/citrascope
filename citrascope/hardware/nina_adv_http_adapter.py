@@ -54,26 +54,26 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
         self.logger.info("Slewing to Mirach ...")
         mount_status = requests.get(self.url_prefix + self.mount_url + "slew?ra=" + str(ra) + "&dec=" + str(dec)).json()
-        self.logger.info("Mount ", mount_status["Response"])
+        self.logger.info(f"Mount {mount_status['Response']}")
 
         time.sleep(60)
 
         self.focus_g, psf_g = self._auto_focus_one_filter("g", 9000)
-        self.logger.info("Focus g: ", self.focus_g, "PSF g: ", psf_g)
+        self.logger.info(f"Focus g: {self.focus_g} PSF g: {psf_g}")
         self.focus_r, psf_r = self._auto_focus_one_filter("r", 9000)
-        self.logger.info("Focus r: ", self.focus_r, "PSF r: ", psf_r)
+        self.logger.info(f"Focus r: {self.focus_r} PSF r: {psf_r}")
         self.focus_i, psf_i = self._auto_focus_one_filter("i", 9000)
-        self.logger.info("Focus i: ", self.focus_i, "PSF i: ", psf_i)
+        self.logger.info(f"Focus i: {self.focus_i} PSF i: {psf_i}")
         self.focus_z, psf_z = self._auto_focus_one_filter("z-s", 9000)
-        self.logger.info("Focus z: ", self.focus_z, "PSF z: ", psf_z)
+        self.logger.info(f"Focus z: {self.focus_z} PSF z: {psf_z}")
         self.focus_clear, psf_clear = self._auto_focus_one_filter("Clear", 8000)
-        self.logger.info("Focus clear: ", self.focus_clear, "PSF clear: ", psf_clear)
+        self.logger.info(f"Focus clear: {self.focus_clear} PSF clear: {psf_clear}")
 
-        self.logger.info("Clear: ", self.focus_clear, " HFR: ", psf_clear)
-        self.logger.info("g: ", self.focus_g, " HFR: ", psf_g)
-        self.logger.info("r: ", self.focus_r, " HFR: ", psf_r)
-        self.logger.info("i: ", self.focus_i, " HFR: ", psf_i)
-        self.logger.info("z: ", self.focus_z, " HFR: ", psf_z)
+        self.logger.info(f"Clear: {self.focus_clear} HFR: {psf_clear}")
+        self.logger.info(f"g: {self.focus_g} HFR: {psf_g}")
+        self.logger.info(f"r: {self.focus_r} HFR: {psf_r}")
+        self.logger.info(f"i: {self.focus_i} HFR: {psf_i}")
+        self.logger.info(f"z: {self.focus_z} HFR: {psf_z}")
 
     # autofocus routine
     # TODO: make this configurable as to which filters are where and what's desired to be included
@@ -96,7 +96,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         filterwheel_status = requests.get(
             self.url_prefix + self.filterwheel_url + "change-filter?filterId=" + str(filterId)
         ).json()
-        self.logger.info("Filterwheel ", filterwheel_status["Response"])
+        self.logger.info(f"Filterwheel {filterwheel_status['Response']}")
 
         # get filter value
         filterwheel_status = requests.get(self.url_prefix + self.filterwheel_url + "info").json()
@@ -108,7 +108,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
         self.logger.info("Moving focus ...")
         focuser_status = requests.get(self.url_prefix + self.focuser_url + "move?position=" + str(fcpos)).json()
-        self.logger.info("Focuser ", focuser_status["Response"])
+        self.logger.info(f"Focuser {focuser_status['Response']}")
 
         # get focus value
         focuser_status = requests.get(self.url_prefix + self.focuser_url + "info").json()
@@ -119,11 +119,11 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             focuser_status = requests.get(self.url_prefix + self.focuser_url + "info").json()
             time.sleep(5)
 
-        self.logger.info("Focus value at:", focuser_status["Response"]["Position"])
+        self.logger.info(f"Focus value at: {focuser_status['Response']['Position']}")
         # start autofocus
         self.logger.info("Starting autofocus ...")
         focuser_status = requests.get(self.url_prefix + self.focuser_url + "auto-focus").json()
-        self.logger.info("Focuser ", focuser_status["Response"])
+        self.logger.info(f"Focuser {focuser_status['Response']}")
         focuser_status = requests.get(self.url_prefix + self.focuser_url + "last-af").json()
         while (
             focuser_status["Response"]["Filter"] != filtername
@@ -149,32 +149,36 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             return False
 
     def connect(self) -> bool:
-        # start connection to all equipments
-        self.logger.info("Connecting camera ...")
-        cam_status = requests.get(self.url_prefix + self.cam_url + "connect").json()
-        self.logger.info("Camera ", cam_status["Response"])
+        try:
+            # start connection to all equipments
+            self.logger.info("Connecting camera ...")
+            cam_status = requests.get(self.url_prefix + self.cam_url + "connect").json()
+            self.logger.info(f"Camera {cam_status['Response']}")
 
-        self.logger.info("Starting camera cooling ...")
-        cool_status = requests.get(self.url_prefix + self.cam_url + "cool").json()
-        self.logger.info(cool_status["Response"])
+            self.logger.info("Starting camera cooling ...")
+            cool_status = requests.get(self.url_prefix + self.cam_url + "cool").json()
+            self.logger.info(cool_status["Response"])
 
-        self.logger.info("Connecting filterwheel ...")
-        filterwheel_status = requests.get(self.url_prefix + self.filterwheel_url + "connect").json()
-        self.logger.info("Filterwheel ", filterwheel_status["Response"])
+            self.logger.info("Connecting filterwheel ...")
+            filterwheel_status = requests.get(self.url_prefix + self.filterwheel_url + "connect").json()
+            self.logger.info(f"Filterwheel {filterwheel_status['Response']}")
 
-        self.logger.info("Connecting focuser ...")
-        focuser_status = requests.get(self.url_prefix + self.focuser_url + "connect").json()
-        self.logger.info("Focuser ", focuser_status["Response"])
+            self.logger.info("Connecting focuser ...")
+            focuser_status = requests.get(self.url_prefix + self.focuser_url + "connect").json()
+            self.logger.info(f"Focuser {focuser_status['Response']}")
 
-        self.logger.info("Connecting mount ...")
-        mount_status = requests.get(self.url_prefix + self.mount_url + "connect").json()
-        self.logger.info("Mount ", mount_status["Response"])
+            self.logger.info("Connecting mount ...")
+            mount_status = requests.get(self.url_prefix + self.mount_url + "connect").json()
+            self.logger.info(f"Mount {mount_status['Response']}")
 
-        self.logger.info("Connecting safetymonitor ...")
-        safetymon_status = requests.get(self.url_prefix + self.safetymon_url + "connect").json()
-        self.logger.info("Safetymonitor ", safetymon_status["Response"])
+            self.logger.info("Connecting safetymonitor ...")
+            safetymon_status = requests.get(self.url_prefix + self.safetymon_url + "connect").json()
+            self.logger.info(f"Safetymonitor {safetymon_status['Response']}")
 
-        return True
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to connect to NINA Advanced API: {e}")
+            return False
 
     def disconnect(self):
         pass
