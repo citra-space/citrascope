@@ -36,11 +36,20 @@ class CitraScopeSettings(BaseSettings):
 
     log_level: str = "INFO"
     keep_images: bool = False
+    bypass_autofocus: bool = False
 
-    def __init__(self, dev: bool = False, log_level: str = "INFO", keep_images: bool = False, **kwargs):
+    def __init__(
+        self,
+        dev: bool = False,
+        log_level: str = "INFO",
+        keep_images: bool = False,
+        bypass_autofocus: bool = False,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.log_level = log_level
         self.keep_images = keep_images
+        self.bypass_autofocus = bypass_autofocus
         if dev:
             self.host = "dev.api.citra.space"
             CITRASCOPE_LOGGER.info("Using development API endpoint.")

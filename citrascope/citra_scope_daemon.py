@@ -39,7 +39,10 @@ class CitraScopeDaemon:
             )
         elif self.settings.hardware_adapter == "nina":
             return NinaAdvancedHttpAdapter(
-                CITRASCOPE_LOGGER, self.settings.nina_url_prefix, self.settings.nina_scp_command_template
+                CITRASCOPE_LOGGER,
+                self.settings.nina_url_prefix,
+                self.settings.nina_scp_command_template,
+                bypass_autofocus=self.settings.bypass_autofocus,
             )
         else:
             raise ValueError(

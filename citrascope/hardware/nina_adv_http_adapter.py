@@ -22,6 +22,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         mount_url="/equipment/mount/",
         safetymon_url="/equipment/safetymonitor/",
         sequence_url="/sequence/",
+        bypass_autofocus=False,
     ):
         super().__init__()
         self.logger = LOGGER
@@ -33,6 +34,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         self.mount_url = mount_url
         self.safetymon_url = safetymon_url
         self.sequence_url = sequence_url
+        self.bypass_autofocus = bypass_autofocus
 
         self.focus_g = 9000
         self.focus_r = 9000
@@ -181,7 +183,10 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         return []
 
     def select_telescope(self, device_name: str) -> bool:
-        self.do_autofocus()
+        if not self.bypass_autofocus:
+            self.do_autofocus()
+        else:
+            self.logger.info("Bypassing autofocus routine as requested")
         return True
 
     def get_telescope_direction(self) -> tuple[float, float]:
