@@ -71,8 +71,10 @@ class CitraApiClient(AbstractCitraApiClient):
 
     def upload_image(self, task_id, telescope_id, filepath):
         """Upload an image file for a given task."""
+        file_size = os.path.getsize(filepath)
         signed_url_response = self._request(
-            "POST", f"/my/images?filename=citra_task_{task_id}_image.fits&telescope_id={telescope_id}&task_id={task_id}"
+            "POST",
+            f"/my/images?filename=citra_task_{task_id}_image.fits&telescope_id={telescope_id}&task_id={task_id}&file_size={file_size}",
         )
         if not signed_url_response or "uploadUrl" not in signed_url_response:
             if self.logger:
