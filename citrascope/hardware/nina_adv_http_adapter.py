@@ -250,7 +250,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
     def get_observation_strategy(self) -> ObservationStrategy:
         return ObservationStrategy.SEQUENCE_TO_CONTROLLER
 
-    def perform_observation_sequence(self, task_id, satellite_data) -> str:
+    def perform_observation_sequence(self, task_id, satellite_data) -> str | list[str]:
         """Create and execute a NINA sequence for the given satellite.
 
         Args:
@@ -319,13 +319,15 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
         self.logger.info(f"Started NINA sequence")
 
-        timeout_minutes = 30
+        timeout_minutes = 60
         poll_interval_seconds = 15
         elapsed_time = 0
         while elapsed_time < timeout_minutes * 60:
             status_response = requests.get(f"{self.url_prefix}{self.sequence_url}json").json()
 
-            start_status = status_response["Response"][1]["Status"]
+            start_status = status_response["Response"][1][
+                "Status"
+            ]  # these are also based on the hardcoded template sections for now...
             targets_status = status_response["Response"][2]["Status"]
             end_status = status_response["Response"][3]["Status"]
             self.logger.info(f"Sequence status - Start: {start_status}, Targets: {targets_status}, End: {end_status}")
@@ -341,32 +343,58 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             self.logger.error(f"NINA sequence did not complete within timeout of {timeout_minutes} minutes")
             raise RuntimeError("NINA sequence timeout")
 
-        # Get the most recent image from NINA (index 0) in raw FITS format
-        self.logger.info(f"Retrieving image from NINA...")
-        image_response = requests.get(
-            f"{self.url_prefix}/image/0",  # TODO: confirm 0 is the latest image... could be backwards?
-            params={"raw_fits": "true"},
+        # get a list of images taken in the sequence
+        self.logger.info(f"Retrieving list of images taken in sequence...")
+        images_response = requests.get(f"{self.url_prefix}/image-history?all=true").json()
+        if not images_response.get("Success"):
+            self.logger.error(f"Failed to get images list: {images_response.get('Error')}")
+            raise RuntimeError("Failed to get images list from NINA")
+
+        images_to_download = []
+
+        expected_image_count = 5  # based on the number of filters in the sequence, need to make dynamic later
+        images_found = len(images_response["Response"])
+        self.logger.info(
+            f"Found {images_found} images in NINA image history, considering the last {expected_image_count}"
         )
+        for i in range(images_found - expected_image_count - 1, images_found):
+            possible_image = images_response["Response"][i]
+            if possible_image["TargetName"] == satellite_data["name"]:  # not my favorite
+                images_to_download.append(i)
+            else:
+                self.logger.warning(
+                    f"Image {i} target name {possible_image['TargetName']} does not match expected {satellite_data['name']}"
+                )
 
-        if image_response.status_code != 200:
-            self.logger.error(f"Failed to retrieve image: HTTP {image_response.status_code}")
-            raise RuntimeError("Failed to retrieve image from NINA")
+        # Get the most recent image from NINA (index 0) in raw FITS format
+        filepaths = []
+        for image_index in images_to_download:
+            self.logger.info(f"Retrieving image from NINA...")
+            image_response = requests.get(
+                f"{self.url_prefix}/image/{image_index}",
+                params={"raw_fits": "true"},
+            )
 
-        image_data = image_response.json()
-        if not image_data.get("Success"):
-            self.logger.error(f"Failed to get image: {image_data.get('Error')}")
-            raise RuntimeError(f"Failed to get image from NINA: {image_data.get('Error')}")
+            if image_response.status_code != 200:
+                self.logger.error(f"Failed to retrieve image: HTTP {image_response.status_code}")
+                raise RuntimeError("Failed to retrieve image from NINA")
 
-        # Decode base64 FITS data and save to file
-        fits_base64 = image_data["Response"]
-        fits_bytes = base64.b64decode(fits_base64)
+            image_data = image_response.json()
+            if not image_data.get("Success"):
+                self.logger.error(f"Failed to get image: {image_data.get('Error')}")
+                raise RuntimeError(f"Failed to get image from NINA: {image_data.get('Error')}")
 
-        os.makedirs("images", exist_ok=True)
-        filepath = f"images/citra_task_{task_id}_image.fits"
+            # Decode base64 FITS data and save to file
+            fits_base64 = image_data["Response"]
+            fits_bytes = base64.b64decode(fits_base64)
 
-        with open(filepath, "wb") as f:
-            f.write(fits_bytes)
+            os.makedirs("images", exist_ok=True)
+            filepath = f"images/citra_task_{task_id}_image_{image_index}.fits"
+            filepaths.append(filepath)
 
-        self.logger.info(f"Saved FITS image to {filepath}")
+            with open(filepath, "wb") as f:
+                f.write(fits_bytes)
 
-        return filepath
+            self.logger.info(f"Saved FITS image to {filepath}")
+
+        return filepaths
