@@ -266,7 +266,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         template_str = self._get_sequence_template()
 
         # Replace placeholders with actual values
-        tle_data = f"{elset['tle'][0]}\\n{elset['tle'][1]}"
+        tle_data = f"{elset['tle'][0]}\n{elset['tle'][1]}"
         template_str = template_str.replace("{{TLE_DATA}}", tle_data)
         template_str = template_str.replace("{{TLE_LINE1}}", elset["tle"][0])
         template_str = template_str.replace("{{TLE_LINE2}}", elset["tle"][1])
