@@ -14,11 +14,11 @@ class StaticTelescopeTask(AbstractBaseTelescopeTask):
         filepath = None
         if self.hardware_adapter.get_observation_strategy() == ObservationStrategy.MANUAL:
             self.point_to_lead_position(satellite_data)
-            filepath = self.hardware_adapter.take_image(self.task.id, 2.0)  # 2 second exposure
+            filepaths = self.hardware_adapter.take_image(self.task.id, 2.0)  # 2 second exposure
 
         if self.hardware_adapter.get_observation_strategy() == ObservationStrategy.SEQUENCE_TO_CONTROLLER:
             # Assume the hardware adapter has already pointed the telescope and started tracking
-            filepath = self.hardware_adapter.perform_observation_sequence(self.task.id, satellite_data)
+            filepaths = self.hardware_adapter.perform_observation_sequence(self.task.id, satellite_data)
 
         # Take the image
-        return self.upload_image_and_mark_complete(filepath)
+        return self.upload_image_and_mark_complete(filepaths)

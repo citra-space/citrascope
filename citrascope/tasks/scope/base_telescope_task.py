@@ -57,20 +57,30 @@ class AbstractBaseTelescopeTask(ABC):
         )
         return most_recent_elset
 
-    def upload_image_and_mark_complete(self, filepath):
-        upload_result = self.api_client.upload_image(self.task.id, self.telescope_record["id"], filepath)
-        if upload_result:
-            self.logger.info(f"Successfully uploaded image for task {self.task.id}")
+    def upload_image_and_mark_complete(self, filepath: str | list[str]) -> bool:
+
+        if isinstance(filepath, str):
+            filepaths = [filepath]
         else:
-            self.logger.error(f"Failed to upload image for task {self.task.id}")
-        if not self.keep_images:
-            try:
-                os.remove(filepath)
-                self.logger.info(f"Deleted local image file {filepath} after upload.")
-            except Exception as e:
-                self.logger.error(f"Failed to delete local image file {filepath}: {e}")
-        else:
-            self.logger.info(f"Keeping local image file {filepath} (--keep-images flag set).")
+            filepaths = filepath
+
+        for filepath in filepaths:
+            upload_result = self.api_client.upload_image(self.task.id, self.telescope_record["id"], filepath)
+            if upload_result:
+                self.logger.info(f"Successfully uploaded image {filepath}")
+            else:
+                self.logger.error(f"Failed to upload image {filepath}")
+                return False
+
+            if not self.keep_images:
+                try:
+                    os.remove(filepath)
+                    self.logger.info(f"Deleted local image file {filepath} after upload.")
+                except Exception as e:
+                    self.logger.error(f"Failed to delete local image file {filepath}: {e}")
+            else:
+                self.logger.info(f"Keeping local image file {filepath} (--keep-images flag set).")
+
         marked_complete = self.api_client.mark_task_complete(self.task.id)
         if not marked_complete:
             task_check = self.api_client.get_telescope_tasks(self.telescope_record["id"])
