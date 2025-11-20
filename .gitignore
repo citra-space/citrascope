@@ -141,3 +141,4 @@ citra_image.fits
 /images/*
 .DS_Store
 hip_main.dat
+nina_sequence_*.json

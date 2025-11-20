@@ -153,27 +153,42 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             # start connection to all equipments
             self.logger.info("Connecting camera ...")
             cam_status = requests.get(self.url_prefix + self.cam_url + "connect").json()
-            self.logger.info(f"Camera {cam_status['Response']}")
+            if not cam_status["Success"]:
+                self.logger.error(f"Failed to connect camera: {cam_status.get('Error')}")
+                return False
+            self.logger.info(f"Camera Connected!")
 
             self.logger.info("Starting camera cooling ...")
             cool_status = requests.get(self.url_prefix + self.cam_url + "cool").json()
-            self.logger.info(cool_status["Response"])
+            if not cool_status["Success"]:
+                self.logger.warning(f"Failed to start camera cooling: {cool_status.get('Error')}")
+            else:
+                self.logger.info("Cooler started!")
 
             self.logger.info("Connecting filterwheel ...")
             filterwheel_status = requests.get(self.url_prefix + self.filterwheel_url + "connect").json()
-            self.logger.info(f"Filterwheel {filterwheel_status['Response']}")
+            if not filterwheel_status["Success"]:
+                self.logger.warning(f"Failed to connect filterwheel: {filterwheel_status.get('Error')}")
+            else:
+                self.logger.info(f"Filterwheel Connected!")
 
             self.logger.info("Connecting focuser ...")
             focuser_status = requests.get(self.url_prefix + self.focuser_url + "connect").json()
-            self.logger.info(f"Focuser {focuser_status['Response']}")
+            if not focuser_status["Success"]:
+                self.logger.warning(f"Failed to connect focuser: {focuser_status.get('Error')}")
+            else:
+                self.logger.info(f"Focuser Connected!")
 
             self.logger.info("Connecting mount ...")
             mount_status = requests.get(self.url_prefix + self.mount_url + "connect").json()
-            self.logger.info(f"Mount {mount_status['Response']}")
+            if not mount_status["Success"]:
+                self.logger.error(f"Failed to connect mount: {mount_status.get('Error')}")
+                return False
+            self.logger.info(f"Mount Connected!")
 
-            self.logger.info("Connecting safetymonitor ...")
-            safetymon_status = requests.get(self.url_prefix + self.safetymon_url + "connect").json()
-            self.logger.info(f"Safetymonitor {safetymon_status['Response']}")
+            # self.logger.info("Connecting safetymonitor ...")
+            # safetymon_status = requests.get(self.url_prefix + self.safetymon_url + "connect").json()
+            # self.logger.info(f"Safetymonitor {safetymon_status['Response']}")
 
             return True
         except Exception as e:
@@ -278,6 +293,13 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
         self.logger.info(f"Copied sequence to NINA computer")
 
+        # Clean up local sequence file
+        try:
+            os.remove(sequence_filename)
+            self.logger.info(f"Deleted local sequence file: {sequence_filename}")
+        except OSError as e:
+            self.logger.warning(f"Failed to delete local sequence file {sequence_filename}: {e}")
+
         # Load and start the sequence
         sequence_name = sequence_filename.replace(".json", "")
 
@@ -288,7 +310,9 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
         self.logger.info(f"Loaded sequence: {sequence_name}")
 
-        start_response = requests.get(f"{self.url_prefix}{self.sequence_url}start").json()
+        start_response = requests.get(
+            f"{self.url_prefix}{self.sequence_url}start?skipValidation=true"
+        ).json()  # TODO: try and fix validation issues
         if not start_response.get("Success"):
             self.logger.error(f"Failed to start sequence: {start_response.get('Error')}")
             raise RuntimeError("Failed to start NINA sequence")
@@ -300,16 +324,17 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         elapsed_time = 0
         while elapsed_time < timeout_minutes * 60:
             status_response = requests.get(f"{self.url_prefix}{self.sequence_url}json").json()
-            if not status_response.get("Success"):
-                self.logger.warning(f"Failed to get sequence status: {status_response.get('Error')}")
 
-            if (
-                status_response["Response"][0]["status"] == "Complete"
-            ):  # TODO: verify this is the correct field and value
+            start_status = status_response["Response"][1]["Status"]
+            targets_status = status_response["Response"][2]["Status"]
+            end_status = status_response["Response"][3]["Status"]
+            self.logger.info(f"Sequence status - Start: {start_status}, Targets: {targets_status}, End: {end_status}")
+
+            if start_status == "FINISHED" and targets_status == "FINISHED" and end_status == "FINISHED":
                 self.logger.info(f"NINA sequence completed")
                 break
 
-            self.logger.info(f"NINA sequence still running... waiting")
+            self.logger.info(f"NINA sequence still running, waiting {poll_interval_seconds} seconds...")
             time.sleep(poll_interval_seconds)
             elapsed_time += poll_interval_seconds
         else:

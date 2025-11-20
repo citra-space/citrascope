@@ -71,23 +71,7 @@
               "Conditions": {
                 "$id": "12",
                 "$type": "System.Collections.ObjectModel.ObservableCollection`1[[NINA.Sequencer.Conditions.ISequenceCondition, NINA.Sequencer]], System.ObjectModel",
-                "$values": [
-                  {
-                    "$id": "13",
-                    "$type": "NINA.Sequencer.Conditions.TimeCondition, NINA.Sequencer",
-                    "Hours": 0,
-                    "Minutes": 3,
-                    "MinutesOffset": 0,
-                    "Seconds": 13,
-                    "SelectedProvider": {
-                      "$id": "14",
-                      "$type": "NINA.Sequencer.Utility.DateTimeProvider.TimeProvider, NINA.Sequencer"
-                    },
-                    "Parent": {
-                      "$ref": "11"
-                    }
-                  }
-                ]
+                "$values": []
               },
               "IsExpanded": true,
               "Items": {
