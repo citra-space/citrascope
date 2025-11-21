@@ -70,6 +70,16 @@ By opening this project in VS Code and choosing "Reopen in Container" (or using 
 
 The devcontainer also ensures all required system dependencies (like `cmake`) are installed automatically.
 
+### Python Version
+
+This project requires Python 3.9 or higher, up to Python 3.13. A `.python-version` file is included specifying Python 3.12 as the recommended version. If you use [pyenv](https://github.com/pyenv/pyenv), it will automatically use this version when you enter the project directory.
+
+### If not using the dev container:
+```sh
+python -m venv .venv
+source .venv/bin/activate
+```
+
 ### Installing Development Dependencies
 
 To install development dependencies (for code style, linting, and pre-commit hooks):
