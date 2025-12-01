@@ -17,6 +17,22 @@ Install CitraScope from PyPI:
 pip install citrascope
 ```
 
+### Optional Dependencies
+
+CitraScope supports different hardware adapters through optional dependency groups:
+
+- **INDI adapter** (for Linux-based telescope control):
+  ```sh
+  pip install citrascope[indi]
+  ```
+
+- **All optional dependencies**:
+  ```sh
+  pip install citrascope[all]
+  ```
+
+The base installation without optional dependencies supports the NINA adapter, which works via HTTP API calls and does not require additional Python packages.
+
 This provides the `citrascope` command-line tool. To see available commands:
 
 ```sh

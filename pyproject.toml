@@ -14,16 +14,22 @@ dependencies = [
   "httpx",
   "python-dateutil",
   "types-python-dateutil",
-  "pyindi-client",
   "skyfield",
   "pytest-cov",
-  "pixelemon",
 ]
 
 [project.scripts]
 citrascope = "citrascope.__main__:cli"
 
 [project.optional-dependencies]
+indi = [
+  "pyindi-client",
+  "pixelemon",
+  "plotly", # temp for pixelemon issue
+]
+all = [
+  "citrascope[indi]",
+]
 dev = [
   "black",
   "pre-commit",
@@ -32,6 +38,7 @@ dev = [
   "flake8",
   "flake8-pytest-style",
   "citrascope[test]",
+  "citrascope[indi]",
 ]
 test = ["pytest", "pytest-cov", "mockito"]
 build = ["build"]
