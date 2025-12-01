@@ -28,7 +28,7 @@ indi = [
   "plotly", # temp for pixelemon issue
 ]
 all = [
-  "citrascope[indi]",
+  "citra-citrascope[indi]",
 ]
 dev = [
   "black",
@@ -37,8 +37,7 @@ dev = [
   "mypy",
   "flake8",
   "flake8-pytest-style",
-  "citrascope[test]",
-  "citrascope[indi]",
+  "citra-citrascope[test]",
 ]
 test = ["pytest", "pytest-cov", "mockito"]
 build = ["build"]
