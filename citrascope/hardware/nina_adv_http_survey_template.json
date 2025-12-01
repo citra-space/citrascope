@@ -4,7 +4,7 @@
   "Strategy": {
     "$type": "NINA.Sequencer.Container.ExecutionStrategy.SequentialStrategy, NINA.Sequencer"
   },
-  "Name": "newsequence20251103",
+  "Name": "{{SEQUENCE_NAME}}",
   "Conditions": {
     "$id": "2",
     "$type": "System.Collections.ObjectModel.ObservableCollection`1[[NINA.Sequencer.Conditions.ISequenceCondition, NINA.Sequencer]], System.ObjectModel",
@@ -604,36 +604,7 @@
               "Items": {
                 "$id": "119",
                 "$type": "System.Collections.ObjectModel.ObservableCollection`1[[NINA.Sequencer.SequenceItem.ISequenceItem, NINA.Sequencer]], System.ObjectModel",
-                "$values": [
-                  {
-                    "$id": "120",
-                    "$type": "NINA.Sequencer.SequenceItem.Telescope.ParkScope, NINA.Sequencer",
-                    "Parent": {
-                      "$ref": "117"
-                    },
-                    "ErrorBehavior": 0,
-                    "Attempts": 1
-                  },
-                  {
-                    "$id": "121",
-                    "$type": "NINA.Sequencer.SequenceItem.Camera.WarmCamera, NINA.Sequencer",
-                    "Duration": 0.0,
-                    "Parent": {
-                      "$ref": "117"
-                    },
-                    "ErrorBehavior": 0,
-                    "Attempts": 1
-                  },
-                  {
-                    "$id": "122",
-                    "$type": "NINA.Sequencer.SequenceItem.Connect.DisconnectAllEquipment, NINA.Sequencer",
-                    "Parent": {
-                      "$ref": "117"
-                    },
-                    "ErrorBehavior": 0,
-                    "Attempts": 1
-                  }
-                ]
+                "$values": []
               },
               "Triggers": {
                 "$id": "123",

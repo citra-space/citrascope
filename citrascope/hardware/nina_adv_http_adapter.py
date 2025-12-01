@@ -1,5 +1,6 @@
 import base64
 import os
+import sys
 import time
 
 import requests
@@ -267,6 +268,9 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
         # Replace placeholders with actual values
         tle_data = f"{elset['tle'][0]}\n{elset['tle'][1]}"
+        template_str = template_str.replace(
+            "{{SEQUENCE_NAME}}", f"Citra Target: {satellite_data["name"]}, Task: {task_id}"
+        )
         template_str = template_str.replace("{{TLE_DATA}}", tle_data)
         template_str = template_str.replace("{{TLE_LINE1}}", elset["tle"][0])
         template_str = template_str.replace("{{TLE_LINE2}}", elset["tle"][1])
@@ -289,6 +293,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         result = os.system(scp_cmd)
         if result != 0:
             self.logger.error(f"Failed to copy sequence to NINA: exit code {result}")
+            sys.exit(1)
             raise RuntimeError("Failed to copy sequence file to NINA")
 
         self.logger.info(f"Copied sequence to NINA computer")
