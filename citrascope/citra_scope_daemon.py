@@ -3,7 +3,6 @@ from typing import Optional
 
 from citrascope.api.citra_api_client import AbstractCitraApiClient, CitraApiClient
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
-from citrascope.hardware.indi_adapter import IndiAdapter
 from citrascope.hardware.nina_adv_http_adapter import NinaAdvancedHttpAdapter
 from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.settings._citrascope_settings import CitraScopeSettings
@@ -30,13 +29,24 @@ class CitraScopeDaemon:
     def _create_hardware_adapter(self) -> AbstractAstroHardwareAdapter:
         """Factory method to create the appropriate hardware adapter based on settings."""
         if self.settings.hardware_adapter == "indi":
-            return IndiAdapter(
-                CITRASCOPE_LOGGER,
-                self.settings.indi_server_url,
-                int(self.settings.indi_server_port),
-                self.settings.indi_telescope_name,
-                self.settings.indi_camera_name,
-            )
+            try:
+                from citrascope.hardware.indi_adapter import IndiAdapter
+
+                return IndiAdapter(
+                    CITRASCOPE_LOGGER,
+                    self.settings.indi_server_url,
+                    int(self.settings.indi_server_port),
+                    self.settings.indi_telescope_name,
+                    self.settings.indi_camera_name,
+                )
+            except ImportError as e:
+                CITRASCOPE_LOGGER.error(
+                    f"INDI adapter requested but dependencies not available. "
+                    f"Install with: pip install citrascope[indi]. Error: {e}"
+                )
+                raise RuntimeError(
+                    f"INDI adapter requires additional dependencies. " f"Install with: pip install citrascope[indi]"
+                ) from e
         elif self.settings.hardware_adapter == "nina":
             return NinaAdvancedHttpAdapter(
                 CITRASCOPE_LOGGER,

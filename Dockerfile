@@ -16,7 +16,7 @@ COPY . /app
 
 
 # Upgrade pip and install Python dependencies
-RUN python3 -m pip install --upgrade pip && pip install .
+RUN python3 -m pip install --upgrade pip && pip install .[all]
 
 # Environment variables (can be overridden at runtime)
 ENV CITRASCOPE_PERSONAL_ACCESS_TOKEN=""
