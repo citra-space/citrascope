@@ -9,6 +9,9 @@ class CitraScopeSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="CITRASCOPE_",
         env_nested_delimiter="__",
+        env_file=".env",  # Add this
+        env_file_encoding="utf-8",  # Add this
+        extra="ignore",
     )
 
     # Default to production API
