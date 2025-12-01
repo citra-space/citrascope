@@ -261,7 +261,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             str: Path to the captured image
         """
         elset = satellite_data["most_recent_elset"]
-
+        self.logger.info(f"Using TLE:\n{elset['tle'][0]}\n{elset['tle'][1]}")
         # Load template as string
         template_str = self._get_sequence_template()
 
@@ -318,6 +318,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             raise RuntimeError("Failed to start NINA sequence")
 
         self.logger.info(f"Started NINA sequence")
+        time.sleep(2)
 
         timeout_minutes = 60
         poll_interval_seconds = 15
@@ -357,7 +358,11 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         self.logger.info(
             f"Found {images_found} images in NINA image history, considering the last {expected_image_count}"
         )
-        for i in range(images_found - expected_image_count - 1, images_found):
+
+        # Calculate the starting index for the last N images
+        start_index = max(0, images_found - expected_image_count)
+
+        for i in range(start_index, images_found):
             possible_image = images_response["Response"][i]
             if possible_image["TargetName"] == satellite_data["name"]:  # not my favorite
                 images_to_download.append(i)

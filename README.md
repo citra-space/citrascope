@@ -76,6 +76,7 @@ This project requires Python 3.9 or higher, up to Python 3.13. A `.python-versio
 
 ### If not using the dev container:
 ```sh
+brew install dbus pkg-config glib
 python -m venv .venv
 source .venv/bin/activate
 ```

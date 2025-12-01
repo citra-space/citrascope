@@ -12,7 +12,7 @@
 	// "forwardPorts": [],
 
 	// Use 'postCreateCommand' to run commands after the container is created.
-	"postCreateCommand": "sudo apt-get update && sudo apt-get install -y cmake libdbus-1-dev && python3 -m pip install --upgrade pip && pip3 install pre-commit && pip3 install ."
+	"postCreateCommand": "chmod +x scripts/bootstrap.sh && ./scripts/bootstrap.sh && pip3 install pre-commit"
 
 	// Configure tool-specific properties.
 	// "customizations": {},

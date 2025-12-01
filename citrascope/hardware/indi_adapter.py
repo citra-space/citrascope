@@ -3,12 +3,6 @@ import time
 from pathlib import Path
 
 import PyIndi
-import tetra3
-from pixelemon import Telescope, TelescopeImage, TetraSolver
-from pixelemon.optics import WilliamsMiniCat51
-from pixelemon.optics._base_optical_assembly import BaseOpticalAssembly
-from pixelemon.sensors import IMX174
-from pixelemon.sensors._base_sensor import BaseSensor
 
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter, ObservationStrategy
 
@@ -475,62 +469,7 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
         return ra_rate, dec_rate
 
     def perform_alignment(self, target_ra: float, target_dec: float) -> bool:
-        """
-        Perform plate-solving-based alignment to adjust the telescope's position.
-
-        Args:
-            target_ra (float): The target Right Ascension (RA) in degrees.
-            target_dec (float): The target Declination (Dec) in degrees.
-
-        Returns:
-            bool: True if alignment was successful, False otherwise.
-        """
-        try:
-
-            # take alignment exposure
-            alignment_filename = self.take_image("alignment", 5.0)
-
-            if alignment_filename is None:
-                self.logger.error("Failed to take alignment image.")
-                return False
-
-            # this needs to be made configurable
-            sim_ccd = BaseSensor(
-                x_pixel_count=1280,
-                y_pixel_count=1024,
-                pixel_width=5.86,
-                pixel_height=5.86,
-            )
-            sim_scope = BaseOpticalAssembly(image_circle_diameter=9.61, focal_length=300, focal_ratio=6)
-            telescope = Telescope(sensor=sim_ccd, optics=sim_scope)
-            image = TelescopeImage.from_fits_file(Path(alignment_filename), telescope)
-
-            # this line can be used to read a manually sideloded FITS file for testing
-            # image = TelescopeImage.from_fits_file(Path("images/cosmos-2564_10s.fits"), Telescope(sensor=IMX174(), optics=WilliamsMiniCat51()))
-
-            solve = image.plate_solve
-
-            self.logger.debug(f"Plate solving result: {solve}")
-
-            if solve is None:
-                self.logger.error("Plate solving failed.")
-                return False
-
-            self.logger.info(
-                f"From {solve.number_of_stars} stars, solved RA: {solve.right_ascension:.4f}deg, Solved Dec: {solve.declination:.4f}deg in {solve.solve_time:.2f}ms, "
-                + f"false prob: {solve.false_positive_probability}, est fov: {solve.estimated_horizontal_fov:.3f}"
-            )
-            self._alignment_offset_dec = solve.declination - target_dec
-            self._alignment_offset_ra = solve.right_ascension - target_ra
-
-            self.logger.info(
-                f"Alignment offsets set to RA: {self._alignment_offset_ra} degrees, Dec: {self._alignment_offset_dec} degrees"
-            )
-
-            return True
-        except Exception as e:
-            self.logger.error(f"Error during alignment: {e}")
-            return False
+        return True
 
     def get_observation_strategy(self) -> ObservationStrategy:
         return ObservationStrategy.MANUAL
