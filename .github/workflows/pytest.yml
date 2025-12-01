@@ -21,7 +21,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install .[dev,test,all]
+          pip install .[dev,test,indi,all]
       - name: Run pytest with coverage
         run: |
           pytest -m "not integration" --cov=citrascope --cov-report=term-missing --cov-report=xml --cov-branch
