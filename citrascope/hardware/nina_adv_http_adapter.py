@@ -266,11 +266,11 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         # Load template as string
         template_str = self._get_sequence_template()
 
+        nina_sequence_name = f"Citra Target: {satellite_data["name"]}, Task: {task_id}"
+
         # Replace placeholders with actual values
         tle_data = f"{elset['tle'][0]}\n{elset['tle'][1]}"
-        template_str = template_str.replace(
-            "{{SEQUENCE_NAME}}", f"Citra Target: {satellite_data["name"]}, Task: {task_id}"
-        )
+        template_str = template_str.replace("{{SEQUENCE_NAME}}", nina_sequence_name)
         template_str = template_str.replace("{{TLE_DATA}}", tle_data)
         template_str = template_str.replace("{{TLE_LINE1}}", elset["tle"][0])
         template_str = template_str.replace("{{TLE_LINE2}}", elset["tle"][1])
@@ -325,8 +325,9 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         self.logger.info(f"Started NINA sequence")
 
         timeout_minutes = 60
-        poll_interval_seconds = 15
+        poll_interval_seconds = 10
         elapsed_time = 0
+        status_response = None
         while elapsed_time < timeout_minutes * 60:
             status_response = requests.get(f"{self.url_prefix}{self.sequence_url}json").json()
 
@@ -335,7 +336,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             ]  # these are also based on the hardcoded template sections for now...
             targets_status = status_response["Response"][2]["Status"]
             end_status = status_response["Response"][3]["Status"]
-            self.logger.info(f"Sequence status - Start: {start_status}, Targets: {targets_status}, End: {end_status}")
+            self.logger.debug(f"Sequence status - Start: {start_status}, Targets: {targets_status}, End: {end_status}")
 
             if start_status == "FINISHED" and targets_status == "FINISHED" and end_status == "FINISHED":
                 self.logger.info(f"NINA sequence completed")
@@ -363,13 +364,19 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             f"Found {images_found} images in NINA image history, considering the last {expected_image_count}"
         )
         for i in range(images_found - expected_image_count - 1, images_found):
-            possible_image = images_response["Response"][i]
-            if possible_image["TargetName"] == satellite_data["name"]:  # not my favorite
-                images_to_download.append(i)
-            else:
-                self.logger.warning(
-                    f"Image {i} target name {possible_image['TargetName']} does not match expected {satellite_data['name']}"
-                )
+            images_to_download.append(i)
+            # TODO: add verification that these images correspond to the current sequence, coming soon:
+            # https://github.com/christian-photo/ninaAPI/pull/74
+
+            # possible_image = images_response["Response"][i]
+
+            # # check if filename contains the sequenceName from above
+            # if nina_sequence_name in possible_image['filename']:
+            #     images_to_download.append(i)
+            # else:
+            #     self.logger.warning(
+            #         f"Image {i} target name {possible_image['TargetName']} does not match expected {satellite_data['name']}"
+            #     )
 
         # Get the most recent image from NINA (index 0) in raw FITS format
         filepaths = []
