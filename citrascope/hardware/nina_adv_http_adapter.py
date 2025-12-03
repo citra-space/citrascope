@@ -357,26 +357,19 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             raise RuntimeError("Failed to get images list from NINA")
 
         images_to_download = []
-
         expected_image_count = 5  # based on the number of filters in the sequence, need to make dynamic later
         images_found = len(images_response["Response"])
         self.logger.info(
             f"Found {images_found} images in NINA image history, considering the last {expected_image_count}"
         )
-        for i in range(images_found - expected_image_count - 1, images_found):
+        start_index = max(0, images_found - expected_image_count)
+        end_index = images_found
+        if images_found < expected_image_count:
+            self.logger.warning(f"Fewer images found ({images_found}) than expected ({expected_image_count})")
+        for i in range(start_index, end_index):
             images_to_download.append(i)
-            # TODO: add verification that these images correspond to the current sequence, coming soon:
-            # https://github.com/christian-photo/ninaAPI/pull/74
-
-            # possible_image = images_response["Response"][i]
-
-            # # check if filename contains the sequenceName from above
-            # if nina_sequence_name in possible_image['filename']:
-            #     images_to_download.append(i)
-            # else:
-            #     self.logger.warning(
-            #         f"Image {i} target name {possible_image['TargetName']} does not match expected {satellite_data['name']}"
-            #     )
+        # TODO: add verification that these images correspond to the current sequence, coming soon:
+        # https://github.com/christian-photo/ninaAPI/pull/74
 
         # Get the most recent image from NINA (index 0) in raw FITS format
         filepaths = []
