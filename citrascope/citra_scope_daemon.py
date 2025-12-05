@@ -3,6 +3,7 @@ from typing import Optional
 
 from citrascope.api.citra_api_client import AbstractCitraApiClient, CitraApiClient
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
+from citrascope.hardware.kstars_dbus_adapter import KStarsDBusAdapter
 from citrascope.hardware.nina_adv_http_adapter import NinaAdvancedHttpAdapter
 from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.settings._citrascope_settings import CitraScopeSettings
@@ -54,10 +55,22 @@ class CitraScopeDaemon:
                 self.settings.nina_scp_command_template,
                 bypass_autofocus=self.settings.bypass_autofocus,
             )
+        elif self.settings.hardware_adapter == "kstars":
+            try:
+                return KStarsDBusAdapter(CITRASCOPE_LOGGER)
+            except ImportError as e:
+                CITRASCOPE_LOGGER.error(
+                    f"KStars adapter requested but dependencies not available. "
+                    f"Install with: pip install dbus-python. Error: {e}"
+                )
+                raise RuntimeError(
+                    f"KStars adapter requires additional dependencies. "
+                    f"Install with: pip install dbus-python"
+                ) from e
         else:
             raise ValueError(
                 f"Unknown hardware adapter type: {self.settings.hardware_adapter}. "
-                f"Valid options are: 'indi', 'nina'"
+                f"Valid options are: 'indi', 'nina', 'kstars'"
             )
 
     def run(self):

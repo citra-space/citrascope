@@ -23,7 +23,7 @@ class CitraScopeSettings(BaseSettings):
     telescope_id: str = UNDEFINED_STRING
 
     # Hardware adapter selection
-    hardware_adapter: str = "indi"  # Options: "indi", "nina"
+    hardware_adapter: str = "indi"  # Options: "indi", "nina", "kstars"
 
     # INDI adapter settings
     indi_server_url: str = "localhost"
