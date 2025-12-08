@@ -119,8 +119,8 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             last_completed_autofocus = requests.get(self.url_prefix + self.focuser_url + "last-af").json()
             time.sleep(15)
 
-        autofocused_position = focuser_status["Response"]["CalculatedFocusPoint"]["Position"]
-        autofocused_value = focuser_status["Response"]["CalculatedFocusPoint"]["Value"]
+        autofocused_position = last_completed_autofocus["Response"]["CalculatedFocusPoint"]["Position"]
+        autofocused_value = last_completed_autofocus["Response"]["CalculatedFocusPoint"]["Value"]
 
         self.logger.info(
             f"Autofocus complete for filter {filter_name}: Position {autofocused_position}, HFR {autofocused_value}"
