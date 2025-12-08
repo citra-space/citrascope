@@ -13,6 +13,15 @@
             "justMyCode": false
         },
         {
+            "name": "Python: citrascope dev start, bypass autofocus",
+            "type": "python",
+            "request": "launch",
+            "module": "citrascope",
+            "args": ["--dev", "--bypass-autofocus", "start"],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "Python: citrascope dev start, keep images",
             "type": "python",
             "request": "launch",
