@@ -41,11 +41,6 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         self.bypass_autofocus = bypass_autofocus
 
         self.filter_map = {}
-        self.focus_g = self.DEFAULT_FOCUS_POSITION
-        self.focus_r = self.DEFAULT_FOCUS_POSITION
-        self.focus_i = self.DEFAULT_FOCUS_POSITION
-        self.focus_z = self.DEFAULT_FOCUS_POSITION
-        self.focus_clear = self.DEFAULT_FOCUS_POSITION
 
     def do_autofocus(self):
 
