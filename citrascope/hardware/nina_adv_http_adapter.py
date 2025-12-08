@@ -107,7 +107,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         last_completed_autofocus = requests.get(self.url_prefix + self.focuser_url + "last-af").json()
 
         if not last_completed_autofocus.get("Success"):
-            self.logger.error(f"Failed to start autofocus: {focuser_status.get('Error')}")
+            self.logger.error(f"Failed to start autofocus: {last_completed_autofocus.get('Error')}")
             self.logger.warning("Using default focus position")
             return starting_focus_position
 
