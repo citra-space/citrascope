@@ -41,6 +41,11 @@ class CitraScopeSettings(BaseSettings):
     keep_images: bool = False
     bypass_autofocus: bool = False
 
+    # Task retry configuration
+    max_task_retries: int = 3
+    initial_retry_delay_seconds: int = 30
+    max_retry_delay_seconds: int = 300
+
     def __init__(
         self,
         dev: bool = False,

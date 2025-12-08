@@ -64,8 +64,7 @@ class CitraScopeDaemon:
                     f"Install with: pip install dbus-python. Error: {e}"
                 )
                 raise RuntimeError(
-                    f"KStars adapter requires additional dependencies. "
-                    f"Install with: pip install dbus-python"
+                    f"KStars adapter requires additional dependencies. " f"Install with: pip install dbus-python"
                 ) from e
         else:
             raise ValueError(
@@ -110,6 +109,7 @@ class CitraScopeDaemon:
             CITRASCOPE_LOGGER,
             self.hardware_adapter,
             self.settings.keep_images,
+            self.settings,
         )
         task_manager.start()
 

@@ -115,3 +115,16 @@ class CitraApiClient(AbstractCitraApiClient):
             if self.logger:
                 self.logger.error(f"Failed to mark task {task_id} as complete: {e}")
             return None
+
+    def mark_task_failed(self, task_id):
+        """Mark a task as failed using the API."""
+        try:
+            body = {"status": "Failed"}
+            response = self._request("PUT", f"/tasks/{task_id}", json=body)
+            if self.logger:
+                self.logger.debug(f"Marked task {task_id} as failed: {response}")
+            return response
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Failed to mark task {task_id} as failed: {e}")
+            return None
