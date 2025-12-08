@@ -1,4 +1,5 @@
 import base64
+import json
 import os
 import sys
 import time
@@ -259,6 +260,73 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
     def get_observation_strategy(self) -> ObservationStrategy:
         return ObservationStrategy.SEQUENCE_TO_CONTROLLER
 
+    def _find_by_id(self, data, target_id):
+        """Recursively search for an item with a specific $id in the JSON structure.
+
+        Args:
+            data: The JSON data structure to search (dict, list, or primitive)
+            target_id: The $id value to search for (as string)
+
+        Returns:
+            The item with the matching $id, or None if not found
+        """
+        if isinstance(data, dict):
+            if data.get("$id") == target_id:
+                return data
+            for value in data.values():
+                result = self._find_by_id(value, target_id)
+                if result is not None:
+                    return result
+        elif isinstance(data, list):
+            for item in data:
+                result = self._find_by_id(item, target_id)
+                if result is not None:
+                    return result
+        return None
+
+    def _get_max_id(self, data):
+        """Recursively find the maximum $id value in the JSON structure.
+
+        Args:
+            data: The JSON data structure to search (dict, list, or primitive)
+
+        Returns:
+            The maximum numeric $id value found, or 0 if none found
+        """
+        max_id = 0
+        if isinstance(data, dict):
+            if "$id" in data:
+                try:
+                    max_id = max(max_id, int(data["$id"]))
+                except (ValueError, TypeError):
+                    pass
+            for value in data.values():
+                max_id = max(max_id, self._get_max_id(value))
+        elif isinstance(data, list):
+            for item in data:
+                max_id = max(max_id, self._get_max_id(item))
+        return max_id
+
+    def _update_all_ids(self, data, id_counter):
+        """Recursively update all $id values in a data structure.
+
+        Args:
+            data: The JSON data structure to update (dict, list, or primitive)
+            id_counter: A list with a single integer element [current_id] that gets incremented
+
+        Returns:
+            None (modifies data in place)
+        """
+        if isinstance(data, dict):
+            if "$id" in data:
+                data["$id"] = str(id_counter[0])
+                id_counter[0] += 1
+            for value in data.values():
+                self._update_all_ids(value, id_counter)
+        elif isinstance(data, list):
+            for item in data:
+                self._update_all_ids(item, id_counter)
+
     def perform_observation_sequence(self, task_id, satellite_data) -> str | list[str]:
         """Create and execute a NINA sequence for the given satellite.
 
@@ -271,23 +339,75 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         """
         elset = satellite_data["most_recent_elset"]
 
-        # Load template as string
+        # Load template as JSON
         template_str = self._get_sequence_template()
+        sequence_json = json.loads(template_str)
 
-        nina_sequence_name = f"Citra Target: {satellite_data["name"]}, Task: {task_id}"
+        nina_sequence_name = f"Citra Target: {satellite_data['name']}, Task: {task_id}"
 
-        # Replace placeholders with actual values
+        # Replace basic placeholders
         tle_data = f"{elset['tle'][0]}\n{elset['tle'][1]}"
-        template_str = template_str.replace("{{SEQUENCE_NAME}}", nina_sequence_name)
-        template_str = template_str.replace("{{TLE_DATA}}", tle_data)
-        template_str = template_str.replace("{{TLE_LINE1}}", elset["tle"][0])
-        template_str = template_str.replace("{{TLE_LINE2}}", elset["tle"][1])
-        template_str = template_str.replace("{{SATELLITE_NAME}}", satellite_data["name"])
-        template_str = template_str.replace("{{FOCUS_CLEAR}}", str(self.focus_clear))
-        template_str = template_str.replace("{{FOCUS_G}}", str(self.focus_g))
-        template_str = template_str.replace("{{FOCUS_R}}", str(self.focus_r))
-        template_str = template_str.replace("{{FOCUS_I}}", str(self.focus_i))
-        template_str = template_str.replace("{{FOCUS_Z}}", str(self.focus_z))
+        sequence_json["Name"] = nina_sequence_name
+
+        # Navigate to the TLE container (ID 20 in the template)
+        target_container = self._find_by_id(sequence_json, "20")
+        if not target_container:
+            raise RuntimeError("Could not find TLE container (ID 20) in sequence template")
+
+        target_container["TLEData"] = tle_data
+        target_container["Name"] = satellite_data["name"]
+        target_container["Target"]["TargetName"] = satellite_data["name"]
+
+        # Find the TLE control item and update it
+        tle_items = target_container["Items"]["$values"]
+        for item in tle_items:
+            if item.get("$type") == "DaleGhent.NINA.PlaneWaveTools.TLE.TLEControl, PlaneWave Tools":
+                item["Line1"] = elset["tle"][0]
+                item["Line2"] = elset["tle"][1]
+                break
+
+        # Find the template triplet (filter/focus/expose) - should be items 1, 2, 3
+        # (item 0 is TLE control)
+        template_triplet = tle_items[1:4]  # SwitchFilter, MoveFocuserAbsolute, TakeExposure
+
+        # Clear the items list and rebuild with TLE control + triplets for each filter
+        new_items = [tle_items[0]]  # Keep TLE control as first item
+
+        # Generate triplet for each discovered filter
+        # Find the maximum ID in use and start after it to avoid collisions
+        base_id = self._get_max_id(sequence_json) + 1
+        self.logger.info(f"Starting dynamic ID generation at {base_id}")
+
+        id_counter = [base_id]  # Use list so it can be modified in nested function
+
+        for filter_id, filter_info in self.filter_map.items():
+            filter_name = filter_info["name"]
+            focus_position = filter_info["focus_position"]
+
+            # Create a deep copy of the triplet and update ALL nested IDs
+            filter_triplet = json.loads(json.dumps(template_triplet))
+            self._update_all_ids(filter_triplet, id_counter)
+
+            # Update filter switch (first item in triplet)
+            filter_triplet[0]["Filter"]["_name"] = filter_name
+            filter_triplet[0]["Filter"]["_position"] = filter_id
+
+            # Update focus position (second item in triplet)
+            filter_triplet[1]["Position"] = focus_position
+
+            # Exposure settings (third item) are already set from template
+
+            # Add this triplet to the sequence
+            new_items.extend(filter_triplet)
+
+            self.logger.info(f"Added filter {filter_name} (ID: {filter_id}) with focus position {focus_position}")
+
+        # Update the items list
+        tle_items.clear()
+        tle_items.extend(new_items)
+
+        # Convert back to JSON string
+        template_str = json.dumps(sequence_json, indent=2)
 
         # Save customized sequence locally
         sequence_filename = f"nina_sequence_{task_id}.json"
@@ -365,7 +485,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             raise RuntimeError("Failed to get images list from NINA")
 
         images_to_download = []
-        expected_image_count = 5  # based on the number of filters in the sequence, need to make dynamic later
+        expected_image_count = len(self.filter_map)  # One image per filter
         images_found = len(images_response["Response"])
         self.logger.info(
             f"Found {images_found} images in NINA image history, considering the last {expected_image_count}"
