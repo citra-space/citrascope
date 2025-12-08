@@ -12,6 +12,8 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
     """HTTP adapter for controlling astronomical equipment through N.I.N.A. (Nighttime Imaging 'N' Astronomy) Advanced API.
     https://bump.sh/christian-photo/doc/advanced-api/"""
 
+    DEFAULT_FOCUS_POSITION = 9000
+
     def __init__(
         self,
         LOGGER,
@@ -37,18 +39,17 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         self.sequence_url = sequence_url
         self.bypass_autofocus = bypass_autofocus
 
-        self.focus_g = 9000
-        self.focus_r = 9000
-        self.focus_i = 9000
-        self.focus_z = 9000
-        self.focus_clear = 8000
+        self.filter_map = {}
+        self.focus_g = self.DEFAULT_FOCUS_POSITION
+        self.focus_r = self.DEFAULT_FOCUS_POSITION
+        self.focus_i = self.DEFAULT_FOCUS_POSITION
+        self.focus_z = self.DEFAULT_FOCUS_POSITION
+        self.focus_clear = self.DEFAULT_FOCUS_POSITION
 
     def do_autofocus(self):
 
+        self.logger.info("Performing autofocus routine ...")
         # move telescope to bright star and start autofocus
-        # Vega ra=(18+36/60.+56.68/3600.)*15 dec=(38+47/60.+8.4/3600.)
-        # ra=(18+36/60.+56.68/3600.)*15
-        # dec=(38+47/60.+8.4/3600.)
         # Mirach ra=(1+9/60.+47.45/3600.)*15 dec=(35+37/60.+11.1/3600.)
         ra = (1 + 9 / 60.0 + 47.45 / 3600.0) * 15
         dec = 35 + 37 / 60.0 + 11.1 / 3600.0
@@ -57,86 +58,73 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         mount_status = requests.get(self.url_prefix + self.mount_url + "slew?ra=" + str(ra) + "&dec=" + str(dec)).json()
         self.logger.info(f"Mount {mount_status['Response']}")
 
-        time.sleep(60)
+        # wait for slew to complete
+        while self.telescope_is_moving():
+            self.logger.info("Waiting for mount to finish slewing...")
+            time.sleep(5)
 
-        self.focus_g, psf_g = self._auto_focus_one_filter("g", 9000)
-        self.logger.info(f"Focus g: {self.focus_g} PSF g: {psf_g}")
-        self.focus_r, psf_r = self._auto_focus_one_filter("r", 9000)
-        self.logger.info(f"Focus r: {self.focus_r} PSF r: {psf_r}")
-        self.focus_i, psf_i = self._auto_focus_one_filter("i", 9000)
-        self.logger.info(f"Focus i: {self.focus_i} PSF i: {psf_i}")
-        self.focus_z, psf_z = self._auto_focus_one_filter("z-s", 9000)
-        self.logger.info(f"Focus z: {self.focus_z} PSF z: {psf_z}")
-        self.focus_clear, psf_clear = self._auto_focus_one_filter("Clear", 8000)
-        self.logger.info(f"Focus clear: {self.focus_clear} PSF clear: {psf_clear}")
-
-        self.logger.info(f"Clear: {self.focus_clear} HFR: {psf_clear}")
-        self.logger.info(f"g: {self.focus_g} HFR: {psf_g}")
-        self.logger.info(f"r: {self.focus_r} HFR: {psf_r}")
-        self.logger.info(f"i: {self.focus_i} HFR: {psf_i}")
-        self.logger.info(f"z: {self.focus_z} HFR: {psf_z}")
+        for id, filter in self.filter_map.items():
+            self.logger.info(f"Focusing Filter ID: {id}, Name: {filter['name']}")
+            focus_value = self._auto_focus_one_filter(id, filter["name"])
+            self.filter_map[id]["focus_position"] = focus_value
 
     # autofocus routine
-    # TODO: make this configurable as to which filters are where and what's desired to be included
-    def _auto_focus_one_filter(self, filtername: str, fcpos: int) -> tuple[int, int]:
-        if filtername == "Clear":
-            filterId = 0
-        elif filtername == "g":
-            filterId = 3
-        elif filtername == "r":
-            filterId = 2
-        elif filtername == "i":
-            filterId = 4
-        elif filtername == "z-s":
-            filterId = 1
-        else:
-            self.logger.error("Unknown filter")
-            exit()
+    def _auto_focus_one_filter(self, filter_id, filter_name) -> int:
 
-        self.logger.info("Moving filter ...")
-        filterwheel_status = requests.get(
-            self.url_prefix + self.filterwheel_url + "change-filter?filterId=" + str(filterId)
-        ).json()
-        self.logger.info(f"Filterwheel {filterwheel_status['Response']}")
-
-        # get filter value
-        filterwheel_status = requests.get(self.url_prefix + self.filterwheel_url + "info").json()
-
-        while filterId != filterwheel_status["Response"]["SelectedFilter"]["Id"]:
-            self.logger.info("Waiting filterwheel moving")
+        # change to the requested filter
+        correct_filter_in_place = False
+        while not correct_filter_in_place:
+            requests.get(self.url_prefix + self.filterwheel_url + "change-filter?filterId=" + str(filter_id))
             filterwheel_status = requests.get(self.url_prefix + self.filterwheel_url + "info").json()
-            time.sleep(5)
+            current_filter_id = filterwheel_status["Response"]["SelectedFilter"]["Id"]
+            if current_filter_id == filter_id:
+                correct_filter_in_place = True
+            else:
+                self.logger.info(f"Waiting for filterwheel to change to filter ID {filter_id} ...")
+                time.sleep(5)
 
-        self.logger.info("Moving focus ...")
-        focuser_status = requests.get(self.url_prefix + self.focuser_url + "move?position=" + str(fcpos)).json()
-        self.logger.info(f"Focuser {focuser_status['Response']}")
-
-        # get focus value
-        focuser_status = requests.get(self.url_prefix + self.focuser_url + "info").json()
-        # focuser_status['Response']['Position']
-
-        while fcpos != focuser_status["Response"]["Position"]:
-            self.logger.info("Waiting focus moving")
+        # move to starting focus position
+        self.logger.info("Moving focus to autofocus starting position ...")
+        starting_focus_position = self.DEFAULT_FOCUS_POSITION
+        is_in_starting_position = False
+        while not is_in_starting_position:
+            focuser_status = requests.get(
+                self.url_prefix + self.focuser_url + "move?position=" + str(starting_focus_position)
+            ).json()
             focuser_status = requests.get(self.url_prefix + self.focuser_url + "info").json()
-            time.sleep(5)
+            if int(focuser_status["Response"]["Position"]) == starting_focus_position:
+                is_in_starting_position = True
+            else:
+                self.logger.info("Waiting for focuser to reach starting position ...")
+                time.sleep(5)
 
-        self.logger.info(f"Focus value at: {focuser_status['Response']['Position']}")
         # start autofocus
         self.logger.info("Starting autofocus ...")
         focuser_status = requests.get(self.url_prefix + self.focuser_url + "auto-focus").json()
         self.logger.info(f"Focuser {focuser_status['Response']}")
-        focuser_status = requests.get(self.url_prefix + self.focuser_url + "last-af").json()
+
+        last_completed_autofocus = requests.get(self.url_prefix + self.focuser_url + "last-af").json()
+
+        if not last_completed_autofocus.get("Success"):
+            self.logger.error(f"Failed to start autofocus: {focuser_status.get('Error')}")
+            self.logger.warning("Using default focus position")
+            return starting_focus_position
+
         while (
-            focuser_status["Response"]["Filter"] != filtername
-            or focuser_status["Response"]["InitialFocusPoint"]["Position"] != fcpos
+            last_completed_autofocus["Response"]["Filter"] != filter_name
+            or last_completed_autofocus["Response"]["InitialFocusPoint"]["Position"] != starting_focus_position
         ):
             self.logger.info("Waiting autofocus")
-            focuser_status = requests.get(self.url_prefix + self.focuser_url + "last-af").json()
-            time.sleep(30)
-        return (
-            focuser_status["Response"]["CalculatedFocusPoint"]["Position"],
-            focuser_status["Response"]["CalculatedFocusPoint"]["Value"],
+            last_completed_autofocus = requests.get(self.url_prefix + self.focuser_url + "last-af").json()
+            time.sleep(15)
+
+        autofocused_position = focuser_status["Response"]["CalculatedFocusPoint"]["Position"]
+        autofocused_value = focuser_status["Response"]["CalculatedFocusPoint"]["Value"]
+
+        self.logger.info(
+            f"Autofocus complete for filter {filter_name}: Position {autofocused_position}, HFR {autofocused_value}"
         )
+        return autofocused_position
 
     def _do_point_telescope(self, ra: float, dec: float):
         self.logger.info(f"Slewing to RA: {ra}, Dec: {dec}")
@@ -187,14 +175,38 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
                 return False
             self.logger.info(f"Mount Connected!")
 
-            # self.logger.info("Connecting safetymonitor ...")
-            # safetymon_status = requests.get(self.url_prefix + self.safetymon_url + "connect").json()
-            # self.logger.info(f"Safetymonitor {safetymon_status['Response']}")
+            self.logger.info("Unparking mount ...")
+            mount_status = requests.get(self.url_prefix + self.mount_url + "unpark").json()
+            if not mount_status["Success"]:
+                self.logger.error(f"Failed to unpark mount: {mount_status.get('Error')}")
+                return False
+            self.logger.info(f"Mount Unparked!")
+
+            # make a map of available filters and their focus positions
+            self.discover_filters()
+            if not self.bypass_autofocus:
+                self.do_autofocus()
+            else:
+                self.logger.info("Bypassing autofocus routine as requested")
 
             return True
         except Exception as e:
             self.logger.error(f"Failed to connect to NINA Advanced API: {e}")
             return False
+
+    def discover_filters(self):
+        self.logger.info("Discovering filters ...")
+        filterwheel_info = requests.get(self.url_prefix + self.filterwheel_url + "info").json()
+        if not filterwheel_info.get("Success"):
+            self.logger.error(f"Failed to get filterwheel info: {filterwheel_info.get('Error')}")
+            raise RuntimeError("Failed to get filterwheel info")
+
+        filters = filterwheel_info["Response"]["AvailableFilters"]
+        for filter in filters:
+            filter_id = filter["Id"]
+            filter_name = filter["Name"]
+            self.filter_map[filter_id] = {"name": filter_name, "focus_position": self.DEFAULT_FOCUS_POSITION}
+            self.logger.info(f"Discovered filter: {filter_name} with ID: {filter_id}")
 
     def disconnect(self):
         pass
@@ -203,10 +215,6 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         return []
 
     def select_telescope(self, device_name: str) -> bool:
-        if not self.bypass_autofocus:
-            self.do_autofocus()
-        else:
-            self.logger.info("Bypassing autofocus routine as requested")
         return True
 
     def get_telescope_direction(self) -> tuple[float, float]:
