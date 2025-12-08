@@ -367,9 +367,18 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         if images_found < expected_image_count:
             self.logger.warning(f"Fewer images found ({images_found}) than expected ({expected_image_count})")
         for i in range(start_index, end_index):
-            images_to_download.append(i)
-        # TODO: add verification that these images correspond to the current sequence, coming soon:
-        # https://github.com/christian-photo/ninaAPI/pull/74
+            possible_image = images_response["Response"][i]
+            if "Filename" not in possible_image:
+                self.logger.warning(f"Image {i} has no filename in response, skipping")
+                continue
+
+            if task_id in possible_image["Filename"]:
+                self.logger.info(f"Image {i} {possible_image['Filename']} matches task id, adding to download list")
+                images_to_download.append(i)
+            else:
+                self.logger.warning(
+                    f"Image {i} {possible_image['Filename']} does not match task id, skipping. Please make sure NINA is configured to include Sequence Title in image filenames under Options > Imaging > Image File Pattern."
+                )
 
         # Get the most recent image from NINA (index 0) in raw FITS format
         filepaths = []
