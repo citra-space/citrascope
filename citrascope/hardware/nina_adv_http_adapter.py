@@ -151,8 +151,6 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
     def connect(self) -> bool:
         try:
-            # TODO: add a check to see if the required plugins are installed in NINA: GET /application/plugins
-
             # start connection to all equipments
             self.logger.info("Connecting camera ...")
             cam_status = requests.get(self.url_prefix + self.cam_url + "connect").json()
