@@ -1,4 +1,5 @@
 import base64
+import json
 import os
 import sys
 import time
@@ -11,6 +12,8 @@ from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHar
 class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
     """HTTP adapter for controlling astronomical equipment through N.I.N.A. (Nighttime Imaging 'N' Astronomy) Advanced API.
     https://bump.sh/christian-photo/doc/advanced-api/"""
+
+    DEFAULT_FOCUS_POSITION = 9000
 
     def __init__(
         self,
@@ -37,18 +40,12 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         self.sequence_url = sequence_url
         self.bypass_autofocus = bypass_autofocus
 
-        self.focus_g = 9000
-        self.focus_r = 9000
-        self.focus_i = 9000
-        self.focus_z = 9000
-        self.focus_clear = 8000
+        self.filter_map = {}
 
     def do_autofocus(self):
 
+        self.logger.info("Performing autofocus routine ...")
         # move telescope to bright star and start autofocus
-        # Vega ra=(18+36/60.+56.68/3600.)*15 dec=(38+47/60.+8.4/3600.)
-        # ra=(18+36/60.+56.68/3600.)*15
-        # dec=(38+47/60.+8.4/3600.)
         # Mirach ra=(1+9/60.+47.45/3600.)*15 dec=(35+37/60.+11.1/3600.)
         ra = (1 + 9 / 60.0 + 47.45 / 3600.0) * 15
         dec = 35 + 37 / 60.0 + 11.1 / 3600.0
@@ -57,86 +54,73 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         mount_status = requests.get(self.url_prefix + self.mount_url + "slew?ra=" + str(ra) + "&dec=" + str(dec)).json()
         self.logger.info(f"Mount {mount_status['Response']}")
 
-        time.sleep(60)
+        # wait for slew to complete
+        while self.telescope_is_moving():
+            self.logger.info("Waiting for mount to finish slewing...")
+            time.sleep(5)
 
-        self.focus_g, psf_g = self._auto_focus_one_filter("g", 9000)
-        self.logger.info(f"Focus g: {self.focus_g} PSF g: {psf_g}")
-        self.focus_r, psf_r = self._auto_focus_one_filter("r", 9000)
-        self.logger.info(f"Focus r: {self.focus_r} PSF r: {psf_r}")
-        self.focus_i, psf_i = self._auto_focus_one_filter("i", 9000)
-        self.logger.info(f"Focus i: {self.focus_i} PSF i: {psf_i}")
-        self.focus_z, psf_z = self._auto_focus_one_filter("z-s", 9000)
-        self.logger.info(f"Focus z: {self.focus_z} PSF z: {psf_z}")
-        self.focus_clear, psf_clear = self._auto_focus_one_filter("Clear", 8000)
-        self.logger.info(f"Focus clear: {self.focus_clear} PSF clear: {psf_clear}")
-
-        self.logger.info(f"Clear: {self.focus_clear} HFR: {psf_clear}")
-        self.logger.info(f"g: {self.focus_g} HFR: {psf_g}")
-        self.logger.info(f"r: {self.focus_r} HFR: {psf_r}")
-        self.logger.info(f"i: {self.focus_i} HFR: {psf_i}")
-        self.logger.info(f"z: {self.focus_z} HFR: {psf_z}")
+        for id, filter in self.filter_map.items():
+            self.logger.info(f"Focusing Filter ID: {id}, Name: {filter['name']}")
+            focus_value = self._auto_focus_one_filter(id, filter["name"])
+            self.filter_map[id]["focus_position"] = focus_value
 
     # autofocus routine
-    # TODO: make this configurable as to which filters are where and what's desired to be included
-    def _auto_focus_one_filter(self, filtername: str, fcpos: int) -> tuple[int, int]:
-        if filtername == "Clear":
-            filterId = 0
-        elif filtername == "g":
-            filterId = 3
-        elif filtername == "r":
-            filterId = 2
-        elif filtername == "i":
-            filterId = 4
-        elif filtername == "z-s":
-            filterId = 1
-        else:
-            self.logger.error("Unknown filter")
-            exit()
+    def _auto_focus_one_filter(self, filter_id, filter_name) -> int:
 
-        self.logger.info("Moving filter ...")
-        filterwheel_status = requests.get(
-            self.url_prefix + self.filterwheel_url + "change-filter?filterId=" + str(filterId)
-        ).json()
-        self.logger.info(f"Filterwheel {filterwheel_status['Response']}")
-
-        # get filter value
-        filterwheel_status = requests.get(self.url_prefix + self.filterwheel_url + "info").json()
-
-        while filterId != filterwheel_status["Response"]["SelectedFilter"]["Id"]:
-            self.logger.info("Waiting filterwheel moving")
+        # change to the requested filter
+        correct_filter_in_place = False
+        while not correct_filter_in_place:
+            requests.get(self.url_prefix + self.filterwheel_url + "change-filter?filterId=" + str(filter_id))
             filterwheel_status = requests.get(self.url_prefix + self.filterwheel_url + "info").json()
-            time.sleep(5)
+            current_filter_id = filterwheel_status["Response"]["SelectedFilter"]["Id"]
+            if current_filter_id == filter_id:
+                correct_filter_in_place = True
+            else:
+                self.logger.info(f"Waiting for filterwheel to change to filter ID {filter_id} ...")
+                time.sleep(5)
 
-        self.logger.info("Moving focus ...")
-        focuser_status = requests.get(self.url_prefix + self.focuser_url + "move?position=" + str(fcpos)).json()
-        self.logger.info(f"Focuser {focuser_status['Response']}")
-
-        # get focus value
-        focuser_status = requests.get(self.url_prefix + self.focuser_url + "info").json()
-        # focuser_status['Response']['Position']
-
-        while fcpos != focuser_status["Response"]["Position"]:
-            self.logger.info("Waiting focus moving")
+        # move to starting focus position
+        self.logger.info("Moving focus to autofocus starting position ...")
+        starting_focus_position = self.DEFAULT_FOCUS_POSITION
+        is_in_starting_position = False
+        while not is_in_starting_position:
+            focuser_status = requests.get(
+                self.url_prefix + self.focuser_url + "move?position=" + str(starting_focus_position)
+            ).json()
             focuser_status = requests.get(self.url_prefix + self.focuser_url + "info").json()
-            time.sleep(5)
+            if int(focuser_status["Response"]["Position"]) == starting_focus_position:
+                is_in_starting_position = True
+            else:
+                self.logger.info("Waiting for focuser to reach starting position ...")
+                time.sleep(5)
 
-        self.logger.info(f"Focus value at: {focuser_status['Response']['Position']}")
         # start autofocus
         self.logger.info("Starting autofocus ...")
         focuser_status = requests.get(self.url_prefix + self.focuser_url + "auto-focus").json()
         self.logger.info(f"Focuser {focuser_status['Response']}")
-        focuser_status = requests.get(self.url_prefix + self.focuser_url + "last-af").json()
+
+        last_completed_autofocus = requests.get(self.url_prefix + self.focuser_url + "last-af").json()
+
+        if not last_completed_autofocus.get("Success"):
+            self.logger.error(f"Failed to start autofocus: {last_completed_autofocus.get('Error')}")
+            self.logger.warning("Using default focus position")
+            return starting_focus_position
+
         while (
-            focuser_status["Response"]["Filter"] != filtername
-            or focuser_status["Response"]["InitialFocusPoint"]["Position"] != fcpos
+            last_completed_autofocus["Response"]["Filter"] != filter_name
+            or last_completed_autofocus["Response"]["InitialFocusPoint"]["Position"] != starting_focus_position
         ):
             self.logger.info("Waiting autofocus")
-            focuser_status = requests.get(self.url_prefix + self.focuser_url + "last-af").json()
-            time.sleep(30)
-        return (
-            focuser_status["Response"]["CalculatedFocusPoint"]["Position"],
-            focuser_status["Response"]["CalculatedFocusPoint"]["Value"],
+            last_completed_autofocus = requests.get(self.url_prefix + self.focuser_url + "last-af").json()
+            time.sleep(15)
+
+        autofocused_position = last_completed_autofocus["Response"]["CalculatedFocusPoint"]["Position"]
+        autofocused_value = last_completed_autofocus["Response"]["CalculatedFocusPoint"]["Value"]
+
+        self.logger.info(
+            f"Autofocus complete for filter {filter_name}: Position {autofocused_position}, HFR {autofocused_value}"
         )
+        return autofocused_position
 
     def _do_point_telescope(self, ra: float, dec: float):
         self.logger.info(f"Slewing to RA: {ra}, Dec: {dec}")
@@ -187,14 +171,38 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
                 return False
             self.logger.info(f"Mount Connected!")
 
-            # self.logger.info("Connecting safetymonitor ...")
-            # safetymon_status = requests.get(self.url_prefix + self.safetymon_url + "connect").json()
-            # self.logger.info(f"Safetymonitor {safetymon_status['Response']}")
+            self.logger.info("Unparking mount ...")
+            mount_status = requests.get(self.url_prefix + self.mount_url + "unpark").json()
+            if not mount_status["Success"]:
+                self.logger.error(f"Failed to unpark mount: {mount_status.get('Error')}")
+                return False
+            self.logger.info(f"Mount Unparked!")
+
+            # make a map of available filters and their focus positions
+            self.discover_filters()
+            if not self.bypass_autofocus:
+                self.do_autofocus()
+            else:
+                self.logger.info("Bypassing autofocus routine as requested")
 
             return True
         except Exception as e:
             self.logger.error(f"Failed to connect to NINA Advanced API: {e}")
             return False
+
+    def discover_filters(self):
+        self.logger.info("Discovering filters ...")
+        filterwheel_info = requests.get(self.url_prefix + self.filterwheel_url + "info").json()
+        if not filterwheel_info.get("Success"):
+            self.logger.error(f"Failed to get filterwheel info: {filterwheel_info.get('Error')}")
+            raise RuntimeError("Failed to get filterwheel info")
+
+        filters = filterwheel_info["Response"]["AvailableFilters"]
+        for filter in filters:
+            filter_id = filter["Id"]
+            filter_name = filter["Name"]
+            self.filter_map[filter_id] = {"name": filter_name, "focus_position": self.DEFAULT_FOCUS_POSITION}
+            self.logger.info(f"Discovered filter: {filter_name} with ID: {filter_id}")
 
     def disconnect(self):
         pass
@@ -203,10 +211,6 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         return []
 
     def select_telescope(self, device_name: str) -> bool:
-        if not self.bypass_autofocus:
-            self.do_autofocus()
-        else:
-            self.logger.info("Bypassing autofocus routine as requested")
         return True
 
     def get_telescope_direction(self) -> tuple[float, float]:
@@ -251,6 +255,73 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
     def get_observation_strategy(self) -> ObservationStrategy:
         return ObservationStrategy.SEQUENCE_TO_CONTROLLER
 
+    def _find_by_id(self, data, target_id):
+        """Recursively search for an item with a specific $id in the JSON structure.
+
+        Args:
+            data: The JSON data structure to search (dict, list, or primitive)
+            target_id: The $id value to search for (as string)
+
+        Returns:
+            The item with the matching $id, or None if not found
+        """
+        if isinstance(data, dict):
+            if data.get("$id") == target_id:
+                return data
+            for value in data.values():
+                result = self._find_by_id(value, target_id)
+                if result is not None:
+                    return result
+        elif isinstance(data, list):
+            for item in data:
+                result = self._find_by_id(item, target_id)
+                if result is not None:
+                    return result
+        return None
+
+    def _get_max_id(self, data):
+        """Recursively find the maximum $id value in the JSON structure.
+
+        Args:
+            data: The JSON data structure to search (dict, list, or primitive)
+
+        Returns:
+            The maximum numeric $id value found, or 0 if none found
+        """
+        max_id = 0
+        if isinstance(data, dict):
+            if "$id" in data:
+                try:
+                    max_id = max(max_id, int(data["$id"]))
+                except (ValueError, TypeError):
+                    pass
+            for value in data.values():
+                max_id = max(max_id, self._get_max_id(value))
+        elif isinstance(data, list):
+            for item in data:
+                max_id = max(max_id, self._get_max_id(item))
+        return max_id
+
+    def _update_all_ids(self, data, id_counter):
+        """Recursively update all $id values in a data structure.
+
+        Args:
+            data: The JSON data structure to update (dict, list, or primitive)
+            id_counter: A list with a single integer element [current_id] that gets incremented
+
+        Returns:
+            None (modifies data in place)
+        """
+        if isinstance(data, dict):
+            if "$id" in data:
+                data["$id"] = str(id_counter[0])
+                id_counter[0] += 1
+            for value in data.values():
+                self._update_all_ids(value, id_counter)
+        elif isinstance(data, list):
+            for item in data:
+                self._update_all_ids(item, id_counter)
+
     def perform_observation_sequence(self, task_id, satellite_data) -> str | list[str]:
         """Create and execute a NINA sequence for the given satellite.
 
@@ -263,23 +334,75 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         """
         elset = satellite_data["most_recent_elset"]
 
-        # Load template as string
+        # Load template as JSON
         template_str = self._get_sequence_template()
+        sequence_json = json.loads(template_str)
 
-        nina_sequence_name = f"Citra Target: {satellite_data["name"]}, Task: {task_id}"
+        nina_sequence_name = f"Citra Target: {satellite_data['name']}, Task: {task_id}"
 
-        # Replace placeholders with actual values
+        # Replace basic placeholders
         tle_data = f"{elset['tle'][0]}\n{elset['tle'][1]}"
-        template_str = template_str.replace("{{SEQUENCE_NAME}}", nina_sequence_name)
-        template_str = template_str.replace("{{TLE_DATA}}", tle_data)
-        template_str = template_str.replace("{{TLE_LINE1}}", elset["tle"][0])
-        template_str = template_str.replace("{{TLE_LINE2}}", elset["tle"][1])
-        template_str = template_str.replace("{{SATELLITE_NAME}}", satellite_data["name"])
-        template_str = template_str.replace("{{FOCUS_CLEAR}}", str(self.focus_clear))
-        template_str = template_str.replace("{{FOCUS_G}}", str(self.focus_g))
-        template_str = template_str.replace("{{FOCUS_R}}", str(self.focus_r))
-        template_str = template_str.replace("{{FOCUS_I}}", str(self.focus_i))
-        template_str = template_str.replace("{{FOCUS_Z}}", str(self.focus_z))
+        sequence_json["Name"] = nina_sequence_name
+
+        # Navigate to the TLE container (ID 20 in the template)
+        target_container = self._find_by_id(sequence_json, "20")
+        if not target_container:
+            raise RuntimeError("Could not find TLE container (ID 20) in sequence template")
+
+        target_container["TLEData"] = tle_data
+        target_container["Name"] = satellite_data["name"]
+        target_container["Target"]["TargetName"] = satellite_data["name"]
+
+        # Find the TLE control item and update it
+        tle_items = target_container["Items"]["$values"]
+        for item in tle_items:
+            if item.get("$type") == "DaleGhent.NINA.PlaneWaveTools.TLE.TLEControl, PlaneWave Tools":
+                item["Line1"] = elset["tle"][0]
+                item["Line2"] = elset["tle"][1]
+                break
+
+        # Find the template triplet (filter/focus/expose) - should be items 1, 2, 3
+        # (item 0 is TLE control)
+        template_triplet = tle_items[1:4]  # SwitchFilter, MoveFocuserAbsolute, TakeExposure
+
+        # Clear the items list and rebuild with TLE control + triplets for each filter
+        new_items = [tle_items[0]]  # Keep TLE control as first item
+
+        # Generate triplet for each discovered filter
+        # Find the maximum ID in use and start after it to avoid collisions
+        base_id = self._get_max_id(sequence_json) + 1
+        self.logger.info(f"Starting dynamic ID generation at {base_id}")
+
+        id_counter = [base_id]  # Use list so it can be modified in nested function
+
+        for filter_id, filter_info in self.filter_map.items():
+            filter_name = filter_info["name"]
+            focus_position = filter_info["focus_position"]
+
+            # Create a deep copy of the triplet and update ALL nested IDs
+            filter_triplet = json.loads(json.dumps(template_triplet))
+            self._update_all_ids(filter_triplet, id_counter)
+
+            # Update filter switch (first item in triplet)
+            filter_triplet[0]["Filter"]["_name"] = filter_name
+            filter_triplet[0]["Filter"]["_position"] = filter_id
+
+            # Update focus position (second item in triplet)
+            filter_triplet[1]["Position"] = focus_position
+
+            # Exposure settings (third item) are already set from template
+
+            # Add this triplet to the sequence
+            new_items.extend(filter_triplet)
+
+            self.logger.info(f"Added filter {filter_name} (ID: {filter_id}) with focus position {focus_position}")
+
+        # Update the items list
+        tle_items.clear()
+        tle_items.extend(new_items)
+
+        # Convert back to JSON string
+        template_str = json.dumps(sequence_json, indent=2)
 
         # Save customized sequence locally
         sequence_filename = f"nina_sequence_{task_id}.json"
@@ -357,7 +480,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             raise RuntimeError("Failed to get images list from NINA")
 
         images_to_download = []
-        expected_image_count = 5  # based on the number of filters in the sequence, need to make dynamic later
+        expected_image_count = len(self.filter_map)  # One image per filter
         images_found = len(images_response["Response"])
         self.logger.info(
             f"Found {images_found} images in NINA image history, considering the last {expected_image_count}"
