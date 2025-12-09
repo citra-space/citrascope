@@ -21,11 +21,13 @@ class TaskManager:
         logger,
         hardware_adapter: AbstractAstroHardwareAdapter,
         keep_images: bool = False,
+        settings=None,
     ):
         self.api_client = api_client
         self.telescope_record = telescope_record
         self.ground_station_record = ground_station_record
         self.logger = logger
+        self.settings = settings
         self.task_heap = []  # min-heap by start time
         self.task_ids = set()
         self.hardware_adapter = hardware_adapter
@@ -33,6 +35,8 @@ class TaskManager:
         self._stop_event = threading.Event()
         self.current_task_id = None  # Track currently executing task
         self.keep_images = keep_images
+        self.task_retry_counts = {}  # Track retry attempts per task ID
+        self.task_last_failure = {}  # Track last failure timestamp per task ID
 
     def poll_tasks(self):
         while not self._stop_event.is_set():
@@ -110,9 +114,49 @@ class TaskManager:
                             self.logger.info(f"Completed observation task {tid} successfully.")
                             heapq.heappop(self.task_heap)
                             self.task_ids.discard(tid)
+                            # Clean up retry tracking for successful task
+                            self.task_retry_counts.pop(tid, None)
+                            self.task_last_failure.pop(tid, None)
                             completed += 1
                         else:
-                            self.logger.error(f"Observation task {tid} failed.")
+                            # Task failed - implement retry logic with exponential backoff
+                            retry_count = self.task_retry_counts.get(tid, 0)
+                            max_retries = self.settings.max_task_retries if self.settings else 3
+
+                            if retry_count >= max_retries:
+                                # Max retries exceeded - permanently fail the task
+                                self.logger.error(
+                                    f"Observation task {tid} failed after {retry_count} retries. Permanently failing."
+                                )
+                                heapq.heappop(self.task_heap)
+                                self.task_ids.discard(tid)
+                                # Clean up retry tracking
+                                self.task_retry_counts.pop(tid, None)
+                                self.task_last_failure.pop(tid, None)
+                                # Mark task as failed in API
+                                try:
+                                    self.api_client.mark_task_failed(tid)
+                                except Exception as e:
+                                    self.logger.error(f"Failed to mark task {tid} as failed in API: {e}")
+                            else:
+                                # Retry with exponential backoff
+                                self.task_retry_counts[tid] = retry_count + 1
+                                self.task_last_failure[tid] = now
+
+                                # Calculate backoff delay: initial_delay * 2^retry_count, capped at max_delay
+                                initial_delay = self.settings.initial_retry_delay_seconds if self.settings else 30
+                                max_delay = self.settings.max_retry_delay_seconds if self.settings else 300
+                                backoff_delay = min(initial_delay * (2**retry_count), max_delay)
+
+                                # Update task start time in heap to retry after backoff delay
+                                _, stop_epoch, _, task = heapq.heappop(self.task_heap)
+                                new_start_time = now + backoff_delay
+                                heapq.heappush(self.task_heap, (new_start_time, stop_epoch, tid, task))
+
+                                self.logger.warning(
+                                    f"Observation task {tid} failed (attempt {retry_count + 1}/{max_retries}). "
+                                    f"Retrying in {backoff_delay} seconds at {datetime.fromtimestamp(new_start_time).isoformat()}"
+                                )
 
                 if completed > 0:
                     self.logger.info(self._heap_summary("Completed tasks"))

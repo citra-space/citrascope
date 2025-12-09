@@ -23,7 +23,7 @@ class CitraScopeSettings(BaseSettings):
     telescope_id: str = UNDEFINED_STRING
 
     # Hardware adapter selection
-    hardware_adapter: str = "indi"  # Options: "indi", "nina"
+    hardware_adapter: str = "indi"  # Options: "indi", "nina", "kstars"
 
     # INDI adapter settings
     indi_server_url: str = "localhost"
@@ -40,6 +40,11 @@ class CitraScopeSettings(BaseSettings):
     log_level: str = "INFO"
     keep_images: bool = False
     bypass_autofocus: bool = False
+
+    # Task retry configuration
+    max_task_retries: int = 3
+    initial_retry_delay_seconds: int = 30
+    max_retry_delay_seconds: int = 300
 
     def __init__(
         self,

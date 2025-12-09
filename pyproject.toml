@@ -27,8 +27,11 @@ indi = [
   "pixelemon",
   "plotly", # temp for pixelemon issue
 ]
+kstars = [
+  "dbus-python",
+]
 all = [
-  "citra-citrascope[indi]",
+  "citra-citrascope[indi,kstars]",
 ]
 dev = [
   "black",
