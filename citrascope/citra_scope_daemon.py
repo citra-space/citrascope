@@ -8,6 +8,7 @@ from citrascope.hardware.nina_adv_http_adapter import NinaAdvancedHttpAdapter
 from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.settings._citrascope_settings import CitraScopeSettings
 from citrascope.tasks.runner import TaskManager
+from citrascope.web.server import CitraScopeWebServer
 
 
 class CitraScopeDaemon:
@@ -16,6 +17,9 @@ class CitraScopeDaemon:
         settings: CitraScopeSettings,
         api_client: Optional[AbstractCitraApiClient] = None,
         hardware_adapter: Optional[AbstractAstroHardwareAdapter] = None,
+        enable_web: bool = True,
+        web_host: str = "0.0.0.0",
+        web_port: int = 24872,
     ):
         self.settings = settings
         CITRASCOPE_LOGGER.setLevel(self.settings.log_level)
@@ -26,6 +30,13 @@ class CitraScopeDaemon:
             CITRASCOPE_LOGGER,
         )
         self.hardware_adapter = hardware_adapter or self._create_hardware_adapter()
+        self.enable_web = enable_web
+        self.web_server = None
+        self.task_manager = None
+
+        # Create web server instance if enabled
+        if self.enable_web:
+            self.web_server = CitraScopeWebServer(daemon=self, host=web_host, port=web_port)
 
     def _create_hardware_adapter(self) -> AbstractAstroHardwareAdapter:
         """Factory method to create the appropriate hardware adapter based on settings."""
@@ -76,6 +87,12 @@ class CitraScopeDaemon:
         CITRASCOPE_LOGGER.info(f"CitraAPISettings host is {self.settings.host}")
         CITRASCOPE_LOGGER.info(f"CitraAPISettings telescope_id is {self.settings.telescope_id}")
 
+        # Start web server FIRST if enabled, so users can monitor the startup process
+        if self.enable_web:
+            self.web_server.start()
+            CITRASCOPE_LOGGER.info(f"Web interface available at http://{self.web_server.host}:{self.web_server.port}")
+            CITRASCOPE_LOGGER.info("Web server started. Proceeding with hardware connections...")
+
         # check api for valid key, telescope and ground station
         if not self.api_client.does_api_server_accept_key():
             CITRASCOPE_LOGGER.error("Aborting: could not authenticate with Citra API.")
@@ -102,7 +119,7 @@ class CitraScopeDaemon:
             f"Hardware connected. Slew rate: {self.hardware_adapter.scope_slew_rate_degrees_per_second} deg/sec"
         )
 
-        task_manager = TaskManager(
+        self.task_manager = TaskManager(
             self.api_client,
             citra_telescope_record,
             ground_station,
@@ -111,7 +128,7 @@ class CitraScopeDaemon:
             self.settings.keep_images,
             self.settings,
         )
-        task_manager.start()
+        self.task_manager.start()
 
         CITRASCOPE_LOGGER.info("Starting telescope task daemon... (press Ctrl+C to exit)")
         try:
@@ -119,4 +136,4 @@ class CitraScopeDaemon:
                 time.sleep(1)
         except KeyboardInterrupt:
             CITRASCOPE_LOGGER.info("Shutting down daemon.")
-            task_manager.stop()
+            self.task_manager.stop()

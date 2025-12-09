@@ -19,9 +19,11 @@ def cli(ctx, dev, log_level, keep_images, bypass_autofocus):
 
 
 @cli.command("start")
+@click.option("--web-host", default="0.0.0.0", help="Web server host address (default: 0.0.0.0)")
+@click.option("--web-port", default=24872, type=int, help="Web server port (default: 24872)")
 @click.pass_context
-def start(ctx):
-    daemon = CitraScopeDaemon(ctx.obj["settings"])
+def start(ctx, web_host, web_port):
+    daemon = CitraScopeDaemon(ctx.obj["settings"], enable_web=True, web_host=web_host, web_port=web_port)
     daemon.run()
 
 

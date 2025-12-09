@@ -1,0 +1,213 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background: #0d1117;
+    min-height: 100vh;
+    padding: 20px;
+    color: #c9d1d9;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+header {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.4);
+}
+
+h1 {
+    color: #ffffff;
+    margin-bottom: 10px;
+}
+
+.status-indicator {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.status-connected {
+    background: #3fb950;
+    box-shadow: 0 0 10px #3fb950;
+}
+
+.status-disconnected {
+    background: #f85149;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.4);
+}
+
+.card h2 {
+    color: #ffffff;
+    margin-bottom: 15px;
+    font-size: 1.2em;
+    border-bottom: 2px solid #30363d;
+    padding-bottom: 10px;
+}
+
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #21262d;
+}
+
+.info-label {
+    color: #8b949e;
+    font-weight: 500;
+}
+
+.info-value {
+    color: #c9d1d9;
+    font-weight: 600;
+}
+
+.task-list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.task-item {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 5px;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+.task-id {
+    font-family: monospace;
+    color: #58a6ff;
+    font-size: 0.9em;
+}
+
+.config-section {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.4);
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+label {
+    display: block;
+    color: #c9d1d9;
+    font-weight: 500;
+    margin-bottom: 5px;
+}
+
+input, select {
+    width: 100%;
+    padding: 8px 12px;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 5px;
+    font-size: 1em;
+    color: #c9d1d9;
+}
+
+input:focus, select:focus {
+    outline: none;
+    border-color: #58a6ff;
+}
+
+button {
+    background: #238636;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    font-size: 1em;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+button:hover {
+    background: #2ea043;
+}
+
+.log-container {
+    background: #0d1117;
+    color: #c9d1d9;
+    border: 1px solid #30363d;
+    border-radius: 5px;
+    padding: 15px;
+    font-family: monospace;
+    font-size: 0.85em;
+    max-height: 400px;
+    overflow-y: auto;
+    line-height: 1.5;
+}
+
+/* Dark scrollbar for log container */
+.log-container::-webkit-scrollbar {
+    width: 12px;
+}
+
+.log-container::-webkit-scrollbar-track {
+    background: #0d1117;
+    border-radius: 5px;
+}
+
+.log-container::-webkit-scrollbar-thumb {
+    background: #30363d;
+    border-radius: 5px;
+}
+
+.log-container::-webkit-scrollbar-thumb:hover {
+    background: #484f58;
+}
+
+/* Dark scrollbar for task list */
+.task-list::-webkit-scrollbar {
+    width: 12px;
+}
+
+.task-list::-webkit-scrollbar-track {
+    background: #0d1117;
+    border-radius: 5px;
+}
+
+.task-list::-webkit-scrollbar-thumb {
+    background: #30363d;
+    border-radius: 5px;
+}
+
+.task-list::-webkit-scrollbar-thumb:hover {
+    background: #484f58;
+}
+
+.timestamp {
+    color: #8b949e;
+    font-size: 0.85em;
+}
