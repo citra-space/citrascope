@@ -7,16 +7,16 @@ from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHar
 class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
     """Adapter for controlling astronomical equipment through KStars via DBus."""
 
-    def __init__(self, LOGGER, bus_name: str = "org.kde.kstars"):
+    def __init__(self, logger, bus_name: str = "org.kde.kstars"):
         """
         Initialize the KStars DBus adapter.
 
         Args:
-            LOGGER: Logger instance for logging messages
+            logger: Logger instance for logging messages
             bus_name: The DBus bus name for KStars (default: "org.kde.kstars")
         """
         super().__init__()
-        self.logger = LOGGER
+        self.logger = logger
         self.bus_name = bus_name
         self.bus = None
         self.kstars = None
