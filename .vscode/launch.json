@@ -5,7 +5,7 @@
     "configurations": [
         {
             "name": "Python: citrascope dev start",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "module": "citrascope",
             "args": ["--dev", "start"],
@@ -14,7 +14,7 @@
         },
         {
             "name": "Python: citrascope dev start, bypass autofocus",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "module": "citrascope",
             "args": ["--dev", "--bypass-autofocus", "start"],
@@ -23,7 +23,7 @@
         },
         {
             "name": "Python: citrascope dev start, keep images",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "module": "citrascope",
             "args": ["--dev", "--keep-images", "start"],
@@ -32,7 +32,7 @@
         },
         {
             "name": "Python: citrascope dev start DEBUG logging",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "module": "citrascope",
             "args": ["--dev", "--log-level", "DEBUG", "start"],
