@@ -33,6 +33,8 @@ class CitraScopeDaemon:
         self.enable_web = enable_web
         self.web_server = None
         self.task_manager = None
+        self.ground_station = None
+        self.telescope_record = None
 
         # Create web server instance if enabled
         if self.enable_web:
@@ -102,11 +104,13 @@ class CitraScopeDaemon:
         if not citra_telescope_record:
             CITRASCOPE_LOGGER.error("Aborting: telescope_id is not valid on the server.")
             return
+        self.telescope_record = citra_telescope_record
 
         ground_station = self.api_client.get_ground_station(citra_telescope_record["groundStationId"])
         if not ground_station:
             CITRASCOPE_LOGGER.error("Aborting: could not get ground station info from the server.")
             return
+        self.ground_station = ground_station
 
         # connect to hardware server
         CITRASCOPE_LOGGER.info(f"Connecting to hardware with {type(self.hardware_adapter).__name__}...")

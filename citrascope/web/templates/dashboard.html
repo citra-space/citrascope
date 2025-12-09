@@ -9,13 +9,20 @@
 <body>
     <div class="container">
         <header>
-            <h1>🔭 CitraScope</h1>
-            <p>
-                <span class="status-indicator" id="wsStatus"></span>
-                <span id="wsStatusText">Connecting...</span>
-                <span id="reconnectInfo" style="margin-left: 10px; color: #718096; font-size: 0.9em;"></span>
-                <span style="margin-left: 20px;" class="timestamp" id="lastUpdate"></span>
-            </p>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h1>🔭 CitraScope</h1>
+                    <p>
+                        <span class="status-indicator" id="wsStatus"></span>
+                        <span id="wsStatusText">Connecting...</span>
+                        <span id="reconnectInfo" style="margin-left: 10px; color: #718096; font-size: 0.9em;"></span>
+                        <span style="margin-left: 20px;" class="timestamp" id="lastUpdate"></span>
+                    </p>
+                </div>
+                <div>
+                    <a id="taskScopeButton" href="#" target="_blank" style="display: none; padding: 12px 24px; background-color: #4299e1; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 1.1em;">Task My Scope</a>
+                </div>
+            </div>
         </header>
 
         <div class="grid">
@@ -44,7 +51,7 @@
             </div>
 
             <div class="card">
-                <h2>Telescope Position</h2>
+                <h2>Telescope</h2>
                 <div class="info-row">
                     <span class="info-label">Right Ascension</span>
                     <span class="info-value" id="telescopeRA">-</span>
@@ -52,6 +59,10 @@
                 <div class="info-row">
                     <span class="info-label">Declination</span>
                     <span class="info-value" id="telescopeDEC">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Ground Station</span>
+                    <span class="info-value" id="groundStationName">-</span>
                 </div>
             </div>
 

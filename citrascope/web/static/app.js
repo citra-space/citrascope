@@ -128,6 +128,23 @@ function updateStatus(status) {
         document.getElementById('telescopeDEC').textContent = status.telescope_dec.toFixed(4) + '°';
     }
 
+    // Update ground station information
+    const gsNameEl = document.getElementById('groundStationName');
+    const taskScopeButton = document.getElementById('taskScopeButton');
+
+    if (status.ground_station_name && status.ground_station_url) {
+        gsNameEl.innerHTML = `<a href="${status.ground_station_url}" target="_blank" style="color: #4299e1; text-decoration: none;">${status.ground_station_name} ↗</a>`;
+        // Update the Task My Scope button
+        taskScopeButton.href = status.ground_station_url;
+        taskScopeButton.style.display = 'inline-block';
+    } else if (status.ground_station_name) {
+        gsNameEl.textContent = status.ground_station_name;
+        taskScopeButton.style.display = 'none';
+    } else {
+        gsNameEl.textContent = '-';
+        taskScopeButton.style.display = 'none';
+    }
+
     if (status.last_update) {
         const date = new Date(status.last_update);
         document.getElementById('lastUpdate').textContent = `Last update: ${date.toLocaleTimeString()}`;

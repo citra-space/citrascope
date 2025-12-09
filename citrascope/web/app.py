@@ -26,6 +26,9 @@ class SystemStatus(BaseModel):
     hardware_adapter: str = "unknown"
     telescope_ra: Optional[float] = None
     telescope_dec: Optional[float] = None
+    ground_station_id: Optional[str] = None
+    ground_station_name: Optional[str] = None
+    ground_station_url: Optional[str] = None
     last_update: str = ""
 
 
@@ -242,6 +245,23 @@ class CitraScopeWebApp:
                 self.status.current_task = task_manager.current_task_id
                 with task_manager.heap_lock:
                     self.status.tasks_pending = len(task_manager.task_heap)
+
+            # Get ground station information from daemon (available after API validation)
+            if hasattr(self.daemon, "ground_station") and self.daemon.ground_station:
+                gs_record = self.daemon.ground_station
+                gs_id = gs_record.get("id")
+                gs_name = gs_record.get("name", "Unknown")
+
+                # Build the URL based on the API host (dev vs prod)
+                api_host = self.daemon.settings.host
+                if "dev." in api_host:
+                    base_url = "https://dev.app.citra.space"
+                else:
+                    base_url = "https://app.citra.space"
+
+                self.status.ground_station_id = gs_id
+                self.status.ground_station_name = gs_name
+                self.status.ground_station_url = f"{base_url}/ground-stations/{gs_id}" if gs_id else None
 
             self.status.last_update = datetime.now().isoformat()
 
