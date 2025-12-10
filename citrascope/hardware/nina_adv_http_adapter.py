@@ -439,7 +439,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
         # POST the sequence
 
-        self.logger.info(f"POSTing NINA sequence")
+        self.logger.info(f"Posting NINA sequence")
         post_response = requests.post(f"{self.url_prefix}{self.sequence_url}load", json=sequence_json).json()
         if not post_response.get("Success"):
             self.logger.error(f"Failed to post sequence: {post_response.get('Error')}")
