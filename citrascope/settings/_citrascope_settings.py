@@ -33,9 +33,6 @@ class CitraScopeSettings(BaseSettings):
 
     # NINA Advanced API adapter settings
     nina_url_prefix: str = "http://nina:1888/v2/api"
-    nina_scp_command_template: str = (
-        "pwd"  # system command to copy files to NINA computer, default just prints working directory
-    )
 
     log_level: str = "INFO"
     keep_images: bool = False
