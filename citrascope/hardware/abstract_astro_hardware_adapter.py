@@ -1,6 +1,14 @@
 import math
 from abc import ABC, abstractmethod
 from enum import Enum
+from typing import Optional, TypedDict
+
+
+class SettingSchemaEntry(TypedDict, total=False):
+    name: str
+    type: str  # e.g., 'float', 'int', 'str', 'bool'
+    default: Optional[object]
+    description: str
 
 
 class ObservationStrategy(Enum):
@@ -9,6 +17,21 @@ class ObservationStrategy(Enum):
 
 
 class AbstractAstroHardwareAdapter(ABC):
+    @abstractmethod
+    def get_settings_schema(self) -> list[SettingSchemaEntry]:
+        """
+        Return a schema describing configurable settings for this hardware adapter.
+
+        Each setting is described as a SettingSchemaEntry TypedDict with keys:
+            - name (str): The setting's name
+            - type (str): The expected Python type (e.g., 'float', 'int', 'str', 'bool')
+            - default (optional): The default value
+            - description (str): Human-readable description of the setting
+
+        Returns:
+            list[SettingSchemaEntry]: List of setting schema entries.
+        """
+        pass
 
     logger = None  # Optional logger, can be set by subclasses
 
