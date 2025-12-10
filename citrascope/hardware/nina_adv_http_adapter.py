@@ -404,7 +404,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         # Generate triplet for each discovered filter
         # Find the maximum ID in use and start after it to avoid collisions
         base_id = self._get_max_id(sequence_json) + 1
-        self.logger.info(f"Starting dynamic ID generation at {base_id}")
+        self.logger.debug(f"Starting dynamic ID generation at {base_id}")
 
         id_counter = [base_id]  # Use list so it can be modified in nested function
 
@@ -503,7 +503,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
                 continue
 
             if task_id in possible_image["Filename"]:
-                self.logger.info(f"Image {i} {possible_image['Filename']} matches task id, adding to download list")
+                self.logger.info(f"Image {i} {possible_image['Filename']} matches task id")
                 images_to_download.append(i)
             else:
                 self.logger.warning(
@@ -513,7 +513,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         # Get the most recent image from NINA (index 0) in raw FITS format
         filepaths = []
         for image_index in images_to_download:
-            self.logger.info(f"Retrieving image from NINA...")
+            self.logger.debug(f"Retrieving image from NINA...")
             image_response = requests.get(
                 f"{self.url_prefix}/image/{image_index}",
                 params={"raw_fits": "true"},

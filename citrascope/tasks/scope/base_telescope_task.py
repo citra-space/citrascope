@@ -75,7 +75,7 @@ class AbstractBaseTelescopeTask(ABC):
             if not self.keep_images:
                 try:
                     os.remove(filepath)
-                    self.logger.info(f"Deleted local image file {filepath} after upload.")
+                    self.logger.debug(f"Deleted local image file {filepath} after upload.")
                 except Exception as e:
                     self.logger.error(f"Failed to delete local image file {filepath}: {e}")
             else:
