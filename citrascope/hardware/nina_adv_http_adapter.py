@@ -20,7 +20,6 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         self,
         LOGGER,
         url_prefix="http://nina:1888/v2/api",
-        scp_command_template="pwd",
         cam_url="/equipment/camera/",
         filterwheel_url="/equipment/filterwheel/",
         focuser_url="/equipment/focuser/",
@@ -32,7 +31,6 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         super().__init__()
         self.logger = LOGGER
         self.url_prefix = url_prefix
-        self.scp_command_template = scp_command_template
         self.cam_url = cam_url
         self.filterwheel_url = filterwheel_url
         self.focuser_url = focuser_url
@@ -439,39 +437,15 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         # Convert back to JSON string
         template_str = json.dumps(sequence_json, indent=2)
 
-        # Save customized sequence locally
-        sequence_filename = f"nina_sequence_{task_id}.json"
-        with open(sequence_filename, "w") as f:
-            f.write(template_str)
+        # POST the sequence
 
-        self.logger.info(f"Created NINA sequence file: {sequence_filename}")
+        self.logger.info(f"POSTing NINA sequence")
+        post_response = requests.post(f"{self.url_prefix}{self.sequence_url}load", json=sequence_json).json()
+        if not post_response.get("Success"):
+            self.logger.error(f"Failed to post sequence: {post_response.get('Error')}")
+            raise RuntimeError("Failed to post NINA sequence")
 
-        # Copy sequence to NINA computer
-        scp_cmd = self.scp_command_template.format(sequence_filename=sequence_filename)
-        result = os.system(scp_cmd)
-        if result != 0:
-            self.logger.error(f"Failed to copy sequence to NINA: exit code {result}")
-            sys.exit(1)
-            raise RuntimeError("Failed to copy sequence file to NINA")
-
-        self.logger.info(f"Copied sequence to NINA computer")
-
-        # Clean up local sequence file
-        try:
-            os.remove(sequence_filename)
-            self.logger.info(f"Deleted local sequence file: {sequence_filename}")
-        except OSError as e:
-            self.logger.warning(f"Failed to delete local sequence file {sequence_filename}: {e}")
-
-        # Load and start the sequence
-        sequence_name = sequence_filename.replace(".json", "")
-
-        load_response = requests.get(f"{self.url_prefix}{self.sequence_url}load?sequenceName={sequence_name}").json()
-        if not load_response.get("Success"):
-            self.logger.error(f"Failed to load sequence: {load_response.get('Error')}")
-            raise RuntimeError("Failed to load NINA sequence")
-
-        self.logger.info(f"Loaded sequence: {sequence_name}")
+        self.logger.info(f"Loaded sequence to NINA, starting sequence...")
 
         start_response = requests.get(
             f"{self.url_prefix}{self.sequence_url}start?skipValidation=true"
@@ -479,8 +453,6 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         if not start_response.get("Success"):
             self.logger.error(f"Failed to start sequence: {start_response.get('Error')}")
             raise RuntimeError("Failed to start NINA sequence")
-
-        self.logger.info(f"Started NINA sequence")
 
         timeout_minutes = 60
         poll_interval_seconds = 10
