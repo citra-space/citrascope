@@ -1,7 +1,11 @@
 import base64
 import time
 
-from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter, ObservationStrategy
+from citrascope.hardware.abstract_astro_hardware_adapter import (
+    AbstractAstroHardwareAdapter,
+    ObservationStrategy,
+    SettingSchemaEntry,
+)
 
 
 class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
@@ -24,6 +28,19 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         self.mount = None
         self.camera = None
         self.scheduler = None
+
+    def get_settings_schema(self) -> list[SettingSchemaEntry]:
+        """
+        Return a schema describing configurable settings for the KStars DBus adapter.
+        """
+        return [
+            {
+                "name": "bus_name",
+                "type": "str",
+                "default": "org.kde.kstars",
+                "description": "D-Bus service name for KStars",
+            }
+        ]
 
     def _do_point_telescope(self, ra: float, dec: float):
         raise NotImplementedError

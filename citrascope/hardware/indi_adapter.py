@@ -10,7 +10,11 @@ from pixelemon.optics._base_optical_assembly import BaseOpticalAssembly
 from pixelemon.sensors import IMX174
 from pixelemon.sensors._base_sensor import BaseSensor
 
-from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter, ObservationStrategy
+from citrascope.hardware.abstract_astro_hardware_adapter import (
+    AbstractAstroHardwareAdapter,
+    ObservationStrategy,
+    SettingSchemaEntry,
+)
 
 
 # The IndiClient class which inherits from the module PyIndi.BaseClient class
@@ -38,6 +42,32 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
         self.camera_name = camera_name
 
         # TetraSolver.high_memory()
+
+    def get_settings_schema(self) -> list[SettingSchemaEntry]:
+        """
+        Return a schema describing configurable settings for the INDI adapter.
+        """
+        return [
+            {
+                "name": "host",
+                "type": "str",
+                "default": "localhost",
+                "description": "INDI server hostname or IP address",
+            },
+            {"name": "port", "type": "int", "default": 7624, "description": "INDI server port"},
+            {
+                "name": "telescope_name",
+                "type": "str",
+                "default": "",
+                "description": "Name of the telescope device (optional)",
+            },
+            {
+                "name": "camera_name",
+                "type": "str",
+                "default": "",
+                "description": "Name of the camera device (optional)",
+            },
+        ]
 
     def newDevice(self, d):
         """Emmited when a new device is created from INDI server."""
