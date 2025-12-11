@@ -104,11 +104,15 @@ function updateWSStatus(connected, reconnectInfo = '') {
     const reconnectEl = document.getElementById('reconnectInfo');
 
     if (connected) {
-        statusEl.className = 'status-indicator status-connected';
+        statusEl.className = 'd-inline-block rounded-circle me-1 bg-success';
+        statusEl.style.width = '0.9em';
+        statusEl.style.height = '0.9em';
         textEl.textContent = 'Connected';
         reconnectEl.textContent = '';
     } else {
-        statusEl.className = 'status-indicator status-disconnected';
+        statusEl.className = 'd-inline-block rounded-circle me-1 bg-danger';
+        statusEl.style.width = '0.9em';
+        statusEl.style.height = '0.9em';
         textEl.textContent = 'Disconnected';
         reconnectEl.textContent = reconnectInfo;
     }
@@ -203,18 +207,22 @@ function stripAnsiCodes(text) {
     return text.replace(/\x1B\[\d+m/g, '').replace(/\[\d+m/g, '');
 }
 
-function appendLog(log) {
-    const logContainer = document.getElementById('logContainer');
-    const logEntry = document.createElement('div');
-    logEntry.style.marginBottom = '4px';
-
-    const levelColor = {
+function levelColor(level) {
+    return {
         'DEBUG': '#a0aec0',
         'INFO': '#48bb78',
         'WARNING': '#f6ad55',
         'ERROR': '#f56565',
         'CRITICAL': '#c53030'
-    }[log.level] || '#e2e8f0';
+    }[level] || '#e2e8f0'
+}
+
+function appendLog(log) {
+    const logContainer = document.getElementById('logContainer');
+    const logEntry = document.createElement('div');
+    logEntry.style.marginBottom = '4px';
+
+    const levelColorValue = levelColor(log.level);
 
     const timestamp = new Date(log.timestamp).toLocaleTimeString();
 
@@ -223,7 +231,7 @@ function appendLog(log) {
 
     logEntry.innerHTML = `
         <span style="color: #a0aec0;">${timestamp}</span>
-        <span style="color: ${levelColor}; font-weight: bold; margin: 0 8px;">${log.level}</span>
+        <span style="color: ${levelColorValue}; font-weight: bold; margin: 0 8px;">${log.level}</span>
         <span style="color: #e2e8f0;">${cleanMessage}</span>
     `;
 
@@ -272,61 +280,47 @@ async function saveConfig() {
 
 
 
-// --- Roll-up Terminal Overlay Logic ---
+// --- Roll-up Terminal Overlay Logic (Bootstrap Accordion) ---
 let isLogExpanded = false;
 let latestLog = null;
 
-function setLogTerminalState(expanded) {
-    const rollup = document.getElementById('rollupTerminal');
-    isLogExpanded = expanded;
-    if (expanded) {
-        rollup.classList.remove('rollup-terminal-collapsed');
-        rollup.classList.add('rollup-terminal-expanded');
-    } else {
-        rollup.classList.remove('rollup-terminal-expanded');
-        rollup.classList.add('rollup-terminal-collapsed');
-        updateLatestLogLine();
-    }
-}
-
 function updateLatestLogLine() {
     const latestLogLine = document.getElementById('latestLogLine');
-    if (latestLog && latestLogLine) {
-        const levelColor = {
-            'DEBUG': '#a0aec0',
-            'INFO': '#48bb78',
-            'WARNING': '#f6ad55',
-            'ERROR': '#f56565',
-            'CRITICAL': '#c53030'
-        }[latestLog.level] || '#e2e8f0';
+    if (!latestLogLine) return;
+    if (isLogExpanded) {
+        latestLogLine.textContent = 'Logs';
+        return;
+    }
+    if (latestLog) {
+        const levelColorValue = levelColor(latestLog.level);
         const timestamp = new Date(latestLog.timestamp).toLocaleTimeString();
         const cleanMessage = stripAnsiCodes(latestLog.message);
         latestLogLine.innerHTML = `
             <span style=\"color: #a0aec0;\">${timestamp}</span>
-            <span style=\"color: ${levelColor}; font-weight: bold; margin: 0 8px;\">${latestLog.level}</span>
+            <span style=\"color: ${levelColorValue}; font-weight: bold; margin: 0 8px;\">${latestLog.level}</span>
             <span style=\"color: #e2e8f0;\">${cleanMessage}</span>
         `;
-    } else if (latestLogLine) {
+    } else {
         latestLogLine.textContent = '';
     }
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-    // Set up log terminal toggle
-    const toggleBtn = document.getElementById('toggleLogTerminal');
-    if (toggleBtn) {
-        toggleBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            setLogTerminalState(!isLogExpanded);
+    // Bootstrap accordion events for log terminal
+    const logAccordionCollapse = document.getElementById('logAccordionCollapse');
+    if (logAccordionCollapse) {
+        logAccordionCollapse.addEventListener('show.bs.collapse', () => {
+            isLogExpanded = true;
+            updateLatestLogLine();
+        });
+        logAccordionCollapse.addEventListener('hide.bs.collapse', () => {
+            isLogExpanded = false;
+            updateLatestLogLine();
         });
     }
-    // Collapsed bar click also expands
-    const collapsedBar = document.getElementById('logCollapsedBar');
-    if (collapsedBar) {
-        collapsedBar.addEventListener('click', () => setLogTerminalState(true));
-    }
     // Start collapsed by default
-    setLogTerminalState(false);
+    isLogExpanded = false;
+    updateLatestLogLine();
 });
 // --- End Roll-up Terminal Overlay Logic ---
 
