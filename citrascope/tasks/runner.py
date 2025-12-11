@@ -73,7 +73,7 @@ class TaskManager:
                             self.logger.error(f"Error adding task {tid} to heap: {e}", exc_info=True)
                     if added > 0:
                         self.logger.info(self._heap_summary("Added tasks"))
-                    self.logger.info(self._heap_summary("Polled tasks"))
+                    # self.logger.info(self._heap_summary("Polled tasks"))
             except Exception as e:
                 self.logger.error(f"Exception in poll_tasks loop: {e}", exc_info=True)
                 time.sleep(5)  # avoid tight error loop

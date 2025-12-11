@@ -18,12 +18,12 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
     https://bump.sh/christian-photo/doc/advanced-api/"""
 
     DEFAULT_FOCUS_POSITION = 9000
+    FOCUS_POSITIONS_FILE = "nina_focus_positions.json"
 
     def __init__(
         self,
         LOGGER,
         nina_api_path="http://nina:1888/v2/api",
-        scp_command_template="pwd",
         cam_url="/equipment/camera/",
         filterwheel_url="/equipment/filterwheel/",
         focuser_url="/equipment/focuser/",
@@ -35,7 +35,6 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         super().__init__()
         self.logger = LOGGER
         self.nina_api_path = nina_api_path
-        self.scp_command_template = scp_command_template
         self.cam_url = cam_url
         self.filterwheel_url = filterwheel_url
         self.focuser_url = focuser_url
@@ -45,6 +44,34 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         self.bypass_autofocus = bypass_autofocus
 
         self.filter_map = {}
+        self._load_focus_positions()
+
+    def _load_focus_positions(self):
+        """Load focus positions from file if available."""
+        try:
+            if os.path.exists(self.FOCUS_POSITIONS_FILE):
+                with open(self.FOCUS_POSITIONS_FILE, "r") as f:
+                    focus_data = json.load(f)
+                self.logger.info(f"Loaded focus positions from {self.FOCUS_POSITIONS_FILE}")
+                self._focus_positions_cache = focus_data
+            else:
+                self._focus_positions_cache = {}
+        except Exception as e:
+            self.logger.warning(f"Could not load focus positions file: {e}")
+            self._focus_positions_cache = {}
+
+    def _save_focus_positions(self):
+        """Save current filter_map focus positions to file."""
+        try:
+            focus_data = {
+                str(fid): {"name": fdata["name"], "focus_position": fdata["focus_position"]}
+                for fid, fdata in self.filter_map.items()
+            }
+            with open(self.FOCUS_POSITIONS_FILE, "w") as f:
+                json.dump(focus_data, f, indent=2)
+            self.logger.info(f"Saved focus positions to {self.FOCUS_POSITIONS_FILE}")
+        except Exception as e:
+            self.logger.warning(f"Could not save focus positions file: {e}")
 
     def get_settings_schema(self) -> list[SettingSchemaEntry]:
         """
@@ -60,7 +87,6 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         ]
 
     def do_autofocus(self):
-
         self.logger.info("Performing autofocus routine ...")
         # move telescope to bright star and start autofocus
         # Mirach ra=(1+9/60.+47.45/3600.)*15 dec=(35+37/60.+11.1/3600.)
@@ -82,6 +108,9 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             self.logger.info(f"Focusing Filter ID: {id}, Name: {filter['name']}")
             focus_value = self._auto_focus_one_filter(id, filter["name"])
             self.filter_map[id]["focus_position"] = focus_value
+
+        # Save focus positions after autofocus
+        self._save_focus_positions()
 
     # autofocus routine
     def _auto_focus_one_filter(self, filter_id, filter_name) -> int:
@@ -220,8 +249,12 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         for filter in filters:
             filter_id = filter["Id"]
             filter_name = filter["Name"]
-            self.filter_map[filter_id] = {"name": filter_name, "focus_position": self.DEFAULT_FOCUS_POSITION}
-            self.logger.info(f"Discovered filter: {filter_name} with ID: {filter_id}")
+            # Try to load focus position from cache, fallback to default
+            focus_position = self._focus_positions_cache.get(str(filter_id), {}).get(
+                "focus_position", self.DEFAULT_FOCUS_POSITION
+            )
+            self.filter_map[filter_id] = {"name": filter_name, "focus_position": focus_position}
+            self.logger.info(f"Discovered filter: {filter_name} with ID: {filter_id}, focus position: {focus_position}")
 
     def disconnect(self):
         pass
@@ -390,7 +423,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         # Generate triplet for each discovered filter
         # Find the maximum ID in use and start after it to avoid collisions
         base_id = self._get_max_id(sequence_json) + 1
-        self.logger.info(f"Starting dynamic ID generation at {base_id}")
+        self.logger.debug(f"Starting dynamic ID generation at {base_id}")
 
         id_counter = [base_id]  # Use list so it can be modified in nested function
 
@@ -423,39 +456,15 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         # Convert back to JSON string
         template_str = json.dumps(sequence_json, indent=2)
 
-        # Save customized sequence locally
-        sequence_filename = f"nina_sequence_{task_id}.json"
-        with open(sequence_filename, "w") as f:
-            f.write(template_str)
+        # POST the sequence
 
-        self.logger.info(f"Created NINA sequence file: {sequence_filename}")
+        self.logger.info(f"Posting NINA sequence")
+        post_response = requests.post(f"{self.nina_api_path}{self.sequence_url}load", json=sequence_json).json()
+        if not post_response.get("Success"):
+            self.logger.error(f"Failed to post sequence: {post_response.get('Error')}")
+            raise RuntimeError("Failed to post NINA sequence")
 
-        # Copy sequence to NINA computer
-        scp_cmd = self.scp_command_template.format(sequence_filename=sequence_filename)
-        result = os.system(scp_cmd)
-        if result != 0:
-            self.logger.error(f"Failed to copy sequence to NINA: exit code {result}")
-            sys.exit(1)
-            raise RuntimeError("Failed to copy sequence file to NINA")
-
-        self.logger.info(f"Copied sequence to NINA computer")
-
-        # Clean up local sequence file
-        try:
-            os.remove(sequence_filename)
-            self.logger.info(f"Deleted local sequence file: {sequence_filename}")
-        except OSError as e:
-            self.logger.warning(f"Failed to delete local sequence file {sequence_filename}: {e}")
-
-        # Load and start the sequence
-        sequence_name = sequence_filename.replace(".json", "")
-
-        load_response = requests.get(f"{self.nina_api_path}{self.sequence_url}load?sequenceName={sequence_name}").json()
-        if not load_response.get("Success"):
-            self.logger.error(f"Failed to load sequence: {load_response.get('Error')}")
-            raise RuntimeError("Failed to load NINA sequence")
-
-        self.logger.info(f"Loaded sequence: {sequence_name}")
+        self.logger.info(f"Loaded sequence to NINA, starting sequence...")
 
         start_response = requests.get(
             f"{self.nina_api_path}{self.sequence_url}start?skipValidation=true"
@@ -463,8 +472,6 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         if not start_response.get("Success"):
             self.logger.error(f"Failed to start sequence: {start_response.get('Error')}")
             raise RuntimeError("Failed to start NINA sequence")
-
-        self.logger.info(f"Started NINA sequence")
 
         timeout_minutes = 60
         poll_interval_seconds = 10
@@ -515,7 +522,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
                 continue
 
             if task_id in possible_image["Filename"]:
-                self.logger.info(f"Image {i} {possible_image['Filename']} matches task id, adding to download list")
+                self.logger.info(f"Image {i} {possible_image['Filename']} matches task id")
                 images_to_download.append(i)
             else:
                 self.logger.warning(
@@ -525,7 +532,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         # Get the most recent image from NINA (index 0) in raw FITS format
         filepaths = []
         for image_index in images_to_download:
-            self.logger.info(f"Retrieving image from NINA...")
+            self.logger.debug(f"Retrieving image from NINA...")
             image_response = requests.get(
                 f"{self.nina_api_path}/image/{image_index}",
                 params={"raw_fits": "true"},

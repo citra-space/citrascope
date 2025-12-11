@@ -90,7 +90,7 @@ def test_daemon_full_lifecycle(caplog):
     if "Starting task" in log_output:
         print("\n✅ Task execution detected in logs")
         # If task started, we should see pointing or other task-related logs
-        assert "Pointing ahead to RA:" in log_output or "Polled tasks" in log_output, "Should have task-related logs"
+        assert "Pointing ahead to RA:" in log_output, "Should have task-related logs"
 
     # Verify the daemon actually executes tracking tasks
     assert "Added tasks:" in log_output, "Should find a task from the api"

@@ -65,7 +65,6 @@ class CitraScopeDaemon:
             return NinaAdvancedHttpAdapter(
                 CITRASCOPE_LOGGER,
                 self.settings.nina_url_prefix,
-                self.settings.nina_scp_command_template,
                 bypass_autofocus=self.settings.bypass_autofocus,
             )
         elif self.settings.hardware_adapter == "kstars":
