@@ -41,7 +41,6 @@ class HardwareConfig(BaseModel):
     indi_telescope_name: Optional[str] = None
     indi_camera_name: Optional[str] = None
     nina_url_prefix: Optional[str] = None
-    nina_scp_command_template: Optional[str] = None
 
 
 class ConnectionManager:
@@ -160,7 +159,6 @@ class CitraScopeWebApp:
                 "indi_telescope_name": settings.indi_telescope_name,
                 "indi_camera_name": settings.indi_camera_name,
                 "nina_url_prefix": settings.nina_url_prefix,
-                "nina_scp_command_template": settings.nina_scp_command_template,
             }
 
         @self.app.post("/api/config")
