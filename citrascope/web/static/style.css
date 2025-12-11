@@ -12,6 +12,8 @@
     transition: height 0.3s cubic-bezier(0.4,0,0.2,1);
 }
 
+
+
 .rollup-terminal-expanded {
     height: 45vh;
     min-height: 220px;
@@ -76,6 +78,14 @@
     font-size: 0.95em;
     display: block;
     transition: max-height 0.3s cubic-bezier(0.4,0,0.2,1);
+    position: relative;
+    z-index: 2;
+
+    background-image: linear-gradient(rgba(13,17,23,0.85), rgba(13,17,23,0.85)), url('/static/img/citra.png');
+    background-repeat: no-repeat;
+    background-size: auto 90%;
+    background-position-x: 90%;
+    background-position-y: 20%;
 }
 
 .rollup-terminal-collapsed .log-container {
