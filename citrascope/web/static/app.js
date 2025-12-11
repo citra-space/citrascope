@@ -270,6 +270,85 @@ async function saveConfig() {
     }
 }
 
+
+
+// --- Roll-up Terminal Overlay Logic ---
+let isLogExpanded = false;
+let latestLog = null;
+
+function setLogTerminalState(expanded) {
+    const rollup = document.getElementById('rollupTerminal');
+    isLogExpanded = expanded;
+    if (expanded) {
+        rollup.classList.remove('rollup-terminal-collapsed');
+        rollup.classList.add('rollup-terminal-expanded');
+    } else {
+        rollup.classList.remove('rollup-terminal-expanded');
+        rollup.classList.add('rollup-terminal-collapsed');
+        updateLatestLogLine();
+    }
+}
+
+function updateLatestLogLine() {
+    const latestLogLine = document.getElementById('latestLogLine');
+    if (latestLog && latestLogLine) {
+        const levelColor = {
+            'DEBUG': '#a0aec0',
+            'INFO': '#48bb78',
+            'WARNING': '#f6ad55',
+            'ERROR': '#f56565',
+            'CRITICAL': '#c53030'
+        }[latestLog.level] || '#e2e8f0';
+        const timestamp = new Date(latestLog.timestamp).toLocaleTimeString();
+        const cleanMessage = stripAnsiCodes(latestLog.message);
+        latestLogLine.innerHTML = `
+            <span style=\"color: #a0aec0;\">${timestamp}</span>
+            <span style=\"color: ${levelColor}; font-weight: bold; margin: 0 8px;\">${latestLog.level}</span>
+            <span style=\"color: #e2e8f0;\">${cleanMessage}</span>
+        `;
+    } else if (latestLogLine) {
+        latestLogLine.textContent = '';
+    }
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    // Set up log terminal toggle
+    const toggleBtn = document.getElementById('toggleLogTerminal');
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            setLogTerminalState(!isLogExpanded);
+        });
+    }
+    // Collapsed bar click also expands
+    const collapsedBar = document.getElementById('logCollapsedBar');
+    if (collapsedBar) {
+        collapsedBar.addEventListener('click', () => setLogTerminalState(true));
+    }
+    // Start collapsed by default
+    setLogTerminalState(false);
+});
+// --- End Roll-up Terminal Overlay Logic ---
+
+// Patch appendLog to update latestLog and handle collapsed state
+const origAppendLog = appendLog;
+appendLog = function(log) {
+    latestLog = log;
+    if (!isLogExpanded) {
+        updateLatestLogLine();
+    }
+    origAppendLog(log);
+};
+
+// Patch loadLogs to only show latest log in collapsed mode
+const origLoadLogs = loadLogs;
+loadLogs = async function() {
+    await origLoadLogs();
+    if (!isLogExpanded) {
+        updateLatestLogLine();
+    }
+};
+
 // Initialize
 connectWebSocket();
 loadConfig();

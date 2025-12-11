@@ -102,8 +102,16 @@
             <button onclick="saveConfig()">Save Configuration (Requires Restart)</button>
         </div>
 
-        <div class="card" style="margin-top: 20px;">
-            <h2>System Logs</h2>
+        <!-- Roll-up Terminal Overlay -->
+        <div id="rollupTerminal" class="rollup-terminal-collapsed">
+            <div class="log-terminal-header">
+                <button id="toggleLogTerminal" title="Expand/collapse logs">
+                    <span id="logToggleIcon">&#9650;</span>
+                </button>
+                <div class="log-collapsed-bar" id="logCollapsedBar">
+                    <span id="latestLogLine" style="font-family: monospace; color: #e2e8f0;"></span>
+                </div>
+            </div>
             <div class="log-container" id="logContainer">
                 <p style="color: #a0aec0;">Loading logs...</p>
             </div>
