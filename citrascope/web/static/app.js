@@ -8,6 +8,7 @@ let nextTaskStartTime = null;
 let countdownInterval = null;
 let isTaskActive = false;
 let currentTaskId = null;
+let currentTasks = []; // Store tasks for lookup
 
 // --- Utility Functions ---
 function stripAnsiCodes(text) {
@@ -170,20 +171,16 @@ function updateStatus(status) {
         : '<span class="badge rounded-pill bg-danger">Disconnected</span>';
 
     // Update current task display
-    const currentTaskDisplay = document.getElementById('currentTaskDisplay');
     if (status.current_task && status.current_task !== 'None') {
         isTaskActive = true;
         currentTaskId = status.current_task;
         stopCountdown();
-        currentTaskDisplay.innerHTML = `
-            <div class="fw-semibold mb-2 task-title">${status.current_task}</div>
-            <div class="text-secondary small">In progress...</div>
-        `;
+        updateCurrentTaskDisplay();
     } else if (isTaskActive) {
         // Task just finished, set to idle state
         isTaskActive = false;
         currentTaskId = null;
-        currentTaskDisplay.innerHTML = '<p class="no-task-message">No active task</p>';
+        updateCurrentTaskDisplay();
     }
     // If isTaskActive is already false, don't touch the display (countdown is updating it)
 
@@ -215,8 +212,41 @@ function updateStatus(status) {
 }
 
 // --- Task Management ---
+function getCurrentTaskDetails() {
+    if (!currentTaskId) return null;
+    return currentTasks.find(task => task.id === currentTaskId);
+}
+
+function updateCurrentTaskDisplay() {
+    const currentTaskDisplay = document.getElementById('currentTaskDisplay');
+    if (!currentTaskDisplay) return;
+
+    if (currentTaskId) {
+        const taskDetails = getCurrentTaskDetails();
+        if (taskDetails) {
+            currentTaskDisplay.innerHTML = `
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <div class="spinner-border spinner-border-sm text-success" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <div class="fw-bold" style="font-size: 1.3em;">${taskDetails.target}</div>
+                </div>
+                <div class="text-secondary small">
+                    <span>Task ID: ${currentTaskId}</span>
+                </div>
+            `;
+        }
+        // Don't show fallback - just wait for task details to arrive
+    } else if (!isTaskActive) {
+        currentTaskDisplay.innerHTML = '<p class="no-task-message">No active task</p>';
+    }
+}
+
 function updateTasks(tasks) {
+    currentTasks = tasks;
     renderTasks(tasks);
+    // Re-render current task display with updated task info
+    updateCurrentTaskDisplay();
 }
 
 async function loadTasks() {
