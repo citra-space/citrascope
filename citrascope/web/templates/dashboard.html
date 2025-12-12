@@ -1,26 +1,33 @@
 <!doctype html>
 <html lang="en">
-  <head>
+
+<head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CitraScope Dashboard</title>
     <link rel="icon" type="image/png" href="/static/img/favicon.png">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
-  </head>
-  <body data-bs-theme="dark">
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+</head>
+
+<body data-bs-theme="dark">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI"
+        crossorigin="anonymous"></script>
 
 
     <div class="container">
         <header class="d-flex flex-wrap justify-content-center py-3 mb-4 border-bottom align-items-center">
             <span class="d-flex align-items-center mb-3 mb-md-0 me-md-auto link-body-emphasis text-decoration-none">
                 <span class="fs-4 d-flex align-items-center gap-2">
-                    <img src="/static/img/citra.png" alt="CitraScope Logo" style="height: 1.5em; width: auto; vertical-align: middle; display: inline-block;" />
+                    <img src="/static/img/citra.png" alt="CitraScope Logo"
+                        style="height: 1.5em; width: auto; vertical-align: middle; display: inline-block;" />
                     CitraScope
 
                 </span>
                 <span class="ms-2 me-3 small text-secondary d-flex align-items-center" style="gap: 0.5em; clear:left;">
-                    <span id="wsStatus" class="d-inline-block rounded-circle me-1 bg-secondary" style="width: 0.9em; height: 0.9em;"></span>
+                    <span id="wsStatus" class="d-inline-block rounded-circle me-1 bg-secondary"
+                        style="width: 0.9em; height: 0.9em;"></span>
                     <span id="wsStatusText">Connecting...</span>
                     <span id="reconnectInfo" style="color: #718096; font-size: 0.9em;"></span>
                     <span class="timestamp" id="lastUpdate"></span>
@@ -28,9 +35,11 @@
             </span>
 
             <ul class="nav" id="mainNav">
-                <li class="nav-item"><a href="#" class="nav-link px-2 text-white" data-section="monitoring" aria-current="page">Monitoring</a></li>
+                <li class="nav-item"><a href="#" class="nav-link px-2 text-white" data-section="monitoring"
+                        aria-current="page">Monitoring</a></li>
                 <li class="nav-item"><a href="#" class="nav-link px-2" data-section="config">Config</a></li>
-                <li class="nav-item"><a href="#" class="nav-link bg-success text-white btn" style="display: none;" id="taskScopeButton" target="_blank">Task my Scope</a></li>
+                <li class="nav-item"><a href="#" class="nav-link bg-success text-white btn" style="display: none;"
+                        id="taskScopeButton" target="_blank">Task my Scope</a></li>
             </ul>
         </header>
     </div>
@@ -108,7 +117,7 @@
                     </div>
                 </div>
             </div>
-    </div>
+        </div>
     </div>
 
     <div class="container my-4" id="configSection" style="display: none;">
@@ -143,7 +152,8 @@
                     </div>
                     <div class="row mt-4">
                         <div class="col">
-                            <button type="button" class="btn btn-primary" onclick="saveConfig()">Save Configuration (Requires Restart)</button>
+                            <button type="button" class="btn btn-primary" onclick="saveConfig()">Save Configuration
+                                (Requires Restart)</button>
                         </div>
                     </div>
                 </form>
@@ -156,11 +166,14 @@
         <div class="accordion" id="logAccordion">
             <div class="accordion-item bg-dark text-light border-secondary">
                 <h2 class="accordion-header" id="logAccordionHeader">
-                    <button class="accordion-button collapsed bg-secondary text-light" type="button" data-bs-toggle="collapse" data-bs-target="#logAccordionCollapse" aria-expanded="false" aria-controls="logAccordionCollapse" style="border-bottom: 1px solid #444;">
+                    <button class="accordion-button collapsed bg-secondary text-light" type="button"
+                        data-bs-toggle="collapse" data-bs-target="#logAccordionCollapse" aria-expanded="false"
+                        aria-controls="logAccordionCollapse" style="border-bottom: 1px solid #444;">
                         <span id="latestLogLine" style="font-family: monospace; color: #e2e8f0;">Log Terminal</span>
                     </button>
                 </h2>
-                <div id="logAccordionCollapse" class="accordion-collapse collapse" aria-labelledby="logAccordionHeader" data-bs-parent="#logAccordion">
+                <div id="logAccordionCollapse" class="accordion-collapse collapse" aria-labelledby="logAccordionHeader"
+                    data-bs-parent="#logAccordion">
                     <div class="accordion-body p-0" style="background: #181a1b; max-height: 40vh; overflow-y: auto;">
                         <div class="log-container p-3" id="logContainer">
                             <p style="color: #a0aec0;">Loading logs...</p>
@@ -175,5 +188,6 @@
     <script src="/static/app.js"></script>
 
 
-  </body>
+</body>
+
 </html>
