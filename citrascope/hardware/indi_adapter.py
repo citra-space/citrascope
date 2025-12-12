@@ -322,6 +322,35 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
     def disconnect(self):
         self.disconnectServer()
 
+    def is_telescope_connected(self) -> bool:
+        """Check if telescope is connected and responsive."""
+        if not self.isServerConnected():
+            return False
+        if not hasattr(self, "our_scope") or self.our_scope is None:
+            return False
+        # Check if we can read the telescope position (indicates it's working)
+        try:
+            telescope_radec = self.our_scope.getNumber("EQUATORIAL_EOD_COORD")
+            return telescope_radec is not None and len(telescope_radec) >= 2
+        except Exception:
+            return False
+
+    def is_camera_connected(self) -> bool:
+        """Check if camera is connected and responsive."""
+        if not self.isServerConnected():
+            return False
+        if not hasattr(self, "our_camera") or self.our_camera is None:
+            return False
+        # Check if camera is connected via INDI
+        try:
+            if not self.our_camera.isConnected():
+                return False
+            # Check if we can read the exposure property (indicates it's working)
+            ccd_exposure = self.our_camera.getNumber("CCD_EXPOSURE")
+            return ccd_exposure is not None
+        except Exception:
+            return False
+
     def _do_point_telescope(self, ra: float, dec: float):
         """Hardware-specific implementation to point the telescope to the specified RA/Dec coordinates."""
         # Check if connected to INDI server first

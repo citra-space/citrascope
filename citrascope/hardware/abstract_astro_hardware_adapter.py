@@ -101,6 +101,16 @@ class AbstractAstroHardwareAdapter(ABC):
         pass
 
     @abstractmethod
+    def is_telescope_connected(self) -> bool:
+        """Check if telescope is connected and responsive."""
+        pass
+
+    @abstractmethod
+    def is_camera_connected(self) -> bool:
+        """Check if camera is connected and responsive."""
+        pass
+
+    @abstractmethod
     def list_devices(self) -> list[str]:
         """List all connected devices."""
         pass

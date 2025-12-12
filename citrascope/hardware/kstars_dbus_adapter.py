@@ -136,6 +136,16 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
     def disconnect(self):
         raise NotImplementedError
 
+    def is_telescope_connected(self) -> bool:
+        """Check if telescope is connected and responsive."""
+        # KStars adapter is incomplete - return False for now
+        return self.mount is not None
+
+    def is_camera_connected(self) -> bool:
+        """Check if camera is connected and responsive."""
+        # KStars adapter is incomplete - return False for now
+        return self.camera is not None
+
     def list_devices(self) -> list[str]:
         raise NotImplementedError
 

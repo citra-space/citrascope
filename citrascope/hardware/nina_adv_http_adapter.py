@@ -251,6 +251,22 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
     def disconnect(self):
         pass
 
+    def is_telescope_connected(self) -> bool:
+        """Check if telescope is connected and responsive."""
+        try:
+            mount_info = requests.get(f"{self.nina_api_path}{self.mount_url}info", timeout=2).json()
+            return mount_info.get("Success", False) and mount_info.get("Response", {}).get("Connected", False)
+        except Exception:
+            return False
+
+    def is_camera_connected(self) -> bool:
+        """Check if camera is connected and responsive."""
+        try:
+            cam_info = requests.get(f"{self.nina_api_path}{self.cam_url}info", timeout=2).json()
+            return cam_info.get("Success", False) and cam_info.get("Response", {}).get("Connected", False)
+        except Exception:
+            return False
+
     def list_devices(self) -> list[str]:
         return []
 

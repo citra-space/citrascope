@@ -387,14 +387,22 @@ class CitraScopeWebApp:
             self.status.hardware_adapter = self.daemon.settings.hardware_adapter
 
             if hasattr(self.daemon, "hardware_adapter") and self.daemon.hardware_adapter:
-                # Try to get telescope position
+                # Check telescope connection status
                 try:
-                    ra, dec = self.daemon.hardware_adapter.get_telescope_direction()
-                    self.status.telescope_ra = ra
-                    self.status.telescope_dec = dec
-                    self.status.telescope_connected = True
+                    self.status.telescope_connected = self.daemon.hardware_adapter.is_telescope_connected()
+                    if self.status.telescope_connected:
+                        # If connected, try to get position
+                        ra, dec = self.daemon.hardware_adapter.get_telescope_direction()
+                        self.status.telescope_ra = ra
+                        self.status.telescope_dec = dec
                 except Exception:
                     self.status.telescope_connected = False
+
+                # Check camera connection status
+                try:
+                    self.status.camera_connected = self.daemon.hardware_adapter.is_camera_connected()
+                except Exception:
+                    self.status.camera_connected = False
 
             if hasattr(self.daemon, "task_manager") and self.daemon.task_manager:
                 task_manager = self.daemon.task_manager
