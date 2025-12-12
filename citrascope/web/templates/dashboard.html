@@ -11,7 +11,7 @@
     <link href="/static/style.css" rel="stylesheet">
 </head>
 
-<body data-bs-theme="dark" style="padding-bottom: 100px;">
+<body data-bs-theme="dark">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
         integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI"
         crossorigin="anonymous"></script>
@@ -21,12 +21,11 @@
         <header class="d-flex flex-wrap justify-content-center py-3 mb-4 border-bottom align-items-center">
             <span class="d-flex align-items-center mb-3 mb-md-0 me-md-auto link-body-emphasis text-decoration-none">
                 <span class="fs-4 d-flex align-items-center gap-2">
-                    <img src="/static/img/citra.png" alt="CitraScope Logo"
-                        style="height: 1.5em; width: auto; vertical-align: middle; display: inline-block;" />
+                    <img src="/static/img/citra.png" alt="CitraScope Logo" class="logo-img" />
                     CitraScope
 
                 </span>
-                <span class="ms-2 me-3 d-flex align-items-center" style="gap: 0.5em; clear:left;">
+                <span class="ms-2 me-3 d-flex align-items-center status-badge-container">
                     <span id="wsStatus"><span class="badge rounded-pill bg-secondary" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Dashboard connection status">Connecting...</span></span>
                 </span>
             </span>
@@ -98,7 +97,7 @@
                         </div>
                         <div class="card-body">
                             <div id="currentTaskDisplay">
-                                <p style="color: #a0aec0;">No active task</p>
+                                <p class="text-muted-dark">No active task</p>
                             </div>
                         </div>
                     </div>
@@ -113,7 +112,7 @@
                         </div>
                         <div class="card-body p-0">
                             <div id="taskList" class="table-responsive">
-                                <p class="p-3" style="color: #a0aec0;">Loading tasks...</p>
+                                <p class="p-3 text-muted-dark">Loading tasks...</p>
                             </div>
                         </div>
                     </div>
@@ -237,17 +236,17 @@
         <div class="accordion" id="logAccordion">
             <div class="accordion-item bg-dark text-light border-secondary">
                 <h2 class="accordion-header" id="logAccordionHeader">
-                    <button class="accordion-button collapsed bg-secondary text-light" type="button"
+                    <button class="accordion-button collapsed bg-secondary text-light log-accordion-button" type="button"
                         data-bs-toggle="collapse" data-bs-target="#logAccordionCollapse" aria-expanded="false"
-                        aria-controls="logAccordionCollapse" style="border-bottom: 1px solid #444;">
-                        <span id="latestLogLine" style="font-family: monospace; color: #e2e8f0;">Log Terminal</span>
+                        aria-controls="logAccordionCollapse">
+                        <span id="latestLogLine" class="log-latest-line">Log Terminal</span>
                     </button>
                 </h2>
                 <div id="logAccordionCollapse" class="accordion-collapse collapse" aria-labelledby="logAccordionHeader"
                     data-bs-parent="#logAccordion">
-                    <div class="accordion-body p-0" style="max-height: 40vh; overflow: hidden;">
-                        <div class="log-container p-3" id="logContainer" style="max-height: 40vh; overflow-y: auto;">
-                            <p style="color: #a0aec0;">Loading logs...</p>
+                    <div class="accordion-body p-0 log-accordion-body">
+                        <div class="log-container p-3" id="logContainer">
+                            <p class="text-muted-dark">Loading logs...</p>
                         </div>
                     </div>
                 </div>

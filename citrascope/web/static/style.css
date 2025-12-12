@@ -30,3 +30,46 @@
 .log-container::-webkit-scrollbar-thumb:hover {
     background: #484f58;
 }
+
+/* Body padding for fixed bottom log terminal */
+body {
+    padding-bottom: 100px;
+}
+
+/* Logo styling */
+.logo-img {
+    height: 1.5em;
+    width: auto;
+    vertical-align: middle;
+    display: inline-block;
+}
+
+/* Status badge container */
+.status-badge-container {
+    gap: 0.5em;
+}
+
+/* Muted text color for placeholders */
+.text-muted-dark {
+    color: #a0aec0;
+}
+
+/* Log accordion customization */
+.log-accordion-button {
+    border-bottom: 1px solid #444 !important;
+}
+
+.log-accordion-body {
+    max-height: 40vh;
+    overflow: hidden;
+}
+
+.log-container {
+    max-height: 40vh;
+    overflow-y: auto;
+}
+
+.log-latest-line {
+    font-family: monospace;
+    color: #e2e8f0;
+}
