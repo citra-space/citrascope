@@ -19,7 +19,7 @@
                     CitraScope
 
                 </span>
-                <span class="me-3 small text-secondary d-flex align-items-center" style="gap: 0.5em; clear:left;">
+                <span class="ms-2 me-3 small text-secondary d-flex align-items-center" style="gap: 0.5em; clear:left;">
                     <span id="wsStatus" class="d-inline-block rounded-circle me-1 bg-secondary" style="width: 0.9em; height: 0.9em;"></span>
                     <span id="wsStatusText">Connecting...</span>
                     <span id="reconnectInfo" style="color: #718096; font-size: 0.9em;"></span>
@@ -30,14 +30,15 @@
             <ul class="nav" id="mainNav">
                 <li class="nav-item"><a href="#" class="nav-link px-2 text-white" data-section="monitoring" aria-current="page">Monitoring</a></li>
                 <li class="nav-item"><a href="#" class="nav-link px-2" data-section="config">Config</a></li>
-                <li class="nav-item"><a href="#" class="nav-link bg-success text-white" id="taskScopeButton" target="_blank">Task my Scope</a></li>
+                <li class="nav-item"><a href="#" class="nav-link bg-success text-white btn" style="display: none;" id="taskScopeButton" target="_blank">Task my Scope</a></li>
             </ul>
         </header>
     </div>
 
-        <div class="container" id="monitoringSection">
-            <div class="row g-3">
-                <div class="col-12 col-md-4">
+    <div id="monitoringSection">
+        <div class="container">
+            <div class="row g-3 mb-3">
+                <div class="col-12 col-md-6">
                     <div class="card bg-dark text-light border-secondary h-100">
                         <div class="card-header">
                             System Status
@@ -55,18 +56,10 @@
                                 <div class="col-6 fw-semibold">Camera Connected</div>
                                 <div class="col-6" id="cameraConnected">-</div>
                             </div>
-                            <div class="row mb-2">
-                                <div class="col-6 fw-semibold">Current Task</div>
-                                <div class="col-6 task-id" id="currentTask">None</div>
-                            </div>
-                            <div class="row">
-                                <div class="col-6 fw-semibold">Tasks Pending</div>
-                                <div class="col-6" id="tasksPending">0</div>
-                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="col-12 col-md-4">
+                <div class="col-12 col-md-6">
                     <div class="card bg-dark text-light border-secondary h-100">
                         <div class="card-header">
                             Telescope
@@ -87,81 +80,99 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-12 col-md-4">
+
+            </div>
+        </div>
+        <div class="container">
+            <div class="row g-3 mb-3">
+                <div class="col-12 col-md-12">
                     <div class="card bg-dark text-light border-secondary h-100">
-                        <div class="card-header">
-                            Task Queue
+                        <div class="card-header d-flex align-items-center justify-content-between">
+                            <span>Task Queue</span>
+                            <span class="small text-secondary"><span id="tasksPending">0</span> pending</span>
                         </div>
-                        <div class="card-body task-list" id="taskList">
-                            <p style="color: #a0aec0;">Loading tasks...</p>
+
+                        <div class="card-body">
+                            <div class="row mb-2">
+                                <div class="col-6 fw-semibold">Current Task</div>
+                                <div class="col-6 task-id" id="currentTask">None</div>
+                            </div>
+                            <div id="taskList" class="task-list">
+                                <p style="color: #a0aec0;">Loading tasks...</p>
+                                <div class="task-list" id="taskList">
+                                    <p style="color: #a0aec0;">Loading tasks...</p>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+    </div>
+    </div>
+
+    <div class="container my-4" id="configSection" style="display: none;">
+        <div class="card bg-dark text-light border-secondary w-100">
+            <div class="card-header">
+                Configuration
+            </div>
+            <div class="card-body">
+                <form>
+                    <div class="row g-3 align-items-end">
+                        <div class="col-12 col-md-4">
+                            <label for="hardwareAdapterSelect" class="form-label">Hardware Adapter</label>
+                            <select id="hardwareAdapterSelect" class="form-select">
+                                <option value="indi">INDI</option>
+                                <option value="nina">NINA</option>
+                                <option value="kstars">KStars</option>
+                            </select>
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label for="telescopeId" class="form-label">Telescope ID</label>
+                            <input type="text" id="telescopeId" class="form-control" placeholder="Enter telescope ID">
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label for="logLevel" class="form-label">Log Level</label>
+                            <select id="logLevel" class="form-select">
+                                <option value="DEBUG">DEBUG</option>
+                                <option value="INFO">INFO</option>
+                                <option value="WARNING">WARNING</option>
+                                <option value="ERROR">ERROR</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row mt-4">
+                        <div class="col">
+                            <button type="button" class="btn btn-primary" onclick="saveConfig()">Save Configuration (Requires Restart)</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Roll-up Terminal Overlay as Bootstrap Accordion -->
+    <div class="position-fixed bottom-0 start-0 w-100 z-3" style="max-width: 100vw;">
+        <div class="accordion" id="logAccordion">
+            <div class="accordion-item bg-dark text-light border-secondary">
+                <h2 class="accordion-header" id="logAccordionHeader">
+                    <button class="accordion-button collapsed bg-secondary text-light" type="button" data-bs-toggle="collapse" data-bs-target="#logAccordionCollapse" aria-expanded="false" aria-controls="logAccordionCollapse" style="border-bottom: 1px solid #444;">
+                        <span id="latestLogLine" style="font-family: monospace; color: #e2e8f0;">Log Terminal</span>
+                    </button>
+                </h2>
+                <div id="logAccordionCollapse" class="accordion-collapse collapse" aria-labelledby="logAccordionHeader" data-bs-parent="#logAccordion">
+                    <div class="accordion-body p-0" style="background: #181a1b; max-height: 40vh; overflow-y: auto;">
+                        <div class="log-container p-3" id="logContainer">
+                            <p style="color: #a0aec0;">Loading logs...</p>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-
-        <div class="container my-4" id="configSection" style="display: none;">
-            <div class="card bg-dark text-light border-secondary w-100">
-                <div class="card-header">
-                    Configuration
-                </div>
-                <div class="card-body">
-                    <form>
-                        <div class="row g-3 align-items-end">
-                            <div class="col-12 col-md-4">
-                                <label for="hardwareAdapterSelect" class="form-label">Hardware Adapter</label>
-                                <select id="hardwareAdapterSelect" class="form-select">
-                                    <option value="indi">INDI</option>
-                                    <option value="nina">NINA</option>
-                                    <option value="kstars">KStars</option>
-                                </select>
-                            </div>
-                            <div class="col-12 col-md-4">
-                                <label for="telescopeId" class="form-label">Telescope ID</label>
-                                <input type="text" id="telescopeId" class="form-control" placeholder="Enter telescope ID">
-                            </div>
-                            <div class="col-12 col-md-4">
-                                <label for="logLevel" class="form-label">Log Level</label>
-                                <select id="logLevel" class="form-select">
-                                    <option value="DEBUG">DEBUG</option>
-                                    <option value="INFO">INFO</option>
-                                    <option value="WARNING">WARNING</option>
-                                    <option value="ERROR">ERROR</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="row mt-4">
-                            <div class="col">
-                                <button type="button" class="btn btn-primary" onclick="saveConfig()">Save Configuration (Requires Restart)</button>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-
-        <!-- Roll-up Terminal Overlay as Bootstrap Accordion -->
-        <div class="position-fixed bottom-0 start-0 w-100 z-3" style="max-width: 100vw;">
-            <div class="accordion" id="logAccordion">
-                <div class="accordion-item bg-dark text-light border-secondary">
-                    <h2 class="accordion-header" id="logAccordionHeader">
-                        <button class="accordion-button collapsed bg-secondary text-light" type="button" data-bs-toggle="collapse" data-bs-target="#logAccordionCollapse" aria-expanded="false" aria-controls="logAccordionCollapse" style="border-bottom: 1px solid #444;">
-                            <span id="latestLogLine" style="font-family: monospace; color: #e2e8f0;">Log Terminal</span>
-                        </button>
-                    </h2>
-                    <div id="logAccordionCollapse" class="accordion-collapse collapse" aria-labelledby="logAccordionHeader" data-bs-parent="#logAccordion">
-                        <div class="accordion-body p-0" style="background: #181a1b; max-height: 40vh; overflow-y: auto;">
-                            <div class="log-container p-3" id="logContainer">
-                                <p style="color: #a0aec0;">Loading logs...</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+    </div>
 
 
-        <script src="/static/app.js"></script>
+    <script src="/static/app.js"></script>
 
 
   </body>

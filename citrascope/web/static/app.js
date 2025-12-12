@@ -8,7 +8,12 @@ document.addEventListener('DOMContentLoaded', function() {
         navLinks.forEach(link => {
             const section = link.getAttribute('data-section');
             const sectionEl = document.getElementById(section + 'Section');
-            if (sectionEl) sections[section] = sectionEl;
+            if (sectionEl) {
+                sections[section] = sectionEl
+            }
+            else {
+                console.log(`No section element found for section: ${section}`);
+            }
         });
 
 
@@ -23,7 +28,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
         function showSection(section) {
             Object.values(sections).forEach(sec => sec.style.display = 'none');
-            if (sections[section]) sections[section].style.display = '';
+            if (sections[section]) {sections[section].style.display = '';} else {
+                console.log(`No section found to show for section: ${section}`);
+            }
         }
 
         nav.addEventListener('click', function(e) {
