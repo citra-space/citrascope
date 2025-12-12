@@ -7,6 +7,7 @@ import { getTasks, getLogs } from './api.js';
 let nextTaskStartTime = null;
 let countdownInterval = null;
 let isTaskActive = false;
+let currentTaskId = null;
 
 // --- Utility Functions ---
 function stripAnsiCodes(text) {
@@ -172,6 +173,7 @@ function updateStatus(status) {
     const currentTaskDisplay = document.getElementById('currentTaskDisplay');
     if (status.current_task && status.current_task !== 'None') {
         isTaskActive = true;
+        currentTaskId = status.current_task;
         stopCountdown();
         currentTaskDisplay.innerHTML = `
             <div class="fw-semibold mb-2 task-title">${status.current_task}</div>
@@ -180,6 +182,7 @@ function updateStatus(status) {
     } else if (isTaskActive) {
         // Task just finished, set to idle state
         isTaskActive = false;
+        currentTaskId = null;
         currentTaskDisplay.innerHTML = '<p class="no-task-message">No active task</p>';
     }
     // If isTaskActive is already false, don't touch the display (countdown is updating it)
@@ -252,14 +255,19 @@ function renderTasks(tasks) {
                         </tr>
                     </thead>
                     <tbody>
-                        ${sortedTasks.map(task => `
-                            <tr>
+                        ${sortedTasks.map(task => {
+                            const isActive = task.id === currentTaskId;
+                            const badgeClass = isActive ? 'bg-success' : 'bg-info';
+                            const statusText = isActive ? 'Active' : task.status;
+                            return `
+                            <tr${isActive ? ' class="table-active"' : ''}>
                                 <td class="fw-semibold">${task.target}</td>
                                 <td class="text-secondary small">${formatLocalTime(task.start_time)}</td>
                                 <td class="text-secondary small">${task.stop_time ? formatLocalTime(task.stop_time) : '-'}</td>
-                                <td><span class="badge rounded-pill bg-info">${task.status}</span></td>
+                                <td><span class="badge rounded-pill ${badgeClass}">${statusText}</span></td>
                             </tr>
-                        `).join('')}
+                            `;
+                        }).join('')}
                     </tbody>
                 </table>
             `;
