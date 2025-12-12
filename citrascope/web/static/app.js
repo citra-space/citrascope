@@ -1,5 +1,26 @@
-// --- Monitoring/Config Navigation Logic (Style + Section Toggle) ---
-document.addEventListener('DOMContentLoaded', function() {
+// CitraScope Dashboard - Main Application
+import { connectWebSocket } from './websocket.js';
+import { initConfig } from './config.js';
+import { getTasks, getLogs } from './api.js';
+
+// --- Utility Functions ---
+function stripAnsiCodes(text) {
+    // Remove ANSI color codes (e.g., [92m, [0m, etc.)
+    return text.replace(/\x1B\[\d+m/g, '').replace(/\[\d+m/g, '');
+}
+
+function levelColor(level) {
+    return {
+        'DEBUG': '#a0aec0',
+        'INFO': '#48bb78',
+        'WARNING': '#f6ad55',
+        'ERROR': '#f56565',
+        'CRITICAL': '#c53030'
+    }[level] || '#e2e8f0'
+}
+
+// --- Navigation Logic ---
+function initNavigation() {
     // Initialize Bootstrap tooltips
     const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
     tooltipTriggerList.forEach(function (tooltipTriggerEl) {
@@ -21,7 +42,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.log(`No section element found for section: ${section}`);
             }
         });
-
 
         function activateNav(link) {
             navLinks.forEach(a => {
@@ -56,107 +76,9 @@ document.addEventListener('DOMContentLoaded', function() {
             showSection(first.getAttribute('data-section'));
         }
     }
-});
-let ws = null;
-let reconnectAttempts = 0;
-let reconnectTimer = null;
-let connectionTimer = null;
-const reconnectDelay = 5000; // Fixed 5 second delay between reconnect attempts
-const connectionTimeout = 5000; // 5 second timeout for connection attempts
-
-function connectWebSocket() {
-    // Clear any existing reconnect timer
-    if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = null;
-    }
-
-    // Clear any existing connection timeout
-    if (connectionTimer) {
-        clearTimeout(connectionTimer);
-        connectionTimer = null;
-    }
-
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
-
-    console.log('Attempting WebSocket connection to:', wsUrl);
-
-    try {
-        // Close existing connection if any
-        if (ws && ws.readyState !== WebSocket.CLOSED) {
-            ws.close();
-        }
-
-        ws = new WebSocket(wsUrl);
-
-        // Set a timeout for connection attempt
-        connectionTimer = setTimeout(() => {
-            console.log('WebSocket connection timeout');
-            if (ws && ws.readyState !== WebSocket.OPEN) {
-                ws.close();
-                scheduleReconnect();
-            }
-        }, connectionTimeout);
-
-        ws.onopen = () => {
-            console.log('WebSocket connected successfully');
-            if (connectionTimer) {
-                clearTimeout(connectionTimer);
-                connectionTimer = null;
-            }
-            reconnectAttempts = 0;
-            updateWSStatus(true);
-        };
-
-        ws.onmessage = (event) => {
-            const message = JSON.parse(event.data);
-            if (message.type === 'status') {
-                updateStatus(message.data);
-            } else if (message.type === 'log') {
-                appendLog(message.data);
-            }
-        };
-
-        ws.onclose = (event) => {
-            console.log('WebSocket closed', event.code, event.reason);
-            if (connectionTimer) {
-                clearTimeout(connectionTimer);
-                connectionTimer = null;
-            }
-            ws = null;
-            scheduleReconnect();
-        };
-
-        ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
-            console.log('WebSocket readyState:', ws?.readyState);
-            // Close will be called automatically after error
-        };
-    } catch (error) {
-        console.error('Failed to create WebSocket:', error);
-        if (connectionTimer) {
-            clearTimeout(connectionTimer);
-            connectionTimer = null;
-        }
-        ws = null;
-        scheduleReconnect();
-    }
 }
 
-function scheduleReconnect() {
-    // Fixed 5 second delay between reconnect attempts
-    const delay = reconnectDelay;
-
-    const reconnectMsg = 'reconnecting';
-    updateWSStatus(false, reconnectMsg);
-
-    console.log(`Scheduling reconnect in ${delay/1000}s... (attempt ${reconnectAttempts + 1})`);
-
-    reconnectAttempts++;
-    reconnectTimer = setTimeout(connectWebSocket, delay);
-}
-
+// --- WebSocket Status Display ---
 function updateWSStatus(connected, reconnectInfo = '') {
     const statusEl = document.getElementById('wsStatus');
 
@@ -175,6 +97,7 @@ function updateWSStatus(connected, reconnectInfo = '') {
     }
 }
 
+// --- Status Updates ---
 function updateStatus(status) {
     document.getElementById('hardwareAdapter').textContent = status.hardware_adapter || '-';
     document.getElementById('telescopeConnected').innerHTML = status.telescope_connected
@@ -211,10 +134,10 @@ function updateStatus(status) {
     }
 }
 
+// --- Task Management ---
 async function loadTasks() {
     try {
-        const response = await fetch('/api/tasks');
-        const tasks = await response.json();
+        const tasks = await getTasks();
         const taskList = document.getElementById('taskList');
 
         if (tasks.length === 0) {
@@ -237,10 +160,10 @@ async function loadTasks() {
     }
 }
 
+// --- Log Display ---
 async function loadLogs() {
     try {
-        const response = await fetch('/api/logs?limit=100');
-        const data = await response.json();
+        const data = await getLogs(100);
         const logContainer = document.getElementById('logContainer');
 
         if (data.logs.length === 0) {
@@ -256,21 +179,6 @@ async function loadLogs() {
     } catch (error) {
         console.error('Failed to load logs:', error);
     }
-}
-
-function stripAnsiCodes(text) {
-    // Remove ANSI color codes (e.g., [92m, [0m, etc.)
-    return text.replace(/\x1B\[\d+m/g, '').replace(/\[\d+m/g, '');
-}
-
-function levelColor(level) {
-    return {
-        'DEBUG': '#a0aec0',
-        'INFO': '#48bb78',
-        'WARNING': '#f6ad55',
-        'ERROR': '#f56565',
-        'CRITICAL': '#c53030'
-    }[level] || '#e2e8f0'
 }
 
 function appendLog(log) {
@@ -298,289 +206,6 @@ function appendLog(log) {
         }
     }
 }
-
-// --- Configuration Management ---
-let currentAdapterSchema = [];
-
-async function checkConfigStatus() {
-    try {
-        const response = await fetch('/api/config/status');
-        const status = await response.json();
-
-        if (!status.configured) {
-            // Show setup wizard if not configured
-            const wizardModal = new bootstrap.Modal(document.getElementById('setupWizard'));
-            wizardModal.show();
-        }
-
-        if (status.error) {
-            showConfigError(status.error);
-        }
-    } catch (error) {
-        console.error('Failed to check config status:', error);
-    }
-}
-
-async function loadConfig() {
-    try {
-        const response = await fetch('/api/config');
-        const config = await response.json();
-
-        if (response.status === 503) {
-            console.warn('Configuration not available yet');
-            return;
-        }
-
-        // Core fields
-        document.getElementById('personal_access_token').value = config.personal_access_token || '';
-        document.getElementById('telescopeId').value = config.telescope_id || '';
-        document.getElementById('hardwareAdapterSelect').value = config.hardware_adapter || '';
-        document.getElementById('logLevel').value = config.log_level || 'INFO';
-        document.getElementById('keep_images').checked = config.keep_images || false;
-        document.getElementById('bypass_autofocus').checked = config.bypass_autofocus || false;
-
-        // Load adapter-specific settings if adapter is selected
-        if (config.hardware_adapter) {
-            await loadAdapterSchema(config.hardware_adapter);
-            populateAdapterSettings(config.adapter_settings || {});
-        }
-    } catch (error) {
-        console.error('Failed to load config:', error);
-    }
-}
-
-async function loadAdapterSchema(adapterName) {
-    try {
-        const response = await fetch(`/api/hardware-adapters/${adapterName}/schema`);
-        const data = await response.json();
-
-        if (response.ok) {
-            currentAdapterSchema = data.schema || [];
-            renderAdapterSettings(currentAdapterSchema);
-        } else {
-            console.error('Failed to load adapter schema:', data.error);
-            showConfigError(`Failed to load settings for ${adapterName}: ${data.error}`);
-        }
-    } catch (error) {
-        console.error('Failed to load adapter schema:', error);
-        showConfigError(`Failed to load settings for ${adapterName}`);
-    }
-}
-
-function renderAdapterSettings(schema) {
-    const container = document.getElementById('adapter-settings-container');
-
-    if (!schema || schema.length === 0) {
-        container.innerHTML = '';
-        return;
-    }
-
-    let html = '<h5 class="mb-3">Adapter Settings</h5><div class="row g-3 mb-4">';
-
-    schema.forEach(field => {
-        const isRequired = field.required ? '<span class="text-danger">*</span>' : '';
-        const placeholder = field.placeholder || '';
-        const description = field.description || '';
-
-        html += '<div class="col-12 col-md-6">';
-        html += `<label for="adapter_${field.name}" class="form-label">${field.name} ${isRequired}</label>`;
-
-        if (field.type === 'bool') {
-            html += `<div class="form-check mt-2">`;
-            html += `<input class="form-check-input adapter-setting" type="checkbox" id="adapter_${field.name}" data-field="${field.name}" data-type="${field.type}">`;
-            html += `<label class="form-check-label" for="adapter_${field.name}">${description}</label>`;
-            html += `</div>`;
-        } else if (field.options && field.options.length > 0) {
-            html += `<select id="adapter_${field.name}" class="form-select adapter-setting" data-field="${field.name}" data-type="${field.type}" ${field.required ? 'required' : ''}>`;
-            html += `<option value="">-- Select ${field.name} --</option>`;
-            field.options.forEach(opt => {
-                html += `<option value="${opt}">${opt}</option>`;
-            });
-            html += `</select>`;
-        } else if (field.type === 'int' || field.type === 'float') {
-            const min = field.min !== undefined ? `min="${field.min}"` : '';
-            const max = field.max !== undefined ? `max="${field.max}"` : '';
-            html += `<input type="number" id="adapter_${field.name}" class="form-control adapter-setting" `;
-            html += `data-field="${field.name}" data-type="${field.type}" `;
-            html += `placeholder="${placeholder}" ${min} ${max} ${field.required ? 'required' : ''}>`;
-        } else {
-            // Default to text input
-            const pattern = field.pattern ? `pattern="${field.pattern}"` : '';
-            html += `<input type="text" id="adapter_${field.name}" class="form-control adapter-setting" `;
-            html += `data-field="${field.name}" data-type="${field.type}" `;
-            html += `placeholder="${placeholder}" ${pattern} ${field.required ? 'required' : ''}>`;
-        }
-
-        if (description && field.type !== 'bool') {
-            html += `<small class="text-muted">${description}</small>`;
-        }
-        html += '</div>';
-    });
-
-    html += '</div>';
-    container.innerHTML = html;
-}
-
-function populateAdapterSettings(adapterSettings) {
-    Object.entries(adapterSettings).forEach(([key, value]) => {
-        const input = document.getElementById(`adapter_${key}`);
-        if (input) {
-            if (input.type === 'checkbox') {
-                input.checked = value;
-            } else {
-                input.value = value;
-            }
-        }
-    });
-}
-
-function collectAdapterSettings() {
-    const settings = {};
-    const inputs = document.querySelectorAll('.adapter-setting');
-
-    inputs.forEach(input => {
-        const fieldName = input.dataset.field;
-        const fieldType = input.dataset.type;
-        let value;
-
-        if (input.type === 'checkbox') {
-            value = input.checked;
-        } else {
-            value = input.value;
-        }
-
-        // Type conversion
-        if (value !== '' && value !== null) {
-            if (fieldType === 'int') {
-                value = parseInt(value, 10);
-            } else if (fieldType === 'float') {
-                value = parseFloat(value);
-            } else if (fieldType === 'bool') {
-                // Already handled above
-            }
-        }
-
-        settings[fieldName] = value;
-    });
-
-    return settings;
-}
-
-async function saveConfiguration(event) {
-    event.preventDefault();
-
-    const saveButton = document.getElementById('saveConfigButton');
-    const buttonText = document.getElementById('saveButtonText');
-    const spinner = document.getElementById('saveButtonSpinner');
-
-    // Show loading state
-    saveButton.disabled = true;
-    spinner.style.display = 'inline-block';
-    buttonText.textContent = 'Saving...';
-
-    // Hide previous messages
-    hideConfigMessages();
-
-    const config = {
-        personal_access_token: document.getElementById('personal_access_token').value,
-        telescope_id: document.getElementById('telescopeId').value,
-        hardware_adapter: document.getElementById('hardwareAdapterSelect').value,
-        adapter_settings: collectAdapterSettings(),
-        log_level: document.getElementById('logLevel').value,
-        keep_images: document.getElementById('keep_images').checked,
-        bypass_autofocus: document.getElementById('bypass_autofocus').checked,
-        // API settings (keep defaults for now)
-        host: 'api.citra.space',
-        port: 443,
-        use_ssl: true,
-        max_task_retries: 3,
-        initial_retry_delay_seconds: 30,
-        max_retry_delay_seconds: 300,
-    };
-
-    try {
-        const response = await fetch('/api/config', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(config)
-        });
-
-        const result = await response.json();
-
-        if (response.ok) {
-            showConfigSuccess(result.message || 'Configuration saved and applied successfully!');
-        } else {
-            showConfigError(result.error || result.message || 'Failed to save configuration');
-        }
-    } catch (error) {
-        showConfigError('Failed to save configuration: ' + error.message);
-    } finally {
-        // Reset button state
-        saveButton.disabled = false;
-        spinner.style.display = 'none';
-        buttonText.textContent = 'Save Configuration';
-    }
-}
-
-function showConfigError(message) {
-    const errorDiv = document.getElementById('configError');
-    errorDiv.textContent = message;
-    errorDiv.style.display = 'block';
-}
-
-function showConfigSuccess(message) {
-    const successDiv = document.getElementById('configSuccess');
-    successDiv.textContent = message;
-    successDiv.style.display = 'block';
-
-    // Auto-hide after 5 seconds
-    setTimeout(() => {
-        successDiv.style.display = 'none';
-    }, 5000);
-}
-
-function hideConfigMessages() {
-    document.getElementById('configError').style.display = 'none';
-    document.getElementById('configSuccess').style.display = 'none';
-}
-
-function showConfigSection() {
-    // Close setup wizard modal
-    const wizardModal = bootstrap.Modal.getInstance(document.getElementById('setupWizard'));
-    if (wizardModal) {
-        wizardModal.hide();
-    }
-
-    // Show config section
-    const configLink = document.querySelector('a[data-section="config"]');
-    if (configLink) {
-        configLink.click();
-    }
-}
-
-// Event listeners for configuration
-document.addEventListener('DOMContentLoaded', function() {
-    // Hardware adapter selection change
-    const adapterSelect = document.getElementById('hardwareAdapterSelect');
-    if (adapterSelect) {
-        adapterSelect.addEventListener('change', async function(e) {
-            const adapter = e.target.value;
-            if (adapter) {
-                await loadAdapterSchema(adapter);
-            } else {
-                document.getElementById('adapter-settings-container').innerHTML = '';
-            }
-        });
-    }
-
-    // Config form submission
-    const configForm = document.getElementById('configForm');
-    if (configForm) {
-        configForm.addEventListener('submit', saveConfiguration);
-    }
-});
-
-
 
 // --- Roll-up Terminal Overlay Logic (Bootstrap Accordion) ---
 let isLogExpanded = false;
@@ -656,12 +281,25 @@ loadLogs = async function() {
     }
 };
 
-// Initialize
-connectWebSocket();
-checkConfigStatus();  // Check if configuration is needed
-loadConfig();
-loadTasks();
-loadLogs();
+// --- Initialize Application ---
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize UI navigation
+    initNavigation();
 
-// Refresh tasks periodically
-setInterval(loadTasks, 10000);
+    // Initialize configuration management
+    initConfig();
+
+    // Connect WebSocket with handlers
+    connectWebSocket({
+        onStatus: updateStatus,
+        onLog: appendLog,
+        onConnectionChange: updateWSStatus
+    });
+
+    // Load initial data
+    loadTasks();
+    loadLogs();
+
+    // Refresh tasks periodically
+    setInterval(loadTasks, 10000);
+});
