@@ -73,3 +73,48 @@ body {
     font-family: monospace;
     color: #e2e8f0;
 }
+
+/* Task display */
+.task-title {
+    font-size: 1.1em;
+}
+
+.no-task-message {
+    color: #a0aec0;
+    margin: 0;
+}
+
+/* Ground station link */
+.ground-station-link {
+    color: #4299e1;
+    text-decoration: none;
+}
+
+.ground-station-link:hover {
+    color: #63b3ed;
+    text-decoration: underline;
+}
+
+/* Log entry components */
+.log-entry {
+    margin-bottom: 4px;
+}
+
+.log-timestamp {
+    color: #a0aec0;
+}
+
+.log-level {
+    font-weight: bold;
+    margin: 0 8px;
+}
+
+.log-level-DEBUG { color: #a0aec0; }
+.log-level-INFO { color: #48bb78; }
+.log-level-WARNING { color: #f6ad55; }
+.log-level-ERROR { color: #f56565; }
+.log-level-CRITICAL { color: #c53030; }
+
+.log-message {
+    color: #e2e8f0;
+}

@@ -14,16 +14,6 @@ function stripAnsiCodes(text) {
     return text.replace(/\x1B\[\d+m/g, '').replace(/\[\d+m/g, '');
 }
 
-function levelColor(level) {
-    return {
-        'DEBUG': '#a0aec0',
-        'INFO': '#48bb78',
-        'WARNING': '#f6ad55',
-        'ERROR': '#f56565',
-        'CRITICAL': '#c53030'
-    }[level] || '#e2e8f0'
-}
-
 function formatLocalTime(isoString) {
     const date = new Date(isoString);
     return date.toLocaleString(undefined, {
@@ -63,7 +53,7 @@ function updateCountdown() {
     const currentTaskDisplay = document.getElementById('currentTaskDisplay');
     if (currentTaskDisplay && timeUntil > 0) {
         const countdown = formatCountdown(timeUntil);
-        currentTaskDisplay.innerHTML = `<p style="color: #a0aec0; margin: 0;">No active task - next task in ${countdown}</p>`;
+        currentTaskDisplay.innerHTML = `<p class="no-task-message">No active task - next task in ${countdown}</p>`;
     }
 }
 
@@ -184,13 +174,13 @@ function updateStatus(status) {
         isTaskActive = true;
         stopCountdown();
         currentTaskDisplay.innerHTML = `
-            <div class="fw-semibold mb-2" style="font-size: 1.1em;">${status.current_task}</div>
+            <div class="fw-semibold mb-2 task-title">${status.current_task}</div>
             <div class="text-secondary small">In progress...</div>
         `;
     } else if (isTaskActive) {
         // Task just finished, set to idle state
         isTaskActive = false;
-        currentTaskDisplay.innerHTML = '<p style="color: #a0aec0; margin: 0;">No active task</p>';
+        currentTaskDisplay.innerHTML = '<p class="no-task-message">No active task</p>';
     }
     // If isTaskActive is already false, don't touch the display (countdown is updating it)
 
@@ -208,7 +198,7 @@ function updateStatus(status) {
     const taskScopeButton = document.getElementById('taskScopeButton');
 
     if (status.ground_station_name && status.ground_station_url) {
-        gsNameEl.innerHTML = `<a href="${status.ground_station_url}" target="_blank" style="color: #4299e1; text-decoration: none;">${status.ground_station_name} ↗</a>`;
+        gsNameEl.innerHTML = `<a href="${status.ground_station_url}" target="_blank" class="ground-station-link">${status.ground_station_name} ↗</a>`;
         // Update the Task My Scope button
         taskScopeButton.href = status.ground_station_url;
         taskScopeButton.style.display = 'inline-block';
@@ -240,7 +230,7 @@ function renderTasks(tasks) {
         const taskList = document.getElementById('taskList');
 
         if (tasks.length === 0) {
-            taskList.innerHTML = '<p class="p-3" style="color: #a0aec0;">No pending tasks</p>';
+            taskList.innerHTML = '<p class="p-3 text-muted-dark">No pending tasks</p>';
             stopCountdown();
         } else {
             // Sort tasks by start time (earliest first)
@@ -267,7 +257,7 @@ function renderTasks(tasks) {
                                 <td class="fw-semibold">${task.target}</td>
                                 <td class="text-secondary small">${formatLocalTime(task.start_time)}</td>
                                 <td class="text-secondary small">${task.stop_time ? formatLocalTime(task.stop_time) : '-'}</td>
-                                <td><span class="badge bg-info">${task.status}</span></td>
+                                <td><span class="badge rounded-pill bg-info">${task.status}</span></td>
                             </tr>
                         `).join('')}
                     </tbody>
@@ -287,7 +277,7 @@ async function loadLogs() {
         const logContainer = document.getElementById('logContainer');
 
         if (data.logs.length === 0) {
-            logContainer.innerHTML = '<p style="color: #a0aec0;">No logs available</p>';
+            logContainer.innerHTML = '<p class="text-muted-dark">No logs available</p>';
         } else {
             logContainer.innerHTML = '';
             data.logs.forEach(log => {
@@ -304,16 +294,15 @@ async function loadLogs() {
 function appendLog(log) {
     const logContainer = document.getElementById('logContainer');
     const logEntry = document.createElement('div');
-    logEntry.style.marginBottom = '4px';
+    logEntry.className = 'log-entry';
 
-    const levelColorValue = levelColor(log.level);
     const timestamp = new Date(log.timestamp).toLocaleTimeString();
     const cleanMessage = stripAnsiCodes(log.message);
 
     logEntry.innerHTML = `
-        <span style="color: #a0aec0;">${timestamp}</span>
-        <span style="color: ${levelColorValue}; font-weight: bold; margin: 0 8px;">${log.level}</span>
-        <span style="color: #e2e8f0;">${cleanMessage}</span>
+        <span class="log-timestamp">${timestamp}</span>
+        <span class="log-level log-level-${log.level}">${log.level}</span>
+        <span class="log-message">${cleanMessage}</span>
     `;
 
     logContainer.appendChild(logEntry);
@@ -339,13 +328,12 @@ function updateLatestLogLine() {
         return;
     }
     if (latestLog) {
-        const levelColorValue = levelColor(latestLog.level);
         const timestamp = new Date(latestLog.timestamp).toLocaleTimeString();
         const cleanMessage = stripAnsiCodes(latestLog.message);
         latestLogLine.innerHTML = `
-            <span style=\"color: #a0aec0;\">${timestamp}</span>
-            <span style=\"color: ${levelColorValue}; font-weight: bold; margin: 0 8px;\">${latestLog.level}</span>
-            <span style=\"color: #e2e8f0;\">${cleanMessage}</span>
+            <span class="log-timestamp">${timestamp}</span>
+            <span class="log-level log-level-${latestLog.level}">${latestLog.level}</span>
+            <span class="log-message">${cleanMessage}</span>
         `;
     } else {
         latestLogLine.textContent = '';
