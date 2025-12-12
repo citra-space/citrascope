@@ -144,14 +144,27 @@ function initNavigation() {
 // --- WebSocket Status Display ---
 function updateWSStatus(connected, reconnectInfo = '') {
     const statusEl = document.getElementById('wsStatus');
+    const template = document.getElementById('connectionStatusTemplate');
+    const content = template.content.cloneNode(true);
+    const badge = content.querySelector('.connection-status-badge');
+    const statusText = content.querySelector('.status-text');
 
     if (connected) {
-        statusEl.innerHTML = '<span class="badge rounded-pill bg-success" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Dashboard connected - receiving live updates">Connected</span>';
+        badge.classList.add('bg-success');
+        badge.setAttribute('title', 'Dashboard connected - receiving live updates');
+        statusText.textContent = 'Connected';
     } else if (reconnectInfo) {
-        statusEl.innerHTML = '<span class="badge rounded-pill bg-warning text-dark" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Dashboard reconnecting - attempting to restore connection">Reconnecting</span>';
+        badge.classList.add('bg-warning', 'text-dark');
+        badge.setAttribute('title', 'Dashboard reconnecting - attempting to restore connection');
+        statusText.textContent = 'Reconnecting';
     } else {
-        statusEl.innerHTML = '<span class="badge rounded-pill bg-danger" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Dashboard disconnected - no live updates">Disconnected</span>';
+        badge.classList.add('bg-danger');
+        badge.setAttribute('title', 'Dashboard disconnected - no live updates');
+        statusText.textContent = 'Disconnected';
     }
+
+    statusEl.innerHTML = '';
+    statusEl.appendChild(content);
 
     // Reinitialize tooltips after updating the DOM
     const tooltipTrigger = statusEl.querySelector('[data-bs-toggle="tooltip"]');
@@ -275,34 +288,47 @@ function renderTasks(tasks) {
                 startCountdown(sortedTasks[0].start_time);
             }
 
-            const tableHTML = `
-                <table class="table table-dark table-hover mb-0">
-                    <thead>
-                        <tr>
-                            <th>Target</th>
-                            <th>Start Time</th>
-                            <th>End Time</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${sortedTasks.map(task => {
-                            const isActive = task.id === currentTaskId;
-                            const badgeClass = isActive ? 'bg-success' : 'bg-info';
-                            const statusText = isActive ? 'Active' : task.status;
-                            return `
-                            <tr${isActive ? ' class="table-active"' : ''}>
-                                <td class="fw-semibold">${task.target}</td>
-                                <td class="text-secondary small">${formatLocalTime(task.start_time)}</td>
-                                <td class="text-secondary small">${task.stop_time ? formatLocalTime(task.stop_time) : '-'}</td>
-                                <td><span class="badge rounded-pill ${badgeClass}">${statusText}</span></td>
-                            </tr>
-                            `;
-                        }).join('')}
-                    </tbody>
-                </table>
+            // Create table structure
+            const table = document.createElement('table');
+            table.className = 'table table-dark table-hover mb-0';
+
+            const thead = document.createElement('thead');
+            thead.innerHTML = `
+                <tr>
+                    <th>Target</th>
+                    <th>Start Time</th>
+                    <th>End Time</th>
+                    <th>Status</th>
+                </tr>
             `;
-            taskList.innerHTML = tableHTML;
+            table.appendChild(thead);
+
+            const tbody = document.createElement('tbody');
+            const template = document.getElementById('taskRowTemplate');
+
+            sortedTasks.forEach(task => {
+                const isActive = task.id === currentTaskId;
+                const row = template.content.cloneNode(true);
+                const tr = row.querySelector('.task-row');
+
+                if (isActive) {
+                    tr.classList.add('table-active');
+                }
+
+                row.querySelector('.task-target').textContent = task.target;
+                row.querySelector('.task-start').textContent = formatLocalTime(task.start_time);
+                row.querySelector('.task-end').textContent = task.stop_time ? formatLocalTime(task.stop_time) : '-';
+
+                const badge = row.querySelector('.task-status');
+                badge.classList.add(isActive ? 'bg-success' : 'bg-info');
+                badge.textContent = isActive ? 'Active' : task.status;
+
+                tbody.appendChild(row);
+            });
+
+            table.appendChild(tbody);
+            taskList.innerHTML = '';
+            taskList.appendChild(table);
         }
     } catch (error) {
         console.error('Failed to render tasks:', error);
@@ -332,25 +358,29 @@ async function loadLogs() {
 
 function appendLog(log) {
     const logContainer = document.getElementById('logContainer');
-    const logEntry = document.createElement('div');
-    logEntry.className = 'log-entry';
+    const template = document.getElementById('logEntryTemplate');
+    const entry = template.content.cloneNode(true);
 
     const timestamp = new Date(log.timestamp).toLocaleTimeString();
     const cleanMessage = stripAnsiCodes(log.message);
 
-    logEntry.innerHTML = `
-        <span class="log-timestamp">${timestamp}</span>
-        <span class="log-level log-level-${log.level}">${log.level}</span>
-        <span class="log-message">${cleanMessage}</span>
-    `;
+    entry.querySelector('.log-timestamp').textContent = timestamp;
+    const levelSpan = entry.querySelector('.log-level');
+    levelSpan.classList.add(`log-level-${log.level}`);
+    levelSpan.textContent = log.level;
+    entry.querySelector('.log-message').textContent = cleanMessage;
 
-    logContainer.appendChild(logEntry);
+    const logEntryElement = logContainer.appendChild(entry);
 
     const scrollParent = logContainer.closest('.accordion-body');
     if (scrollParent) {
         const isNearBottom = (scrollParent.scrollHeight - scrollParent.scrollTop - scrollParent.clientHeight) < 100;
         if (isNearBottom) {
-            logEntry.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            // Get the actual appended element (first child of the DocumentFragment)
+            const lastEntry = logContainer.lastElementChild;
+            if (lastEntry) {
+                lastEntry.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            }
         }
     }
 }
@@ -367,13 +397,20 @@ function updateLatestLogLine() {
         return;
     }
     if (latestLog) {
+        const template = document.getElementById('latestLogLineTemplate');
+        const content = template.content.cloneNode(true);
+
         const timestamp = new Date(latestLog.timestamp).toLocaleTimeString();
         const cleanMessage = stripAnsiCodes(latestLog.message);
-        latestLogLine.innerHTML = `
-            <span class="log-timestamp">${timestamp}</span>
-            <span class="log-level log-level-${latestLog.level}">${latestLog.level}</span>
-            <span class="log-message">${cleanMessage}</span>
-        `;
+
+        content.querySelector('.log-timestamp').textContent = timestamp;
+        const levelSpan = content.querySelector('.log-level');
+        levelSpan.classList.add(`log-level-${latestLog.level}`);
+        levelSpan.textContent = latestLog.level;
+        content.querySelector('.log-message').textContent = cleanMessage;
+
+        latestLogLine.innerHTML = '';
+        latestLogLine.appendChild(content);
     } else {
         latestLogLine.textContent = '';
     }

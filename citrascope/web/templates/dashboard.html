@@ -38,6 +38,13 @@
                         id="taskScopeButton" target="_blank">Task my Scope</a></li>
             </ul>
         </header>
+
+        <!-- Template for connection status badge -->
+        <template id="connectionStatusTemplate">
+            <span class="badge rounded-pill connection-status-badge" data-bs-toggle="tooltip" data-bs-placement="bottom">
+                <span class="status-text"></span>
+            </span>
+        </template>
     </div>
 
     <div id="monitoringSection">
@@ -101,6 +108,19 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Template for active task display -->
+                    <template id="activeTaskTemplate">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <div class="spinner-border spinner-border-sm text-success" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <div class="fw-bold task-target-name" style="font-size: 1.3em;"></div>
+                        </div>
+                        <div class="text-secondary small">
+                            <span class="task-id-text"></span>
+                        </div>
+                    </template>
                 </div>
             </div>
             <div class="row g-3 mb-3">
@@ -116,6 +136,16 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Template for task queue rows -->
+                    <template id="taskRowTemplate">
+                        <tr class="task-row">
+                            <td class="fw-semibold task-target"></td>
+                            <td class="text-secondary small task-start"></td>
+                            <td class="text-secondary small task-end"></td>
+                            <td><span class="badge rounded-pill task-status"></span></td>
+                        </tr>
+                    </template>
                 </div>
             </div>
         </div>
@@ -252,6 +282,22 @@
                 </div>
             </div>
         </div>
+
+        <!-- Templates for log display -->
+        <template id="logEntryTemplate">
+            <div class="log-entry">
+                <span class="log-timestamp"></span>
+                <span class="log-level"></span>
+                <span class="log-message"></span>
+            </div>
+        </template>
+
+        <template id="latestLogLineTemplate">
+            <span class="log-timestamp"></span>
+            <span class="log-level"></span>
+            <span class="log-message"></span>
+        </template>
+
     </div>
 
 
