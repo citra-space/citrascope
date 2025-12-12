@@ -430,6 +430,30 @@ class CitraScopeWebApp:
             self._update_status_from_daemon()
         await self.connection_manager.broadcast({"type": "status", "data": self.status.dict()})
 
+    async def broadcast_tasks(self):
+        """Broadcast current task queue to all connected clients."""
+        if not self.daemon or not hasattr(self.daemon, "task_manager") or self.daemon.task_manager is None:
+            return
+
+        task_manager = self.daemon.task_manager
+        tasks = []
+
+        with task_manager.heap_lock:
+            for start_time, stop_time, task_id, task in task_manager.task_heap:
+                tasks.append(
+                    {
+                        "id": task_id,
+                        "start_time": datetime.fromtimestamp(start_time, tz=timezone.utc).isoformat(),
+                        "stop_time": (
+                            datetime.fromtimestamp(stop_time, tz=timezone.utc).isoformat() if stop_time else None
+                        ),
+                        "status": task.status,
+                        "target": getattr(task, "satelliteName", getattr(task, "target", "unknown")),
+                    }
+                )
+
+        await self.connection_manager.broadcast({"type": "tasks", "data": tasks})
+
     async def broadcast_log(self, log_entry: dict):
         """Broadcast log entry to all connected clients."""
         await self.connection_manager.broadcast({"type": "log", "data": log_entry})

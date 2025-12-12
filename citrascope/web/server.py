@@ -105,13 +105,14 @@ class CitraScopeWebServer:
             CITRASCOPE_LOGGER.error(f"Web server error: {e}", exc_info=True)
 
     async def _status_broadcast_loop(self):
-        """Periodically broadcast status to web clients."""
+        """Periodically broadcast status and tasks to web clients."""
         check_counter = 0
         while True:
             try:
                 await asyncio.sleep(2)  # Update every 2 seconds
                 if self.web_app:
                     await self.web_app.broadcast_status()
+                    await self.web_app.broadcast_tasks()
 
                 # Every 10 iterations (20 seconds), check if log handler is still attached
                 check_counter += 1

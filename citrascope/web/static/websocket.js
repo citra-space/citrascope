@@ -10,15 +10,17 @@ const connectionTimeout = 5000; // 5 second timeout for connection attempts
 // Callbacks for handling messages
 let onStatusUpdate = null;
 let onLogMessage = null;
+let onTasksUpdate = null;
 let onConnectionChange = null;
 
 /**
  * Initialize WebSocket connection
- * @param {object} handlers - Event handlers {onStatus, onLog, onConnectionChange}
+ * @param {object} handlers - Event handlers {onStatus, onLog, onTasks, onConnectionChange}
  */
 export function connectWebSocket(handlers = {}) {
     onStatusUpdate = handlers.onStatus || null;
     onLogMessage = handlers.onLog || null;
+    onTasksUpdate = handlers.onTasks || null;
     onConnectionChange = handlers.onConnectionChange || null;
 
     connect();

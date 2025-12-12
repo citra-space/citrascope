@@ -222,9 +222,21 @@ function updateStatus(status) {
 }
 
 // --- Task Management ---
+function updateTasks(tasks) {
+    renderTasks(tasks);
+}
+
 async function loadTasks() {
     try {
         const tasks = await getTasks();
+        renderTasks(tasks);
+    } catch (error) {
+        console.error('Failed to load tasks:', error);
+    }
+}
+
+function renderTasks(tasks) {
+    try {
         const taskList = document.getElementById('taskList');
 
         if (tasks.length === 0) {
@@ -264,7 +276,7 @@ async function loadTasks() {
             taskList.innerHTML = tableHTML;
         }
     } catch (error) {
-        console.error('Failed to load tasks:', error);
+        console.error('Failed to render tasks:', error);
     }
 }
 
@@ -401,13 +413,11 @@ document.addEventListener('DOMContentLoaded', function() {
     connectWebSocket({
         onStatus: updateStatus,
         onLog: appendLog,
+        onTasks: updateTasks,
         onConnectionChange: updateWSStatus
     });
 
     // Load initial data
     loadTasks();
     loadLogs();
-
-    // Refresh tasks periodically
-    setInterval(loadTasks, 10000);
 });
