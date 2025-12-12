@@ -237,7 +237,8 @@ function updateCurrentTaskDisplay() {
             `;
         }
         // Don't show fallback - just wait for task details to arrive
-    } else if (!isTaskActive) {
+    } else if (!isTaskActive && !nextTaskStartTime) {
+        // Only show "No active task" if we're not in countdown mode
         currentTaskDisplay.innerHTML = '<p class="no-task-message">No active task</p>';
     }
 }
