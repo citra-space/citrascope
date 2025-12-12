@@ -148,24 +148,180 @@ class CitraScopeWebApp:
 
             settings = self.daemon.settings
             return {
-                "hardware_adapter": settings.hardware_adapter,
-                "telescope_id": settings.telescope_id,
                 "host": settings.host,
+                "port": settings.port,
+                "use_ssl": settings.use_ssl,
+                "personal_access_token": settings.personal_access_token,
+                "telescope_id": settings.telescope_id,
+                "hardware_adapter": settings.hardware_adapter,
+                "adapter_settings": settings.adapter_settings,
                 "log_level": settings.log_level,
                 "keep_images": settings.keep_images,
                 "bypass_autofocus": settings.bypass_autofocus,
-                "indi_server_url": settings.indi_server_url,
-                "indi_server_port": settings.indi_server_port,
-                "indi_telescope_name": settings.indi_telescope_name,
-                "indi_camera_name": settings.indi_camera_name,
-                "nina_url_prefix": settings.nina_url_prefix,
+                "max_task_retries": settings.max_task_retries,
+                "initial_retry_delay_seconds": settings.initial_retry_delay_seconds,
+                "max_retry_delay_seconds": settings.max_retry_delay_seconds,
             }
+
+        @self.app.get("/api/config/status")
+        async def get_config_status():
+            """Get configuration status."""
+            if not self.daemon or not self.daemon.settings:
+                return {"configured": False, "error": "Settings not available"}
+
+            return {
+                "configured": self.daemon.settings.is_configured(),
+                "error": getattr(self.daemon, "configuration_error", None),
+            }
+
+        @self.app.get("/api/hardware-adapters")
+        async def get_hardware_adapters():
+            """Get list of available hardware adapters."""
+            return {
+                "adapters": ["indi", "nina", "kstars"],
+                "descriptions": {
+                    "indi": "INDI Protocol - Universal astronomy device control",
+                    "nina": "N.I.N.A. Advanced HTTP API - Windows-based astronomy imaging",
+                    "kstars": "KStars/Ekos via D-Bus - Linux astronomy suite",
+                },
+            }
+
+        @self.app.get("/api/hardware-adapters/{adapter_name}/schema")
+        async def get_adapter_schema(adapter_name: str):
+            """Get configuration schema for a specific hardware adapter."""
+            try:
+                if adapter_name == "indi":
+                    from citrascope.hardware.indi_adapter import IndiAdapter
+
+                    # Create temporary instance just to get schema
+                    adapter = IndiAdapter()
+                    return {"schema": adapter.get_settings_schema()}
+
+                elif adapter_name == "nina":
+                    from citrascope.hardware.nina_adv_http_adapter import NinaAdvancedHttpAdapter
+
+                    adapter = NinaAdvancedHttpAdapter()
+                    return {"schema": adapter.get_settings_schema()}
+
+                elif adapter_name == "kstars":
+                    from citrascope.hardware.kstars_dbus_adapter import KStarsDBusAdapter
+
+                    adapter = KStarsDBusAdapter()
+                    return {"schema": adapter.get_settings_schema()}
+
+                else:
+                    return JSONResponse(
+                        {"error": f"Unknown adapter: {adapter_name}"},
+                        status_code=404,
+                    )
+            except Exception as e:
+                CITRASCOPE_LOGGER.error(f"Error getting schema for {adapter_name}: {e}", exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
 
         @self.app.post("/api/config")
         async def update_config(config: Dict[str, Any]):
-            """Update configuration (requires restart to take effect)."""
-            # This would typically update environment variables or config file
-            return {"status": "success", "message": "Configuration updated. Restart required to take effect."}
+            """Update configuration and trigger hot-reload."""
+            try:
+                if not self.daemon:
+                    return JSONResponse({"error": "Daemon not available"}, status_code=503)
+
+                # Validate required fields
+                required_fields = ["personal_access_token", "telescope_id", "hardware_adapter"]
+                for field in required_fields:
+                    if field not in config or not config[field]:
+                        return JSONResponse(
+                            {"error": f"Missing required field: {field}"},
+                            status_code=400,
+                        )
+
+                # Validate adapter_settings against schema if adapter is specified
+                adapter_name = config.get("hardware_adapter")
+                adapter_settings = config.get("adapter_settings", {})
+
+                if adapter_name:
+                    # Get schema for validation
+                    schema_response = await get_adapter_schema(adapter_name)
+                    if isinstance(schema_response, JSONResponse):
+                        return schema_response  # Error getting schema
+
+                    schema = schema_response.get("schema", [])
+
+                    # Validate required fields in adapter settings
+                    for field_schema in schema:
+                        field_name = field_schema.get("name")
+                        is_required = field_schema.get("required", False)
+
+                        if is_required and field_name not in adapter_settings:
+                            return JSONResponse(
+                                {"error": f"Missing required adapter setting: {field_name}"},
+                                status_code=400,
+                            )
+
+                        # Validate type and constraints if present
+                        if field_name in adapter_settings:
+                            value = adapter_settings[field_name]
+                            field_type = field_schema.get("type")
+
+                            # Type validation
+                            if field_type == "int":
+                                try:
+                                    value = int(value)
+                                    adapter_settings[field_name] = value
+                                except (ValueError, TypeError):
+                                    return JSONResponse(
+                                        {"error": f"Field '{field_name}' must be an integer"},
+                                        status_code=400,
+                                    )
+
+                                # Range validation
+                                if "min" in field_schema and value < field_schema["min"]:
+                                    return JSONResponse(
+                                        {"error": f"Field '{field_name}' must be >= {field_schema['min']}"},
+                                        status_code=400,
+                                    )
+                                if "max" in field_schema and value > field_schema["max"]:
+                                    return JSONResponse(
+                                        {"error": f"Field '{field_name}' must be <= {field_schema['max']}"},
+                                        status_code=400,
+                                    )
+
+                            elif field_type == "float":
+                                try:
+                                    value = float(value)
+                                    adapter_settings[field_name] = value
+                                except (ValueError, TypeError):
+                                    return JSONResponse(
+                                        {"error": f"Field '{field_name}' must be a number"},
+                                        status_code=400,
+                                    )
+
+                # Save configuration to file
+                from citrascope.settings.config_manager import ConfigManager
+
+                config_manager = ConfigManager()
+                config_manager.save_config(config)
+
+                # Trigger hot-reload
+                success, error = self.daemon.reload_configuration()
+
+                if success:
+                    return {
+                        "status": "success",
+                        "message": "Configuration updated and reloaded successfully",
+                    }
+                else:
+                    return JSONResponse(
+                        {
+                            "status": "error",
+                            "message": f"Configuration saved but reload failed: {error}",
+                            "error": error,
+                        },
+                        status_code=500,
+                    )
+
+            except Exception as e:
+                CITRASCOPE_LOGGER.error(f"Error updating config: {e}", exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
 
         @self.app.get("/api/tasks")
         async def get_tasks():

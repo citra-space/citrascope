@@ -1,14 +1,20 @@
 import math
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Optional, TypedDict
+from typing import Any, Optional, TypedDict
 
 
 class SettingSchemaEntry(TypedDict, total=False):
     name: str
     type: str  # e.g., 'float', 'int', 'str', 'bool'
-    default: Optional[object]
+    default: Optional[Any]
     description: str
+    required: bool  # Whether this field is required
+    placeholder: str  # Placeholder text for UI inputs
+    min: float  # Minimum value for numeric types
+    max: float  # Maximum value for numeric types
+    pattern: str  # Regex pattern for string validation
+    options: list[str]  # List of valid options for select/dropdown inputs
 
 
 class ObservationStrategy(Enum):

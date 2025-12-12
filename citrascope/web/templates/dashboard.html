@@ -126,20 +126,43 @@
                 Configuration
             </div>
             <div class="card-body">
-                <form>
-                    <div class="row g-3 align-items-end">
-                        <div class="col-12 col-md-4">
-                            <label for="hardwareAdapterSelect" class="form-label">Hardware Adapter</label>
-                            <select id="hardwareAdapterSelect" class="form-select">
-                                <option value="indi">INDI</option>
-                                <option value="nina">NINA</option>
-                                <option value="kstars">KStars</option>
+                <div id="configError" class="alert alert-danger" style="display: none;" role="alert"></div>
+                <div id="configSuccess" class="alert alert-success" style="display: none;" role="alert"></div>
+
+                <form id="configForm">
+                    <!-- Core Configuration -->
+                    <h5 class="mb-3">API Configuration</h5>
+                    <div class="row g-3 mb-4">
+                        <div class="col-12 col-md-6">
+                            <label for="personal_access_token" class="form-label">Personal Access Token <span class="text-danger">*</span></label>
+                            <input type="password" id="personal_access_token" class="form-control" placeholder="Enter your Citra API token" required>
+                            <small class="text-muted">Get your token from app.citra.space</small>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label for="telescopeId" class="form-label">Telescope ID <span class="text-danger">*</span></label>
+                            <input type="text" id="telescopeId" class="form-control" placeholder="Enter telescope ID" required>
+                        </div>
+                    </div>
+
+                    <!-- Hardware Adapter Selection -->
+                    <h5 class="mb-3">Hardware Adapter <span class="text-danger">*</span></h5>
+                    <div class="row g-3 mb-4">
+                        <div class="col-12">
+                            <select id="hardwareAdapterSelect" class="form-select" required>
+                                <option value="">-- Select Hardware Adapter --</option>
+                                <option value="indi">INDI - Universal astronomy device control</option>
+                                <option value="nina">N.I.N.A. - Windows astronomy imaging</option>
+                                <option value="kstars">KStars/Ekos - Linux astronomy suite</option>
                             </select>
                         </div>
-                        <div class="col-12 col-md-4">
-                            <label for="telescopeId" class="form-label">Telescope ID</label>
-                            <input type="text" id="telescopeId" class="form-control" placeholder="Enter telescope ID">
-                        </div>
+                    </div>
+
+                    <!-- Dynamic Adapter Settings Container -->
+                    <div id="adapter-settings-container"></div>
+
+                    <!-- Runtime Settings -->
+                    <h5 class="mb-3">Runtime Settings</h5>
+                    <div class="row g-3 mb-4">
                         <div class="col-12 col-md-4">
                             <label for="logLevel" class="form-label">Log Level</label>
                             <select id="logLevel" class="form-select">
@@ -149,14 +172,60 @@
                                 <option value="ERROR">ERROR</option>
                             </select>
                         </div>
+                        <div class="col-12 col-md-4">
+                            <div class="form-check mt-4">
+                                <input class="form-check-input" type="checkbox" id="keep_images">
+                                <label class="form-check-label" for="keep_images">
+                                    Keep captured images
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <div class="form-check mt-4">
+                                <input class="form-check-input" type="checkbox" id="bypass_autofocus">
+                                <label class="form-check-label" for="bypass_autofocus">
+                                    Bypass autofocus
+                                </label>
+                            </div>
+                        </div>
                     </div>
+
                     <div class="row mt-4">
                         <div class="col">
-                            <button type="button" class="btn btn-primary" onclick="saveConfig()">Save Configuration
-                                (Requires Restart)</button>
+                            <button type="submit" class="btn btn-primary" id="saveConfigButton">
+                                <span id="saveButtonText">Save Configuration</span>
+                                <span id="saveButtonSpinner" class="spinner-border spinner-border-sm ms-2" style="display: none;" role="status"></span>
+                            </button>
+                            <small class="text-muted ms-3">Configuration will be applied immediately</small>
                         </div>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Setup Wizard Modal -->
+    <div class="modal fade" id="setupWizard" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content bg-dark text-light border-secondary">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">Welcome to CitraScope Setup</h5>
+                </div>
+                <div class="modal-body">
+                    <p class="lead">Let's configure your telescope system.</p>
+                    <p>You'll need:</p>
+                    <ul>
+                        <li>Your Citra API personal access token from <a href="https://app.citra.space" target="_blank">app.citra.space</a></li>
+                        <li>Your telescope ID</li>
+                        <li>Information about your hardware adapter (INDI, N.I.N.A., or KStars)</li>
+                    </ul>
+                    <div class="alert alert-info">
+                        <strong>Note:</strong> The configuration screen is available in the "Config" tab at the top of the page.
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-primary" onclick="showConfigSection()">Configure Now</button>
+                </div>
             </div>
         </div>
     </div>

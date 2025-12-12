@@ -32,14 +32,15 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
     _alignment_offset_ra: float = 0.0
     _alignment_offset_dec: float = 0.0
 
-    def __init__(self, CITRA_LOGGER, host: str, port: int, telescope_name: str = "", camera_name: str = ""):
+    def __init__(self, logger=None, **kwargs):
         super(IndiAdapter, self).__init__()
-        self.logger = CITRA_LOGGER
-        self.logger.debug("creating an instance of IndiClient")
-        self.host = host
-        self.port = port
-        self.telescope_name = telescope_name
-        self.camera_name = camera_name
+        self.logger = logger
+        if self.logger:
+            self.logger.debug("creating an instance of IndiClient")
+        self.host = kwargs.get("host", "localhost")
+        self.port = int(kwargs.get("port", 7624))
+        self.telescope_name = kwargs.get("telescope_name", "")
+        self.camera_name = kwargs.get("camera_name", "")
 
         # TetraSolver.high_memory()
 
@@ -53,19 +54,34 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
                 "type": "str",
                 "default": "localhost",
                 "description": "INDI server hostname or IP address",
+                "required": True,
+                "placeholder": "localhost or 192.168.1.100",
             },
-            {"name": "port", "type": "int", "default": 7624, "description": "INDI server port"},
+            {
+                "name": "port",
+                "type": "int",
+                "default": 7624,
+                "description": "INDI server port",
+                "required": True,
+                "placeholder": "7624",
+                "min": 1,
+                "max": 65535,
+            },
             {
                 "name": "telescope_name",
                 "type": "str",
                 "default": "",
-                "description": "Name of the telescope device (optional)",
+                "description": "Name of the telescope device (leave empty to auto-detect)",
+                "required": False,
+                "placeholder": "Telescope Simulator",
             },
             {
                 "name": "camera_name",
                 "type": "str",
                 "default": "",
-                "description": "Name of the camera device (optional)",
+                "description": "Name of the camera device (leave empty to auto-detect)",
+                "required": False,
+                "placeholder": "CCD Simulator",
             },
         ]
 

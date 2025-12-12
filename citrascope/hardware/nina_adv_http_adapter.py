@@ -20,28 +20,17 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
     DEFAULT_FOCUS_POSITION = 9000
     FOCUS_POSITIONS_FILE = "nina_focus_positions.json"
 
-    def __init__(
-        self,
-        LOGGER,
-        nina_api_path="http://nina:1888/v2/api",
-        cam_url="/equipment/camera/",
-        filterwheel_url="/equipment/filterwheel/",
-        focuser_url="/equipment/focuser/",
-        mount_url="/equipment/mount/",
-        safetymon_url="/equipment/safetymonitor/",
-        sequence_url="/sequence/",
-        bypass_autofocus=False,
-    ):
+    def __init__(self, logger=None, **kwargs):
         super().__init__()
-        self.logger = LOGGER
-        self.nina_api_path = nina_api_path
-        self.cam_url = cam_url
-        self.filterwheel_url = filterwheel_url
-        self.focuser_url = focuser_url
-        self.mount_url = mount_url
-        self.safetymon_url = safetymon_url
-        self.sequence_url = sequence_url
-        self.bypass_autofocus = bypass_autofocus
+        self.logger = logger
+        self.nina_api_path = kwargs.get("nina_api_path", "http://nina:1888/v2/api")
+        self.cam_url = kwargs.get("cam_url", "/equipment/camera/")
+        self.filterwheel_url = kwargs.get("filterwheel_url", "/equipment/filterwheel/")
+        self.focuser_url = kwargs.get("focuser_url", "/equipment/focuser/")
+        self.mount_url = kwargs.get("mount_url", "/equipment/mount/")
+        self.safetymon_url = kwargs.get("safetymon_url", "/equipment/safetymonitor/")
+        self.sequence_url = kwargs.get("sequence_url", "/sequence/")
+        self.bypass_autofocus = kwargs.get("bypass_autofocus", False)
 
         self.filter_map = {}
         self._load_focus_positions()
@@ -83,6 +72,9 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
                 "type": "str",
                 "default": "http://nina:1888/v2/api",
                 "description": "Base URL for the NINA Advanced HTTP API",
+                "required": True,
+                "placeholder": "http://localhost:1888/v2/api",
+                "pattern": r"^https?://.*",
             }
         ]
 

@@ -29,7 +29,16 @@ class CitraScopeWebServer:
         # Use a simpler format for web display
         formatter = logging.Formatter("%(levelname)s - %(name)s - %(message)s")
         self.web_log_handler.setFormatter(formatter)
+        # Set handler level to DEBUG so it captures everything
+        self.web_log_handler.setLevel(logging.DEBUG)
         CITRASCOPE_LOGGER.addHandler(self.web_log_handler)
+        CITRASCOPE_LOGGER.info("Web log handler attached to CITRASCOPE_LOGGER")
+
+    def ensure_log_handler(self):
+        """Ensure the web log handler is still attached to the logger."""
+        if self.web_log_handler and self.web_log_handler not in CITRASCOPE_LOGGER.handlers:
+            CITRASCOPE_LOGGER.addHandler(self.web_log_handler)
+            CITRASCOPE_LOGGER.info("Re-attached web log handler to CITRASCOPE_LOGGER")
 
     def configure_uvicorn_logging(self):
         """Configure Uvicorn to use CITRASCOPE_LOGGER."""
@@ -97,10 +106,17 @@ class CitraScopeWebServer:
 
     async def _status_broadcast_loop(self):
         """Periodically broadcast status to web clients."""
+        check_counter = 0
         while True:
             try:
                 await asyncio.sleep(2)  # Update every 2 seconds
                 if self.web_app:
                     await self.web_app.broadcast_status()
+
+                # Every 10 iterations (20 seconds), check if log handler is still attached
+                check_counter += 1
+                if check_counter >= 10:
+                    check_counter = 0
+                    self.ensure_log_handler()
             except Exception as e:
                 CITRASCOPE_LOGGER.error(f"Status broadcast error: {e}")

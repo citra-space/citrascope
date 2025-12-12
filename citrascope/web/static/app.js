@@ -296,24 +296,203 @@ function appendLog(log) {
     }
 }
 
+// --- Configuration Management ---
+let currentAdapterSchema = [];
+
+async function checkConfigStatus() {
+    try {
+        const response = await fetch('/api/config/status');
+        const status = await response.json();
+
+        if (!status.configured) {
+            // Show setup wizard if not configured
+            const wizardModal = new bootstrap.Modal(document.getElementById('setupWizard'));
+            wizardModal.show();
+        }
+
+        if (status.error) {
+            showConfigError(status.error);
+        }
+    } catch (error) {
+        console.error('Failed to check config status:', error);
+    }
+}
+
 async function loadConfig() {
     try {
         const response = await fetch('/api/config');
         const config = await response.json();
 
-        document.getElementById('hardwareAdapterSelect').value = config.hardware_adapter || 'indi';
+        if (response.status === 503) {
+            console.warn('Configuration not available yet');
+            return;
+        }
+
+        // Core fields
+        document.getElementById('personal_access_token').value = config.personal_access_token || '';
         document.getElementById('telescopeId').value = config.telescope_id || '';
+        document.getElementById('hardwareAdapterSelect').value = config.hardware_adapter || '';
         document.getElementById('logLevel').value = config.log_level || 'INFO';
+        document.getElementById('keep_images').checked = config.keep_images || false;
+        document.getElementById('bypass_autofocus').checked = config.bypass_autofocus || false;
+
+        // Load adapter-specific settings if adapter is selected
+        if (config.hardware_adapter) {
+            await loadAdapterSchema(config.hardware_adapter);
+            populateAdapterSettings(config.adapter_settings || {});
+        }
     } catch (error) {
         console.error('Failed to load config:', error);
     }
 }
 
-async function saveConfig() {
+async function loadAdapterSchema(adapterName) {
+    try {
+        const response = await fetch(`/api/hardware-adapters/${adapterName}/schema`);
+        const data = await response.json();
+
+        if (response.ok) {
+            currentAdapterSchema = data.schema || [];
+            renderAdapterSettings(currentAdapterSchema);
+        } else {
+            console.error('Failed to load adapter schema:', data.error);
+            showConfigError(`Failed to load settings for ${adapterName}: ${data.error}`);
+        }
+    } catch (error) {
+        console.error('Failed to load adapter schema:', error);
+        showConfigError(`Failed to load settings for ${adapterName}`);
+    }
+}
+
+function renderAdapterSettings(schema) {
+    const container = document.getElementById('adapter-settings-container');
+
+    if (!schema || schema.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+
+    let html = '<h5 class="mb-3">Adapter Settings</h5><div class="row g-3 mb-4">';
+
+    schema.forEach(field => {
+        const isRequired = field.required ? '<span class="text-danger">*</span>' : '';
+        const placeholder = field.placeholder || '';
+        const description = field.description || '';
+
+        html += '<div class="col-12 col-md-6">';
+        html += `<label for="adapter_${field.name}" class="form-label">${field.name} ${isRequired}</label>`;
+
+        if (field.type === 'bool') {
+            html += `<div class="form-check mt-2">`;
+            html += `<input class="form-check-input adapter-setting" type="checkbox" id="adapter_${field.name}" data-field="${field.name}" data-type="${field.type}">`;
+            html += `<label class="form-check-label" for="adapter_${field.name}">${description}</label>`;
+            html += `</div>`;
+        } else if (field.options && field.options.length > 0) {
+            html += `<select id="adapter_${field.name}" class="form-select adapter-setting" data-field="${field.name}" data-type="${field.type}" ${field.required ? 'required' : ''}>`;
+            html += `<option value="">-- Select ${field.name} --</option>`;
+            field.options.forEach(opt => {
+                html += `<option value="${opt}">${opt}</option>`;
+            });
+            html += `</select>`;
+        } else if (field.type === 'int' || field.type === 'float') {
+            const min = field.min !== undefined ? `min="${field.min}"` : '';
+            const max = field.max !== undefined ? `max="${field.max}"` : '';
+            html += `<input type="number" id="adapter_${field.name}" class="form-control adapter-setting" `;
+            html += `data-field="${field.name}" data-type="${field.type}" `;
+            html += `placeholder="${placeholder}" ${min} ${max} ${field.required ? 'required' : ''}>`;
+        } else {
+            // Default to text input
+            const pattern = field.pattern ? `pattern="${field.pattern}"` : '';
+            html += `<input type="text" id="adapter_${field.name}" class="form-control adapter-setting" `;
+            html += `data-field="${field.name}" data-type="${field.type}" `;
+            html += `placeholder="${placeholder}" ${pattern} ${field.required ? 'required' : ''}>`;
+        }
+
+        if (description && field.type !== 'bool') {
+            html += `<small class="text-muted">${description}</small>`;
+        }
+        html += '</div>';
+    });
+
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function populateAdapterSettings(adapterSettings) {
+    Object.entries(adapterSettings).forEach(([key, value]) => {
+        const input = document.getElementById(`adapter_${key}`);
+        if (input) {
+            if (input.type === 'checkbox') {
+                input.checked = value;
+            } else {
+                input.value = value;
+            }
+        }
+    });
+}
+
+function collectAdapterSettings() {
+    const settings = {};
+    const inputs = document.querySelectorAll('.adapter-setting');
+
+    inputs.forEach(input => {
+        const fieldName = input.dataset.field;
+        const fieldType = input.dataset.type;
+        let value;
+
+        if (input.type === 'checkbox') {
+            value = input.checked;
+        } else {
+            value = input.value;
+        }
+
+        // Type conversion
+        if (value !== '' && value !== null) {
+            if (fieldType === 'int') {
+                value = parseInt(value, 10);
+            } else if (fieldType === 'float') {
+                value = parseFloat(value);
+            } else if (fieldType === 'bool') {
+                // Already handled above
+            }
+        }
+
+        settings[fieldName] = value;
+    });
+
+    return settings;
+}
+
+async function saveConfiguration(event) {
+    event.preventDefault();
+
+    const saveButton = document.getElementById('saveConfigButton');
+    const buttonText = document.getElementById('saveButtonText');
+    const spinner = document.getElementById('saveButtonSpinner');
+
+    // Show loading state
+    saveButton.disabled = true;
+    spinner.style.display = 'inline-block';
+    buttonText.textContent = 'Saving...';
+
+    // Hide previous messages
+    hideConfigMessages();
+
     const config = {
-        hardware_adapter: document.getElementById('hardwareAdapterSelect').value,
+        personal_access_token: document.getElementById('personal_access_token').value,
         telescope_id: document.getElementById('telescopeId').value,
-        log_level: document.getElementById('logLevel').value
+        hardware_adapter: document.getElementById('hardwareAdapterSelect').value,
+        adapter_settings: collectAdapterSettings(),
+        log_level: document.getElementById('logLevel').value,
+        keep_images: document.getElementById('keep_images').checked,
+        bypass_autofocus: document.getElementById('bypass_autofocus').checked,
+        // API settings (keep defaults for now)
+        host: 'api.citra.space',
+        port: 443,
+        use_ssl: true,
+        max_task_retries: 3,
+        initial_retry_delay_seconds: 30,
+        max_retry_delay_seconds: 300,
     };
 
     try {
@@ -324,11 +503,79 @@ async function saveConfig() {
         });
 
         const result = await response.json();
-        alert(result.message);
+
+        if (response.ok) {
+            showConfigSuccess(result.message || 'Configuration saved and applied successfully!');
+        } else {
+            showConfigError(result.error || result.message || 'Failed to save configuration');
+        }
     } catch (error) {
-        alert('Failed to save configuration: ' + error.message);
+        showConfigError('Failed to save configuration: ' + error.message);
+    } finally {
+        // Reset button state
+        saveButton.disabled = false;
+        spinner.style.display = 'none';
+        buttonText.textContent = 'Save Configuration';
     }
 }
+
+function showConfigError(message) {
+    const errorDiv = document.getElementById('configError');
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+}
+
+function showConfigSuccess(message) {
+    const successDiv = document.getElementById('configSuccess');
+    successDiv.textContent = message;
+    successDiv.style.display = 'block';
+
+    // Auto-hide after 5 seconds
+    setTimeout(() => {
+        successDiv.style.display = 'none';
+    }, 5000);
+}
+
+function hideConfigMessages() {
+    document.getElementById('configError').style.display = 'none';
+    document.getElementById('configSuccess').style.display = 'none';
+}
+
+function showConfigSection() {
+    // Close setup wizard modal
+    const wizardModal = bootstrap.Modal.getInstance(document.getElementById('setupWizard'));
+    if (wizardModal) {
+        wizardModal.hide();
+    }
+
+    // Show config section
+    const configLink = document.querySelector('a[data-section="config"]');
+    if (configLink) {
+        configLink.click();
+    }
+}
+
+// Event listeners for configuration
+document.addEventListener('DOMContentLoaded', function() {
+    // Hardware adapter selection change
+    const adapterSelect = document.getElementById('hardwareAdapterSelect');
+    if (adapterSelect) {
+        adapterSelect.addEventListener('change', async function(e) {
+            const adapter = e.target.value;
+            if (adapter) {
+                await loadAdapterSchema(adapter);
+            } else {
+                document.getElementById('adapter-settings-container').innerHTML = '';
+            }
+        });
+    }
+
+    // Config form submission
+    const configForm = document.getElementById('configForm');
+    if (configForm) {
+        configForm.addEventListener('submit', saveConfiguration);
+    }
+});
 
 
 
@@ -408,6 +655,7 @@ loadLogs = async function() {
 
 // Initialize
 connectWebSocket();
+checkConfigStatus();  // Check if configuration is needed
 loadConfig();
 loadTasks();
 loadLogs();
