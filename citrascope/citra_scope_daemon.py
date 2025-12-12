@@ -85,58 +85,76 @@ class CitraScopeDaemon:
             )
 
     def run(self):
-        CITRASCOPE_LOGGER.info(f"CitraAPISettings host is {self.settings.host}")
-        CITRASCOPE_LOGGER.info(f"CitraAPISettings telescope_id is {self.settings.telescope_id}")
-
-        # Start web server FIRST if enabled, so users can monitor the startup process
+        # Start web server FIRST if enabled, so users can monitor the entire startup process
+        # The web interface will remain available even if hardware/API initialization fails
         if self.enable_web:
             self.web_server.start()
             CITRASCOPE_LOGGER.info(f"Web interface available at http://{self.web_server.host}:{self.web_server.port}")
-            CITRASCOPE_LOGGER.info("Web server started. Proceeding with hardware connections...")
 
-        # check api for valid key, telescope and ground station
-        if not self.api_client.does_api_server_accept_key():
-            CITRASCOPE_LOGGER.error("Aborting: could not authenticate with Citra API.")
-            return
+        try:
+            CITRASCOPE_LOGGER.info(f"CitraAPISettings host is {self.settings.host}")
+            CITRASCOPE_LOGGER.info(f"CitraAPISettings telescope_id is {self.settings.telescope_id}")
 
-        citra_telescope_record = self.api_client.get_telescope(self.settings.telescope_id)
-        if not citra_telescope_record:
-            CITRASCOPE_LOGGER.error("Aborting: telescope_id is not valid on the server.")
-            return
-        self.telescope_record = citra_telescope_record
+            # check api for valid key, telescope and ground station
+            if not self.api_client.does_api_server_accept_key():
+                CITRASCOPE_LOGGER.error("Could not authenticate with Citra API.")
+                self._keep_running()
+                return
 
-        ground_station = self.api_client.get_ground_station(citra_telescope_record["groundStationId"])
-        if not ground_station:
-            CITRASCOPE_LOGGER.error("Aborting: could not get ground station info from the server.")
-            return
-        self.ground_station = ground_station
+            citra_telescope_record = self.api_client.get_telescope(self.settings.telescope_id)
+            if not citra_telescope_record:
+                CITRASCOPE_LOGGER.error("telescope_id is not valid on the server.")
+                self._keep_running()
+                return
+            self.telescope_record = citra_telescope_record
 
-        # connect to hardware server
-        CITRASCOPE_LOGGER.info(f"Connecting to hardware with {type(self.hardware_adapter).__name__}...")
-        if not self.hardware_adapter.connect():
-            CITRASCOPE_LOGGER.error("Aborting: failed to connect to hardware.")
-            return
+            ground_station = self.api_client.get_ground_station(citra_telescope_record["groundStationId"])
+            if not ground_station:
+                CITRASCOPE_LOGGER.error("Could not get ground station info from the server.")
+                self._keep_running()
+                return
+            self.ground_station = ground_station
 
-        self.hardware_adapter.scope_slew_rate_degrees_per_second = citra_telescope_record["maxSlewRate"]
-        CITRASCOPE_LOGGER.info(
-            f"Hardware connected. Slew rate: {self.hardware_adapter.scope_slew_rate_degrees_per_second} deg/sec"
-        )
+            # connect to hardware server
+            CITRASCOPE_LOGGER.info(f"Connecting to hardware with {type(self.hardware_adapter).__name__}...")
+            if not self.hardware_adapter.connect():
+                CITRASCOPE_LOGGER.error("Failed to connect to hardware.")
+                self._keep_running()
+                return
 
-        self.task_manager = TaskManager(
-            self.api_client,
-            citra_telescope_record,
-            ground_station,
-            CITRASCOPE_LOGGER,
-            self.hardware_adapter,
-            self.settings.keep_images,
-            self.settings,
-        )
-        self.task_manager.start()
+            self.hardware_adapter.scope_slew_rate_degrees_per_second = citra_telescope_record["maxSlewRate"]
+            CITRASCOPE_LOGGER.info(
+                f"Hardware connected. Slew rate: {self.hardware_adapter.scope_slew_rate_degrees_per_second} deg/sec"
+            )
 
-        CITRASCOPE_LOGGER.info("Starting telescope task daemon... (press Ctrl+C to exit)")
+            self.task_manager = TaskManager(
+                self.api_client,
+                citra_telescope_record,
+                ground_station,
+                CITRASCOPE_LOGGER,
+                self.hardware_adapter,
+                self.settings.keep_images,
+                self.settings,
+            )
+            self.task_manager.start()
+
+            CITRASCOPE_LOGGER.info("Starting telescope task daemon... (press Ctrl+C to exit)")
+            self._keep_running()
+        finally:
+            self._shutdown()
+
+    def _keep_running(self):
+        """Keep the daemon running until interrupted."""
         try:
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
             CITRASCOPE_LOGGER.info("Shutting down daemon.")
+
+    def _shutdown(self):
+        """Clean up resources on shutdown."""
+        if self.task_manager:
             self.task_manager.stop()
+        if self.enable_web and self.web_server:
+            CITRASCOPE_LOGGER.info("Stopping web server...")
+            self.web_server.stop()
