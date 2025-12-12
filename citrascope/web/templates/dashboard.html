@@ -152,87 +152,108 @@
     </div>
 
     <div class="container my-4" id="configSection" style="display: none;">
-        <div class="card bg-dark text-light border-secondary w-100">
-            <div class="card-header">
-                Configuration
-            </div>
-            <div class="card-body">
-                <div id="configError" class="alert alert-danger" style="display: none;" role="alert"></div>
-                <div id="configSuccess" class="alert alert-success" style="display: none;" role="alert"></div>
+        <div id="configError" class="alert alert-danger" style="display: none;" role="alert"></div>
+        <div id="configSuccess" class="alert alert-success" style="display: none;" role="alert"></div>
 
-                <form id="configForm">
-                    <!-- Core Configuration -->
-                    <h5 class="mb-3">API Configuration</h5>
-                    <div class="row g-3 mb-4">
-                        <div class="col-12 col-md-6">
-                            <label for="personal_access_token" class="form-label">Personal Access Token <span class="text-danger">*</span></label>
-                            <input type="password" id="personal_access_token" class="form-control" placeholder="Enter your Citra API token" required>
-                            <small class="text-muted">Get your token from app.citra.space</small>
+        <form id="configForm">
+            <div class="row g-3 mb-3">
+                <!-- API Configuration Card -->
+                <div class="col-12">
+                    <div class="card bg-dark text-light border-secondary">
+                        <div class="card-header">
+                            <h5 class="mb-0">API Configuration</h5>
                         </div>
-                        <div class="col-12 col-md-6">
-                            <label for="telescopeId" class="form-label">Telescope ID <span class="text-danger">*</span></label>
-                            <input type="text" id="telescopeId" class="form-control" placeholder="Enter telescope ID" required>
-                        </div>
-                    </div>
-
-                    <!-- Hardware Adapter Selection -->
-                    <h5 class="mb-3">Hardware Adapter <span class="text-danger">*</span></h5>
-                    <div class="row g-3 mb-4">
-                        <div class="col-12">
-                            <select id="hardwareAdapterSelect" class="form-select" required>
-                                <option value="">-- Select Hardware Adapter --</option>
-                                <option value="indi">INDI - Universal astronomy device control</option>
-                                <option value="nina">N.I.N.A. - Windows astronomy imaging</option>
-                                <option value="kstars">KStars/Ekos - Linux astronomy suite</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- Dynamic Adapter Settings Container -->
-                    <div id="adapter-settings-container"></div>
-
-                    <!-- Runtime Settings -->
-                    <h5 class="mb-3">Runtime Settings</h5>
-                    <div class="row g-3 mb-4">
-                        <div class="col-12 col-md-4">
-                            <label for="logLevel" class="form-label">Log Level</label>
-                            <select id="logLevel" class="form-select">
-                                <option value="DEBUG">DEBUG</option>
-                                <option value="INFO">INFO</option>
-                                <option value="WARNING">WARNING</option>
-                                <option value="ERROR">ERROR</option>
-                            </select>
-                        </div>
-                        <div class="col-12 col-md-4">
-                            <div class="form-check mt-4">
-                                <input class="form-check-input" type="checkbox" id="keep_images">
-                                <label class="form-check-label" for="keep_images">
-                                    Keep captured images
-                                </label>
-                            </div>
-                        </div>
-                        <div class="col-12 col-md-4">
-                            <div class="form-check mt-4">
-                                <input class="form-check-input" type="checkbox" id="bypass_autofocus">
-                                <label class="form-check-label" for="bypass_autofocus">
-                                    Bypass autofocus
-                                </label>
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-12 col-md-6">
+                                    <label for="personal_access_token" class="form-label">Personal Access Token <span class="text-danger">*</span></label>
+                                    <input type="password" id="personal_access_token" class="form-control" placeholder="Enter your Citra API token" required>
+                                    <small class="text-muted">Get your token from app.citra.space</small>
+                                </div>
+                                <div class="col-12 col-md-6">
+                                    <label for="telescopeId" class="form-label">Telescope ID <span class="text-danger">*</span></label>
+                                    <input type="text" id="telescopeId" class="form-control" placeholder="Enter telescope ID" required>
+                                </div>
                             </div>
                         </div>
                     </div>
+                </div>
 
-                    <div class="row mt-4">
-                        <div class="col">
-                            <button type="submit" class="btn btn-primary" id="saveConfigButton">
-                                <span id="saveButtonText">Save Configuration</span>
-                                <span id="saveButtonSpinner" class="spinner-border spinner-border-sm ms-2" style="display: none;" role="status"></span>
-                            </button>
-                            <small class="text-muted ms-3">Configuration will be applied immediately</small>
+                <!-- Hardware Configuration Card -->
+                <div class="col-12">
+                    <div class="card bg-dark text-light border-secondary">
+                        <div class="card-header">
+                            <h5 class="mb-0">Hardware Configuration</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3 mb-3">
+                                <div class="col-12">
+                                    <label for="hardwareAdapterSelect" class="form-label">Hardware Adapter <span class="text-danger">*</span></label>
+                                    <select id="hardwareAdapterSelect" class="form-select" required>
+                                        <option value="">-- Select Hardware Adapter --</option>
+                                        <option value="indi">INDI - Universal astronomy device control</option>
+                                        <option value="nina">N.I.N.A. - Windows astronomy imaging</option>
+                                        <option value="kstars">KStars/Ekos - Linux astronomy suite</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Dynamic Adapter Settings Container -->
+                            <div id="adapter-settings-container"></div>
                         </div>
                     </div>
-                </form>
+                </div>
+
+                <!-- Runtime Settings Card -->
+                <div class="col-12">
+                    <div class="card bg-dark text-light border-secondary">
+                        <div class="card-header">
+                            <h5 class="mb-0">Runtime Settings</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-12 col-md-4">
+                                    <label for="logLevel" class="form-label">Log Level</label>
+                                    <select id="logLevel" class="form-select">
+                                        <option value="DEBUG">DEBUG</option>
+                                        <option value="INFO">INFO</option>
+                                        <option value="WARNING">WARNING</option>
+                                        <option value="ERROR">ERROR</option>
+                                    </select>
+                                </div>
+                                <div class="col-12 col-md-4">
+                                    <div class="form-check mt-4">
+                                        <input class="form-check-input" type="checkbox" id="keep_images">
+                                        <label class="form-check-label" for="keep_images">
+                                            Keep captured images
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-12 col-md-4">
+                                    <div class="form-check mt-4">
+                                        <input class="form-check-input" type="checkbox" id="bypass_autofocus">
+                                        <label class="form-check-label" for="bypass_autofocus">
+                                            Bypass autofocus
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>
+
+            <!-- Save Button -->
+            <div class="row">
+                <div class="col">
+                    <button type="submit" class="btn btn-primary" id="saveConfigButton">
+                        <span id="saveButtonText">Save Configuration</span>
+                        <span id="saveButtonSpinner" class="spinner-border spinner-border-sm ms-2" style="display: none;" role="status"></span>
+                    </button>
+                    <small class="text-muted ms-3">Configuration will be applied immediately</small>
+                </div>
+            </div>
+        </form>
     </div>
 
     <!-- Setup Wizard Modal -->
