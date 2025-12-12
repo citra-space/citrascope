@@ -44,35 +44,66 @@ class TaskManager:
                 self._report_online()
                 tasks = self.api_client.get_telescope_tasks(self.telescope_record["id"])
                 added = 0
+                removed = 0
                 now = int(time.time())
                 with self.heap_lock:
+                    # Build a map of current valid tasks from the API
+                    api_task_map = {}
                     for task_dict in tasks:
                         try:
                             task = Task.from_dict(task_dict)
                             tid = task.id
+                            if tid and task.status in ["Pending", "Scheduled"]:
+                                api_task_map[tid] = task
+                        except Exception as e:
+                            self.logger.error(f"Error parsing task from API: {e}", exc_info=True)
+
+                    # Remove tasks from heap that are no longer valid (cancelled, completed, or not in API response)
+                    new_heap = []
+                    for start_epoch, stop_epoch, tid, task in self.task_heap:
+                        # Keep task if it's still in the API response with a valid status
+                        # Don't remove currently executing task
+                        if tid == self.current_task_id or tid in api_task_map:
+                            new_heap.append((start_epoch, stop_epoch, tid, task))
+                        else:
+                            self.logger.info(f"Removing task {tid} from queue (cancelled or status changed)")
+                            self.task_ids.discard(tid)
+                            # Clean up retry tracking
+                            self.task_retry_counts.pop(tid, None)
+                            self.task_last_failure.pop(tid, None)
+                            removed += 1
+
+                    # Rebuild heap if we removed anything
+                    if removed > 0:
+                        self.task_heap = new_heap
+                        heapq.heapify(self.task_heap)
+
+                    # Add new tasks that aren't already in the heap
+                    for tid, task in api_task_map.items():
+                        # Skip if task is in heap or is currently being executed
+                        if tid not in self.task_ids and tid != self.current_task_id:
                             task_start = task.taskStart
                             task_stop = task.taskStop
-                            # Skip if task is in heap or is currently being executed
-                            if tid and task_start and tid not in self.task_ids and tid != self.current_task_id:
-                                try:
-                                    start_epoch = int(dtparser.isoparse(task_start).timestamp())
-                                    stop_epoch = int(dtparser.isoparse(task_stop).timestamp()) if task_stop else 0
-                                except Exception:
-                                    self.logger.error(f"Could not parse taskStart/taskStop for task {tid}")
-                                    continue
-                                if stop_epoch and stop_epoch < now:
-                                    self.logger.debug(f"Skipping past task {tid} that ended at {task_stop}")
-                                    continue  # Skip tasks whose end date has passed
-                                if task.status not in ["Pending", "Scheduled"]:
-                                    self.logger.debug(f"Skipping task {tid} with status {task.status}")
-                                    continue  # Only schedule pending/scheduled tasks
-                                heapq.heappush(self.task_heap, (start_epoch, stop_epoch, tid, task))
-                                self.task_ids.add(tid)
-                                added += 1
-                        except Exception as e:
-                            self.logger.error(f"Error adding task {tid} to heap: {e}", exc_info=True)
-                    if added > 0:
-                        self.logger.info(self._heap_summary("Added tasks"))
+                            try:
+                                start_epoch = int(dtparser.isoparse(task_start).timestamp())
+                                stop_epoch = int(dtparser.isoparse(task_stop).timestamp()) if task_stop else 0
+                            except Exception:
+                                self.logger.error(f"Could not parse taskStart/taskStop for task {tid}")
+                                continue
+                            if stop_epoch and stop_epoch < now:
+                                self.logger.debug(f"Skipping past task {tid} that ended at {task_stop}")
+                                continue  # Skip tasks whose end date has passed
+                            heapq.heappush(self.task_heap, (start_epoch, stop_epoch, tid, task))
+                            self.task_ids.add(tid)
+                            added += 1
+
+                    if added > 0 or removed > 0:
+                        action = []
+                        if added > 0:
+                            action.append(f"Added {added}")
+                        if removed > 0:
+                            action.append(f"Removed {removed}")
+                        self.logger.info(self._heap_summary(f"{', '.join(action)} tasks"))
                     # self.logger.info(self._heap_summary("Polled tasks"))
             except Exception as e:
                 self.logger.error(f"Exception in poll_tasks loop: {e}", exc_info=True)
