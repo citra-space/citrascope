@@ -55,7 +55,7 @@ let ws = null;
 let reconnectAttempts = 0;
 let reconnectTimer = null;
 let connectionTimer = null;
-const maxReconnectDelay = 30000; // Max 30 seconds between attempts
+const reconnectDelay = 5000; // Fixed 5 second delay between reconnect attempts
 const connectionTimeout = 5000; // 5 second timeout for connection attempts
 
 function connectWebSocket() {
@@ -139,8 +139,8 @@ function connectWebSocket() {
 }
 
 function scheduleReconnect() {
-    // Calculate reconnect delay with exponential backoff
-    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), maxReconnectDelay);
+    // Fixed 5 second delay between reconnect attempts
+    const delay = reconnectDelay;
 
     const reconnectMsg = `(reconnecting in ${delay/1000}s, attempt ${reconnectAttempts + 1})`;
     updateWSStatus(false, reconnectMsg);
