@@ -3,6 +3,11 @@ import { connectWebSocket } from './websocket.js';
 import { initConfig } from './config.js';
 import { getTasks, getLogs } from './api.js';
 
+// Global state for countdown
+let nextTaskStartTime = null;
+let countdownInterval = null;
+let isTaskActive = false;
+
 // --- Utility Functions ---
 function stripAnsiCodes(text) {
     // Remove ANSI color codes (e.g., [92m, [0m, etc.)
@@ -17,6 +22,72 @@ function levelColor(level) {
         'ERROR': '#f56565',
         'CRITICAL': '#c53030'
     }[level] || '#e2e8f0'
+}
+
+function formatLocalTime(isoString) {
+    const date = new Date(isoString);
+    return date.toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+    });
+}
+
+function formatCountdown(milliseconds) {
+    const totalSeconds = Math.floor(milliseconds / 1000);
+
+    if (totalSeconds < 0) return 'Starting soon...';
+
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    if (hours > 0) {
+        return `${hours}h ${minutes}m ${seconds}s`;
+    } else if (minutes > 0) {
+        return `${minutes}m ${seconds}s`;
+    } else {
+        return `${seconds}s`;
+    }
+}
+
+function updateCountdown() {
+    if (!nextTaskStartTime || isTaskActive) return;
+
+    const now = new Date();
+    const timeUntil = nextTaskStartTime - now;
+
+    const currentTaskDisplay = document.getElementById('currentTaskDisplay');
+    if (currentTaskDisplay && timeUntil > 0) {
+        const countdown = formatCountdown(timeUntil);
+        currentTaskDisplay.innerHTML = `<p style="color: #a0aec0; margin: 0;">No active task - next task in ${countdown}</p>`;
+    }
+}
+
+function startCountdown(startTime) {
+    nextTaskStartTime = new Date(startTime);
+
+    // Clear any existing interval
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+    }
+
+    // Update immediately
+    updateCountdown();
+
+    // Update every second
+    countdownInterval = setInterval(updateCountdown, 1000);
+}
+
+function stopCountdown() {
+    nextTaskStartTime = null;
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+    }
 }
 
 // --- Navigation Logic ---
@@ -106,7 +177,23 @@ function updateStatus(status) {
     document.getElementById('cameraConnected').innerHTML = status.camera_connected
         ? '<span class="badge rounded-pill bg-success">Connected</span>'
         : '<span class="badge rounded-pill bg-danger">Disconnected</span>';
-    document.getElementById('currentTask').textContent = status.current_task || 'None';
+
+    // Update current task display
+    const currentTaskDisplay = document.getElementById('currentTaskDisplay');
+    if (status.current_task && status.current_task !== 'None') {
+        isTaskActive = true;
+        stopCountdown();
+        currentTaskDisplay.innerHTML = `
+            <div class="fw-semibold mb-2" style="font-size: 1.1em;">${status.current_task}</div>
+            <div class="text-secondary small">In progress...</div>
+        `;
+    } else if (isTaskActive) {
+        // Task just finished, set to idle state
+        isTaskActive = false;
+        currentTaskDisplay.innerHTML = '<p style="color: #a0aec0; margin: 0;">No active task</p>';
+    }
+    // If isTaskActive is already false, don't touch the display (countdown is updating it)
+
     document.getElementById('tasksPending').textContent = status.tasks_pending || '0';
 
     if (status.telescope_ra !== null) {
@@ -141,19 +228,40 @@ async function loadTasks() {
         const taskList = document.getElementById('taskList');
 
         if (tasks.length === 0) {
-            taskList.innerHTML = '<p style="color: #a0aec0;">No pending tasks</p>';
+            taskList.innerHTML = '<p class="p-3" style="color: #a0aec0;">No pending tasks</p>';
+            stopCountdown();
         } else {
-            taskList.innerHTML = tasks.map(task => `
-                <div class="task-item">
-                    <div class="task-id">${task.id}</div>
-                    <div style="font-size: 0.9em; color: #718096;">
-                        Start: ${new Date(task.start_time).toLocaleString()}
-                    </div>
-                    <div style="font-size: 0.9em; color: #718096;">
-                        Status: ${task.status}
-                    </div>
-                </div>
-            `).join('');
+            // Sort tasks by start time (earliest first)
+            const sortedTasks = tasks.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+
+            // Start countdown for next task if no current task is active
+            if (!isTaskActive && sortedTasks.length > 0) {
+                startCountdown(sortedTasks[0].start_time);
+            }
+
+            const tableHTML = `
+                <table class="table table-dark table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Target</th>
+                            <th>Start Time</th>
+                            <th>End Time</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${sortedTasks.map(task => `
+                            <tr>
+                                <td class="fw-semibold">${task.target}</td>
+                                <td class="text-secondary small">${formatLocalTime(task.start_time)}</td>
+                                <td class="text-secondary small">${task.stop_time ? formatLocalTime(task.stop_time) : '-'}</td>
+                                <td><span class="badge bg-info">${task.status}</span></td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            taskList.innerHTML = tableHTML;
         }
     } catch (error) {
         console.error('Failed to load tasks:', error);

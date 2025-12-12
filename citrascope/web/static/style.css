@@ -204,25 +204,6 @@ h1 {
     font-weight: 600;
 }
 
-.task-list {
-    max-height: 400px;
-    overflow-y: auto;
-}
-
-.task-item {
-    background: #0d1117;
-    border: 1px solid #30363d;
-    border-radius: 5px;
-    padding: 10px;
-    margin-bottom: 10px;
-}
-
-.task-id {
-    font-family: monospace;
-    color: #58a6ff;
-    font-size: 0.9em;
-}
-
 .config-section {
     background: #161b22;
     border: 1px solid #30363d;
@@ -339,25 +320,6 @@ button:hover {
 }
 
 .log-container::-webkit-scrollbar-thumb:hover {
-    background: #484f58;
-}
-
-/* Dark scrollbar for task list */
-.task-list::-webkit-scrollbar {
-    width: 12px;
-}
-
-.task-list::-webkit-scrollbar-track {
-    background: #0d1117;
-    border-radius: 5px;
-}
-
-.task-list::-webkit-scrollbar-thumb {
-    background: #30363d;
-    border-radius: 5px;
-}
-
-.task-list::-webkit-scrollbar-thumb:hover {
     background: #484f58;
 }
 

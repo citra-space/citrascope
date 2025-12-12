@@ -3,7 +3,7 @@
 import asyncio
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -337,10 +337,12 @@ class CitraScopeWebApp:
                     tasks.append(
                         {
                             "id": task_id,
-                            "start_time": datetime.fromtimestamp(start_time).isoformat(),
-                            "stop_time": datetime.fromtimestamp(stop_time).isoformat() if stop_time else None,
+                            "start_time": datetime.fromtimestamp(start_time, tz=timezone.utc).isoformat(),
+                            "stop_time": (
+                                datetime.fromtimestamp(stop_time, tz=timezone.utc).isoformat() if stop_time else None
+                            ),
                             "status": task.status,
-                            "target": getattr(task, "target", "unknown"),
+                            "target": getattr(task, "satelliteName", getattr(task, "target", "unknown")),
                         }
                     )
 

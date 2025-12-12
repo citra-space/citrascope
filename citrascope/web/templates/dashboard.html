@@ -10,7 +10,7 @@
         integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
 </head>
 
-<body data-bs-theme="dark">
+<body data-bs-theme="dark" style="padding-bottom: 100px;">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
         integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI"
         crossorigin="anonymous"></script>
@@ -90,25 +90,30 @@
         </div>
         <div class="container">
             <div class="row g-3 mb-3">
-                <div class="col-12 col-md-12">
-                    <div class="card bg-dark text-light border-secondary h-100">
+                <div class="col-12">
+                    <div class="card bg-dark text-light border-secondary">
+                        <div class="card-header">
+                            Current Task
+                        </div>
+                        <div class="card-body">
+                            <div id="currentTaskDisplay">
+                                <p style="color: #a0aec0;">No active task</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row g-3 mb-3">
+                <div class="col-12">
+                    <div class="card bg-dark text-light border-secondary">
                         <div class="card-header d-flex align-items-center justify-content-between">
                             <span>Task Queue</span>
                             <span class="small text-secondary"><span id="tasksPending">0</span> pending</span>
                         </div>
-
-                        <div class="card-body">
-                            <div class="row mb-2">
-                                <div class="col-6 fw-semibold">Current Task</div>
-                                <div class="col-6 task-id" id="currentTask">None</div>
+                        <div class="card-body p-0">
+                            <div id="taskList" class="table-responsive">
+                                <p class="p-3" style="color: #a0aec0;">Loading tasks...</p>
                             </div>
-                            <div id="taskList" class="task-list">
-                                <p style="color: #a0aec0;">Loading tasks...</p>
-                                <div class="task-list" id="taskList">
-                                    <p style="color: #a0aec0;">Loading tasks...</p>
-                                </div>
-                            </div>
-
                         </div>
                     </div>
                 </div>
