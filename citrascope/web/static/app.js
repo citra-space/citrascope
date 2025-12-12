@@ -1,7 +1,17 @@
 // CitraScope Dashboard - Main Application
 import { connectWebSocket } from './websocket.js';
-import { initConfig } from './config.js';
+import { initConfig, currentConfig } from './config.js';
 import { getTasks, getLogs } from './api.js';
+
+function updateAppUrlLinks() {
+    const appUrl = currentConfig.app_url;
+    [document.getElementById('appUrlLink'), document.getElementById('setupAppUrlLink')].forEach(link => {
+        if (link && appUrl) {
+            link.href = appUrl;
+            link.textContent = appUrl.replace('https://', '');
+        }
+    });
+}
 
 // Global state for countdown
 let nextTaskStartTime = null;
@@ -466,12 +476,15 @@ loadLogs = async function() {
 };
 
 // --- Initialize Application ---
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
     // Initialize UI navigation
     initNavigation();
 
-    // Initialize configuration management
-    initConfig();
+    // Initialize configuration management (loads config)
+    await initConfig();
+
+    // Update app URL links from loaded config
+    updateAppUrlLinks();
 
     // Connect WebSocket with handlers
     connectWebSocket({

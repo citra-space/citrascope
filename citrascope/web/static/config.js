@@ -3,11 +3,12 @@
 import { getConfig, saveConfig, getConfigStatus, getAdapterSchema } from './api.js';
 
 let currentAdapterSchema = [];
+export let currentConfig = {};
 
 /**
  * Initialize configuration management
  */
-export function initConfig() {
+export async function initConfig() {
     // Hardware adapter selection change
     const adapterSelect = document.getElementById('hardwareAdapterSelect');
     if (adapterSelect) {
@@ -28,7 +29,7 @@ export function initConfig() {
     }
 
     // Load initial config
-    loadConfiguration();
+    await loadConfiguration();
     checkConfigStatus();
 }
 
@@ -59,6 +60,7 @@ async function checkConfigStatus() {
 async function loadConfiguration() {
     try {
         const config = await getConfig();
+        currentConfig = config; // Save for reuse when saving
 
         // Core fields
         document.getElementById('personal_access_token').value = config.personal_access_token || '';
@@ -226,13 +228,13 @@ async function saveConfiguration(event) {
         log_level: document.getElementById('logLevel').value,
         keep_images: document.getElementById('keep_images').checked,
         bypass_autofocus: document.getElementById('bypass_autofocus').checked,
-        // API settings (keep defaults for now)
-        host: 'api.citra.space',
-        port: 443,
-        use_ssl: true,
-        max_task_retries: 3,
-        initial_retry_delay_seconds: 30,
-        max_retry_delay_seconds: 300,
+        // Preserve API settings from loaded config
+        host: currentConfig.host || 'api.citra.space',
+        port: currentConfig.port || 443,
+        use_ssl: currentConfig.use_ssl !== undefined ? currentConfig.use_ssl : true,
+        max_task_retries: currentConfig.max_task_retries || 3,
+        initial_retry_delay_seconds: currentConfig.initial_retry_delay_seconds || 30,
+        max_retry_delay_seconds: currentConfig.max_retry_delay_seconds || 300,
     };
 
     try {

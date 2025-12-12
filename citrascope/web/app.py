@@ -15,6 +15,13 @@ from pydantic import BaseModel
 
 from citrascope.logging import CITRASCOPE_LOGGER
 
+# ============================================================================
+# URL CONSTANTS - Single source of truth for Citra web URLs
+# ============================================================================
+PROD_APP_URL = "https://app.citra.space"
+DEV_APP_URL = "https://dev.app.citra.space"
+# ============================================================================
+
 
 class SystemStatus(BaseModel):
     """Current system status."""
@@ -147,6 +154,9 @@ class CitraScopeWebApp:
                 return JSONResponse({"error": "Configuration not available"}, status_code=503)
 
             settings = self.daemon.settings
+            # Determine app URL based on API host
+            app_url = DEV_APP_URL if "dev." in settings.host else PROD_APP_URL
+
             return {
                 "host": settings.host,
                 "port": settings.port,
@@ -161,6 +171,7 @@ class CitraScopeWebApp:
                 "max_task_retries": settings.max_task_retries,
                 "initial_retry_delay_seconds": settings.initial_retry_delay_seconds,
                 "max_retry_delay_seconds": settings.max_retry_delay_seconds,
+                "app_url": app_url,
             }
 
         @self.app.get("/api/config/status")
@@ -418,10 +429,7 @@ class CitraScopeWebApp:
 
                 # Build the URL based on the API host (dev vs prod)
                 api_host = self.daemon.settings.host
-                if "dev." in api_host:
-                    base_url = "https://dev.app.citra.space"
-                else:
-                    base_url = "https://app.citra.space"
+                base_url = DEV_APP_URL if "dev." in api_host else PROD_APP_URL
 
                 self.status.ground_station_id = gs_id
                 self.status.ground_station_name = gs_name
