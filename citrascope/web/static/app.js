@@ -223,10 +223,7 @@ function appendLog(log) {
     logEntry.style.marginBottom = '4px';
 
     const levelColorValue = levelColor(log.level);
-
     const timestamp = new Date(log.timestamp).toLocaleTimeString();
-
-    // Strip ANSI codes from the message
     const cleanMessage = stripAnsiCodes(log.message);
 
     logEntry.innerHTML = `
@@ -237,10 +234,12 @@ function appendLog(log) {
 
     logContainer.appendChild(logEntry);
 
-    // Auto-scroll to bottom if already near bottom
-    const isNearBottom = logContainer.scrollHeight - logContainer.scrollTop - logContainer.clientHeight < 100;
-    if (isNearBottom) {
-        logContainer.scrollTop = logContainer.scrollHeight;
+    const scrollParent = logContainer.closest('.accordion-body');
+    if (scrollParent) {
+        const isNearBottom = (scrollParent.scrollHeight - scrollParent.scrollTop - scrollParent.clientHeight) < 100;
+        if (isNearBottom) {
+            logEntry.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        }
     }
 }
 
@@ -309,9 +308,20 @@ window.addEventListener('DOMContentLoaded', () => {
     // Bootstrap accordion events for log terminal
     const logAccordionCollapse = document.getElementById('logAccordionCollapse');
     if (logAccordionCollapse) {
-        logAccordionCollapse.addEventListener('show.bs.collapse', () => {
+        logAccordionCollapse.addEventListener('shown.bs.collapse', () => {
             isLogExpanded = true;
             updateLatestLogLine();
+            const logContainer = document.getElementById('logContainer');
+            if (logContainer) {
+                setTimeout(() => {
+                    const lastLog = logContainer.lastElementChild;
+                    if (lastLog) {
+                        lastLog.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                    } else {
+                        logContainer.scrollTop = logContainer.scrollHeight;
+                    }
+                }, 100);
+            }
         });
         logAccordionCollapse.addEventListener('hide.bs.collapse', () => {
             isLogExpanded = false;
