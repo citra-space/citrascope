@@ -77,6 +77,8 @@ function connect() {
                 onStatusUpdate(message.data);
             } else if (message.type === 'log' && onLogMessage) {
                 onLogMessage(message.data);
+            } else if (message.type === 'tasks' && onTasksUpdate) {
+                onTasksUpdate(message.data);
             }
         };
 
