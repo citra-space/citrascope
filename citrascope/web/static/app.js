@@ -1,5 +1,11 @@
 // --- Monitoring/Config Navigation Logic (Style + Section Toggle) ---
 document.addEventListener('DOMContentLoaded', function() {
+    // Initialize Bootstrap tooltips
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.forEach(function (tooltipTriggerEl) {
+        new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+
     const nav = document.getElementById('mainNav');
     if (nav) {
         // Find all nav links and all dashboard sections with id ending in 'Section'
@@ -142,7 +148,7 @@ function scheduleReconnect() {
     // Fixed 5 second delay between reconnect attempts
     const delay = reconnectDelay;
 
-    const reconnectMsg = `(reconnecting in ${delay/1000}s, attempt ${reconnectAttempts + 1})`;
+    const reconnectMsg = 'reconnecting';
     updateWSStatus(false, reconnectMsg);
 
     console.log(`Scheduling reconnect in ${delay/1000}s... (attempt ${reconnectAttempts + 1})`);
@@ -153,28 +159,30 @@ function scheduleReconnect() {
 
 function updateWSStatus(connected, reconnectInfo = '') {
     const statusEl = document.getElementById('wsStatus');
-    const textEl = document.getElementById('wsStatusText');
-    const reconnectEl = document.getElementById('reconnectInfo');
 
     if (connected) {
-        statusEl.className = 'd-inline-block rounded-circle me-1 bg-success';
-        statusEl.style.width = '0.9em';
-        statusEl.style.height = '0.9em';
-        textEl.textContent = 'Connected';
-        reconnectEl.textContent = '';
+        statusEl.innerHTML = '<span class="badge rounded-pill bg-success" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Dashboard connected - receiving live updates">Connected</span>';
+    } else if (reconnectInfo) {
+        statusEl.innerHTML = '<span class="badge rounded-pill bg-warning text-dark" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Dashboard reconnecting - attempting to restore connection">Reconnecting</span>';
     } else {
-        statusEl.className = 'd-inline-block rounded-circle me-1 bg-danger';
-        statusEl.style.width = '0.9em';
-        statusEl.style.height = '0.9em';
-        textEl.textContent = 'Disconnected';
-        reconnectEl.textContent = reconnectInfo;
+        statusEl.innerHTML = '<span class="badge rounded-pill bg-danger" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Dashboard disconnected - no live updates">Disconnected</span>';
+    }
+
+    // Reinitialize tooltips after updating the DOM
+    const tooltipTrigger = statusEl.querySelector('[data-bs-toggle="tooltip"]');
+    if (tooltipTrigger) {
+        new bootstrap.Tooltip(tooltipTrigger);
     }
 }
 
 function updateStatus(status) {
     document.getElementById('hardwareAdapter').textContent = status.hardware_adapter || '-';
-    document.getElementById('telescopeConnected').textContent = status.telescope_connected ? '✓ Yes' : '✗ No';
-    document.getElementById('cameraConnected').textContent = status.camera_connected ? '✓ Yes' : '✗ No';
+    document.getElementById('telescopeConnected').innerHTML = status.telescope_connected
+        ? '<span class="badge rounded-pill bg-success">Connected</span>'
+        : '<span class="badge rounded-pill bg-danger">Disconnected</span>';
+    document.getElementById('cameraConnected').innerHTML = status.camera_connected
+        ? '<span class="badge rounded-pill bg-success">Connected</span>'
+        : '<span class="badge rounded-pill bg-danger">Disconnected</span>';
     document.getElementById('currentTask').textContent = status.current_task || 'None';
     document.getElementById('tasksPending').textContent = status.tasks_pending || '0';
 
@@ -200,11 +208,6 @@ function updateStatus(status) {
     } else {
         gsNameEl.textContent = '-';
         taskScopeButton.style.display = 'none';
-    }
-
-    if (status.last_update) {
-        const date = new Date(status.last_update);
-        document.getElementById('lastUpdate').textContent = `Last update: ${date.toLocaleTimeString()}`;
     }
 }
 

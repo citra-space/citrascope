@@ -25,12 +25,8 @@
                     CitraScope
 
                 </span>
-                <span class="ms-2 me-3 small text-secondary d-flex align-items-center" style="gap: 0.5em; clear:left;">
-                    <span id="wsStatus" class="d-inline-block rounded-circle me-1 bg-secondary"
-                        style="width: 0.9em; height: 0.9em;"></span>
-                    <span id="wsStatusText">Connecting...</span>
-                    <span id="reconnectInfo" style="color: #718096; font-size: 0.9em;"></span>
-                    <span class="timestamp" id="lastUpdate"></span>
+                <span class="ms-2 me-3 d-flex align-items-center" style="gap: 0.5em; clear:left;">
+                    <span id="wsStatus"><span class="badge rounded-pill bg-secondary" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Dashboard connection status">Connecting...</span></span>
                 </span>
             </span>
 
@@ -59,11 +55,11 @@
                             </div>
                             <div class="row mb-2">
                                 <div class="col-6 fw-semibold">Telescope Connected</div>
-                                <div class="col-6" id="telescopeConnected">-</div>
+                                <div class="col-6" id="telescopeConnected"><span class="badge rounded-pill bg-secondary">Unknown</span></div>
                             </div>
                             <div class="row mb-2">
                                 <div class="col-6 fw-semibold">Camera Connected</div>
-                                <div class="col-6" id="cameraConnected">-</div>
+                                <div class="col-6" id="cameraConnected"><span class="badge rounded-pill bg-secondary">Unknown</span></div>
                             </div>
                         </div>
                     </div>
