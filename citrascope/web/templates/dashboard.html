@@ -27,15 +27,15 @@
                 </span>
             </span>
 
-            <ul class="nav nav-pills">
-                <li class="nav-item"><a href="#" class="nav-link active" aria-current="page">Monitoring</a></li>
-                <li class="nav-item"><a href="#" class="nav-link">Config</a></li>
+            <ul class="nav" id="mainNav">
+                <li class="nav-item"><a href="#" class="nav-link px-2 text-white" data-section="monitoring" aria-current="page">Monitoring</a></li>
+                <li class="nav-item"><a href="#" class="nav-link px-2" data-section="config">Config</a></li>
                 <li class="nav-item"><a href="#" class="nav-link bg-success text-white" id="taskScopeButton" target="_blank">Task my Scope</a></li>
             </ul>
         </header>
     </div>
 
-        <div class="container">
+        <div class="container" id="monitoringSection">
             <div class="row g-3">
                 <div class="col-12 col-md-4">
                     <div class="card bg-dark text-light border-secondary h-100">
@@ -100,7 +100,7 @@
             </div>
         </div>
 
-        <div class="container my-4">
+        <div class="container my-4" id="configSection" style="display: none;">
             <div class="card bg-dark text-light border-secondary w-100">
                 <div class="card-header">
                     Configuration
@@ -160,7 +160,8 @@
             </div>
         </div>
 
-    <script src="/static/app.js"></script>
+
+        <script src="/static/app.js"></script>
 
 
   </body>

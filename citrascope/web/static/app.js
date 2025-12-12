@@ -1,3 +1,49 @@
+// --- Monitoring/Config Navigation Logic (Style + Section Toggle) ---
+document.addEventListener('DOMContentLoaded', function() {
+    const nav = document.getElementById('mainNav');
+    if (nav) {
+        // Find all nav links and all dashboard sections with id ending in 'Section'
+        const navLinks = nav.querySelectorAll('a[data-section]');
+        const sections = {};
+        navLinks.forEach(link => {
+            const section = link.getAttribute('data-section');
+            const sectionEl = document.getElementById(section + 'Section');
+            if (sectionEl) sections[section] = sectionEl;
+        });
+
+
+        function activateNav(link) {
+            navLinks.forEach(a => {
+                a.classList.remove('text-white');
+                a.removeAttribute('aria-current');
+            });
+            link.classList.add('text-white');
+            link.setAttribute('aria-current', 'page');
+        }
+
+        function showSection(section) {
+            Object.values(sections).forEach(sec => sec.style.display = 'none');
+            if (sections[section]) sections[section].style.display = '';
+        }
+
+        nav.addEventListener('click', function(e) {
+            const link = e.target.closest('a[data-section]');
+            if (link) {
+                e.preventDefault();
+                const section = link.getAttribute('data-section');
+                activateNav(link);
+                showSection(section);
+            }
+        });
+
+        // Default to first nav item
+        const first = nav.querySelector('a[data-section]');
+        if (first) {
+            activateNav(first);
+            showSection(first.getAttribute('data-section'));
+        }
+    }
+});
 let ws = null;
 let reconnectAttempts = 0;
 let reconnectTimer = null;
