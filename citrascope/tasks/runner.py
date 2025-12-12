@@ -43,6 +43,11 @@ class TaskManager:
             try:
                 self._report_online()
                 tasks = self.api_client.get_telescope_tasks(self.telescope_record["id"])
+
+                # If API call failed (timeout, network error, etc.), skip this poll iteration
+                if tasks is None:
+                    continue
+
                 added = 0
                 removed = 0
                 now = int(time.time())
