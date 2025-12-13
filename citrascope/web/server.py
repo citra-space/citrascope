@@ -1,0 +1,123 @@
+"""Web server management for CitraScope."""
+
+import asyncio
+import logging
+import threading
+import time
+
+import uvicorn
+
+from citrascope.logging import CITRASCOPE_LOGGER, WebLogHandler
+
+
+class CitraScopeWebServer:
+    """Manages the web server and its configuration."""
+
+    def __init__(self, daemon, host: str = "0.0.0.0", port: int = 24872):
+        self.daemon = daemon
+        self.host = host
+        self.port = port
+        self.web_app = None
+        self.web_log_handler = None
+
+        # Set up web log handler
+        self._setup_log_handler()
+
+    def _setup_log_handler(self):
+        """Set up the web log handler."""
+        self.web_log_handler = WebLogHandler(max_logs=1000)
+        # Use a simpler format for web display
+        formatter = logging.Formatter("%(levelname)s - %(name)s - %(message)s")
+        self.web_log_handler.setFormatter(formatter)
+        # Set handler level to DEBUG so it captures everything
+        self.web_log_handler.setLevel(logging.DEBUG)
+        CITRASCOPE_LOGGER.addHandler(self.web_log_handler)
+        CITRASCOPE_LOGGER.info("Web log handler attached to CITRASCOPE_LOGGER")
+
+    def ensure_log_handler(self):
+        """Ensure the web log handler is still attached to the logger."""
+        if self.web_log_handler and self.web_log_handler not in CITRASCOPE_LOGGER.handlers:
+            CITRASCOPE_LOGGER.addHandler(self.web_log_handler)
+            CITRASCOPE_LOGGER.info("Re-attached web log handler to CITRASCOPE_LOGGER")
+
+    def configure_uvicorn_logging(self):
+        """Configure Uvicorn to use CITRASCOPE_LOGGER."""
+        uvicorn_logger = logging.getLogger("uvicorn")
+        uvicorn_logger.handlers = CITRASCOPE_LOGGER.handlers
+        uvicorn_logger.setLevel(CITRASCOPE_LOGGER.level)
+        uvicorn_logger.propagate = False
+
+        uvicorn_access = logging.getLogger("uvicorn.access")
+        uvicorn_access.handlers = CITRASCOPE_LOGGER.handlers
+        uvicorn_access.setLevel(CITRASCOPE_LOGGER.level)
+        uvicorn_access.propagate = False
+
+        uvicorn_error = logging.getLogger("uvicorn.error")
+        uvicorn_error.handlers = CITRASCOPE_LOGGER.handlers
+        uvicorn_error.setLevel(CITRASCOPE_LOGGER.level)
+        uvicorn_error.propagate = False
+
+    def start(self):
+        """Start web server in a separate thread with its own event loop."""
+
+        def run_async_server():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(self.run())
+            except KeyboardInterrupt:
+                pass
+            finally:
+                loop.close()
+
+        thread = threading.Thread(target=run_async_server, daemon=True)
+        thread.start()
+        CITRASCOPE_LOGGER.info("Web server thread started")
+        # Give the web server a moment to start up
+        time.sleep(1)
+
+    async def run(self):
+        """Run the web server."""
+        try:
+            from citrascope.web.app import CitraScopeWebApp
+
+            self.web_app = CitraScopeWebApp(daemon=self.daemon, web_log_handler=self.web_log_handler)
+
+            # Connect the log handler to the web app for broadcasting
+            # Pass the current event loop so logs can be broadcast from other threads
+            if self.web_log_handler:
+                current_loop = asyncio.get_event_loop()
+                self.web_log_handler.set_web_app(self.web_app, current_loop)
+
+            CITRASCOPE_LOGGER.info(f"Starting web server on http://{self.host}:{self.port}")
+
+            # Configure Uvicorn logging
+            self.configure_uvicorn_logging()
+
+            config = uvicorn.Config(self.web_app.app, host=self.host, port=self.port, log_config=None, access_log=True)
+            server = uvicorn.Server(config)
+
+            # Start status broadcast loop
+            asyncio.create_task(self._status_broadcast_loop())
+
+            await server.serve()
+        except Exception as e:
+            CITRASCOPE_LOGGER.error(f"Web server error: {e}", exc_info=True)
+
+    async def _status_broadcast_loop(self):
+        """Periodically broadcast status and tasks to web clients."""
+        check_counter = 0
+        while True:
+            try:
+                await asyncio.sleep(2)  # Update every 2 seconds
+                if self.web_app:
+                    await self.web_app.broadcast_status()
+                    await self.web_app.broadcast_tasks()
+
+                # Every 10 iterations (20 seconds), check if log handler is still attached
+                check_counter += 1
+                if check_counter >= 10:
+                    check_counter = 0
+                    self.ensure_log_handler()
+            except Exception as e:
+                CITRASCOPE_LOGGER.error(f"Status broadcast error: {e}")

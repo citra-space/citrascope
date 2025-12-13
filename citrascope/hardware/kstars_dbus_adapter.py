@@ -1,29 +1,48 @@
 import base64
 import time
 
-from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter, ObservationStrategy
+from citrascope.hardware.abstract_astro_hardware_adapter import (
+    AbstractAstroHardwareAdapter,
+    ObservationStrategy,
+    SettingSchemaEntry,
+)
 
 
 class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
     """Adapter for controlling astronomical equipment through KStars via DBus."""
 
-    def __init__(self, logger, bus_name: str = "org.kde.kstars"):
+    def __init__(self, logger=None, **kwargs):
         """
         Initialize the KStars DBus adapter.
 
         Args:
             logger: Logger instance for logging messages
-            bus_name: The DBus bus name for KStars (default: "org.kde.kstars")
+            **kwargs: Configuration including bus_name
         """
         super().__init__()
         self.logger = logger
-        self.bus_name = bus_name
+        self.bus_name = kwargs.get("bus_name", "org.kde.kstars")
         self.bus = None
         self.kstars = None
         self.ekos = None
         self.mount = None
         self.camera = None
         self.scheduler = None
+
+    def get_settings_schema(self) -> list[SettingSchemaEntry]:
+        """
+        Return a schema describing configurable settings for the KStars DBus adapter.
+        """
+        return [
+            {
+                "name": "bus_name",
+                "type": "str",
+                "default": "org.kde.kstars",
+                "description": "D-Bus service name for KStars",
+                "required": True,
+                "placeholder": "org.kde.kstars",
+            }
+        ]
 
     def _do_point_telescope(self, ra: float, dec: float):
         raise NotImplementedError
@@ -116,6 +135,16 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
 
     def disconnect(self):
         raise NotImplementedError
+
+    def is_telescope_connected(self) -> bool:
+        """Check if telescope is connected and responsive."""
+        # KStars adapter is incomplete - return False for now
+        return self.mount is not None
+
+    def is_camera_connected(self) -> bool:
+        """Check if camera is connected and responsive."""
+        # KStars adapter is incomplete - return False for now
+        return self.camera is not None
 
     def list_devices(self) -> list[str]:
         raise NotImplementedError

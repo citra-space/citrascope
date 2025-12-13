@@ -1,6 +1,20 @@
 import math
 from abc import ABC, abstractmethod
 from enum import Enum
+from typing import Any, Optional, TypedDict
+
+
+class SettingSchemaEntry(TypedDict, total=False):
+    name: str
+    type: str  # e.g., 'float', 'int', 'str', 'bool'
+    default: Optional[Any]
+    description: str
+    required: bool  # Whether this field is required
+    placeholder: str  # Placeholder text for UI inputs
+    min: float  # Minimum value for numeric types
+    max: float  # Maximum value for numeric types
+    pattern: str  # Regex pattern for string validation
+    options: list[str]  # List of valid options for select/dropdown inputs
 
 
 class ObservationStrategy(Enum):
@@ -9,6 +23,21 @@ class ObservationStrategy(Enum):
 
 
 class AbstractAstroHardwareAdapter(ABC):
+    @abstractmethod
+    def get_settings_schema(self) -> list[SettingSchemaEntry]:
+        """
+        Return a schema describing configurable settings for this hardware adapter.
+
+        Each setting is described as a SettingSchemaEntry TypedDict with keys:
+            - name (str): The setting's name
+            - type (str): The expected Python type (e.g., 'float', 'int', 'str', 'bool')
+            - default (optional): The default value
+            - description (str): Human-readable description of the setting
+
+        Returns:
+            list[SettingSchemaEntry]: List of setting schema entries.
+        """
+        pass
 
     logger = None  # Optional logger, can be set by subclasses
 
@@ -69,6 +98,16 @@ class AbstractAstroHardwareAdapter(ABC):
     @abstractmethod
     def disconnect(self):
         """Disconnect from the hardware server."""
+        pass
+
+    @abstractmethod
+    def is_telescope_connected(self) -> bool:
+        """Check if telescope is connected and responsive."""
+        pass
+
+    @abstractmethod
+    def is_camera_connected(self) -> bool:
+        """Check if camera is connected and responsive."""
         pass
 
     @abstractmethod

@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CitraScope Dashboard</title>
+    <link rel="icon" type="image/png" href="/static/img/favicon.png">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+    <link href="/static/style.css" rel="stylesheet">
+</head>
+
+<body data-bs-theme="dark">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI"
+        crossorigin="anonymous"></script>
+
+
+    <div class="container">
+        <header class="d-flex flex-wrap justify-content-center py-3 mb-4 border-bottom align-items-center">
+            <span class="d-flex align-items-center mb-3 mb-md-0 me-md-auto link-body-emphasis text-decoration-none">
+                <span class="fs-4 d-flex align-items-center gap-2">
+                    <img src="/static/img/citra.png" alt="CitraScope Logo" class="logo-img" />
+                    CitraScope
+
+                </span>
+                <span class="ms-2 me-3 d-flex align-items-center status-badge-container">
+                    <span id="wsStatus"><span class="badge rounded-pill bg-secondary" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Dashboard connection status">Connecting...</span></span>
+                </span>
+            </span>
+
+            <ul class="nav" id="mainNav">
+                <li class="nav-item"><a href="#" class="nav-link px-2 text-white" data-section="monitoring"
+                        aria-current="page">Monitoring</a></li>
+                <li class="nav-item"><a href="#" class="nav-link px-2" data-section="config">Config</a></li>
+                <li class="nav-item"><a href="#" class="nav-link bg-success text-white btn" style="display: none;"
+                        id="taskScopeButton" target="_blank">Task my Scope</a></li>
+            </ul>
+        </header>
+
+        <!-- Template for connection status badge -->
+        <template id="connectionStatusTemplate">
+            <span class="badge rounded-pill connection-status-badge" data-bs-toggle="tooltip" data-bs-placement="bottom">
+                <span class="status-text"></span>
+            </span>
+        </template>
+    </div>
+
+    <div id="monitoringSection">
+        <div class="container">
+            <div class="row g-3 mb-3">
+                <div class="col-12 col-md-6">
+                    <div class="card bg-dark text-light border-secondary h-100">
+                        <div class="card-header">
+                            System Status
+                        </div>
+                        <div class="card-body">
+                            <div class="row mb-2">
+                                <div class="col-6 fw-semibold">Hardware Adapter</div>
+                                <div class="col-6" id="hardwareAdapter">-</div>
+                            </div>
+                            <div class="row mb-2">
+                                <div class="col-6 fw-semibold">Telescope Connected</div>
+                                <div class="col-6" id="telescopeConnected"><span class="badge rounded-pill bg-secondary">Unknown</span></div>
+                            </div>
+                            <div class="row mb-2">
+                                <div class="col-6 fw-semibold">Camera Connected</div>
+                                <div class="col-6" id="cameraConnected"><span class="badge rounded-pill bg-secondary">Unknown</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12 col-md-6">
+                    <div class="card bg-dark text-light border-secondary h-100">
+                        <div class="card-header">
+                            Telescope
+                        </div>
+                        <div class="card-body">
+                            <div class="row mb-2">
+                                <div class="col-6 fw-semibold">Right Ascension</div>
+                                <div class="col-6" id="telescopeRA">-</div>
+                            </div>
+                            <div class="row mb-2">
+                                <div class="col-6 fw-semibold">Declination</div>
+                                <div class="col-6" id="telescopeDEC">-</div>
+                            </div>
+                            <div class="row">
+                                <div class="col-6 fw-semibold">Ground Station</div>
+                                <div class="col-6" id="groundStationName">-</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+        <div class="container">
+            <div class="row g-3 mb-3">
+                <div class="col-12">
+                    <div class="card bg-dark text-light border-secondary">
+                        <div class="card-header">
+                            Current Task
+                        </div>
+                        <div class="card-body">
+                            <div id="currentTaskDisplay">
+                                <p class="text-muted-dark">No active task</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Template for active task display -->
+                    <template id="activeTaskTemplate">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <div class="spinner-border spinner-border-sm text-success" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <div class="fw-bold task-target-name" style="font-size: 1.3em;"></div>
+                        </div>
+                        <div class="text-secondary small">
+                            <span class="task-id-text"></span>
+                        </div>
+                    </template>
+                </div>
+            </div>
+            <div class="row g-3 mb-3">
+                <div class="col-12">
+                    <div class="card bg-dark text-light border-secondary">
+                        <div class="card-header d-flex align-items-center justify-content-between">
+                            <span>Task Queue</span>
+                            <span class="small text-secondary"><span id="tasksPending">0</span> pending</span>
+                        </div>
+                        <div class="card-body p-0">
+                            <div id="taskList" class="table-responsive">
+                                <p class="p-3 text-muted-dark">Loading tasks...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Template for task queue rows -->
+                    <template id="taskRowTemplate">
+                        <tr class="task-row">
+                            <td class="fw-semibold task-target"></td>
+                            <td class="text-secondary small task-start"></td>
+                            <td class="text-secondary small task-end"></td>
+                            <td><span class="badge rounded-pill task-status"></span></td>
+                        </tr>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container my-4" id="configSection" style="display: none;">
+        <div id="configError" class="alert alert-danger" style="display: none;" role="alert"></div>
+        <div id="configSuccess" class="alert alert-success" style="display: none;" role="alert"></div>
+
+        <form id="configForm">
+            <div class="row g-3 mb-3">
+                <!-- API Configuration Card -->
+                <div class="col-12">
+                    <div class="card bg-dark text-light border-secondary">
+                        <div class="card-header">
+                            <h5 class="mb-0">API Configuration</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-12 col-md-6">
+                                    <label for="personal_access_token" class="form-label">Personal Access Token <span class="text-danger">*</span></label>
+                                    <input type="password" id="personal_access_token" class="form-control" placeholder="Enter your Citra API token" required>
+                                    <small class="text-muted">Get your token from <a href="" id="appUrlLink" target="_blank"></a></small>
+                                </div>
+                                <div class="col-12 col-md-6">
+                                    <label for="telescopeId" class="form-label">Telescope ID <span class="text-danger">*</span></label>
+                                    <input type="text" id="telescopeId" class="form-control" placeholder="Enter telescope ID" required>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hardware Configuration Card -->
+                <div class="col-12">
+                    <div class="card bg-dark text-light border-secondary">
+                        <div class="card-header">
+                            <h5 class="mb-0">Hardware Configuration</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3 mb-3">
+                                <div class="col-12">
+                                    <label for="hardwareAdapterSelect" class="form-label">Hardware Adapter <span class="text-danger">*</span></label>
+                                    <select id="hardwareAdapterSelect" class="form-select" required>
+                                        <option value="">-- Select Hardware Adapter --</option>
+                                        <option value="indi">INDI - Universal astronomy device control</option>
+                                        <option value="nina">N.I.N.A. - Windows astronomy imaging</option>
+                                        <option value="kstars">KStars/Ekos - Linux astronomy suite</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Dynamic Adapter Settings Container -->
+                            <div id="adapter-settings-container"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Runtime Settings Card -->
+                <div class="col-12">
+                    <div class="card bg-dark text-light border-secondary">
+                        <div class="card-header">
+                            <h5 class="mb-0">Runtime Settings</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-12 col-md-4">
+                                    <label for="logLevel" class="form-label">Log Level</label>
+                                    <select id="logLevel" class="form-select">
+                                        <option value="DEBUG">DEBUG</option>
+                                        <option value="INFO">INFO</option>
+                                        <option value="WARNING">WARNING</option>
+                                        <option value="ERROR">ERROR</option>
+                                    </select>
+                                </div>
+                                <div class="col-12 col-md-4">
+                                    <div class="form-check mt-4">
+                                        <input class="form-check-input" type="checkbox" id="keep_images">
+                                        <label class="form-check-label" for="keep_images">
+                                            Keep captured images
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-12 col-md-4">
+                                    <div class="form-check mt-4">
+                                        <input class="form-check-input" type="checkbox" id="bypass_autofocus">
+                                        <label class="form-check-label" for="bypass_autofocus">
+                                            Bypass autofocus
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Save Button -->
+            <div class="row">
+                <div class="col">
+                    <button type="submit" class="btn btn-primary" id="saveConfigButton">
+                        <span id="saveButtonText">Save Configuration</span>
+                        <span id="saveButtonSpinner" class="spinner-border spinner-border-sm ms-2" style="display: none;" role="status"></span>
+                    </button>
+                    <small class="text-muted ms-3">Configuration will be applied immediately</small>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Setup Wizard Modal -->
+    <div class="modal fade" id="setupWizard" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content bg-dark text-light border-secondary">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">Welcome to CitraScope Setup</h5>
+                </div>
+                <div class="modal-body">
+                    <p class="lead">Let's configure your telescope system.</p>
+                    <p>You'll need:</p>
+                    <ul>
+                        <li>Your Citra API personal access token from <a href="" id="setupAppUrlLink" target="_blank"></a></li>
+                        <li>Your telescope ID</li>
+                        <li>Information about your hardware adapter (INDI, N.I.N.A., or KStars)</li>
+                    </ul>
+                    <div class="alert alert-info">
+                        <strong>Note:</strong> The configuration screen is available in the "Config" tab at the top of the page.
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-primary" onclick="showConfigSection()">Configure Now</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Roll-up Terminal Overlay as Bootstrap Accordion -->
+    <div class="position-fixed bottom-0 start-0 w-100 z-3" style="max-width: 100vw;">
+        <div class="accordion" id="logAccordion">
+            <div class="accordion-item bg-dark text-light border-secondary">
+                <h2 class="accordion-header" id="logAccordionHeader">
+                    <button class="accordion-button collapsed bg-secondary text-light log-accordion-button" type="button"
+                        data-bs-toggle="collapse" data-bs-target="#logAccordionCollapse" aria-expanded="false"
+                        aria-controls="logAccordionCollapse">
+                        <span id="latestLogLine" class="log-latest-line">Log Terminal</span>
+                    </button>
+                </h2>
+                <div id="logAccordionCollapse" class="accordion-collapse collapse" aria-labelledby="logAccordionHeader"
+                    data-bs-parent="#logAccordion">
+                    <div class="accordion-body p-0 log-accordion-body">
+                        <div class="log-container p-3" id="logContainer">
+                            <p class="text-muted-dark">Loading logs...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Templates for log display -->
+        <template id="logEntryTemplate">
+            <div class="log-entry">
+                <span class="log-timestamp"></span>
+                <span class="log-level"></span>
+                <span class="log-message"></span>
+            </div>
+        </template>
+
+        <template id="latestLogLineTemplate">
+            <span class="log-timestamp"></span>
+            <span class="log-level"></span>
+            <span class="log-message"></span>
+        </template>
+
+    </div>
+
+
+    <script type="module" src="/static/app.js"></script>
+
+
+</body>
+
+</html>

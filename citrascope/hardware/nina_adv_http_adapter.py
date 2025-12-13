@@ -6,7 +6,11 @@ import time
 
 import requests
 
-from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter, ObservationStrategy
+from citrascope.hardware.abstract_astro_hardware_adapter import (
+    AbstractAstroHardwareAdapter,
+    ObservationStrategy,
+    SettingSchemaEntry,
+)
 
 
 class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
@@ -16,28 +20,17 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
     DEFAULT_FOCUS_POSITION = 9000
     FOCUS_POSITIONS_FILE = "nina_focus_positions.json"
 
-    def __init__(
-        self,
-        LOGGER,
-        url_prefix="http://nina:1888/v2/api",
-        cam_url="/equipment/camera/",
-        filterwheel_url="/equipment/filterwheel/",
-        focuser_url="/equipment/focuser/",
-        mount_url="/equipment/mount/",
-        safetymon_url="/equipment/safetymonitor/",
-        sequence_url="/sequence/",
-        bypass_autofocus=False,
-    ):
+    def __init__(self, logger=None, **kwargs):
         super().__init__()
-        self.logger = LOGGER
-        self.url_prefix = url_prefix
-        self.cam_url = cam_url
-        self.filterwheel_url = filterwheel_url
-        self.focuser_url = focuser_url
-        self.mount_url = mount_url
-        self.safetymon_url = safetymon_url
-        self.sequence_url = sequence_url
-        self.bypass_autofocus = bypass_autofocus
+        self.logger = logger
+        self.nina_api_path = kwargs.get("nina_api_path", "http://nina:1888/v2/api")
+        self.cam_url = kwargs.get("cam_url", "/equipment/camera/")
+        self.filterwheel_url = kwargs.get("filterwheel_url", "/equipment/filterwheel/")
+        self.focuser_url = kwargs.get("focuser_url", "/equipment/focuser/")
+        self.mount_url = kwargs.get("mount_url", "/equipment/mount/")
+        self.safetymon_url = kwargs.get("safetymon_url", "/equipment/safetymonitor/")
+        self.sequence_url = kwargs.get("sequence_url", "/sequence/")
+        self.bypass_autofocus = kwargs.get("bypass_autofocus", False)
 
         self.filter_map = {}
         self._load_focus_positions()
@@ -69,6 +62,22 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         except Exception as e:
             self.logger.warning(f"Could not save focus positions file: {e}")
 
+    def get_settings_schema(self) -> list[SettingSchemaEntry]:
+        """
+        Return a schema describing configurable settings for the NINA Advanced HTTP adapter.
+        """
+        return [
+            {
+                "name": "nina_api_path",
+                "type": "str",
+                "default": "http://nina:1888/v2/api",
+                "description": "Base URL for the NINA Advanced HTTP API",
+                "required": True,
+                "placeholder": "http://localhost:1888/v2/api",
+                "pattern": r"^https?://.*",
+            }
+        ]
+
     def do_autofocus(self):
         self.logger.info("Performing autofocus routine ...")
         # move telescope to bright star and start autofocus
@@ -77,7 +86,9 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         dec = 35 + 37 / 60.0 + 11.1 / 3600.0
 
         self.logger.info("Slewing to Mirach ...")
-        mount_status = requests.get(self.url_prefix + self.mount_url + "slew?ra=" + str(ra) + "&dec=" + str(dec)).json()
+        mount_status = requests.get(
+            self.nina_api_path + self.mount_url + "slew?ra=" + str(ra) + "&dec=" + str(dec)
+        ).json()
         self.logger.info(f"Mount {mount_status['Response']}")
 
         # wait for slew to complete
@@ -99,8 +110,8 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         # change to the requested filter
         correct_filter_in_place = False
         while not correct_filter_in_place:
-            requests.get(self.url_prefix + self.filterwheel_url + "change-filter?filterId=" + str(filter_id))
-            filterwheel_status = requests.get(self.url_prefix + self.filterwheel_url + "info").json()
+            requests.get(self.nina_api_path + self.filterwheel_url + "change-filter?filterId=" + str(filter_id))
+            filterwheel_status = requests.get(self.nina_api_path + self.filterwheel_url + "info").json()
             current_filter_id = filterwheel_status["Response"]["SelectedFilter"]["Id"]
             if current_filter_id == filter_id:
                 correct_filter_in_place = True
@@ -114,9 +125,9 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         is_in_starting_position = False
         while not is_in_starting_position:
             focuser_status = requests.get(
-                self.url_prefix + self.focuser_url + "move?position=" + str(starting_focus_position)
+                self.nina_api_path + self.focuser_url + "move?position=" + str(starting_focus_position)
             ).json()
-            focuser_status = requests.get(self.url_prefix + self.focuser_url + "info").json()
+            focuser_status = requests.get(self.nina_api_path + self.focuser_url + "info").json()
             if int(focuser_status["Response"]["Position"]) == starting_focus_position:
                 is_in_starting_position = True
             else:
@@ -125,10 +136,10 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
         # start autofocus
         self.logger.info("Starting autofocus ...")
-        focuser_status = requests.get(self.url_prefix + self.focuser_url + "auto-focus").json()
+        focuser_status = requests.get(self.nina_api_path + self.focuser_url + "auto-focus").json()
         self.logger.info(f"Focuser {focuser_status['Response']}")
 
-        last_completed_autofocus = requests.get(self.url_prefix + self.focuser_url + "last-af").json()
+        last_completed_autofocus = requests.get(self.nina_api_path + self.focuser_url + "last-af").json()
 
         if not last_completed_autofocus.get("Success"):
             self.logger.error(f"Failed to start autofocus: {last_completed_autofocus.get('Error')}")
@@ -140,7 +151,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             or last_completed_autofocus["Response"]["InitialFocusPoint"]["Position"] != starting_focus_position
         ):
             self.logger.info("Waiting autofocus")
-            last_completed_autofocus = requests.get(self.url_prefix + self.focuser_url + "last-af").json()
+            last_completed_autofocus = requests.get(self.nina_api_path + self.focuser_url + "last-af").json()
             time.sleep(15)
 
         autofocused_position = last_completed_autofocus["Response"]["CalculatedFocusPoint"]["Position"]
@@ -153,7 +164,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
     def _do_point_telescope(self, ra: float, dec: float):
         self.logger.info(f"Slewing to RA: {ra}, Dec: {dec}")
-        slew_response = requests.get(f"{self.url_prefix}{self.mount_url}slew?ra={ra}&dec={dec}").json()
+        slew_response = requests.get(f"{self.nina_api_path}{self.mount_url}slew?ra={ra}&dec={dec}").json()
 
         if slew_response.get("Success"):
             self.logger.info(f"Mount slew initiated: {slew_response['Response']}")
@@ -166,42 +177,42 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         try:
             # start connection to all equipments
             self.logger.info("Connecting camera ...")
-            cam_status = requests.get(self.url_prefix + self.cam_url + "connect").json()
+            cam_status = requests.get(self.nina_api_path + self.cam_url + "connect").json()
             if not cam_status["Success"]:
                 self.logger.error(f"Failed to connect camera: {cam_status.get('Error')}")
                 return False
             self.logger.info(f"Camera Connected!")
 
             self.logger.info("Starting camera cooling ...")
-            cool_status = requests.get(self.url_prefix + self.cam_url + "cool").json()
+            cool_status = requests.get(self.nina_api_path + self.cam_url + "cool").json()
             if not cool_status["Success"]:
                 self.logger.warning(f"Failed to start camera cooling: {cool_status.get('Error')}")
             else:
                 self.logger.info("Cooler started!")
 
             self.logger.info("Connecting filterwheel ...")
-            filterwheel_status = requests.get(self.url_prefix + self.filterwheel_url + "connect").json()
+            filterwheel_status = requests.get(self.nina_api_path + self.filterwheel_url + "connect").json()
             if not filterwheel_status["Success"]:
                 self.logger.warning(f"Failed to connect filterwheel: {filterwheel_status.get('Error')}")
             else:
                 self.logger.info(f"Filterwheel Connected!")
 
             self.logger.info("Connecting focuser ...")
-            focuser_status = requests.get(self.url_prefix + self.focuser_url + "connect").json()
+            focuser_status = requests.get(self.nina_api_path + self.focuser_url + "connect").json()
             if not focuser_status["Success"]:
                 self.logger.warning(f"Failed to connect focuser: {focuser_status.get('Error')}")
             else:
                 self.logger.info(f"Focuser Connected!")
 
             self.logger.info("Connecting mount ...")
-            mount_status = requests.get(self.url_prefix + self.mount_url + "connect").json()
+            mount_status = requests.get(self.nina_api_path + self.mount_url + "connect").json()
             if not mount_status["Success"]:
                 self.logger.error(f"Failed to connect mount: {mount_status.get('Error')}")
                 return False
             self.logger.info(f"Mount Connected!")
 
             self.logger.info("Unparking mount ...")
-            mount_status = requests.get(self.url_prefix + self.mount_url + "unpark").json()
+            mount_status = requests.get(self.nina_api_path + self.mount_url + "unpark").json()
             if not mount_status["Success"]:
                 self.logger.error(f"Failed to unpark mount: {mount_status.get('Error')}")
                 return False
@@ -221,7 +232,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
     def discover_filters(self):
         self.logger.info("Discovering filters ...")
-        filterwheel_info = requests.get(self.url_prefix + self.filterwheel_url + "info").json()
+        filterwheel_info = requests.get(self.nina_api_path + self.filterwheel_url + "info").json()
         if not filterwheel_info.get("Success"):
             self.logger.error(f"Failed to get filterwheel info: {filterwheel_info.get('Error')}")
             raise RuntimeError("Failed to get filterwheel info")
@@ -240,6 +251,22 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
     def disconnect(self):
         pass
 
+    def is_telescope_connected(self) -> bool:
+        """Check if telescope is connected and responsive."""
+        try:
+            mount_info = requests.get(f"{self.nina_api_path}{self.mount_url}info", timeout=2).json()
+            return mount_info.get("Success", False) and mount_info.get("Response", {}).get("Connected", False)
+        except Exception:
+            return False
+
+    def is_camera_connected(self) -> bool:
+        """Check if camera is connected and responsive."""
+        try:
+            cam_info = requests.get(f"{self.nina_api_path}{self.cam_url}info", timeout=2).json()
+            return cam_info.get("Success", False) and cam_info.get("Response", {}).get("Connected", False)
+        except Exception:
+            return False
+
     def list_devices(self) -> list[str]:
         return []
 
@@ -247,7 +274,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         return True
 
     def get_telescope_direction(self) -> tuple[float, float]:
-        mount_info = requests.get(self.url_prefix + self.mount_url + "info").json()
+        mount_info = requests.get(self.nina_api_path + self.mount_url + "info").json()
         if mount_info.get("Success"):
             ra_degrees = mount_info["Response"]["Coordinates"]["RADegrees"]
             dec_degrees = mount_info["Response"]["Coordinates"]["Dec"]
@@ -257,7 +284,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             raise RuntimeError(f"Failed to get mount info: {mount_info.get('Error')}")
 
     def telescope_is_moving(self) -> bool:
-        mount_info = requests.get(self.url_prefix + self.mount_url + "info").json()
+        mount_info = requests.get(self.nina_api_path + self.mount_url + "info").json()
         if mount_info.get("Success"):
             return mount_info["Response"]["Slewing"]
         else:
@@ -440,7 +467,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         # POST the sequence
 
         self.logger.info(f"Posting NINA sequence")
-        post_response = requests.post(f"{self.url_prefix}{self.sequence_url}load", json=sequence_json).json()
+        post_response = requests.post(f"{self.nina_api_path}{self.sequence_url}load", json=sequence_json).json()
         if not post_response.get("Success"):
             self.logger.error(f"Failed to post sequence: {post_response.get('Error')}")
             raise RuntimeError("Failed to post NINA sequence")
@@ -448,7 +475,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         self.logger.info(f"Loaded sequence to NINA, starting sequence...")
 
         start_response = requests.get(
-            f"{self.url_prefix}{self.sequence_url}start?skipValidation=true"
+            f"{self.nina_api_path}{self.sequence_url}start?skipValidation=true"
         ).json()  # TODO: try and fix validation issues
         if not start_response.get("Success"):
             self.logger.error(f"Failed to start sequence: {start_response.get('Error')}")
@@ -459,7 +486,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         elapsed_time = 0
         status_response = None
         while elapsed_time < timeout_minutes * 60:
-            status_response = requests.get(f"{self.url_prefix}{self.sequence_url}json").json()
+            status_response = requests.get(f"{self.nina_api_path}{self.sequence_url}json").json()
 
             start_status = status_response["Response"][1][
                 "Status"
@@ -481,7 +508,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
         # get a list of images taken in the sequence
         self.logger.info(f"Retrieving list of images taken in sequence...")
-        images_response = requests.get(f"{self.url_prefix}/image-history?all=true").json()
+        images_response = requests.get(f"{self.nina_api_path}/image-history?all=true").json()
         if not images_response.get("Success"):
             self.logger.error(f"Failed to get images list: {images_response.get('Error')}")
             raise RuntimeError("Failed to get images list from NINA")
@@ -515,7 +542,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         for image_index in images_to_download:
             self.logger.debug(f"Retrieving image from NINA...")
             image_response = requests.get(
-                f"{self.url_prefix}/image/{image_index}",
+                f"{self.nina_api_path}/image/{image_index}",
                 params={"raw_fits": "true"},
             )
 

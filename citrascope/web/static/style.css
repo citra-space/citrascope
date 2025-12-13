@@ -1,0 +1,120 @@
+/* CitraScope Web Interface - Custom Styles
+ * Bootstrap 5 handles most styling; these are overrides and additions only
+ */
+
+/* Log terminal container - custom scrollbar and background watermark */
+.log-container {
+    background: #0d1117 url('/static/img/citra.png') no-repeat 85% center;
+    background-size: auto 70%;
+    background-blend-mode: soft-light;
+    opacity: 1;
+    font-family: monospace;
+    line-height: 1.5;
+}
+
+/* Dark scrollbar for log container */
+.log-container::-webkit-scrollbar {
+    width: 12px;
+}
+
+.log-container::-webkit-scrollbar-track {
+    background: #0d1117;
+    border-radius: 5px;
+}
+
+.log-container::-webkit-scrollbar-thumb {
+    background: #30363d;
+    border-radius: 5px;
+}
+
+.log-container::-webkit-scrollbar-thumb:hover {
+    background: #484f58;
+}
+
+/* Body padding for fixed bottom log terminal */
+body {
+    padding-bottom: 100px;
+}
+
+/* Logo styling */
+.logo-img {
+    height: 1.5em;
+    width: auto;
+    vertical-align: middle;
+    display: inline-block;
+}
+
+/* Status badge container */
+.status-badge-container {
+    gap: 0.5em;
+}
+
+/* Muted text color for placeholders */
+.text-muted-dark {
+    color: #a0aec0;
+}
+
+/* Log accordion customization */
+.log-accordion-button {
+    border-bottom: 1px solid #444 !important;
+}
+
+.log-accordion-body {
+    max-height: 40vh;
+    overflow: hidden;
+}
+
+.log-container {
+    max-height: 40vh;
+    overflow-y: auto;
+}
+
+.log-latest-line {
+    font-family: monospace;
+    color: #e2e8f0;
+}
+
+/* Task display */
+.task-title {
+    font-size: 1.1em;
+}
+
+.no-task-message {
+    color: #a0aec0;
+    margin: 0;
+}
+
+/* Ground station link */
+.ground-station-link {
+    color: #4299e1;
+    text-decoration: none;
+}
+
+.ground-station-link:hover {
+    color: #63b3ed;
+    text-decoration: underline;
+}
+
+/* Log entry components */
+.log-entry {
+    margin-bottom: 4px;
+}
+
+.log-timestamp {
+    color: #a0aec0;
+}
+
+.log-level {
+    font-weight: bold;
+    margin: 0 8px;
+}
+
+.log-level-DEBUG { color: #a0aec0; }
+.log-level-INFO { color: #48bb78; }
+.log-level-WARNING { color: #f6ad55; }
+.log-level-ERROR { color: #f56565; }
+.log-level-CRITICAL { color: #c53030; }
+
+.log-message {
+    color: #e2e8f0;
+}

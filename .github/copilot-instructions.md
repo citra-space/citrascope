@@ -16,6 +16,11 @@ This project is a Python package for interacting with astronomical data and serv
 - `citrascope/logging/`: Logging utilities
 - `citrascope/settings/`: Settings and configuration
 - `citrascope/tasks/`: Task runner and definitions
+- `citrascope/web/`: Web interface for monitoring and configuration
+  - `citrascope/web/app.py`: FastAPI application and routes
+  - `citrascope/web/server.py`: Web server management and threading
+  - `citrascope/web/templates/`: HTML templates
+  - `citrascope/web/static/`: CSS and JavaScript files
 - `tests/`: Unit and integration tests
 - `docs/`: Project documentation
 
@@ -36,7 +41,31 @@ This project is a Python package for interacting with astronomical data and serv
 - Update logging logic in `citrascope/logging/`.
 - Change settings in `citrascope/settings/`.
 - Add or modify tasks in `citrascope/tasks/`.
+- Enhance web interface in `citrascope/web/`.
 - Write or update tests in `tests/`.
+
+## Web Interface Guidelines
+
+The web interface provides real-time monitoring and configuration for telescope operations. When working on web-related features:
+
+### Design Principles
+- **Dark theme required**: All UI elements must use dark colors suitable for nighttime telescope operations to preserve night vision
+- **Real-time updates**: Use WebSocket connections for live status, logs, and telemetry
+- **Mobile-friendly**: The interface should be responsive and usable on tablets/phones in the field
+- **Minimal distractions**: Reduce visual clutter; prioritize essential telescope and task information
+
+### Architecture
+- **FastAPI backend** (`web/app.py`): RESTful API endpoints and WebSocket handlers
+- **Separate thread**: Web server runs in daemon thread with its own event loop (`web/server.py`)
+- **Log streaming**: Custom `WebLogHandler` broadcasts logs to web clients in real-time
+- **Static files**: HTML, CSS, and JavaScript are served from `web/templates/` and `web/static/`
+
+### Development Notes
+- Keep web-specific code isolated in the `citrascope/web/` directory
+- The daemon should only call `web_server.start()` - all web complexity stays in `web/server.py`
+- Filter out noise from web logs (HTTP requests, WebSocket events, Uvicorn messages)
+- Use thread-safe mechanisms when accessing daemon state from web handlers
+- Port 24872 (CITRA on phone keypad) is the default web interface port
 
 ## Important Packages
 
@@ -57,6 +86,11 @@ This project relies on several key Python packages. Below are some of the most i
 - **Mypy**: Performs static type checking.
 - **Flake8**: Enforces code style and linting rules.
 - **Sphinx**: Generates project documentation.
+
+### Web Interface Dependencies
+- **FastAPI**: Modern async web framework for the monitoring interface
+- **Uvicorn**: ASGI server for running the web application
+- **WebSockets**: Real-time bidirectional communication for live updates
 
 For a complete list of dependencies, refer to the `pyproject.toml` file.
 

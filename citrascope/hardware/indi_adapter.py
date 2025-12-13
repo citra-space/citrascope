@@ -10,7 +10,11 @@ from pixelemon.optics._base_optical_assembly import BaseOpticalAssembly
 from pixelemon.sensors import IMX174
 from pixelemon.sensors._base_sensor import BaseSensor
 
-from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter, ObservationStrategy
+from citrascope.hardware.abstract_astro_hardware_adapter import (
+    AbstractAstroHardwareAdapter,
+    ObservationStrategy,
+    SettingSchemaEntry,
+)
 
 
 # The IndiClient class which inherits from the module PyIndi.BaseClient class
@@ -28,16 +32,58 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
     _alignment_offset_ra: float = 0.0
     _alignment_offset_dec: float = 0.0
 
-    def __init__(self, CITRA_LOGGER, host: str, port: int, telescope_name: str = "", camera_name: str = ""):
+    def __init__(self, logger=None, **kwargs):
         super(IndiAdapter, self).__init__()
-        self.logger = CITRA_LOGGER
-        self.logger.debug("creating an instance of IndiClient")
-        self.host = host
-        self.port = port
-        self.telescope_name = telescope_name
-        self.camera_name = camera_name
+        self.logger = logger
+        if self.logger:
+            self.logger.debug("creating an instance of IndiClient")
+        self.host = kwargs.get("host", "localhost")
+        self.port = int(kwargs.get("port", 7624))
+        self.telescope_name = kwargs.get("telescope_name", "")
+        self.camera_name = kwargs.get("camera_name", "")
 
         # TetraSolver.high_memory()
+
+    def get_settings_schema(self) -> list[SettingSchemaEntry]:
+        """
+        Return a schema describing configurable settings for the INDI adapter.
+        """
+        return [
+            {
+                "name": "host",
+                "type": "str",
+                "default": "localhost",
+                "description": "INDI server hostname or IP address",
+                "required": True,
+                "placeholder": "localhost or 192.168.1.100",
+            },
+            {
+                "name": "port",
+                "type": "int",
+                "default": 7624,
+                "description": "INDI server port",
+                "required": True,
+                "placeholder": "7624",
+                "min": 1,
+                "max": 65535,
+            },
+            {
+                "name": "telescope_name",
+                "type": "str",
+                "default": "",
+                "description": "Name of the telescope device (leave empty to auto-detect)",
+                "required": False,
+                "placeholder": "Telescope Simulator",
+            },
+            {
+                "name": "camera_name",
+                "type": "str",
+                "default": "",
+                "description": "Name of the camera device (leave empty to auto-detect)",
+                "required": False,
+                "placeholder": "CCD Simulator",
+            },
+        ]
 
     def newDevice(self, d):
         """Emmited when a new device is created from INDI server."""
@@ -130,7 +176,7 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
 
         time.sleep(1)  # Give server time to enumerate devices
 
-        # Auto-select telescope if name provided
+        # Auto-select telescope if name provided, or auto-detect first telescope
         if self.telescope_name:
             device_list = self.list_devices()
             if self.telescope_name not in device_list:
@@ -141,8 +187,17 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
                 self.logger.error(f"Failed to select telescope: {self.telescope_name}")
                 return False
             self.logger.info(f"Found and connected to telescope: {self.telescope_name}")
+        else:
+            # Auto-detect: try to find and select first telescope device
+            telescope_found = self._auto_detect_telescope()
+            if not telescope_found:
+                self.logger.warning(
+                    "No telescope_name configured and auto-detection failed. "
+                    "Please configure telescope_name in adapter_settings."
+                )
+                # Don't return False here - allow operation to continue for cameras-only setups
 
-        # Auto-select camera if name provided
+        # Auto-select camera if name provided, or auto-detect first camera
         if self.camera_name:
             device_list = self.list_devices()
             if self.camera_name not in device_list:
@@ -153,6 +208,15 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
                 self.logger.error(f"Failed to select camera: {self.camera_name}")
                 return False
             self.logger.info(f"Found and connected to camera: {self.camera_name}")
+        else:
+            # Auto-detect: try to find and select first camera device
+            camera_found = self._auto_detect_camera()
+            if not camera_found:
+                self.logger.warning(
+                    "No camera_name configured and auto-detection failed. "
+                    "Please configure camera_name in adapter_settings."
+                )
+                # Don't return False here - allow operation to continue
 
         return True
 
@@ -162,11 +226,66 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
             names.append(device.getDeviceName())
         return names
 
+    def _auto_detect_telescope(self) -> bool:
+        """Auto-detect and select the first available telescope device.
+
+        Returns:
+            True if a telescope was found and selected, False otherwise.
+        """
+        devices = self.getDevices()
+        for device in devices:
+            device_name = device.getDeviceName()
+            # Check if device has EQUATORIAL_EOD_COORD property (indicates it's a telescope)
+            # We need to wait a bit for properties to be available
+            for attempt in range(5):
+                telescope_radec = device.getNumber("EQUATORIAL_EOD_COORD")
+                if telescope_radec:
+                    self.logger.info(f"Auto-detected telescope device: {device_name}")
+                    if self.select_telescope(device_name):
+                        return True
+                    break
+                time.sleep(0.5)
+
+        self.logger.debug("No telescope device auto-detected")
+        return False
+
+    def _auto_detect_camera(self) -> bool:
+        """Auto-detect and select the first available camera device.
+
+        Returns:
+            True if a camera was found and selected, False otherwise.
+        """
+        devices = self.getDevices()
+        for device in devices:
+            device_name = device.getDeviceName()
+            # Check if device has CCD_EXPOSURE property (indicates it's a camera)
+            # We need to wait a bit for properties to be available
+            for attempt in range(5):
+                ccd_exposure = device.getNumber("CCD_EXPOSURE")
+                if ccd_exposure:
+                    self.logger.info(f"Auto-detected camera device: {device_name}")
+                    if self.select_camera(device_name):
+                        return True
+                    break
+                time.sleep(0.5)
+
+        self.logger.debug("No camera device auto-detected")
+        return False
+
     def select_telescope(self, device_name: str) -> bool:
+        """Select a specific telescope by name and wait for it to be ready.
+
+        Args:
+            device_name: Name of the telescope device to select
+
+        Returns:
+            True if telescope was found and is ready, False otherwise
+        """
         devices = self.getDevices()
         for device in devices:
             if device.getDeviceName() == device_name:
                 self.our_scope = device
+                self.logger.debug(f"Found telescope device: {device_name}")
 
                 # Connect the telescope device if not already connected
                 connect_prop = device.getSwitch("CONNECTION")
@@ -179,18 +298,72 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
                         time.sleep(1)  # Give device time to connect
                     else:
                         self.logger.debug(f"Telescope device {device_name} already connected")
+                else:
+                    self.logger.warning(f"Telescope device {device_name} has no CONNECTION property")
 
-                return True
+                # Wait for EQUATORIAL_EOD_COORD property to be available
+                for attempt in range(10):
+                    telescope_radec = device.getNumber("EQUATORIAL_EOD_COORD")
+                    if telescope_radec and len(telescope_radec) >= 2:
+                        self.logger.info(f"Telescope {device_name} is ready (EQUATORIAL_EOD_COORD available)")
+                        return True
+                    self.logger.debug(f"Waiting for EQUATORIAL_EOD_COORD property... ({attempt + 1}/10)")
+                    time.sleep(0.5)
+
+                self.logger.error(
+                    f"Telescope {device_name} selected but EQUATORIAL_EOD_COORD property not available. "
+                    f"Device may not be fully initialized."
+                )
+                return False
+
+        self.logger.error(f"Telescope device '{device_name}' not found in INDI device list")
         return False
 
     def disconnect(self):
         self.disconnectServer()
 
+    def is_telescope_connected(self) -> bool:
+        """Check if telescope is connected and responsive."""
+        if not self.isServerConnected():
+            return False
+        if not hasattr(self, "our_scope") or self.our_scope is None:
+            return False
+        # Check if we can read the telescope position (indicates it's working)
+        try:
+            telescope_radec = self.our_scope.getNumber("EQUATORIAL_EOD_COORD")
+            return telescope_radec is not None and len(telescope_radec) >= 2
+        except Exception:
+            return False
+
+    def is_camera_connected(self) -> bool:
+        """Check if camera is connected and responsive."""
+        if not self.isServerConnected():
+            return False
+        if not hasattr(self, "our_camera") or self.our_camera is None:
+            return False
+        # Check if camera is connected via INDI
+        try:
+            if not self.our_camera.isConnected():
+                return False
+            # Check if we can read the exposure property (indicates it's working)
+            ccd_exposure = self.our_camera.getNumber("CCD_EXPOSURE")
+            return ccd_exposure is not None
+        except Exception:
+            return False
+
     def _do_point_telescope(self, ra: float, dec: float):
         """Hardware-specific implementation to point the telescope to the specified RA/Dec coordinates."""
+        # Check if connected to INDI server first
+        if not self.isServerConnected():
+            self.logger.debug("Not connected to INDI server")
+            return
+
         # Check if telescope is selected
         if not hasattr(self, "our_scope") or self.our_scope is None:
-            self.logger.error("No telescope selected. Call select_telescope() first.")
+            self.logger.error(
+                "No telescope selected. Please configure 'telescope_name' in adapter_settings, "
+                "or ensure your INDI server has a telescope device with EQUATORIAL_EOD_COORD property."
+            )
             return
 
         # Get the property
@@ -225,9 +398,17 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
 
     def get_telescope_direction(self) -> tuple[float, float]:
         """Read the current telescope direction (RA degrees, DEC degrees)."""
+        # Check if connected to INDI server first
+        if not self.isServerConnected():
+            self.logger.debug("Not connected to INDI server")
+            return (0.0, 0.0)
+
         # Check if telescope is selected
         if not hasattr(self, "our_scope") or self.our_scope is None:
-            self.logger.error("No telescope selected. Call select_telescope() first.")
+            self.logger.error(
+                "No telescope selected. Please configure 'telescope_name' in adapter_settings, "
+                "or ensure your INDI server has a telescope device with EQUATORIAL_EOD_COORD property."
+            )
             return (0.0, 0.0)
 
         telescope_radec = self.our_scope.getNumber("EQUATORIAL_EOD_COORD")
@@ -249,6 +430,10 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
 
     def telescope_is_moving(self) -> bool:
         """Check if the telescope is currently moving."""
+        # Check if connected to INDI server first
+        if not self.isServerConnected():
+            return False
+
         if not hasattr(self, "our_scope") or self.our_scope is None:
             return False
 
