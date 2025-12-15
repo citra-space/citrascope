@@ -49,6 +49,10 @@ class CitraScopeSettings:
         self.initial_retry_delay_seconds: int = config.get("initial_retry_delay_seconds", 30)
         self.max_retry_delay_seconds: int = config.get("max_retry_delay_seconds", 300)
 
+        # Log file configuration
+        self.file_logging_enabled: bool = config.get("file_logging_enabled", True)
+        self.log_retention_days: int = config.get("log_retention_days", 30)
+
         if dev:
             self.host = "dev.api.citra.space"
             CITRASCOPE_LOGGER.info("Using development API endpoint.")
@@ -80,6 +84,8 @@ class CitraScopeSettings:
             "max_task_retries": self.max_task_retries,
             "initial_retry_delay_seconds": self.initial_retry_delay_seconds,
             "max_retry_delay_seconds": self.max_retry_delay_seconds,
+            "file_logging_enabled": self.file_logging_enabled,
+            "log_retention_days": self.log_retention_days,
         }
 
     def save(self) -> None:
@@ -110,4 +116,6 @@ class CitraScopeSettings:
         settings.max_task_retries = config.get("max_task_retries", 3)
         settings.initial_retry_delay_seconds = config.get("initial_retry_delay_seconds", 30)
         settings.max_retry_delay_seconds = config.get("max_retry_delay_seconds", 300)
+        settings.file_logging_enabled = config.get("file_logging_enabled", True)
+        settings.log_retention_days = config.get("log_retention_days", 30)
         return settings

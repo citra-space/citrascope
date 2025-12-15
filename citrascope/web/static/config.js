@@ -98,12 +98,23 @@ async function loadConfiguration() {
             configPathElement.textContent = config.config_file_path;
         }
 
+        // Display log file path
+        const logPathElement = document.getElementById('logFilePath');
+        if (logPathElement) {
+            if (config.log_file_path) {
+                logPathElement.textContent = config.log_file_path;
+            } else {
+                logPathElement.textContent = 'Disabled';
+            }
+        }
+
         // Core fields
         document.getElementById('personal_access_token').value = config.personal_access_token || '';
         document.getElementById('telescopeId').value = config.telescope_id || '';
         document.getElementById('hardwareAdapterSelect').value = config.hardware_adapter || '';
         document.getElementById('logLevel').value = config.log_level || 'INFO';
         document.getElementById('keep_images').checked = config.keep_images || false;
+        document.getElementById('file_logging_enabled').checked = config.file_logging_enabled !== undefined ? config.file_logging_enabled : true;
 
         // Load adapter-specific settings if adapter is selected
         if (config.hardware_adapter) {
@@ -262,6 +273,7 @@ async function saveConfiguration(event) {
         adapter_settings: collectAdapterSettings(),
         log_level: document.getElementById('logLevel').value,
         keep_images: document.getElementById('keep_images').checked,
+        file_logging_enabled: document.getElementById('file_logging_enabled').checked,
         // Preserve API settings from loaded config
         host: currentConfig.host || 'api.citra.space',
         port: currentConfig.port || 443,
@@ -269,6 +281,7 @@ async function saveConfiguration(event) {
         max_task_retries: currentConfig.max_task_retries || 3,
         initial_retry_delay_seconds: currentConfig.initial_retry_delay_seconds || 30,
         max_retry_delay_seconds: currentConfig.max_retry_delay_seconds || 300,
+        log_retention_days: currentConfig.log_retention_days || 30,
     };
 
     try {

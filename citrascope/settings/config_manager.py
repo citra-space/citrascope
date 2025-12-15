@@ -6,6 +6,7 @@ for cross-platform config directory management.
 
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -19,6 +20,7 @@ class ConfigManager:
         """Initialize the config manager with the standard config directory."""
         self.config_dir = Path(platformdirs.user_config_dir("citrascope", appauthor="citra-space"))
         self.config_file = self.config_dir / "config.json"
+        self.log_dir = Path(platformdirs.user_log_dir("citrascope", appauthor="citra-space"))
 
     def ensure_config_directory(self) -> None:
         """Create config directory with proper permissions if it doesn't exist."""
@@ -98,3 +100,25 @@ class ConfigManager:
 
         # Could add more validation here for required fields, types, etc.
         return True, None
+
+    def ensure_log_directory(self) -> None:
+        """Create log directory if it doesn't exist."""
+        if not self.log_dir.exists():
+            self.log_dir.mkdir(parents=True)
+
+    def get_log_dir(self) -> Path:
+        """Get the path to the log directory.
+
+        Returns:
+            Path object pointing to the log directory.
+        """
+        return self.log_dir
+
+    def get_current_log_path(self) -> Path:
+        """Get the path to the current log file (dated for today).
+
+        Returns:
+            Path object pointing to today's log file.
+        """
+        today = datetime.now().strftime("%Y-%m-%d")
+        return self.log_dir / f"citrascope-{today}.log"

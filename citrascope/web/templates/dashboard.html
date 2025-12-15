@@ -202,15 +202,15 @@
                     </div>
                 </div>
 
-                <!-- Runtime Settings Card -->
+                <!-- Logging Settings Card -->
                 <div class="col-12">
                     <div class="card bg-dark text-light border-secondary">
                         <div class="card-header">
-                            <h5 class="mb-0">Runtime Settings</h5>
+                            <h5 class="mb-0">Logging Settings</h5>
                         </div>
                         <div class="card-body">
                             <div class="row g-3">
-                                <div class="col-12 col-md-4">
+                                <div class="col-12 col-md-6">
                                     <label for="logLevel" class="form-label">Log Level</label>
                                     <select id="logLevel" class="form-select">
                                         <option value="DEBUG">DEBUG</option>
@@ -219,8 +219,34 @@
                                         <option value="ERROR">ERROR</option>
                                     </select>
                                 </div>
-                                <div class="col-12 col-md-4">
+                                <div class="col-12 col-md-6">
                                     <div class="form-check mt-4">
+                                        <input class="form-check-input" type="checkbox" id="file_logging_enabled">
+                                        <label class="form-check-label" for="file_logging_enabled">
+                                            Enable file logging
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <small class="text-muted">
+                                        Log file: <span id="logFilePath" class="text-secondary">Loading...</span>
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Task Settings Card -->
+                <div class="col-12">
+                    <div class="card bg-dark text-light border-secondary">
+                        <div class="card-header">
+                            <h5 class="mb-0">Task Settings</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-12 col-md-6">
+                                    <div class="form-check mt-2">
                                         <input class="form-check-input" type="checkbox" id="keep_images">
                                         <label class="form-check-label" for="keep_images">
                                             Keep captured images
@@ -240,7 +266,9 @@
                         <span id="saveButtonText">Save Configuration</span>
                         <span id="saveButtonSpinner" class="spinner-border spinner-border-sm ms-2" style="display: none;" role="status"></span>
                     </button>
-                    <small class="text-muted ms-3">Configuration will be applied immediately • File: <span id="configFilePath" class="text-secondary">Loading...</span></small>
+                    <small class="text-muted ms-3">
+                        Config file: <span id="configFilePath" class="text-secondary">Loading...</span>
+                    </small>
                 </div>
             </div>
         </form>

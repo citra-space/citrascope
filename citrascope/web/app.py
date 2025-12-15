@@ -160,6 +160,11 @@ class CitraScopeWebApp:
             # Get config file path
             config_path = str(settings.config_manager.get_config_path())
 
+            # Get current log file path
+            log_file_path = (
+                str(settings.config_manager.get_current_log_path()) if settings.file_logging_enabled else None
+            )
+
             return {
                 "host": settings.host,
                 "port": settings.port,
@@ -175,6 +180,7 @@ class CitraScopeWebApp:
                 "max_retry_delay_seconds": settings.max_retry_delay_seconds,
                 "app_url": app_url,
                 "config_file_path": config_path,
+                "log_file_path": log_file_path,
             }
 
         @self.app.get("/api/config/status")

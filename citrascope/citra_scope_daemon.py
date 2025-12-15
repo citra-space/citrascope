@@ -5,6 +5,7 @@ from citrascope.api.citra_api_client import AbstractCitraApiClient, CitraApiClie
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
 from citrascope.hardware.adapter_registry import get_adapter_class
 from citrascope.logging import CITRASCOPE_LOGGER
+from citrascope.logging._citrascope_logger import setup_file_logging
 from citrascope.settings._citrascope_settings import CitraScopeSettings
 from citrascope.tasks.runner import TaskManager
 from citrascope.web.server import CitraScopeWebServer
@@ -22,6 +23,14 @@ class CitraScopeDaemon:
     ):
         self.settings = settings
         CITRASCOPE_LOGGER.setLevel(self.settings.log_level)
+
+        # Setup file logging if enabled
+        if self.settings.file_logging_enabled:
+            self.settings.config_manager.ensure_log_directory()
+            log_path = self.settings.config_manager.get_current_log_path()
+            setup_file_logging(log_path, backup_count=self.settings.log_retention_days)
+            CITRASCOPE_LOGGER.info(f"Logging to file: {log_path}")
+
         self.api_client = api_client
         self.hardware_adapter = hardware_adapter
         self.enable_web = enable_web
@@ -92,6 +101,12 @@ class CitraScopeDaemon:
             # Ensure web log handler is still attached after logger changes
             if self.web_server:
                 self.web_server.ensure_log_handler()
+
+            # Re-setup file logging if enabled
+            if self.settings.file_logging_enabled:
+                self.settings.config_manager.ensure_log_directory()
+                log_path = self.settings.config_manager.get_current_log_path()
+                setup_file_logging(log_path, backup_count=self.settings.log_retention_days)
 
             # Reinitialize API client
             self.api_client = CitraApiClient(
