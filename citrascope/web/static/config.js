@@ -62,6 +62,12 @@ async function loadConfiguration() {
         const config = await getConfig();
         currentConfig = config; // Save for reuse when saving
 
+        // Display config file path
+        const configPathElement = document.getElementById('configFilePath');
+        if (configPathElement && config.config_file_path) {
+            configPathElement.textContent = config.config_file_path;
+        }
+
         // Core fields
         document.getElementById('personal_access_token').value = config.personal_access_token || '';
         document.getElementById('telescopeId').value = config.telescope_id || '';

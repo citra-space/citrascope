@@ -157,6 +157,9 @@ class CitraScopeWebApp:
             # Determine app URL based on API host
             app_url = DEV_APP_URL if "dev." in settings.host else PROD_APP_URL
 
+            # Get config file path
+            config_path = str(settings.config_manager.get_config_path())
+
             return {
                 "host": settings.host,
                 "port": settings.port,
@@ -172,6 +175,7 @@ class CitraScopeWebApp:
                 "initial_retry_delay_seconds": settings.initial_retry_delay_seconds,
                 "max_retry_delay_seconds": settings.max_retry_delay_seconds,
                 "app_url": app_url,
+                "config_file_path": config_path,
             }
 
         @self.app.get("/api/config/status")
