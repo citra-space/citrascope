@@ -58,35 +58,43 @@ class CitraScopeDaemon:
                 f"Check documentation for installation instructions."
             ) from e
 
-    def reload_configuration(self) -> tuple[bool, Optional[str]]:
-        """Reload configuration from file and reinitialize components.
+    def _initialize_components(self, reload_settings: bool = False) -> tuple[bool, Optional[str]]:
+        """Initialize or reinitialize all components.
+
+        Args:
+            reload_settings: If True, reload settings from disk before initializing
 
         Returns:
             Tuple of (success, error_message)
         """
         try:
-            CITRASCOPE_LOGGER.info("Reloading configuration...")
+            if reload_settings:
+                CITRASCOPE_LOGGER.info("Reloading configuration...")
+                # Reload settings from file
+                new_settings = CitraScopeSettings(
+                    dev=("dev.api" in self.settings.host),
+                    log_level=self.settings.log_level,
+                    keep_images=self.settings.keep_images,
+                )
+                self.settings = new_settings
+                CITRASCOPE_LOGGER.setLevel(self.settings.log_level)
 
-            # Reload settings from file
-            new_settings = CitraScopeSettings(
-                dev=("dev.api" in self.settings.host),
-                log_level=self.settings.log_level,
-                keep_images=self.settings.keep_images,
-            )
+                # Ensure web log handler is still attached after logger changes
+                if self.web_server:
+                    self.web_server.ensure_log_handler()
 
-            if not new_settings.is_configured():
-                error_msg = "Configuration incomplete. Please set access token, telescope ID, and hardware adapter."
-                CITRASCOPE_LOGGER.warning(error_msg)
-                self.configuration_error = error_msg
-                return False, error_msg
+                # Re-setup file logging if enabled
+                if self.settings.file_logging_enabled:
+                    self.settings.config_manager.ensure_log_directory()
+                    log_path = self.settings.config_manager.get_current_log_path()
+                    setup_file_logging(log_path, backup_count=self.settings.log_retention_days)
 
-            # Stop existing task manager if running
+            # Cleanup existing resources
             if self.task_manager:
                 CITRASCOPE_LOGGER.info("Stopping existing task manager...")
                 self.task_manager.stop()
                 self.task_manager = None
 
-            # Disconnect existing hardware if connected
             if self.hardware_adapter:
                 try:
                     self.hardware_adapter.disconnect()
@@ -94,21 +102,14 @@ class CitraScopeDaemon:
                     CITRASCOPE_LOGGER.warning(f"Error disconnecting hardware: {e}")
                 self.hardware_adapter = None
 
-            # Update settings
-            self.settings = new_settings
-            CITRASCOPE_LOGGER.setLevel(self.settings.log_level)
+            # Check if configuration is complete
+            if not self.settings.is_configured():
+                error_msg = "Configuration incomplete. Please set access token, telescope ID, and hardware adapter."
+                CITRASCOPE_LOGGER.warning(error_msg)
+                self.configuration_error = error_msg
+                return False, error_msg
 
-            # Ensure web log handler is still attached after logger changes
-            if self.web_server:
-                self.web_server.ensure_log_handler()
-
-            # Re-setup file logging if enabled
-            if self.settings.file_logging_enabled:
-                self.settings.config_manager.ensure_log_directory()
-                log_path = self.settings.config_manager.get_current_log_path()
-                setup_file_logging(log_path, backup_count=self.settings.log_retention_days)
-
-            # Reinitialize API client
+            # Initialize API client
             self.api_client = CitraApiClient(
                 self.settings.host,
                 self.settings.personal_access_token,
@@ -116,25 +117,29 @@ class CitraScopeDaemon:
                 CITRASCOPE_LOGGER,
             )
 
-            # Reinitialize hardware adapter
+            # Initialize hardware adapter
             self.hardware_adapter = self._create_hardware_adapter()
 
-            # Try to initialize everything
+            # Initialize telescope
             success, error = self._initialize_telescope()
 
             if success:
                 self.configuration_error = None
-                CITRASCOPE_LOGGER.info("Configuration reloaded successfully!")
+                CITRASCOPE_LOGGER.info("Components initialized successfully!")
                 return True, None
             else:
                 self.configuration_error = error
                 return False, error
 
         except Exception as e:
-            error_msg = f"Failed to reload configuration: {str(e)}"
+            error_msg = f"Failed to initialize components: {str(e)}"
             CITRASCOPE_LOGGER.error(error_msg, exc_info=True)
             self.configuration_error = error_msg
             return False, error_msg
+
+    def reload_configuration(self) -> tuple[bool, Optional[str]]:
+        """Reload configuration from file and reinitialize all components."""
+        return self._initialize_components(reload_settings=True)
 
     def _initialize_telescope(self) -> tuple[bool, Optional[str]]:
         """Initialize telescope connection and task manager.
@@ -205,35 +210,13 @@ class CitraScopeDaemon:
             CITRASCOPE_LOGGER.info(f"Web interface available at http://{self.web_server.host}:{self.web_server.port}")
 
         try:
-            # Check if configuration is complete
-            if not self.settings.is_configured():
-                CITRASCOPE_LOGGER.warning(
-                    "Configuration incomplete. Please configure via web interface at "
-                    f"http://{self.web_server.host}:{self.web_server.port}"
-                )
-                self.configuration_error = (
-                    "Configuration required. Please set access token, telescope ID, and hardware adapter."
-                )
-                self._keep_running()
-                return
-
-            # Initialize API client and hardware adapter if not provided
-            if not self.api_client:
-                self.api_client = CitraApiClient(
-                    self.settings.host,
-                    self.settings.personal_access_token,
-                    self.settings.use_ssl,
-                    CITRASCOPE_LOGGER,
-                )
-
-            if not self.hardware_adapter:
-                self.hardware_adapter = self._create_hardware_adapter()
-
-            # Try to initialize telescope
-            success, error = self._initialize_telescope()
+            # Try to initialize components
+            success, error = self._initialize_components()
             if not success:
-                self.configuration_error = error
-                CITRASCOPE_LOGGER.error(f"Failed to initialize: {error}")
+                CITRASCOPE_LOGGER.warning(
+                    f"Could not start telescope operations: {error}. "
+                    f"Configure via web interface at http://{self.web_server.host}:{self.web_server.port}"
+                )
 
             CITRASCOPE_LOGGER.info("Starting telescope task daemon... (press Ctrl+C to exit)")
             self._keep_running()
