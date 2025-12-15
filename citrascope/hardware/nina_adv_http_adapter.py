@@ -41,12 +41,14 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             if os.path.exists(self.FOCUS_POSITIONS_FILE):
                 with open(self.FOCUS_POSITIONS_FILE, "r") as f:
                     focus_data = json.load(f)
-                self.logger.info(f"Loaded focus positions from {self.FOCUS_POSITIONS_FILE}")
+                if self.logger:
+                    self.logger.info(f"Loaded focus positions from {self.FOCUS_POSITIONS_FILE}")
                 self._focus_positions_cache = focus_data
             else:
                 self._focus_positions_cache = {}
         except Exception as e:
-            self.logger.warning(f"Could not load focus positions file: {e}")
+            if self.logger:
+                self.logger.warning(f"Could not load focus positions file: {e}")
             self._focus_positions_cache = {}
 
     def _save_focus_positions(self):
@@ -58,9 +60,11 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             }
             with open(self.FOCUS_POSITIONS_FILE, "w") as f:
                 json.dump(focus_data, f, indent=2)
-            self.logger.info(f"Saved focus positions to {self.FOCUS_POSITIONS_FILE}")
+            if self.logger:
+                self.logger.info(f"Saved focus positions to {self.FOCUS_POSITIONS_FILE}")
         except Exception as e:
-            self.logger.warning(f"Could not save focus positions file: {e}")
+            if self.logger:
+                self.logger.warning(f"Could not save focus positions file: {e}")
 
     def get_settings_schema(self) -> list[SettingSchemaEntry]:
         """
@@ -75,7 +79,14 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
                 "required": True,
                 "placeholder": "http://localhost:1888/v2/api",
                 "pattern": r"^https?://.*",
-            }
+            },
+            {
+                "name": "bypass_autofocus",
+                "type": "bool",
+                "default": False,
+                "description": "Skip autofocus routine when capturing images",
+                "required": False,
+            },
         ]
 
     def do_autofocus(self):

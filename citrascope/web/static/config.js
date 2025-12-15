@@ -104,7 +104,6 @@ async function loadConfiguration() {
         document.getElementById('hardwareAdapterSelect').value = config.hardware_adapter || '';
         document.getElementById('logLevel').value = config.log_level || 'INFO';
         document.getElementById('keep_images').checked = config.keep_images || false;
-        document.getElementById('bypass_autofocus').checked = config.bypass_autofocus || false;
 
         // Load adapter-specific settings if adapter is selected
         if (config.hardware_adapter) {
@@ -263,7 +262,6 @@ async function saveConfiguration(event) {
         adapter_settings: collectAdapterSettings(),
         log_level: document.getElementById('logLevel').value,
         keep_images: document.getElementById('keep_images').checked,
-        bypass_autofocus: document.getElementById('bypass_autofocus').checked,
         // Preserve API settings from loaded config
         host: currentConfig.host || 'api.citra.space',
         port: currentConfig.port || 443,

@@ -39,15 +39,7 @@ class CitraScopeDaemon:
         """Factory method to create the appropriate hardware adapter based on settings."""
         try:
             adapter_class = get_adapter_class(self.settings.hardware_adapter)
-            # For NINA adapter, pass bypass_autofocus if it's a NINA adapter
-            if self.settings.hardware_adapter == "nina":
-                return adapter_class(
-                    logger=CITRASCOPE_LOGGER,
-                    bypass_autofocus=self.settings.bypass_autofocus,
-                    **self.settings.adapter_settings,
-                )
-            else:
-                return adapter_class(logger=CITRASCOPE_LOGGER, **self.settings.adapter_settings)
+            return adapter_class(logger=CITRASCOPE_LOGGER, **self.settings.adapter_settings)
         except ImportError as e:
             CITRASCOPE_LOGGER.error(
                 f"{self.settings.hardware_adapter} adapter requested but dependencies not available. " f"Error: {e}"
@@ -71,7 +63,6 @@ class CitraScopeDaemon:
                 dev=("dev.api" in self.settings.host),
                 log_level=self.settings.log_level,
                 keep_images=self.settings.keep_images,
-                bypass_autofocus=self.settings.bypass_autofocus,
             )
 
             if not new_settings.is_configured():

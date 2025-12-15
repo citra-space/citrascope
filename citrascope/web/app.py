@@ -170,7 +170,6 @@ class CitraScopeWebApp:
                 "adapter_settings": settings.adapter_settings,
                 "log_level": settings.log_level,
                 "keep_images": settings.keep_images,
-                "bypass_autofocus": settings.bypass_autofocus,
                 "max_task_retries": settings.max_task_retries,
                 "initial_retry_delay_seconds": settings.initial_retry_delay_seconds,
                 "max_retry_delay_seconds": settings.max_retry_delay_seconds,
