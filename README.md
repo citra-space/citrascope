@@ -4,9 +4,9 @@
 Remotely control a telescope while it polls for tasks, collects observations, and delivers data for further processing.
 
 ## Features
-
+- Offers a web UI to configure hardware and connect to Citra.space's api
 - Connects to Citra.space's API and identifies itself as an online telescope
-- Connects to configured INDI telescope and camera hardware
+- Connects to configured telescope and camera hardware
 - Acts as a task daemon carrying out and remitting photography tasks
 
 ## Installation
@@ -52,31 +52,6 @@ To connect to the Citra Dev server:
 ```sh
 citrascope start --dev
 ```
-
-## Configuration
-
-Settings are managed via environment variables with the prefix `CITRASCOPE_`. You must configure your personal access token and telescope ID, as well as INDI server details. You can set these variables in your shell or in a `.env` file at the project root.
-
-Example `.env` file:
-
-```env
-CITRASCOPE_PERSONAL_ACCESS_TOKEN=citra_pat_xxx
-CITRASCOPE_TELESCOPE_ID=xxx
-# CITRASCOPE_INDI_SERVER_URL=127.0.0.1
-CITRASCOPE_INDI_SERVER_URL=host.docker.internal  # use with devcontainer for accessing a localhost indi server
-CITRASCOPE_INDI_SERVER_PORT=7624
-CITRASCOPE_INDI_TELESCOPE_NAME=Telescope Simulator
-```
-
-**Variable descriptions:**
-
-- `CITRASCOPE_PERSONAL_ACCESS_TOKEN`: Your CitraScope personal access token (required)
-- `CITRASCOPE_TELESCOPE_ID`: Your telescope ID (required)
-- `CITRASCOPE_INDI_SERVER_URL`: Hostname or IP address of the INDI server (default: `host.docker.internal` for devcontainers, or `127.0.0.1` for local)
-- `CITRASCOPE_INDI_SERVER_PORT`: Port for the INDI server (default: `7624`)
-- `CITRASCOPE_INDI_TELESCOPE_NAME`: Name of the INDI telescope device (default: `Telescope Simulator`)
-
-You can copy `.env.example` to `.env` and tweak your values.
 
 ## Developer Setup
 
@@ -141,7 +116,7 @@ To run unit tests manually, within your devcontainer run:
 pytest
 ```
 
-The integration tests run in a dockerized context and as such can't run within the devcontainer. Instead, run this in your desktop's terminal:
+The integration tests run in a dockerized context and as such can't run within the devcontainer. Instead, run this in your desktop's terminal in the tests/integration directory:
 
 ```bash
 docker compose -f docker-compose.test.yml up --build --abort-on-container-exit
