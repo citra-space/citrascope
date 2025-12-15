@@ -3,8 +3,7 @@ from typing import Optional
 
 from citrascope.api.citra_api_client import AbstractCitraApiClient, CitraApiClient
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
-from citrascope.hardware.kstars_dbus_adapter import KStarsDBusAdapter
-from citrascope.hardware.nina_adv_http_adapter import NinaAdvancedHttpAdapter
+from citrascope.hardware.adapter_registry import get_adapter_class
 from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.settings._citrascope_settings import CitraScopeSettings
 from citrascope.tasks.runner import TaskManager
@@ -38,41 +37,25 @@ class CitraScopeDaemon:
 
     def _create_hardware_adapter(self) -> AbstractAstroHardwareAdapter:
         """Factory method to create the appropriate hardware adapter based on settings."""
-        if self.settings.hardware_adapter == "indi":
-            try:
-                from citrascope.hardware.indi_adapter import IndiAdapter
-
-                return IndiAdapter(logger=CITRASCOPE_LOGGER, **self.settings.adapter_settings)
-            except ImportError as e:
-                CITRASCOPE_LOGGER.error(
-                    f"INDI adapter requested but dependencies not available. "
-                    f"Install with: pip install citrascope[indi]. Error: {e}"
+        try:
+            adapter_class = get_adapter_class(self.settings.hardware_adapter)
+            # For NINA adapter, pass bypass_autofocus if it's a NINA adapter
+            if self.settings.hardware_adapter == "nina":
+                return adapter_class(
+                    logger=CITRASCOPE_LOGGER,
+                    bypass_autofocus=self.settings.bypass_autofocus,
+                    **self.settings.adapter_settings,
                 )
-                raise RuntimeError(
-                    f"INDI adapter requires additional dependencies. " f"Install with: pip install citrascope[indi]"
-                ) from e
-        elif self.settings.hardware_adapter == "nina":
-            return NinaAdvancedHttpAdapter(
-                logger=CITRASCOPE_LOGGER,
-                bypass_autofocus=self.settings.bypass_autofocus,
-                **self.settings.adapter_settings,
+            else:
+                return adapter_class(logger=CITRASCOPE_LOGGER, **self.settings.adapter_settings)
+        except ImportError as e:
+            CITRASCOPE_LOGGER.error(
+                f"{self.settings.hardware_adapter} adapter requested but dependencies not available. " f"Error: {e}"
             )
-        elif self.settings.hardware_adapter == "kstars":
-            try:
-                return KStarsDBusAdapter(logger=CITRASCOPE_LOGGER, **self.settings.adapter_settings)
-            except ImportError as e:
-                CITRASCOPE_LOGGER.error(
-                    f"KStars adapter requested but dependencies not available. "
-                    f"Install with: pip install dbus-python. Error: {e}"
-                )
-                raise RuntimeError(
-                    f"KStars adapter requires additional dependencies. " f"Install with: pip install dbus-python"
-                ) from e
-        else:
-            raise ValueError(
-                f"Unknown hardware adapter type: {self.settings.hardware_adapter}. "
-                f"Valid options are: 'indi', 'nina', 'kstars'"
-            )
+            raise RuntimeError(
+                f"{self.settings.hardware_adapter} adapter requires additional dependencies. "
+                f"Check documentation for installation instructions."
+            ) from e
 
     def reload_configuration(self) -> tuple[bool, Optional[str]]:
         """Reload configuration from file and reinitialize components.

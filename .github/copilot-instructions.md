@@ -12,7 +12,10 @@ This project is a Python package for interacting with astronomical data and serv
 
 ## Directory Structure
 - `citrascope/api/`: API client code
-- `citrascope/indi/`: INDI client integration
+- `citrascope/hardware/`: Hardware adapter implementations and registry
+  - `adapter_registry.py`: Central registry for all hardware adapters (add new adapters here)
+  - `abstract_astro_hardware_adapter.py`: Base class all adapters must implement
+  - Individual adapter implementations (indi_adapter.py, nina_adv_http_adapter.py, etc.)
 - `citrascope/logging/`: Logging utilities
 - `citrascope/settings/`: Settings and configuration
 - `citrascope/tasks/`: Task runner and definitions
@@ -37,7 +40,10 @@ This project is a Python package for interacting with astronomical data and serv
 
 ## Common Tasks
 - Add new API integrations in `citrascope/api/`.
-- Extend INDI client features in `citrascope/indi/`.
+- Extend or add hardware adapters:
+  - Create new adapter class implementing `AbstractAstroHardwareAdapter` in `citrascope/hardware/`
+  - Register it in `citrascope/hardware/adapter_registry.py` by adding an entry to `REGISTERED_ADAPTERS`
+  - All adapter discovery and instantiation flows from this registry
 - Update logging logic in `citrascope/logging/`.
 - Change settings in `citrascope/settings/`.
 - Add or modify tasks in `citrascope/tasks/`.

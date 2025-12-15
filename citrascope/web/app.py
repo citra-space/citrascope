@@ -192,43 +192,25 @@ class CitraScopeWebApp:
         @self.app.get("/api/hardware-adapters")
         async def get_hardware_adapters():
             """Get list of available hardware adapters."""
+            from citrascope.hardware.adapter_registry import list_adapters
+
+            adapters_info = list_adapters()
             return {
-                "adapters": ["indi", "nina", "kstars"],
-                "descriptions": {
-                    "indi": "INDI Protocol - Universal astronomy device control",
-                    "nina": "N.I.N.A. Advanced HTTP API - Windows-based astronomy imaging",
-                    "kstars": "KStars/Ekos via D-Bus - Linux astronomy suite",
-                },
+                "adapters": list(adapters_info.keys()),
+                "descriptions": {name: info["description"] for name, info in adapters_info.items()},
             }
 
         @self.app.get("/api/hardware-adapters/{adapter_name}/schema")
         async def get_adapter_schema(adapter_name: str):
             """Get configuration schema for a specific hardware adapter."""
+            from citrascope.hardware.adapter_registry import get_adapter_schema as get_schema
+
             try:
-                if adapter_name == "indi":
-                    from citrascope.hardware.indi_adapter import IndiAdapter
-
-                    # Create temporary instance just to get schema
-                    adapter = IndiAdapter()
-                    return {"schema": adapter.get_settings_schema()}
-
-                elif adapter_name == "nina":
-                    from citrascope.hardware.nina_adv_http_adapter import NinaAdvancedHttpAdapter
-
-                    adapter = NinaAdvancedHttpAdapter()
-                    return {"schema": adapter.get_settings_schema()}
-
-                elif adapter_name == "kstars":
-                    from citrascope.hardware.kstars_dbus_adapter import KStarsDBusAdapter
-
-                    adapter = KStarsDBusAdapter()
-                    return {"schema": adapter.get_settings_schema()}
-
-                else:
-                    return JSONResponse(
-                        {"error": f"Unknown adapter: {adapter_name}"},
-                        status_code=404,
-                    )
+                schema = get_schema(adapter_name)
+                return {"schema": schema}
+            except ValueError as e:
+                # Invalid adapter name
+                return JSONResponse({"error": str(e)}, status_code=404)
             except Exception as e:
                 CITRASCOPE_LOGGER.error(f"Error getting schema for {adapter_name}: {e}", exc_info=True)
                 return JSONResponse({"error": str(e)}, status_code=500)

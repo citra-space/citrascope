@@ -1,6 +1,6 @@
 // Configuration management for CitraScope
 
-import { getConfig, saveConfig, getConfigStatus, getAdapterSchema } from './api.js';
+import { getConfig, saveConfig, getConfigStatus, getHardwareAdapters, getAdapterSchema } from './api.js';
 
 let currentAdapterSchema = [];
 export let currentConfig = {};
@@ -9,6 +9,9 @@ export let currentConfig = {};
  * Initialize configuration management
  */
 export async function initConfig() {
+    // Populate hardware adapter dropdown
+    await loadAdapterOptions();
+
     // Hardware adapter selection change
     const adapterSelect = document.getElementById('hardwareAdapterSelect');
     if (adapterSelect) {
@@ -51,6 +54,33 @@ async function checkConfigStatus() {
         }
     } catch (error) {
         console.error('Failed to check config status:', error);
+    }
+}
+
+/**
+ * Load available hardware adapters and populate dropdown
+ */
+async function loadAdapterOptions() {
+    try {
+        const data = await getHardwareAdapters();
+        const adapterSelect = document.getElementById('hardwareAdapterSelect');
+
+        if (adapterSelect && data.adapters) {
+            // Clear existing options except the first placeholder
+            while (adapterSelect.options.length > 1) {
+                adapterSelect.remove(1);
+            }
+
+            // Add options from API
+            data.adapters.forEach(adapterName => {
+                const option = document.createElement('option');
+                option.value = adapterName;
+                option.textContent = data.descriptions[adapterName] || adapterName;
+                adapterSelect.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.error('Failed to load hardware adapters:', error);
     }
 }
 

@@ -50,6 +50,14 @@ export async function getConfigStatus() {
 }
 
 /**
+ * Get available hardware adapters
+ */
+export async function getHardwareAdapters() {
+    const result = await fetchJSON('/api/hardware-adapters');
+    return result.data;
+}
+
+/**
  * Get hardware adapter schema
  */
 export async function getAdapterSchema(adapterName) {
