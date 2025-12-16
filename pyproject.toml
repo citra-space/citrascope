@@ -81,9 +81,6 @@ skip = ["__init__.py"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
-markers = [
-  "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
-]
 addopts = [
   "--cov=citrascope",
   "--cov-report=term-missing",
