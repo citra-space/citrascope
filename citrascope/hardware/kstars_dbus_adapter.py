@@ -1,6 +1,7 @@
 import base64
 import logging
 import time
+from pathlib import Path
 
 from citrascope.hardware.abstract_astro_hardware_adapter import (
     AbstractAstroHardwareAdapter,
@@ -12,7 +13,7 @@ from citrascope.hardware.abstract_astro_hardware_adapter import (
 class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
     """Adapter for controlling astronomical equipment through KStars via DBus."""
 
-    def __init__(self, logger: logging.Logger, images_dir=None, **kwargs):
+    def __init__(self, logger: logging.Logger, images_dir: Path, **kwargs):
         """
         Initialize the KStars DBus adapter.
 

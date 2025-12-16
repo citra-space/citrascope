@@ -27,19 +27,18 @@ class ObservationStrategy(Enum):
 
 class AbstractAstroHardwareAdapter(ABC):
     logger: logging.Logger  # Logger instance, must be provided by subclasses
-    images_dir: Path | None = None  # Path to images directory, set during initialization
+    images_dir: Path  # Path to images directory, must be provided during initialization
 
     _slew_min_distance_deg: float = 2.0
     scope_slew_rate_degrees_per_second: float = 0.0
 
-    def __init__(self, images_dir=None):
-        """Initialize the adapter with optional images directory.
+    def __init__(self, images_dir: Path):
+        """Initialize the adapter with images directory.
 
         Args:
-            images_dir: Path to the images directory (str or Path object)
+            images_dir: Path to the images directory
         """
-        if images_dir:
-            self.images_dir = Path(images_dir)
+        self.images_dir = images_dir
 
     @abstractmethod
     def get_settings_schema(self) -> list[SettingSchemaEntry]:
@@ -56,11 +55,6 @@ class AbstractAstroHardwareAdapter(ABC):
             list[SettingSchemaEntry]: List of setting schema entries.
         """
         pass
-
-    logger = None  # Optional logger, can be set by subclasses
-
-    _slew_min_distance_deg: float = 2.0
-    scope_slew_rate_degrees_per_second: float = 0.0
 
     def point_telescope(self, ra: float, dec: float):
         """Point the telescope to the specified RA/Dec coordinates."""

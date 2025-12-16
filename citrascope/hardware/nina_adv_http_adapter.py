@@ -29,7 +29,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
     SAFETYMON_URL = "/equipment/safetymonitor/"
     SEQUENCE_URL = "/sequence/"
 
-    def __init__(self, logger: logging.Logger, images_dir=None, **kwargs):
+    def __init__(self, logger: logging.Logger, images_dir: Path, **kwargs):
         super().__init__(images_dir=images_dir)
         self.logger: logging.Logger = logger
         self._data_dir = Path(platformdirs.user_data_dir(APP_NAME, appauthor=APP_AUTHOR))
