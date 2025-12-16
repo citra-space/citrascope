@@ -49,8 +49,8 @@ class CitraScopeDaemon:
         try:
             adapter_class = get_adapter_class(self.settings.hardware_adapter)
             # Ensure images directory exists and pass it to the adapter
-            self.settings.config_manager.ensure_images_directory()
-            images_dir = self.settings.config_manager.get_images_dir()
+            self.settings.ensure_images_directory()
+            images_dir = self.settings.get_images_dir()
             return adapter_class(logger=CITRASCOPE_LOGGER, images_dir=images_dir, **self.settings.adapter_settings)
         except ImportError as e:
             CITRASCOPE_LOGGER.error(

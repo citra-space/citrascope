@@ -1,9 +1,12 @@
 """CitraScope settings class using JSON-based configuration."""
 
+from pathlib import Path
 from typing import Any, Dict, Optional
 
+import platformdirs
+
 from citrascope.logging import CITRASCOPE_LOGGER
-from citrascope.settings.config_manager import ConfigManager
+from citrascope.settings.settings_file_manager import SettingsFileManager
 
 
 class CitraScopeSettings:
@@ -22,10 +25,13 @@ class CitraScopeSettings:
             log_level: Logging level (DEBUG, INFO, WARNING, ERROR)
             keep_images: If True, preserve captured images
         """
-        self.config_manager = ConfigManager()
+        self.config_manager = SettingsFileManager()
 
         # Load configuration from file
         config = self.config_manager.load_config()
+
+        # Application data directories
+        self._images_dir = Path(platformdirs.user_data_dir("citrascope", appauthor="citra-space")) / "images"
 
         # API Settings
         self.host: str = config.get("host", "dev.api.citra.space" if dev else "api.citra.space")
@@ -56,6 +62,19 @@ class CitraScopeSettings:
         if dev:
             self.host = "dev.api.citra.space"
             CITRASCOPE_LOGGER.info("Using development API endpoint.")
+
+    def get_images_dir(self) -> Path:
+        """Get the path to the images directory.
+
+        Returns:
+            Path object pointing to the images directory.
+        """
+        return self._images_dir
+
+    def ensure_images_directory(self) -> None:
+        """Create images directory if it doesn't exist."""
+        if not self._images_dir.exists():
+            self._images_dir.mkdir(parents=True)
 
     def is_configured(self) -> bool:
         """Check if minimum required configuration is present.

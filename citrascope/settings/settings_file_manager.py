@@ -1,7 +1,7 @@
-"""Configuration file manager for CitraScope.
+"""Settings file manager for CitraScope.
 
-Handles reading and writing JSON configuration files using platformdirs
-for cross-platform config directory management.
+Handles reading and writing JSON settings files using platformdirs
+for cross-platform settings directory management.
 """
 
 import json
@@ -13,15 +13,14 @@ from typing import Any, Dict, Optional
 import platformdirs
 
 
-class ConfigManager:
-    """Manages configuration file storage and retrieval."""
+class SettingsFileManager:
+    """Manages settings file storage and retrieval."""
 
     def __init__(self):
-        """Initialize the config manager with the standard config directory."""
+        """Initialize the config file manager with the standard config directory."""
         self.config_dir = Path(platformdirs.user_config_dir("citrascope", appauthor="citra-space"))
         self.config_file = self.config_dir / "config.json"
         self.log_dir = Path(platformdirs.user_log_dir("citrascope", appauthor="citra-space"))
-        self.images_dir = Path(platformdirs.user_data_dir("citrascope", appauthor="citra-space")) / "images"
 
     def ensure_config_directory(self) -> None:
         """Create config directory with proper permissions if it doesn't exist."""
@@ -106,19 +105,6 @@ class ConfigManager:
         """Create log directory if it doesn't exist."""
         if not self.log_dir.exists():
             self.log_dir.mkdir(parents=True)
-
-    def ensure_images_directory(self) -> None:
-        """Create images directory if it doesn't exist."""
-        if not self.images_dir.exists():
-            self.images_dir.mkdir(parents=True)
-
-    def get_images_dir(self) -> Path:
-        """Get the path to the images directory.
-
-        Returns:
-            Path object pointing to the images directory.
-        """
-        return self.images_dir
 
     def get_log_dir(self) -> Path:
         """Get the path to the log directory.

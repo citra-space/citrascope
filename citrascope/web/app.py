@@ -166,7 +166,7 @@ class CitraScopeWebApp:
             )
 
             # Get images directory path
-            images_dir_path = str(settings.config_manager.get_images_dir())
+            images_dir_path = str(settings.get_images_dir())
 
             return {
                 "host": settings.host,
@@ -302,9 +302,9 @@ class CitraScopeWebApp:
                                     )
 
                 # Save configuration to file
-                from citrascope.settings.config_manager import ConfigManager
+                from citrascope.settings.settings_file_manager import SettingsFileManager
 
-                config_manager = ConfigManager()
+                config_manager = SettingsFileManager()
                 config_manager.save_config(config)
 
                 # Trigger hot-reload
