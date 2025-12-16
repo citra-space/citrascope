@@ -235,9 +235,7 @@ class TaskManager:
             if self.current_task_id is not None:
                 # Show the current in-flight task at the front
                 summary += f"Current: {self.current_task_id}. "
-            if next_tasks and len(next_tasks) > 1 and self.current_task_id != next_tasks[0].split()[0]:
-                summary += "Next: " + ", ".join(next_tasks)
-            else:
+            if not next_tasks:
                 summary += "No tasks scheduled."
             return summary
 
