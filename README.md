@@ -1,5 +1,5 @@
 # CitraScope
-[![Pytest](https://github.com/citra-space/citrascope/actions/workflows/pytest.yml/badge.svg)](https://github.com/citra-space/citrascope/actions/workflows/pytest.yml) [![Integration Tests](https://github.com/citra-space/citrascope/actions/workflows/integration-tests.yml/badge.svg)](https://github.com/citra-space/citrascope/actions/workflows/integration-tests.yml) [![Build and Push Docker Image](https://github.com/citra-space/citrascope/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/citra-space/citrascope/actions/workflows/docker-publish.yml) [![Publish Python 🐍 package](https://github.com/citra-space/citrascope/actions/workflows/publish.yml/badge.svg)](https://github.com/citra-space/citrascope/actions/workflows/publish.yml)source venv/bin/activate
+[![Pytest](https://github.com/citra-space/citrascope/actions/workflows/pytest.yml/badge.svg)](https://github.com/citra-space/citrascope/actions/workflows/pytest.yml) [![Build and Push Docker Image](https://github.com/citra-space/citrascope/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/citra-space/citrascope/actions/workflows/docker-publish.yml) [![Publish Python 🐍 package](https://github.com/citra-space/citrascope/actions/workflows/publish.yml/badge.svg)](https://github.com/citra-space/citrascope/actions/workflows/publish.yml)
 
 Remotely control a telescope while it polls for tasks, collects observations, and delivers data for further processing.
 
@@ -110,14 +110,8 @@ To use these, open the Run and Debug panel in VS Code, select the desired config
 
 This project uses [pytest](https://pytest.org/) for unit testing. All tests are located in the `tests/` directory.
 
-To run unit tests manually, within your devcontainer run:
+To run unit tests within your devcontainer:
 
 ```bash
 pytest
-```
-
-The integration tests run in a dockerized context and as such can't run within the devcontainer. Instead, run this in your desktop's terminal in the tests/integration directory:
-
-```bash
-docker compose -f docker-compose.test.yml up --build --abort-on-container-exit
 ```
