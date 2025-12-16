@@ -41,7 +41,7 @@ class CitraScopeSettings:
         self.telescope_id: str = config.get("telescope_id", "")
 
         # Hardware adapter selection
-        self.hardware_adapter: str = config.get("hardware_adapter", "indi")
+        self.hardware_adapter: str = config.get("hardware_adapter", "")
 
         # Hardware adapter-specific settings stored as dict
         self.adapter_settings: Dict[str, Any] = config.get("adapter_settings", {})
@@ -128,7 +128,7 @@ class CitraScopeSettings:
         settings.use_ssl = config.get("use_ssl", settings.use_ssl)
         settings.personal_access_token = config.get("personal_access_token", "")
         settings.telescope_id = config.get("telescope_id", "")
-        settings.hardware_adapter = config.get("hardware_adapter", "indi")
+        settings.hardware_adapter = config.get("hardware_adapter", "")
         settings.adapter_settings = config.get("adapter_settings", {})
         settings.log_level = config.get("log_level", "INFO")
         settings.keep_images = config.get("keep_images", False)
