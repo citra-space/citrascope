@@ -1,7 +1,7 @@
 import click
 
 from citrascope.citra_scope_daemon import CitraScopeDaemon
-from citrascope.settings._citrascope_settings import CitraScopeSettings
+from citrascope.settings.citrascope_settings import CitraScopeSettings
 
 
 @click.group()

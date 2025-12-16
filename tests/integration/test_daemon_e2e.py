@@ -19,7 +19,7 @@ from citrascope.api.citra_api_client import CitraApiClient
 from citrascope.citra_scope_daemon import CitraScopeDaemon
 from citrascope.hardware.indi_adapter import IndiAdapter
 from citrascope.logging import CITRASCOPE_LOGGER
-from citrascope.settings._citrascope_settings import CitraScopeSettings
+from citrascope.settings.citrascope_settings import CitraScopeSettings
 
 
 @pytest.mark.integration

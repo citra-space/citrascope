@@ -6,7 +6,7 @@ from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHar
 from citrascope.hardware.adapter_registry import get_adapter_class
 from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.logging._citrascope_logger import setup_file_logging
-from citrascope.settings._citrascope_settings import CitraScopeSettings
+from citrascope.settings.citrascope_settings import CitraScopeSettings
 from citrascope.tasks.runner import TaskManager
 from citrascope.web.server import CitraScopeWebServer
 
