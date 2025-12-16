@@ -97,6 +97,19 @@ pre-commit run --all-files
 
 This ensures code style and quality checks are enforced for all contributors.
 
+### Releasing a New Version
+
+To bump the version and create a release:
+
+```sh
+bump-my-version bump patch  # 0.1.3 → 0.1.4
+bump-my-version bump minor  # 0.1.3 → 0.2.0
+bump-my-version bump major  # 0.1.3 → 1.0.0
+git push && git push --tags
+```
+
+Then create a release in the GitHub UI from the new tag. This triggers automatic PyPI publishing.
+
 ### Running and Debugging with VS Code
 
 If you are using Visual Studio Code, you can run or debug the project directly using the pre-configured launch options in `.vscode/launch.json`:
