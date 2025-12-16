@@ -34,7 +34,8 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
     _alignment_offset_dec: float = 0.0
 
     def __init__(self, logger: logging.Logger, images_dir: Path, **kwargs):
-        super(IndiAdapter, self).__init__(images_dir=images_dir)
+        PyIndi.BaseClient.__init__(self)
+        AbstractAstroHardwareAdapter.__init__(self, images_dir=images_dir)
         self.logger: logging.Logger = logger
         if self.logger:
             self.logger.debug("creating an instance of IndiClient")
