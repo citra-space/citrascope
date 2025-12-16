@@ -6,6 +6,7 @@ from typing import Any, Optional, TypedDict
 
 class SettingSchemaEntry(TypedDict, total=False):
     name: str
+    friendly_name: str  # Human-readable display name for UI
     type: str  # e.g., 'float', 'int', 'str', 'bool'
     default: Optional[Any]
     description: str

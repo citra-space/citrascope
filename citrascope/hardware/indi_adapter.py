@@ -51,6 +51,7 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
         return [
             {
                 "name": "host",
+                "friendly_name": "INDI Server Host",
                 "type": "str",
                 "default": "localhost",
                 "description": "INDI server hostname or IP address",
@@ -59,6 +60,7 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
             },
             {
                 "name": "port",
+                "friendly_name": "INDI Server Port",
                 "type": "int",
                 "default": 7624,
                 "description": "INDI server port",
@@ -69,6 +71,7 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
             },
             {
                 "name": "telescope_name",
+                "friendly_name": "Telescope Device Name",
                 "type": "str",
                 "default": "",
                 "description": "Name of the telescope device (leave empty to auto-detect)",
@@ -77,6 +80,7 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
             },
             {
                 "name": "camera_name",
+                "friendly_name": "Camera Device Name",
                 "type": "str",
                 "default": "",
                 "description": "Name of the camera device (leave empty to auto-detect)",

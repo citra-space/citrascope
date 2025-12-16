@@ -36,6 +36,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         return [
             {
                 "name": "bus_name",
+                "friendly_name": "D-Bus Service Name",
                 "type": "str",
                 "default": "org.kde.kstars",
                 "description": "D-Bus service name for KStars",

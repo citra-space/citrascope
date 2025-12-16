@@ -73,6 +73,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         return [
             {
                 "name": "nina_api_path",
+                "friendly_name": "N.I.N.A. API URL",
                 "type": "str",
                 "default": "http://nina:1888/v2/api",
                 "description": "Base URL for the NINA Advanced HTTP API",
@@ -82,9 +83,10 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             },
             {
                 "name": "bypass_autofocus",
+                "friendly_name": "Bypass Autofocus",
                 "type": "bool",
                 "default": False,
-                "description": "Skip autofocus routine when capturing images",
+                "description": "Skip autofocus routine when initializing, will use cached focus positions if available",
                 "required": False,
             },
         ]

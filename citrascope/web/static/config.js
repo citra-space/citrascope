@@ -157,9 +157,10 @@ function renderAdapterSettings(schema) {
         const isRequired = field.required ? '<span class="text-danger">*</span>' : '';
         const placeholder = field.placeholder || '';
         const description = field.description || '';
+        const displayName = field.friendly_name || field.name;
 
         html += '<div class="col-12 col-md-6">';
-        html += `<label for="adapter_${field.name}" class="form-label">${field.name} ${isRequired}</label>`;
+        html += `<label for="adapter_${field.name}" class="form-label">${displayName} ${isRequired}</label>`;
 
         if (field.type === 'bool') {
             html += `<div class="form-check mt-2">`;
@@ -167,8 +168,9 @@ function renderAdapterSettings(schema) {
             html += `<label class="form-check-label" for="adapter_${field.name}">${description}</label>`;
             html += `</div>`;
         } else if (field.options && field.options.length > 0) {
+            const displayName = field.friendly_name || field.name;
             html += `<select id="adapter_${field.name}" class="form-select adapter-setting" data-field="${field.name}" data-type="${field.type}" ${field.required ? 'required' : ''}>`;
-            html += `<option value="">-- Select ${field.name} --</option>`;
+            html += `<option value="">-- Select ${displayName} --</option>`;
             field.options.forEach(opt => {
                 html += `<option value="${opt}">${opt}</option>`;
             });
