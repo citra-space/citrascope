@@ -1,3 +1,4 @@
+import logging
 import math
 from abc import ABC, abstractmethod
 from enum import Enum
@@ -25,8 +26,8 @@ class ObservationStrategy(Enum):
 
 
 class AbstractAstroHardwareAdapter(ABC):
-    logger = None  # Optional logger, can be set by subclasses
-    images_dir = None  # Path to images directory, set during initialization
+    logger: logging.Logger  # Logger instance, must be provided by subclasses
+    images_dir: Path | None = None  # Path to images directory, set during initialization
 
     _slew_min_distance_deg: float = 2.0
     scope_slew_rate_degrees_per_second: float = 0.0

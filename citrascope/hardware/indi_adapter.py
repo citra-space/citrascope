@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 from pathlib import Path
@@ -32,9 +33,9 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
     _alignment_offset_ra: float = 0.0
     _alignment_offset_dec: float = 0.0
 
-    def __init__(self, logger=None, images_dir=None, **kwargs):
+    def __init__(self, logger: logging.Logger, images_dir=None, **kwargs):
         super(IndiAdapter, self).__init__(images_dir=images_dir)
-        self.logger = logger
+        self.logger: logging.Logger = logger
         if self.logger:
             self.logger.debug("creating an instance of IndiClient")
         self.host = kwargs.get("host", "localhost")

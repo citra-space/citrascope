@@ -1,4 +1,5 @@
 import base64
+import logging
 import time
 
 from citrascope.hardware.abstract_astro_hardware_adapter import (
@@ -11,7 +12,7 @@ from citrascope.hardware.abstract_astro_hardware_adapter import (
 class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
     """Adapter for controlling astronomical equipment through KStars via DBus."""
 
-    def __init__(self, logger=None, images_dir=None, **kwargs):
+    def __init__(self, logger: logging.Logger, images_dir=None, **kwargs):
         """
         Initialize the KStars DBus adapter.
 
@@ -21,7 +22,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
             **kwargs: Configuration including bus_name
         """
         super().__init__(images_dir=images_dir)
-        self.logger = logger
+        self.logger: logging.Logger = logger
         self.bus_name = kwargs.get("bus_name", "org.kde.kstars")
         self.bus = None
         self.kstars = None
