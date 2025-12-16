@@ -5,6 +5,11 @@ from typing import Any, Dict, Optional
 
 import platformdirs
 
+# Application constants for platformdirs
+# Defined before imports to avoid circular dependency
+APP_NAME = "citrascope"
+APP_AUTHOR = "citra-space"
+
 from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.settings.settings_file_manager import SettingsFileManager
 
@@ -31,7 +36,7 @@ class CitraScopeSettings:
         config = self.config_manager.load_config()
 
         # Application data directories
-        self._images_dir = Path(platformdirs.user_data_dir("citrascope", appauthor="citra-space")) / "images"
+        self._images_dir = Path(platformdirs.user_data_dir(APP_NAME, appauthor=APP_AUTHOR)) / "images"
 
         # API Settings
         self.host: str = config.get("host", "dev.api.citra.space" if dev else "api.citra.space")

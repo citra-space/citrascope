@@ -3,7 +3,9 @@ import json
 import os
 import sys
 import time
+from pathlib import Path
 
+import platformdirs
 import requests
 
 from citrascope.hardware.abstract_astro_hardware_adapter import (
@@ -11,6 +13,7 @@ from citrascope.hardware.abstract_astro_hardware_adapter import (
     ObservationStrategy,
     SettingSchemaEntry,
 )
+from citrascope.settings.citrascope_settings import APP_AUTHOR, APP_NAME
 
 
 class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
@@ -18,11 +21,12 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
     https://bump.sh/christian-photo/doc/advanced-api/"""
 
     DEFAULT_FOCUS_POSITION = 9000
-    FOCUS_POSITIONS_FILE = "nina_focus_positions.json"
 
     def __init__(self, logger=None, images_dir=None, **kwargs):
         super().__init__(images_dir=images_dir)
         self.logger = logger
+        self._data_dir = Path(platformdirs.user_data_dir(APP_NAME, appauthor=APP_AUTHOR))
+        self._focus_positions_file = self._data_dir / "nina_focus_positions.json"
         self.nina_api_path = kwargs.get("nina_api_path", "http://nina:1888/v2/api")
         self.cam_url = kwargs.get("cam_url", "/equipment/camera/")
         self.filterwheel_url = kwargs.get("filterwheel_url", "/equipment/filterwheel/")
@@ -38,11 +42,11 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
     def _load_focus_positions(self):
         """Load focus positions from file if available."""
         try:
-            if os.path.exists(self.FOCUS_POSITIONS_FILE):
-                with open(self.FOCUS_POSITIONS_FILE, "r") as f:
+            if self._focus_positions_file.exists():
+                with open(self._focus_positions_file, "r") as f:
                     focus_data = json.load(f)
                 if self.logger:
-                    self.logger.info(f"Loaded focus positions from {self.FOCUS_POSITIONS_FILE}")
+                    self.logger.info(f"Loaded focus positions from {self._focus_positions_file}")
                 self._focus_positions_cache = focus_data
             else:
                 self._focus_positions_cache = {}
@@ -54,14 +58,17 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
     def _save_focus_positions(self):
         """Save current filter_map focus positions to file."""
         try:
+            # Ensure data directory exists
+            self._data_dir.mkdir(parents=True, exist_ok=True)
+
             focus_data = {
                 str(fid): {"name": fdata["name"], "focus_position": fdata["focus_position"]}
                 for fid, fdata in self.filter_map.items()
             }
-            with open(self.FOCUS_POSITIONS_FILE, "w") as f:
+            with open(self._focus_positions_file, "w") as f:
                 json.dump(focus_data, f, indent=2)
             if self.logger:
-                self.logger.info(f"Saved focus positions to {self.FOCUS_POSITIONS_FILE}")
+                self.logger.info(f"Saved focus positions to {self._focus_positions_file}")
         except Exception as e:
             if self.logger:
                 self.logger.warning(f"Could not save focus positions file: {e}")

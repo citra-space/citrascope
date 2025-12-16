@@ -12,15 +12,17 @@ from typing import Any, Dict, Optional
 
 import platformdirs
 
+from citrascope.settings.citrascope_settings import APP_AUTHOR, APP_NAME
+
 
 class SettingsFileManager:
     """Manages settings file storage and retrieval."""
 
     def __init__(self):
         """Initialize the config file manager with the standard config directory."""
-        self.config_dir = Path(platformdirs.user_config_dir("citrascope", appauthor="citra-space"))
+        self.config_dir = Path(platformdirs.user_config_dir(APP_NAME, appauthor=APP_AUTHOR))
         self.config_file = self.config_dir / "config.json"
-        self.log_dir = Path(platformdirs.user_log_dir("citrascope", appauthor="citra-space"))
+        self.log_dir = Path(platformdirs.user_log_dir(APP_NAME, appauthor=APP_AUTHOR))
 
     def ensure_config_directory(self) -> None:
         """Create config directory with proper permissions if it doesn't exist."""
