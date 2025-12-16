@@ -108,6 +108,12 @@ async function loadConfiguration() {
             }
         }
 
+        // Display images directory path
+        const imagesDirElement = document.getElementById('imagesDirPath');
+        if (imagesDirElement && config.images_dir_path) {
+            imagesDirElement.textContent = config.images_dir_path;
+        }
+
         // Core fields
         document.getElementById('personal_access_token').value = config.personal_access_token || '';
         document.getElementById('telescopeId').value = config.telescope_id || '';

@@ -403,7 +403,7 @@ function updateLatestLogLine() {
     const latestLogLine = document.getElementById('latestLogLine');
     if (!latestLogLine) return;
     if (isLogExpanded) {
-        latestLogLine.textContent = 'Logs';
+        latestLogLine.textContent = 'Activity';
         return;
     }
     if (latestLog) {

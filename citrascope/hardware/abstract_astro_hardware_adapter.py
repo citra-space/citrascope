@@ -1,6 +1,7 @@
 import math
 from abc import ABC, abstractmethod
 from enum import Enum
+from pathlib import Path
 from typing import Any, Optional, TypedDict
 
 
@@ -24,6 +25,21 @@ class ObservationStrategy(Enum):
 
 
 class AbstractAstroHardwareAdapter(ABC):
+    logger = None  # Optional logger, can be set by subclasses
+    images_dir = None  # Path to images directory, set during initialization
+
+    _slew_min_distance_deg: float = 2.0
+    scope_slew_rate_degrees_per_second: float = 0.0
+
+    def __init__(self, images_dir=None):
+        """Initialize the adapter with optional images directory.
+
+        Args:
+            images_dir: Path to the images directory (str or Path object)
+        """
+        if images_dir:
+            self.images_dir = Path(images_dir)
+
     @abstractmethod
     def get_settings_schema(self) -> list[SettingSchemaEntry]:
         """

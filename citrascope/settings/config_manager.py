@@ -21,6 +21,7 @@ class ConfigManager:
         self.config_dir = Path(platformdirs.user_config_dir("citrascope", appauthor="citra-space"))
         self.config_file = self.config_dir / "config.json"
         self.log_dir = Path(platformdirs.user_log_dir("citrascope", appauthor="citra-space"))
+        self.images_dir = Path(platformdirs.user_data_dir("citrascope", appauthor="citra-space")) / "images"
 
     def ensure_config_directory(self) -> None:
         """Create config directory with proper permissions if it doesn't exist."""
@@ -105,6 +106,19 @@ class ConfigManager:
         """Create log directory if it doesn't exist."""
         if not self.log_dir.exists():
             self.log_dir.mkdir(parents=True)
+
+    def ensure_images_directory(self) -> None:
+        """Create images directory if it doesn't exist."""
+        if not self.images_dir.exists():
+            self.images_dir.mkdir(parents=True)
+
+    def get_images_dir(self) -> Path:
+        """Get the path to the images directory.
+
+        Returns:
+            Path object pointing to the images directory.
+        """
+        return self.images_dir
 
     def get_log_dir(self) -> Path:
         """Get the path to the log directory.

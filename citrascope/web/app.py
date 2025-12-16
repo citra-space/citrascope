@@ -165,6 +165,9 @@ class CitraScopeWebApp:
                 str(settings.config_manager.get_current_log_path()) if settings.file_logging_enabled else None
             )
 
+            # Get images directory path
+            images_dir_path = str(settings.config_manager.get_images_dir())
+
             return {
                 "host": settings.host,
                 "port": settings.port,
@@ -181,6 +184,7 @@ class CitraScopeWebApp:
                 "app_url": app_url,
                 "config_file_path": config_path,
                 "log_file_path": log_file_path,
+                "images_dir_path": images_dir_path,
             }
 
         @self.app.get("/api/config/status")

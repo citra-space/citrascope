@@ -32,8 +32,8 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
     _alignment_offset_ra: float = 0.0
     _alignment_offset_dec: float = 0.0
 
-    def __init__(self, logger=None, **kwargs):
-        super(IndiAdapter, self).__init__()
+    def __init__(self, logger=None, images_dir=None, **kwargs):
+        super(IndiAdapter, self).__init__(images_dir=images_dir)
         self.logger = logger
         if self.logger:
             self.logger.debug("creating an instance of IndiClient")
@@ -132,8 +132,7 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
 
                 # if there's a task underway, save the image to a file
                 if self._current_task_id != "":
-                    os.makedirs("images", exist_ok=True)
-                    self._last_saved_filename = f"images/citra_task_{self._current_task_id}_image.fits"
+                    self._last_saved_filename = str(self.images_dir / f"citra_task_{self._current_task_id}_image.fits")
                     for b in blobProperty:
                         with open(self._last_saved_filename, "wb") as f:
                             f.write(b.getblobdata())

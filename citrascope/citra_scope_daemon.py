@@ -48,7 +48,10 @@ class CitraScopeDaemon:
         """Factory method to create the appropriate hardware adapter based on settings."""
         try:
             adapter_class = get_adapter_class(self.settings.hardware_adapter)
-            return adapter_class(logger=CITRASCOPE_LOGGER, **self.settings.adapter_settings)
+            # Ensure images directory exists and pass it to the adapter
+            self.settings.config_manager.ensure_images_directory()
+            images_dir = self.settings.config_manager.get_images_dir()
+            return adapter_class(logger=CITRASCOPE_LOGGER, images_dir=images_dir, **self.settings.adapter_settings)
         except ImportError as e:
             CITRASCOPE_LOGGER.error(
                 f"{self.settings.hardware_adapter} adapter requested but dependencies not available. " f"Error: {e}"

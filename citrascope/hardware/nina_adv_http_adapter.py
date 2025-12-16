@@ -20,8 +20,8 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
     DEFAULT_FOCUS_POSITION = 9000
     FOCUS_POSITIONS_FILE = "nina_focus_positions.json"
 
-    def __init__(self, logger=None, **kwargs):
-        super().__init__()
+    def __init__(self, logger=None, images_dir=None, **kwargs):
+        super().__init__(images_dir=images_dir)
         self.logger = logger
         self.nina_api_path = kwargs.get("nina_api_path", "http://nina:1888/v2/api")
         self.cam_url = kwargs.get("cam_url", "/equipment/camera/")
@@ -572,8 +572,8 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             fits_base64 = image_data["Response"]
             fits_bytes = base64.b64decode(fits_base64)
 
-            os.makedirs("images", exist_ok=True)
-            filepath = f"images/citra_task_{task_id}_image_{image_index}.fits"
+            # Save the FITS file
+            filepath = str(self.images_dir / f"citra_task_{task_id}_image_{image_index}.fits")
             filepaths.append(filepath)
 
             with open(filepath, "wb") as f:
