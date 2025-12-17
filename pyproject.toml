@@ -7,15 +7,11 @@ requires-python = ">=3.10,<3.13"
 license = "MIT"
 authors = [{ name = "Patrick McDavid", email = "patrick@citra.space" }]
 dependencies = [
-  "pydantic-settings",
-  "python-json-logger",
   "click",
   "requests",
   "httpx",
   "python-dateutil",
-  "types-python-dateutil",
   "skyfield",
-  "pytest-cov",
   "fastapi>=0.104.0",
   "uvicorn[standard]>=0.24.0",
   "websockets>=12.0",
@@ -42,6 +38,7 @@ dev = [
   "pre-commit",
   "isort",
   "mypy",
+  "types-python-dateutil",
   "flake8",
   "flake8-pytest-style",
   "bump-my-version",
