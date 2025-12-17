@@ -74,7 +74,8 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             if self.logger:
                 self.logger.warning(f"Could not save focus positions file: {e}")
 
-    def get_settings_schema(self) -> list[SettingSchemaEntry]:
+    @classmethod
+    def get_settings_schema(cls) -> list[SettingSchemaEntry]:
         """
         Return a schema describing configurable settings for the NINA Advanced HTTP adapter.
         """

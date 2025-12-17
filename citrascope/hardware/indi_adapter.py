@@ -46,7 +46,8 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
 
         # TetraSolver.high_memory()
 
-    def get_settings_schema(self) -> list[SettingSchemaEntry]:
+    @classmethod
+    def get_settings_schema(cls) -> list[SettingSchemaEntry]:
         """
         Return a schema describing configurable settings for the INDI adapter.
         """

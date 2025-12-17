@@ -90,6 +90,5 @@ def get_adapter_schema(adapter_name: str) -> list:
         ImportError: If the adapter module cannot be imported
     """
     adapter_class = get_adapter_class(adapter_name)
-    # Instantiate with no args to get schema - adapters should handle this
-    adapter_instance = adapter_class()
-    return adapter_instance.get_settings_schema()
+    # Call classmethod directly without instantiation
+    return adapter_class.get_settings_schema()

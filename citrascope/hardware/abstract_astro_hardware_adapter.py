@@ -40,8 +40,9 @@ class AbstractAstroHardwareAdapter(ABC):
         """
         self.images_dir = images_dir
 
+    @classmethod
     @abstractmethod
-    def get_settings_schema(self) -> list[SettingSchemaEntry]:
+    def get_settings_schema(cls) -> list[SettingSchemaEntry]:
         """
         Return a schema describing configurable settings for this hardware adapter.
 
