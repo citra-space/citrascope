@@ -240,4 +240,5 @@ class CitraScopeDaemon:
             self.task_manager.stop()
         if self.enable_web and self.web_server:
             CITRASCOPE_LOGGER.info("Stopping web server...")
-            self.web_server.stop()
+            if self.web_server.web_log_handler:
+                CITRASCOPE_LOGGER.removeHandler(self.web_server.web_log_handler)
