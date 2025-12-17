@@ -13,14 +13,13 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from citrascope.constants import (
+    DEV_API_HOST,
+    DEV_APP_URL,
+    PROD_API_HOST,
+    PROD_APP_URL,
+)
 from citrascope.logging import CITRASCOPE_LOGGER
-
-# ============================================================================
-# URL CONSTANTS - Single source of truth for Citra web URLs
-# ============================================================================
-PROD_APP_URL = "https://app.citra.space"
-DEV_APP_URL = "https://dev.app.citra.space"
-# ============================================================================
 
 
 class SystemStatus(BaseModel):
@@ -155,7 +154,7 @@ class CitraScopeWebApp:
 
             settings = self.daemon.settings
             # Determine app URL based on API host
-            app_url = DEV_APP_URL if "dev." in settings.host else PROD_APP_URL
+            app_url = DEV_APP_URL if settings.host == DEV_API_HOST else PROD_APP_URL
 
             # Get config file path
             config_path = str(settings.config_manager.get_config_path())

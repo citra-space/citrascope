@@ -7,13 +7,14 @@ import time
 
 import uvicorn
 
+from citrascope.constants import DEFAULT_WEB_PORT
 from citrascope.logging import CITRASCOPE_LOGGER, WebLogHandler
 
 
 class CitraScopeWebServer:
     """Manages the web server and its configuration."""
 
-    def __init__(self, daemon, host: str = "0.0.0.0", port: int = 24872):
+    def __init__(self, daemon, host: str = "0.0.0.0", port: int = DEFAULT_WEB_PORT):
         self.daemon = daemon
         self.host = host
         self.port = port

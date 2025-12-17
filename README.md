@@ -52,16 +52,18 @@ citrascope --help
 
 ## Usage
 
-Run the CLI tool:
+### Starting the Daemon
+
+Run the daemon with:
 
 ```sh
 citrascope
 ```
 
-To connect to the Citra Dev server:
+By default, this starts the web interface on `http://localhost:24872`. You can customize the port:
 
 ```sh
-citrascope --dev
+citrascope --web-port 8080
 ```
 
 ## Developer Setup
@@ -125,10 +127,10 @@ Then create a release in the GitHub UI from the new tag. This triggers automatic
 
 If you are using Visual Studio Code, you can run or debug the project directly using the pre-configured launch options in `.vscode/launch.json`:
 
-- **Python: citrascope dev** — Runs the main entry point with development options.
-- **Python: citrascope dev DEBUG logging** — Runs with development options and sets log level to DEBUG for more detailed output.
+- **Python: citrascope** — Runs the daemon with default settings
+- **Python: citrascope (custom port)** — Runs with web interface on port 8080
 
-To use these, open the Run and Debug panel in VS Code, select the desired configuration, and click the Run or Debug button. This is a convenient way to start or debug the app without manually entering commands.
+To use these, open the Run and Debug panel in VS Code, select the desired configuration, and click the Run or Debug button.
 
 ## Running Tests
 

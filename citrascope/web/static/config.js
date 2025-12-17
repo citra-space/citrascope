@@ -2,6 +2,11 @@
 
 import { getConfig, saveConfig, getConfigStatus, getHardwareAdapters, getAdapterSchema } from './api.js';
 
+// API Host constants - must match backend constants in app.py
+const PROD_API_HOST = 'api.citra.space';
+const DEV_API_HOST = 'dev.api.citra.space';
+const DEFAULT_API_PORT = 443;
+
 let currentAdapterSchema = [];
 export let currentConfig = {};
 
@@ -21,6 +26,19 @@ export async function initConfig() {
                 await loadAdapterSchema(adapter);
             } else {
                 document.getElementById('adapter-settings-container').innerHTML = '';
+            }
+        });
+    }
+
+    // API endpoint selection change
+    const apiEndpointSelect = document.getElementById('apiEndpoint');
+    if (apiEndpointSelect) {
+        apiEndpointSelect.addEventListener('change', function(e) {
+            const customContainer = document.getElementById('customHostContainer');
+            if (e.target.value === 'custom') {
+                customContainer.style.display = 'block';
+            } else {
+                customContainer.style.display = 'none';
             }
         });
     }
@@ -112,6 +130,27 @@ async function loadConfiguration() {
         const imagesDirElement = document.getElementById('imagesDirPath');
         if (imagesDirElement && config.images_dir_path) {
             imagesDirElement.textContent = config.images_dir_path;
+        }
+
+        // API endpoint selector
+        const apiEndpointSelect = document.getElementById('apiEndpoint');
+        const customHostContainer = document.getElementById('customHostContainer');
+        const customHost = document.getElementById('customHost');
+        const customPort = document.getElementById('customPort');
+        const customUseSsl = document.getElementById('customUseSsl');
+
+        if (config.host === PROD_API_HOST) {
+            apiEndpointSelect.value = 'production';
+            customHostContainer.style.display = 'none';
+        } else if (config.host === DEV_API_HOST) {
+            apiEndpointSelect.value = 'development';
+            customHostContainer.style.display = 'none';
+        } else {
+            apiEndpointSelect.value = 'custom';
+            customHostContainer.style.display = 'block';
+            customHost.value = config.host || '';
+            customPort.value = config.port || DEFAULT_API_PORT;
+            customUseSsl.checked = config.use_ssl !== undefined ? config.use_ssl : true;
         }
 
         // Core fields
@@ -274,6 +313,24 @@ async function saveConfiguration(event) {
     // Hide previous messages
     hideConfigMessages();
 
+    // Determine API host settings based on endpoint selection
+    const apiEndpoint = document.getElementById('apiEndpoint').value;
+    let host, port, use_ssl;
+
+    if (apiEndpoint === 'production') {
+        host = PROD_API_HOST;
+        port = DEFAULT_API_PORT;
+        use_ssl = true;
+    } else if (apiEndpoint === 'development') {
+        host = DEV_API_HOST;
+        port = DEFAULT_API_PORT;
+        use_ssl = true;
+    } else { // custom
+        host = document.getElementById('customHost').value;
+        port = parseInt(document.getElementById('customPort').value, 10);
+        use_ssl = document.getElementById('customUseSsl').checked;
+    }
+
     const config = {
         personal_access_token: document.getElementById('personal_access_token').value,
         telescope_id: document.getElementById('telescopeId').value,
@@ -282,10 +339,11 @@ async function saveConfiguration(event) {
         log_level: document.getElementById('logLevel').value,
         keep_images: document.getElementById('keep_images').checked,
         file_logging_enabled: document.getElementById('file_logging_enabled').checked,
-        // Preserve API settings from loaded config
-        host: currentConfig.host || 'api.citra.space',
-        port: currentConfig.port || 443,
-        use_ssl: currentConfig.use_ssl !== undefined ? currentConfig.use_ssl : true,
+        // API settings from endpoint selector
+        host: host,
+        port: port,
+        use_ssl: use_ssl,
+        // Preserve other settings from loaded config
         max_task_retries: currentConfig.max_task_retries || 3,
         initial_retry_delay_seconds: currentConfig.initial_retry_delay_seconds || 30,
         max_retry_delay_seconds: currentConfig.max_retry_delay_seconds || 300,

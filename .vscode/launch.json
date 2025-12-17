@@ -4,29 +4,20 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: citrascope dev",
+            "name": "Python: citrascope",
             "type": "debugpy",
             "request": "launch",
             "module": "citrascope",
-            "args": ["--dev"],
+            "args": [],
             "console": "integratedTerminal",
             "justMyCode": false
         },
         {
-            "name": "Python: citrascope dev, keep images",
+            "name": "Python: citrascope (custom port)",
             "type": "debugpy",
             "request": "launch",
             "module": "citrascope",
-            "args": ["--dev", "--keep-images"],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
-            "name": "Python: citrascope dev DEBUG logging",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "citrascope",
-            "args": ["--dev", "--log-level", "DEBUG"],
+            "args": ["--web-port", "8080"],
             "console": "integratedTerminal",
             "justMyCode": false
         }

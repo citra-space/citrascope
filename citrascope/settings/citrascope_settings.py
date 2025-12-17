@@ -10,6 +10,7 @@ import platformdirs
 APP_NAME = "citrascope"
 APP_AUTHOR = "citra-space"
 
+from citrascope.constants import DEFAULT_API_PORT, DEFAULT_WEB_PORT, PROD_API_HOST
 from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.settings.settings_file_manager import SettingsFileManager
 
@@ -17,20 +18,11 @@ from citrascope.settings.settings_file_manager import SettingsFileManager
 class CitraScopeSettings:
     """Settings for CitraScope loaded from JSON configuration file."""
 
-    def __init__(
-        self,
-        dev: bool = False,
-        log_level: str = "INFO",
-        keep_images: bool = False,
-        web_port: int = 24872,
-    ):
+    def __init__(self, web_port: int = DEFAULT_WEB_PORT):
         """Initialize settings from JSON config file.
 
         Args:
-            dev: If True, use development API endpoint
-            log_level: Logging level (DEBUG, INFO, WARNING, ERROR)
-            keep_images: If True, preserve captured images
-            web_port: Port for web interface (default: 24872)
+            web_port: Port for web interface (default: 24872) - bootstrap option only
         """
         self.config_manager = SettingsFileManager()
 
@@ -40,9 +32,9 @@ class CitraScopeSettings:
         # Application data directories
         self._images_dir = Path(platformdirs.user_data_dir(APP_NAME, appauthor=APP_AUTHOR)) / "images"
 
-        # API Settings
-        self.host: str = config.get("host", "dev.api.citra.space" if dev else "api.citra.space")
-        self.port: int = config.get("port", 443)
+        # API Settings (all loaded from config file)
+        self.host: str = config.get("host", PROD_API_HOST)
+        self.port: int = config.get("port", DEFAULT_API_PORT)
         self.use_ssl: bool = config.get("use_ssl", True)
         self.personal_access_token: str = config.get("personal_access_token", "")
         self.telescope_id: str = config.get("telescope_id", "")
@@ -53,10 +45,12 @@ class CitraScopeSettings:
         # Hardware adapter-specific settings stored as dict
         self.adapter_settings: Dict[str, Any] = config.get("adapter_settings", {})
 
-        # Runtime settings (can be overridden by CLI flags)
-        self.log_level: str = log_level if log_level != "INFO" else config.get("log_level", "INFO")
-        self.keep_images: bool = keep_images if keep_images else config.get("keep_images", False)
-        self.web_port: int = web_port if web_port != 24872 else config.get("web_port", 24872)
+        # Runtime settings (all loaded from config file, configurable via web UI)
+        self.log_level: str = config.get("log_level", "INFO")
+        self.keep_images: bool = config.get("keep_images", False)
+
+        # Web port: CLI override if non-default, otherwise use config file
+        self.web_port: int = web_port if web_port != DEFAULT_WEB_PORT else config.get("web_port", DEFAULT_WEB_PORT)
 
         # Task retry configuration
         self.max_task_retries: int = config.get("max_task_retries", 3)
@@ -66,10 +60,6 @@ class CitraScopeSettings:
         # Log file configuration
         self.file_logging_enabled: bool = config.get("file_logging_enabled", True)
         self.log_retention_days: int = config.get("log_retention_days", 30)
-
-        if dev:
-            self.host = "dev.api.citra.space"
-            CITRASCOPE_LOGGER.info("Using development API endpoint.")
 
     def get_images_dir(self) -> Path:
         """Get the path to the images directory.
@@ -141,7 +131,7 @@ class CitraScopeSettings:
         settings.adapter_settings = config.get("adapter_settings", {})
         settings.log_level = config.get("log_level", "INFO")
         settings.keep_images = config.get("keep_images", False)
-        settings.web_port = config.get("web_port", 24872)
+        settings.web_port = config.get("web_port", DEFAULT_WEB_PORT)
         settings.max_task_retries = config.get("max_task_retries", 3)
         settings.initial_retry_delay_seconds = config.get("initial_retry_delay_seconds", 30)
         settings.max_retry_delay_seconds = config.get("max_retry_delay_seconds", 300)

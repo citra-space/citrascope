@@ -68,12 +68,8 @@ class CitraScopeDaemon:
         try:
             if reload_settings:
                 CITRASCOPE_LOGGER.info("Reloading configuration...")
-                # Reload settings from file
-                new_settings = CitraScopeSettings(
-                    dev=("dev.api" in self.settings.host),
-                    log_level=self.settings.log_level,
-                    keep_images=self.settings.keep_images,
-                )
+                # Reload settings from file (preserving web_port)
+                new_settings = CitraScopeSettings(web_port=self.settings.web_port)
                 self.settings = new_settings
                 CITRASCOPE_LOGGER.setLevel(self.settings.log_level)
 
