@@ -11,31 +11,38 @@ Remotely control a telescope while it polls for tasks, collects observations, an
 
 ## Installation
 
-### Install with pipx
+**Important:** CitraScope requires Python 3.10, 3.11, or 3.12.
 
-[pipx](https://pipx.pypa.io/) installs the CLI tool in an isolated environment while making it globally available:
+### Check Your Python Version
 
 ```sh
-pipx install citrascope
+python3 --version
+```
+
+If you don't have a compatible version, install one with [pyenv](https://github.com/pyenv/pyenv):
+
+```sh
+pyenv install 3.12.0
+pyenv local 3.12.0  # Sets Python 3.12.0 for the current directory
+```
+
+### Install CitraScope
+
+**Recommended: Using pip in a virtual environment**
+
+```sh
+python3 -m venv citrascope-env
+source citrascope-env/bin/activate  # On Windows: citrascope-env\Scripts\activate
+pip install citrascope
 ```
 
 ### Optional Dependencies
 
-CitraScope supports different hardware adapters through optional dependency groups:
+For Linux-based telescope control (INDI):
 
-- **INDI adapter** (for Linux-based telescope control):
-  ```sh
-  pipx install citrascope[indi]
-  # or with pip: pip install citrascope[indi]
-  ```
-
-- **All optional dependencies**:
-  ```sh
-  pipx install citrascope[all]
-  # or with pip: pip install citrascope[all]
-  ```
-
-The base installation without optional dependencies supports the NINA adapter, which works via HTTP API calls and does not require additional Python packages.
+```sh
+pip install citrascope[indi]
+```
 
 This provides the `citrascope` command-line tool. To see available commands:
 
