@@ -3,7 +3,7 @@ name = "citrascope"
 version = "0.2.2"
 description = "Remotely control a telescope while it polls for tasks, collects and edge processes data, and delivers results and data for further processing."
 readme = "README.md"
-requires-python = ">=3.9,<=3.13"
+requires-python = ">=3.10,<=3.13"
 license = "MIT"
 authors = [{ name = "Patrick McDavid", email = "patrick@citra.space" }]
 dependencies = [

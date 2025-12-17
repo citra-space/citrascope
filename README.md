@@ -63,7 +63,7 @@ The devcontainer also ensures all required system dependencies (like `cmake`) ar
 
 ### Python Version
 
-This project requires Python 3.9 or higher, up to Python 3.13. A `.python-version` file is included specifying Python 3.12 as the recommended version. If you use [pyenv](https://github.com/pyenv/pyenv), it will automatically use this version when you enter the project directory.
+This project requires Python 3.10 or higher, up to Python 3.13. A `.python-version` file is included specifying Python 3.12 as the recommended version. If you use [pyenv](https://github.com/pyenv/pyenv), it will automatically use this version when you enter the project directory.
 
 ### If not using the dev container:
 ```sh
