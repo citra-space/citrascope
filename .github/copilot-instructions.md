@@ -77,7 +77,7 @@ The web interface provides real-time monitoring and configuration for telescope 
 
 This project relies on several key Python packages. Below are some of the most important ones and their roles:
 
-- **Click**: Used for building the command-line interface (CLI). The main entry point for the application (`python -m citrascope start`) is implemented using Click.
+- **Click**: Used for building the command-line interface (CLI). The main entry point for the application (`python -m citrascope`) is implemented using Click.
 - **Pydantic-Settings**: Manages configuration and settings, ensuring type safety and validation for environment variables.
 - **Requests** and **HTTPX**: Handle HTTP requests for interacting with the Citra.space API.
 - **Python-Dateutil**: Provides robust date and time parsing utilities.

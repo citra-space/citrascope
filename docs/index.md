@@ -27,7 +27,7 @@ Environment variables are documented in `.env.example`.
 
 Run the CLI:
 ```sh
-python -m citrascope start
+python -m citrascope
 ```
 Or use VS Code launch configurations for development and debugging.
 

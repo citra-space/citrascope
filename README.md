@@ -55,13 +55,13 @@ citrascope --help
 Run the CLI tool:
 
 ```sh
-citrascope start
+citrascope
 ```
 
 To connect to the Citra Dev server:
 
 ```sh
-citrascope start --dev
+citrascope --dev
 ```
 
 ## Developer Setup
@@ -125,8 +125,8 @@ Then create a release in the GitHub UI from the new tag. This triggers automatic
 
 If you are using Visual Studio Code, you can run or debug the project directly using the pre-configured launch options in `.vscode/launch.json`:
 
-- **Python: citrascope dev start** — Runs the main entry point with development options.
-- **Python: citrascope dev start DEBUG logging** — Runs with development options and sets log level to DEBUG for more detailed output.
+- **Python: citrascope dev** — Runs the main entry point with development options.
+- **Python: citrascope dev DEBUG logging** — Runs with development options and sets log level to DEBUG for more detailed output.
 
 To use these, open the Run and Debug panel in VS Code, select the desired configuration, and click the Run or Debug button. This is a convenient way to start or debug the app without manually entering commands.
 
