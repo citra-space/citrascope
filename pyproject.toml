@@ -1,5 +1,5 @@
 [project]
-name = "citra-citrascope"
+name = "citrascope"
 version = "0.2.2"
 description = "Remotely control a telescope while it polls for tasks, collects and edge processes data, and delivers results and data for further processing."
 readme = "README.md"
@@ -35,7 +35,7 @@ kstars = [
   "dbus-python",
 ]
 all = [
-  "citra-citrascope[indi,kstars]",
+  "citrascope[indi,kstars]",
 ]
 dev = [
   "black",
@@ -45,7 +45,7 @@ dev = [
   "flake8",
   "flake8-pytest-style",
   "bump-my-version",
-  "citra-citrascope[test]",
+  "citrascope[test]",
 ]
 test = ["pytest", "pytest-cov", "mockito"]
 build = ["build"]
