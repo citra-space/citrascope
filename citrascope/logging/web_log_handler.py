@@ -23,14 +23,15 @@ class WebLogHandler(logging.Handler):
     def emit(self, record):
         """Emit a log record."""
         try:
-            # Filter out web-related logs from the web UI
-            # (uvicorn.access, WebSocket messages, HTTP Request logs, etc.)
-            if (
-                record.name.startswith("uvicorn")
-                or "WebSocket" in record.getMessage()
-                or "HTTP Request:" in record.getMessage()
-            ):
-                return
+            # Filter out routine web-related logs from the web UI
+            # but keep ERROR and CRITICAL level messages
+            if record.levelno < logging.ERROR:
+                if (
+                    record.name.startswith("uvicorn")
+                    or "WebSocket" in record.getMessage()
+                    or "HTTP Request:" in record.getMessage()
+                ):
+                    return
 
             # Get the original levelname without color codes
             # Record.levelname might have ANSI codes from ColoredFormatter

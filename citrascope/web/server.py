@@ -101,6 +101,14 @@ class CitraScopeWebServer:
             asyncio.create_task(self._status_broadcast_loop())
 
             await server.serve()
+        except OSError as e:
+            if e.errno == 48:  # Address already in use
+                CITRASCOPE_LOGGER.error(
+                    f"Port {self.port} is already in use. Please stop any other services using this port "
+                    f"or use --web-port to specify a different port."
+                )
+            else:
+                CITRASCOPE_LOGGER.error(f"Web server OS error: {e}", exc_info=True)
         except Exception as e:
             CITRASCOPE_LOGGER.error(f"Web server error: {e}", exc_info=True)
 
