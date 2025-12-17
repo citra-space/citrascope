@@ -8,11 +8,10 @@ from citrascope.settings.citrascope_settings import CitraScopeSettings
 @click.option("--dev", is_flag=True, default=False, help="Use the development API (dev.app.citra.space)")
 @click.option("--log-level", default="INFO", help="Set logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
 @click.option("--keep-images", is_flag=True, default=False, help="Keep image files after upload (do not delete)")
-@click.option("--web-host", default="0.0.0.0", help="Web server host address (default: 0.0.0.0)")
 @click.option("--web-port", default=24872, type=int, help="Web server port (default: 24872)")
-def cli(dev, log_level, keep_images, web_host, web_port):
-    settings = CitraScopeSettings(dev=dev, log_level=log_level, keep_images=keep_images)
-    daemon = CitraScopeDaemon(settings, enable_web=True, web_host=web_host, web_port=web_port)
+def cli(dev, log_level, keep_images, web_port):
+    settings = CitraScopeSettings(dev=dev, log_level=log_level, keep_images=keep_images, web_port=web_port)
+    daemon = CitraScopeDaemon(settings)
     daemon.run()
 
 

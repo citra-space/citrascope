@@ -22,6 +22,7 @@ class CitraScopeSettings:
         dev: bool = False,
         log_level: str = "INFO",
         keep_images: bool = False,
+        web_port: int = 24872,
     ):
         """Initialize settings from JSON config file.
 
@@ -29,6 +30,7 @@ class CitraScopeSettings:
             dev: If True, use development API endpoint
             log_level: Logging level (DEBUG, INFO, WARNING, ERROR)
             keep_images: If True, preserve captured images
+            web_port: Port for web interface (default: 24872)
         """
         self.config_manager = SettingsFileManager()
 
@@ -54,6 +56,7 @@ class CitraScopeSettings:
         # Runtime settings (can be overridden by CLI flags)
         self.log_level: str = log_level if log_level != "INFO" else config.get("log_level", "INFO")
         self.keep_images: bool = keep_images if keep_images else config.get("keep_images", False)
+        self.web_port: int = web_port if web_port != 24872 else config.get("web_port", 24872)
 
         # Task retry configuration
         self.max_task_retries: int = config.get("max_task_retries", 3)
@@ -105,6 +108,7 @@ class CitraScopeSettings:
             "adapter_settings": self.adapter_settings,
             "log_level": self.log_level,
             "keep_images": self.keep_images,
+            "web_port": self.web_port,
             "max_task_retries": self.max_task_retries,
             "initial_retry_delay_seconds": self.initial_retry_delay_seconds,
             "max_retry_delay_seconds": self.max_retry_delay_seconds,
@@ -137,6 +141,7 @@ class CitraScopeSettings:
         settings.adapter_settings = config.get("adapter_settings", {})
         settings.log_level = config.get("log_level", "INFO")
         settings.keep_images = config.get("keep_images", False)
+        settings.web_port = config.get("web_port", 24872)
         settings.max_task_retries = config.get("max_task_retries", 3)
         settings.initial_retry_delay_seconds = config.get("initial_retry_delay_seconds", 30)
         settings.max_retry_delay_seconds = config.get("max_retry_delay_seconds", 300)

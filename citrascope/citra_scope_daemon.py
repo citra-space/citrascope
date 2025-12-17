@@ -17,9 +17,6 @@ class CitraScopeDaemon:
         settings: CitraScopeSettings,
         api_client: Optional[AbstractCitraApiClient] = None,
         hardware_adapter: Optional[AbstractAstroHardwareAdapter] = None,
-        enable_web: bool = True,
-        web_host: str = "0.0.0.0",
-        web_port: int = 24872,
     ):
         self.settings = settings
         CITRASCOPE_LOGGER.setLevel(self.settings.log_level)
@@ -33,16 +30,14 @@ class CitraScopeDaemon:
 
         self.api_client = api_client
         self.hardware_adapter = hardware_adapter
-        self.enable_web = enable_web
         self.web_server = None
         self.task_manager = None
         self.ground_station = None
         self.telescope_record = None
         self.configuration_error: Optional[str] = None
 
-        # Create web server instance if enabled (always start web server)
-        if self.enable_web:
-            self.web_server = CitraScopeWebServer(daemon=self, host=web_host, port=web_port)
+        # Create web server instance (always enabled)
+        self.web_server = CitraScopeWebServer(daemon=self, host="0.0.0.0", port=self.settings.web_port)
 
     def _create_hardware_adapter(self) -> AbstractAstroHardwareAdapter:
         """Factory method to create the appropriate hardware adapter based on settings."""
@@ -206,11 +201,10 @@ class CitraScopeDaemon:
             return False, error_msg
 
     def run(self):
-        # Start web server FIRST if enabled, so users can monitor/configure
+        # Start web server FIRST, so users can monitor/configure
         # The web interface will remain available even if configuration is incomplete
-        if self.enable_web:
-            self.web_server.start()
-            CITRASCOPE_LOGGER.info(f"Web interface available at http://{self.web_server.host}:{self.web_server.port}")
+        self.web_server.start()
+        CITRASCOPE_LOGGER.info(f"Web interface available at http://{self.web_server.host}:{self.web_server.port}")
 
         try:
             # Try to initialize components
@@ -238,7 +232,7 @@ class CitraScopeDaemon:
         """Clean up resources on shutdown."""
         if self.task_manager:
             self.task_manager.stop()
-        if self.enable_web and self.web_server:
+        if self.web_server:
             CITRASCOPE_LOGGER.info("Stopping web server...")
             if self.web_server.web_log_handler:
                 CITRASCOPE_LOGGER.removeHandler(self.web_server.web_log_handler)
