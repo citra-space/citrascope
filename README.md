@@ -11,10 +11,12 @@ Remotely control a telescope while it polls for tasks, collects observations, an
 
 ## Installation
 
-Install CitraScope from PyPI:
+### Install with pipx
+
+[pipx](https://pipx.pypa.io/) installs the CLI tool in an isolated environment while making it globally available:
 
 ```sh
-pip install citrascope
+pipx install citrascope
 ```
 
 ### Optional Dependencies
@@ -23,12 +25,14 @@ CitraScope supports different hardware adapters through optional dependency grou
 
 - **INDI adapter** (for Linux-based telescope control):
   ```sh
-  pip install citrascope[indi]
+  pipx install citrascope[indi]
+  # or with pip: pip install citrascope[indi]
   ```
 
 - **All optional dependencies**:
   ```sh
-  pip install citrascope[all]
+  pipx install citrascope[all]
+  # or with pip: pip install citrascope[all]
   ```
 
 The base installation without optional dependencies supports the NINA adapter, which works via HTTP API calls and does not require additional Python packages.
