@@ -422,8 +422,8 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
         nina_sequence_name = f"Citra Target: {satellite_data['name']}, Task: {task_id}"
 
-        # Replace basic placeholders
-        tle_data = f"{elset['tle'][0]}\n{elset['tle'][1]}"
+        # Replace basic placeholders (use \r\n for Windows NINA compatibility)
+        tle_data = f"{elset['tle'][0]}\r\n{elset['tle'][1]}"
         sequence_json["Name"] = nina_sequence_name
 
         # Navigate to the TLE container (ID 20 in the template)
