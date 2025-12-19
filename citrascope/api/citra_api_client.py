@@ -41,7 +41,19 @@ class CitraApiClient(AbstractCitraApiClient):
             return resp.json()
         except httpx.HTTPStatusError as e:
             if self.logger:
-                self.logger.error(f"HTTP error: {e.response.status_code} {e.response.text}")
+                # Check if response is HTML (e.g., Cloudflare error pages)
+                content_type = e.response.headers.get("content-type", "")
+                response_text = e.response.text
+
+                if "text/html" in content_type or response_text.strip().startswith("<"):
+                    # Log only status and a brief message for HTML responses, sometimes we get Cloudflare error pages
+                    self.logger.error(
+                        f"HTTP error: {e.response.status_code} - "
+                        f"Received HTML error page (likely Cloudflare or server error) for {method} {endpoint}"
+                    )
+                else:
+                    # Log full response for non-HTML errors (JSON, plain text, etc.)
+                    self.logger.error(f"HTTP error: {e.response.status_code} {response_text}")
             return None
         except Exception as e:
             if self.logger:
