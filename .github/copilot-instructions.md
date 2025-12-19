@@ -25,7 +25,6 @@ This project is a Python package for interacting with astronomical data and serv
   - `citrascope/web/templates/`: HTML templates
   - `citrascope/web/static/`: CSS and JavaScript files
 - `tests/`: Unit and integration tests
-- `docs/`: Project documentation
 
 ## Testing
 - All new features and bug fixes should include corresponding tests in `tests/`.
@@ -102,5 +101,5 @@ For a complete list of dependencies, refer to the `pyproject.toml` file.
 
 ## Additional Notes
 - Keep dependencies minimal and update `pyproject.toml` as needed.
-- Document any major changes in `docs/index.md`.
+- Documentation is maintained in the [citra-space/docs](https://github.com/citra-space/docs) repository under `docs/citrascope/`.
 - Use pre-commit hooks for code quality.

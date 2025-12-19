@@ -46,15 +46,11 @@ dev = [
 ]
 test = ["pytest", "pytest-cov", "mockito"]
 build = ["build"]
-docs = ["sphinx", "sphinx-autodoc-typehints", "sphinx-markdown-builder"]
 deploy = ["twine"]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.hatch.build.force-include]
-"docs" = "docs"
 
 [tool.black]
 line-length = 120

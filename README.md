@@ -9,6 +9,12 @@ Remotely control a telescope while it polls for tasks, collects observations, an
 - Connects to configured telescope and camera hardware
 - Acts as a task daemon carrying out and remitting photography tasks
 
+## Documentation
+
+Full documentation is available at [docs.citra.space](https://docs.citra.space/citrascope/).
+
+Documentation source is maintained in the [citra-space/docs](https://github.com/citra-space/docs) repository.
+
 ## Installation
 
 **Important:** CitraScope requires Python 3.10, 3.11, or 3.12.
