@@ -13,6 +13,23 @@ export let currentConfig = {};
 /**
  * Initialize configuration management
  */
+async function fetchVersion() {
+    try {
+        const response = await fetch('/api/version');
+        const data = await response.json();
+        const versionEl = document.getElementById('citraScopeVersion');
+        if (versionEl && data.version) {
+            versionEl.textContent = data.version;
+        }
+    } catch (error) {
+        console.error('Error fetching version:', error);
+        const versionEl = document.getElementById('citraScopeVersion');
+        if (versionEl) {
+            versionEl.textContent = 'unknown';
+        }
+    }
+}
+
 export async function initConfig() {
     // Populate hardware adapter dropdown
     await loadAdapterOptions();
@@ -52,6 +69,7 @@ export async function initConfig() {
     // Load initial config
     await loadConfiguration();
     checkConfigStatus();
+    fetchVersion();
 }
 
 /**
