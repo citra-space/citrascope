@@ -11,6 +11,9 @@ from citrascope.tasks.scope.static_telescope_task import StaticTelescopeTask
 from citrascope.tasks.scope.tracking_telescope_task import TrackingTelescopeTask
 from citrascope.tasks.task import Task
 
+# Task polling interval in seconds
+TASK_POLL_INTERVAL_SECONDS = 15
+
 
 class TaskManager:
     def __init__(
@@ -44,8 +47,9 @@ class TaskManager:
                 self._report_online()
                 tasks = self.api_client.get_telescope_tasks(self.telescope_record["id"])
 
-                # If API call failed (timeout, network error, etc.), skip this poll iteration
+                # If API call failed (timeout, network error, etc.), wait before retrying
                 if tasks is None:
+                    self._stop_event.wait(TASK_POLL_INTERVAL_SECONDS)
                     continue
 
                 added = 0
@@ -113,7 +117,7 @@ class TaskManager:
             except Exception as e:
                 self.logger.error(f"Exception in poll_tasks loop: {e}", exc_info=True)
                 time.sleep(5)  # avoid tight error loop
-            self._stop_event.wait(15)
+            self._stop_event.wait(TASK_POLL_INTERVAL_SECONDS)
 
     def _report_online(self):
         """
