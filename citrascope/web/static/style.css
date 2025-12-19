@@ -103,7 +103,7 @@ body {
     -webkit-box-orient: vertical;
     line-height: 1.4em;
     max-height: 2.8em;
-    padding-right: 100px; /* Make room for social icons and accordion arrow */
+    padding-right: 130px; /* Make room for 3 social icons and accordion arrow */
 }
 
 /* Task display */
