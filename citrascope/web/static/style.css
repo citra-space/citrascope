@@ -72,6 +72,14 @@ body {
 .log-latest-line {
     font-family: monospace;
     color: #e2e8f0;
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.4em;
+    max-height: 2.8em;
 }
 
 /* Task display */

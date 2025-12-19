@@ -412,12 +412,14 @@ function updateLatestLogLine() {
 
         const timestamp = new Date(latestLog.timestamp).toLocaleTimeString();
         const cleanMessage = stripAnsiCodes(latestLog.message);
+        // Truncate message to ~150 chars for collapsed header (approx 2 lines)
+        const truncatedMessage = cleanMessage.length > 150 ? cleanMessage.substring(0, 150) + '...' : cleanMessage;
 
         content.querySelector('.log-timestamp').textContent = timestamp;
         const levelSpan = content.querySelector('.log-level');
         levelSpan.classList.add(`log-level-${latestLog.level}`);
         levelSpan.textContent = latestLog.level;
-        content.querySelector('.log-message').textContent = cleanMessage;
+        content.querySelector('.log-message').textContent = truncatedMessage;
 
         latestLogLine.innerHTML = '';
         latestLogLine.appendChild(content);
