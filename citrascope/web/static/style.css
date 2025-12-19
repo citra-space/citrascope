@@ -57,6 +57,29 @@ body {
 /* Log accordion customization */
 .log-accordion-button {
     border-bottom: 1px solid #444 !important;
+    position: relative;
+}
+
+.accordion-social-links {
+    position: absolute;
+    right: 50px; /* Position to the left of the accordion arrow */
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.social-link {
+    color: #a0aec0;
+    transition: color 0.2s ease;
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+}
+
+.social-link:hover {
+    color: #e2e8f0;
 }
 
 .log-accordion-body {
@@ -80,6 +103,7 @@ body {
     -webkit-box-orient: vertical;
     line-height: 1.4em;
     max-height: 2.8em;
+    padding-right: 100px; /* Make room for social icons and accordion arrow */
 }
 
 /* Task display */
