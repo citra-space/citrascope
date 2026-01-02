@@ -30,6 +30,7 @@ class SystemStatus(BaseModel):
     camera_connected: bool = False
     current_task: Optional[str] = None
     tasks_pending: int = 0
+    processing_active: bool = True
     hardware_adapter: str = "unknown"
     telescope_ra: Optional[float] = None
     telescope_dec: Optional[float] = None
@@ -371,6 +372,28 @@ class CitraScopeWebApp:
                 return {"logs": logs}
             return {"logs": []}
 
+        @self.app.post("/api/tasks/pause")
+        async def pause_tasks():
+            """Pause task processing."""
+            if not self.daemon or not self.daemon.task_manager:
+                return JSONResponse({"error": "Task manager not available"}, status_code=503)
+
+            self.daemon.task_manager.pause()
+            await self.broadcast_status()
+
+            return {"status": "paused", "message": "Task processing paused"}
+
+        @self.app.post("/api/tasks/resume")
+        async def resume_tasks():
+            """Resume task processing."""
+            if not self.daemon or not self.daemon.task_manager:
+                return JSONResponse({"error": "Task manager not available"}, status_code=503)
+
+            self.daemon.task_manager.resume()
+            await self.broadcast_status()
+
+            return {"status": "active", "message": "Task processing resumed"}
+
         @self.app.websocket("/ws")
         async def websocket_endpoint(websocket: WebSocket):
             """WebSocket endpoint for real-time updates."""
@@ -438,6 +461,10 @@ class CitraScopeWebApp:
                 self.status.ground_station_id = gs_id
                 self.status.ground_station_name = gs_name
                 self.status.ground_station_url = f"{base_url}/ground-stations/{gs_id}" if gs_id else None
+
+            # Update task processing state
+            if hasattr(self.daemon, "task_manager") and self.daemon.task_manager:
+                self.status.processing_active = self.daemon.task_manager.is_processing_active()
 
             self.status.last_update = datetime.now().isoformat()
 

@@ -207,7 +207,9 @@ function updateStatus(status) {
     }
     // If isTaskActive is already false, don't touch the display (countdown is updating it)
 
-    document.getElementById('tasksPending').textContent = status.tasks_pending || '0';
+    if (status.tasks_pending !== undefined) {
+        document.getElementById('tasksPending').textContent = status.tasks_pending || '0';
+    }
 
     if (status.telescope_ra !== null) {
         document.getElementById('telescopeRA').textContent = status.telescope_ra.toFixed(4) + '°';
@@ -217,20 +219,45 @@ function updateStatus(status) {
     }
 
     // Update ground station information
-    const gsNameEl = document.getElementById('groundStationName');
-    const taskScopeButton = document.getElementById('taskScopeButton');
+    if (status.ground_station_name !== undefined || status.ground_station_url !== undefined) {
+        const gsNameEl = document.getElementById('groundStationName');
+        const taskScopeButton = document.getElementById('taskScopeButton');
 
-    if (status.ground_station_name && status.ground_station_url) {
-        gsNameEl.innerHTML = `<a href="${status.ground_station_url}" target="_blank" class="ground-station-link">${status.ground_station_name} ↗</a>`;
-        // Update the Task My Scope button
-        taskScopeButton.href = status.ground_station_url;
-        taskScopeButton.style.display = 'inline-block';
-    } else if (status.ground_station_name) {
-        gsNameEl.textContent = status.ground_station_name;
-        taskScopeButton.style.display = 'none';
+        if (status.ground_station_name && status.ground_station_url) {
+            gsNameEl.innerHTML = `<a href="${status.ground_station_url}" target="_blank" class="ground-station-link">${status.ground_station_name} ↗</a>`;
+            // Update the Task My Scope button
+            taskScopeButton.href = status.ground_station_url;
+            taskScopeButton.style.display = 'inline-block';
+        } else if (status.ground_station_name) {
+            gsNameEl.textContent = status.ground_station_name;
+            taskScopeButton.style.display = 'none';
+        } else {
+            gsNameEl.textContent = '-';
+            taskScopeButton.style.display = 'none';
+        }
+    }
+
+    // Update task processing state
+    if (status.processing_active !== undefined) {
+        updateProcessingState(status.processing_active);
+    }
+}
+
+function updateProcessingState(isActive) {
+    const statusEl = document.getElementById('processingStatus');
+    const button = document.getElementById('toggleProcessingButton');
+    const icon = document.getElementById('processingButtonIcon');
+
+    if (!statusEl || !button || !icon) return;
+
+    if (isActive) {
+        statusEl.innerHTML = '<span class="badge rounded-pill bg-success">Active</span>';
+        icon.textContent = 'Pause';
+        button.title = 'Pause task processing';
     } else {
-        gsNameEl.textContent = '-';
-        taskScopeButton.style.display = 'none';
+        statusEl.innerHTML = '<span class="badge rounded-pill bg-warning">Paused</span>';
+        icon.textContent = 'Resume';
+        button.title = 'Resume task processing';
     }
 }
 
@@ -499,4 +526,31 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Load initial data
     loadTasks();
     loadLogs();
+
+    // Add pause/resume button handler
+    const toggleButton = document.getElementById('toggleProcessingButton');
+    if (toggleButton) {
+        toggleButton.addEventListener('click', async () => {
+            const icon = document.getElementById('processingButtonIcon');
+            const currentlyPaused = icon && icon.textContent === 'Resume';
+            const endpoint = currentlyPaused ? '/api/tasks/resume' : '/api/tasks/pause';
+
+            try {
+                toggleButton.disabled = true;
+                const response = await fetch(endpoint, { method: 'POST' });
+                const result = await response.json();
+
+                if (!response.ok) {
+                    console.error('Failed to toggle processing:', result);
+                    alert('Failed to toggle task processing: ' + (result.error || 'Unknown error'));
+                }
+                // State will be updated via WebSocket broadcast within 2 seconds
+            } catch (error) {
+                console.error('Error toggling processing:', error);
+                alert('Error toggling task processing');
+            } finally {
+                toggleButton.disabled = false;
+            }
+        });
+    }
 });

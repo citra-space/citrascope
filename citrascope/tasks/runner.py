@@ -40,6 +40,9 @@ class TaskManager:
         self.keep_images = keep_images
         self.task_retry_counts = {}  # Track retry attempts per task ID
         self.task_last_failure = {}  # Track last failure timestamp per task ID
+        # Task processing control (always starts active)
+        self._processing_active = True
+        self._processing_lock = threading.Lock()
 
     def poll_tasks(self):
         while not self._stop_event.is_set():
@@ -130,6 +133,14 @@ class TaskManager:
 
     def task_runner(self):
         while not self._stop_event.is_set():
+            # Check if task processing is paused
+            with self._processing_lock:
+                is_paused = not self._processing_active
+
+            if is_paused:
+                self._stop_event.wait(1)
+                continue
+
             try:
                 now = int(time.time())
                 completed = 0
@@ -242,6 +253,25 @@ class TaskManager:
             if not next_tasks:
                 summary += "No tasks scheduled."
             return summary
+
+    def pause(self) -> bool:
+        """Pause task processing. Returns new state (False)."""
+        with self._processing_lock:
+            self._processing_active = False
+            self.logger.info("Task processing paused")
+            return self._processing_active
+
+    def resume(self) -> bool:
+        """Resume task processing. Returns new state (True)."""
+        with self._processing_lock:
+            self._processing_active = True
+            self.logger.info("Task processing resumed")
+            return self._processing_active
+
+    def is_processing_active(self) -> bool:
+        """Check if task processing is currently active."""
+        with self._processing_lock:
+            return self._processing_active
 
     def start(self):
         self._stop_event.clear()
