@@ -311,11 +311,7 @@ class CitraScopeWebApp:
                                         status_code=400,
                                     )
 
-                # Save configuration to file
-                from citrascope.settings.settings_file_manager import SettingsFileManager
-
-                config_manager = SettingsFileManager()
-                config_manager.save_config(config)
+                self.daemon.settings.update_and_save(config)
 
                 # Trigger hot-reload
                 success, error = self.daemon.reload_configuration()

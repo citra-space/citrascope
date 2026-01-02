@@ -42,8 +42,12 @@ class CitraScopeSettings:
         # Hardware adapter selection
         self.hardware_adapter: str = config.get("hardware_adapter", "")
 
-        # Hardware adapter-specific settings stored as dict
-        self.adapter_settings: Dict[str, Any] = config.get("adapter_settings", {})
+        # Hardware adapter-specific settings stored as nested dict per adapter
+        # Format: {"adapter_name": {"setting_key": value, ...}, ...}
+        self._all_adapter_settings: Dict[str, Dict[str, Any]] = config.get("adapter_settings", {})
+
+        # Current adapter's settings slice
+        self.adapter_settings: Dict[str, Any] = self._all_adapter_settings.get(self.hardware_adapter, {})
 
         # Runtime settings (all loaded from config file, configurable via web UI)
         self.log_level: str = config.get("log_level", "INFO")
@@ -95,7 +99,7 @@ class CitraScopeSettings:
             "personal_access_token": self.personal_access_token,
             "telescope_id": self.telescope_id,
             "hardware_adapter": self.hardware_adapter,
-            "adapter_settings": self.adapter_settings,
+            "adapter_settings": self._all_adapter_settings,
             "log_level": self.log_level,
             "keep_images": self.keep_images,
             "web_port": self.web_port,
@@ -108,33 +112,23 @@ class CitraScopeSettings:
 
     def save(self) -> None:
         """Save current settings to JSON config file."""
+        # Update nested dict with current adapter's settings before saving
+        if self.hardware_adapter:
+            self._all_adapter_settings[self.hardware_adapter] = self.adapter_settings
+
         self.config_manager.save_config(self.to_dict())
         CITRASCOPE_LOGGER.info(f"Configuration saved to {self.config_manager.get_config_path()}")
 
-    @classmethod
-    def from_dict(cls, config: Dict[str, Any]) -> "CitraScopeSettings":
-        """Create settings instance from dictionary.
+    def update_and_save(self, config: Dict[str, Any]) -> None:
+        """Update settings from dict and save, preserving other adapters' settings.
 
         Args:
-            config: Dictionary of configuration values.
-
-        Returns:
-            New CitraScopeSettings instance.
+            config: Configuration dict with flat adapter_settings for current adapter.
         """
-        settings = cls()
-        settings.host = config.get("host", settings.host)
-        settings.port = config.get("port", settings.port)
-        settings.use_ssl = config.get("use_ssl", settings.use_ssl)
-        settings.personal_access_token = config.get("personal_access_token", "")
-        settings.telescope_id = config.get("telescope_id", "")
-        settings.hardware_adapter = config.get("hardware_adapter", "")
-        settings.adapter_settings = config.get("adapter_settings", {})
-        settings.log_level = config.get("log_level", "INFO")
-        settings.keep_images = config.get("keep_images", False)
-        settings.web_port = config.get("web_port", DEFAULT_WEB_PORT)
-        settings.max_task_retries = config.get("max_task_retries", 3)
-        settings.initial_retry_delay_seconds = config.get("initial_retry_delay_seconds", 30)
-        settings.max_retry_delay_seconds = config.get("max_retry_delay_seconds", 300)
-        settings.file_logging_enabled = config.get("file_logging_enabled", True)
-        settings.log_retention_days = config.get("log_retention_days", 30)
-        return settings
+        # Nest incoming adapter_settings under hardware_adapter key
+        adapter = config.get("hardware_adapter", self.hardware_adapter)
+        if adapter:
+            self._all_adapter_settings[adapter] = config.get("adapter_settings", {})
+        config["adapter_settings"] = self._all_adapter_settings
+
+        self.config_manager.save_config(config)
