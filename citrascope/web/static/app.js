@@ -1,6 +1,6 @@
 // CitraScope Dashboard - Main Application
 import { connectWebSocket } from './websocket.js';
-import { initConfig, currentConfig } from './config.js';
+import { initConfig, currentConfig, initFilterConfig, setupAutofocusButton } from './config.js';
 import { getTasks, getLogs } from './api.js';
 
 function updateAppUrlLinks() {
@@ -139,6 +139,11 @@ function initNavigation() {
                 const section = link.getAttribute('data-section');
                 activateNav(link);
                 showSection(section);
+
+                // Reload filter config when config section is shown
+                if (section === 'config') {
+                    initFilterConfig();
+                }
             }
         });
 
@@ -511,6 +516,12 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     // Initialize configuration management (loads config)
     await initConfig();
+
+    // Initialize filter configuration
+    await initFilterConfig();
+
+    // Setup autofocus button (only once)
+    setupAutofocusButton();
 
     // Update app URL links from loaded config
     updateAppUrlLinks();

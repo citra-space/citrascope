@@ -5,16 +5,16 @@ import os
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
-import platformdirs
 import requests
 
 from citrascope.hardware.abstract_astro_hardware_adapter import (
     AbstractAstroHardwareAdapter,
+    FilterConfig,
     ObservationStrategy,
     SettingSchemaEntry,
 )
-from citrascope.settings.citrascope_settings import APP_AUTHOR, APP_NAME
 
 
 class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
@@ -32,47 +32,17 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
     def __init__(self, logger: logging.Logger, images_dir: Path, **kwargs):
         super().__init__(images_dir=images_dir)
         self.logger: logging.Logger = logger
-        self._data_dir = Path(platformdirs.user_data_dir(APP_NAME, appauthor=APP_AUTHOR))
-        self._focus_positions_file = self._data_dir / "nina_focus_positions.json"
         self.nina_api_path = kwargs.get("nina_api_path", "http://nina:1888/v2/api")
-        self.bypass_autofocus = kwargs.get("bypass_autofocus", False)
 
         self.filter_map = {}
-        self._load_focus_positions()
-
-    def _load_focus_positions(self):
-        """Load focus positions from file if available."""
-        try:
-            if self._focus_positions_file.exists():
-                with open(self._focus_positions_file, "r") as f:
-                    focus_data = json.load(f)
-                if self.logger:
-                    self.logger.info(f"Loaded focus positions from {self._focus_positions_file}")
-                self._focus_positions_cache = focus_data
-            else:
-                self._focus_positions_cache = {}
-        except Exception as e:
-            if self.logger:
-                self.logger.warning(f"Could not load focus positions file: {e}")
-            self._focus_positions_cache = {}
-
-    def _save_focus_positions(self):
-        """Save current filter_map focus positions to file."""
-        try:
-            # Ensure data directory exists
-            self._data_dir.mkdir(parents=True, exist_ok=True)
-
-            focus_data = {
-                str(fid): {"name": fdata["name"], "focus_position": fdata["focus_position"]}
-                for fid, fdata in self.filter_map.items()
-            }
-            with open(self._focus_positions_file, "w") as f:
-                json.dump(focus_data, f, indent=2)
-            if self.logger:
-                self.logger.info(f"Saved focus positions to {self._focus_positions_file}")
-        except Exception as e:
-            if self.logger:
-                self.logger.warning(f"Could not save focus positions file: {e}")
+        # Load filter configuration from settings if available
+        saved_filters = kwargs.get("filters", {})
+        for filter_id, filter_data in saved_filters.items():
+            # Convert string keys back to int for internal use
+            try:
+                self.filter_map[int(filter_id)] = filter_data
+            except (ValueError, TypeError) as e:
+                self.logger.warning(f"Invalid filter ID '{filter_id}' in settings, skipping: {e}")
 
     @classmethod
     def get_settings_schema(cls) -> list[SettingSchemaEntry]:
@@ -90,17 +60,20 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
                 "placeholder": "http://localhost:1888/v2/api",
                 "pattern": r"^https?://.*",
             },
-            {
-                "name": "bypass_autofocus",
-                "friendly_name": "Bypass Autofocus",
-                "type": "bool",
-                "default": False,
-                "description": "Skip autofocus routine when initializing, will use cached focus positions if available",
-                "required": False,
-            },
         ]
 
     def do_autofocus(self):
+        """Perform autofocus routine for all filters.
+
+        Slews telescope to Mirach (bright reference star) and runs autofocus
+        for each filter in the filter map, updating focus positions.
+
+        Raises:
+            RuntimeError: If no filters discovered or network requests fail
+        """
+        if not self.filter_map:
+            raise RuntimeError("No filters discovered. Cannot perform autofocus.")
+
         self.logger.info("Performing autofocus routine ...")
         # move telescope to bright star and start autofocus
         # Mirach ra=(1+9/60.+47.45/3600.)*15 dec=(35+37/60.+11.1/3600.)
@@ -108,10 +81,15 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         dec = 35 + 37 / 60.0 + 11.1 / 3600.0
 
         self.logger.info("Slewing to Mirach ...")
-        mount_status = requests.get(
-            self.nina_api_path + self.MOUNT_URL + "slew?ra=" + str(ra) + "&dec=" + str(dec)
-        ).json()
-        self.logger.info(f"Mount {mount_status['Response']}")
+        try:
+            response = requests.get(f"{self.nina_api_path}{self.MOUNT_URL}slew?ra={ra}&dec={dec}", timeout=30)
+            response.raise_for_status()
+            mount_status = response.json()
+            self.logger.info(f"Mount {mount_status['Response']}")
+        except requests.Timeout:
+            raise RuntimeError("Mount slew request timed out")
+        except requests.RequestException as e:
+            raise RuntimeError(f"Mount slew failed: {e}")
 
         # wait for slew to complete
         while self.telescope_is_moving():
@@ -122,9 +100,6 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             self.logger.info(f"Focusing Filter ID: {id}, Name: {filter['name']}")
             focus_value = self._auto_focus_one_filter(id, filter["name"])
             self.filter_map[id]["focus_position"] = focus_value
-
-        # Save focus positions after autofocus
-        self._save_focus_positions()
 
     # autofocus routine
     def _auto_focus_one_filter(self, filter_id, filter_name) -> int:
@@ -186,13 +161,22 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
     def _do_point_telescope(self, ra: float, dec: float):
         self.logger.info(f"Slewing to RA: {ra}, Dec: {dec}")
-        slew_response = requests.get(f"{self.nina_api_path}{self.MOUNT_URL}slew?ra={ra}&dec={dec}").json()
+        try:
+            response = requests.get(f"{self.nina_api_path}{self.MOUNT_URL}slew?ra={ra}&dec={dec}", timeout=30)
+            response.raise_for_status()
+            slew_response = response.json()
 
-        if slew_response.get("Success"):
-            self.logger.info(f"Mount slew initiated: {slew_response['Response']}")
-            return True
-        else:
-            self.logger.error(f"Failed to slew mount: {slew_response.get('Error')}")
+            if slew_response.get("Success"):
+                self.logger.info(f"Mount slew initiated: {slew_response['Response']}")
+                return True
+            else:
+                self.logger.error(f"Failed to slew mount: {slew_response.get('Error')}")
+                return False
+        except requests.Timeout:
+            self.logger.error("Mount slew request timed out")
+            return False
+        except requests.RequestException as e:
+            self.logger.error(f"Mount slew request failed: {e}")
             return False
 
     def connect(self) -> bool:
@@ -240,12 +224,8 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
                 return False
             self.logger.info(f"Mount Unparked!")
 
-            # make a map of available filters and their focus positions
+            # Discover available filters (focus positions loaded from saved settings)
             self.discover_filters()
-            if not self.bypass_autofocus:
-                self.do_autofocus()
-            else:
-                self.logger.info("Bypassing autofocus routine as requested")
 
             return True
         except Exception as e:
@@ -263,15 +243,57 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         for filter in filters:
             filter_id = filter["Id"]
             filter_name = filter["Name"]
-            # Try to load focus position from cache, fallback to default
-            focus_position = self._focus_positions_cache.get(str(filter_id), {}).get(
-                "focus_position", self.DEFAULT_FOCUS_POSITION
-            )
+            # Use existing focus position if filter already in map, otherwise use default
+            if filter_id in self.filter_map:
+                focus_position = self.filter_map[filter_id].get("focus_position", self.DEFAULT_FOCUS_POSITION)
+                self.logger.info(
+                    f"Discovered filter: {filter_name} with ID: {filter_id}, using saved focus position: {focus_position}"
+                )
+            else:
+                focus_position = self.DEFAULT_FOCUS_POSITION
+                self.logger.info(
+                    f"Discovered new filter: {filter_name} with ID: {filter_id}, using default focus position: {focus_position}"
+                )
+
             self.filter_map[filter_id] = {"name": filter_name, "focus_position": focus_position}
-            self.logger.info(f"Discovered filter: {filter_name} with ID: {filter_id}, focus position: {focus_position}")
 
     def disconnect(self):
         pass
+
+    def supports_filter_management(self) -> bool:
+        """Indicates that NINA adapter supports filter/focus management."""
+        return True
+
+    def get_filter_config(self) -> dict[str, FilterConfig]:
+        """Get current filter configuration with focus positions.
+
+        Returns:
+            dict: Filter configuration mapping filter ID strings to FilterConfig
+        """
+        return {
+            str(filter_id): {"name": filter_data["name"], "focus_position": filter_data["focus_position"]}
+            for filter_id, filter_data in self.filter_map.items()
+        }
+
+    def update_filter_focus(self, filter_id: str, focus_position: int) -> bool:
+        """Update the focus position for a specific filter.
+
+        Args:
+            filter_id: Filter ID as string
+            focus_position: New focus position in steps
+
+        Returns:
+            bool: True if update was successful, False otherwise
+        """
+        try:
+            filter_id_int = int(filter_id)
+            if filter_id_int in self.filter_map:
+                self.filter_map[filter_id_int]["focus_position"] = focus_position
+                self.logger.info(f"Updated filter {filter_id} focus position to {focus_position}")
+                return True
+            return False
+        except (ValueError, KeyError):
+            return False
 
     def is_telescope_connected(self) -> bool:
         """Check if telescope is connected and responsive."""

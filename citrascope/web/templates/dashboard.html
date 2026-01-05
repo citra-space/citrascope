@@ -234,6 +234,35 @@
 
                             <!-- Dynamic Adapter Settings Container -->
                             <div id="adapter-settings-container"></div>
+
+                            <!-- Filter Configuration Section (shown when adapter supports filters) -->
+                            <div id="filterConfigSection" style="display: none; margin-top: 1.5rem;">
+                                <hr class="border-secondary">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h6 class="mb-0">Filter Configuration</h6>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" id="runAutofocusButton">
+                                        <span id="autofocusButtonText">Run Autofocus</span>
+                                        <span id="autofocusButtonSpinner" class="spinner-border spinner-border-sm ms-2" style="display: none;" role="status"></span>
+                                    </button>
+                                </div>
+                                <div id="filterTableContainer">
+                                    <table class="table table-dark table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>Filter ID</th>
+                                                <th>Name</th>
+                                                <th>Focus Position</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="filterTableBody">
+                                            <!-- Filter rows will be populated by JavaScript -->
+                                        </tbody>
+                                    </table>
+                                    <div id="noFiltersMessage" class="text-muted small" style="display: none;">
+                                        No filters configured. Connect to hardware to discover filters.
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

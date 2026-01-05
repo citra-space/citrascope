@@ -20,6 +20,18 @@ class SettingSchemaEntry(TypedDict, total=False):
     options: list[str]  # List of valid options for select/dropdown inputs
 
 
+class FilterConfig(TypedDict):
+    """Type definition for filter configuration.
+
+    Attributes:
+        name: Human-readable filter name (e.g., 'Luminance', 'Red', 'Ha')
+        focus_position: Focuser position for this filter in steps
+    """
+
+    name: str
+    focus_position: int
+
+
 class ObservationStrategy(Enum):
     MANUAL = 1
     SEQUENCE_TO_CONTROLLER = 2
@@ -176,3 +188,52 @@ class AbstractAstroHardwareAdapter(ABC):
             bool: True if alignment was successful, False otherwise.
         """
         pass
+
+    def do_autofocus(self) -> None:
+        """Perform autofocus routine for all filters.
+
+        This is an optional method for adapters that support filter management.
+        Default implementation raises NotImplementedError. Override in subclasses
+        that support autofocus.
+
+        Raises:
+            NotImplementedError: If the adapter doesn't support autofocus
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} does not support autofocus")
+
+    def supports_filter_management(self) -> bool:
+        """Indicates whether this adapter supports filter/focus management.
+
+        Returns:
+            bool: True if the adapter manages filters and focus positions, False otherwise.
+        """
+        return False
+
+    def get_filter_config(self) -> dict[str, FilterConfig]:
+        """Get the current filter configuration including focus positions.
+
+        Returns:
+            dict: Dictionary mapping filter IDs (as strings) to FilterConfig.
+                  Each FilterConfig contains:
+                  - name (str): Filter name
+                  - focus_position (int): Focuser position for this filter
+
+        Example:
+            {
+                "1": {"name": "Luminance", "focus_position": 9000},
+                "2": {"name": "Red", "focus_position": 9050}
+            }
+        """
+        return {}
+
+    def update_filter_focus(self, filter_id: str, focus_position: int) -> bool:
+        """Update the focus position for a specific filter.
+
+        Args:
+            filter_id: Filter ID as string
+            focus_position: New focus position in steps
+
+        Returns:
+            bool: True if update was successful, False otherwise
+        """
+        return False
