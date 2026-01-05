@@ -372,9 +372,23 @@ async function saveConfiguration(event) {
         const result = await saveConfig(config);
 
         if (result.ok) {
-            showConfigSuccess(result.data.message || 'Configuration saved and applied successfully!');
+            // After config saved successfully, save any modified filter focus positions
+            const filterResults = await saveModifiedFilters();
+
+            // Build success message based on results
+            let message = result.data.message || 'Configuration saved and applied successfully!';
+            if (filterResults.success > 0) {
+                message += ` Updated ${filterResults.success} filter focus position${filterResults.success > 1 ? 's' : ''}.`;
+            }
+            if (filterResults.failed > 0) {
+                message += ` Warning: ${filterResults.failed} filter update${filterResults.failed > 1 ? 's' : ''} failed.`;
+            }
+
+            showConfigSuccess(message);
         } else {
-            showConfigError(result.data.error || result.data.message || 'Failed to save configuration');
+            // Check for specific error codes
+            const errorMsg = result.data.error || result.data.message || 'Failed to save configuration';
+            showConfigError(errorMsg);
         }
     } catch (error) {
         showConfigError('Failed to save configuration: ' + error.message);
@@ -431,6 +445,176 @@ export function showConfigSection() {
     const configLink = document.querySelector('a[data-section="config"]');
     if (configLink) {
         configLink.click();
+    }
+}
+
+/**
+ * Load and display filter configuration
+ */
+async function loadFilterConfig() {
+    const filterSection = document.getElementById('filterConfigSection');
+
+    try {
+        const response = await fetch('/api/adapter/filters');
+
+        if (response.status === 404 || response.status === 503) {
+            // Adapter doesn't support filters or isn't available
+            if (filterSection) filterSection.style.display = 'none';
+            return;
+        }
+
+        const data = await response.json();
+
+        if (response.ok && data.filters) {
+            // Show the filter section
+            if (filterSection) filterSection.style.display = 'block';
+
+            // Populate filter table
+            const tbody = document.getElementById('filterTableBody');
+            const noFiltersMsg = document.getElementById('noFiltersMessage');
+
+            if (tbody) {
+                tbody.innerHTML = '';
+                const filters = data.filters;
+                const filterIds = Object.keys(filters).sort();
+
+                if (filterIds.length === 0) {
+                    if (noFiltersMsg) noFiltersMsg.style.display = 'block';
+                } else {
+                    if (noFiltersMsg) noFiltersMsg.style.display = 'none';
+
+                    filterIds.forEach(filterId => {
+                        const filter = filters[filterId];
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${filterId}</td>
+                            <td>${filter.name}</td>
+                            <td>
+                                <input type="number"
+                                       class="form-control form-control-sm filter-focus-input"
+                                       data-filter-id="${filterId}"
+                                       value="${filter.focus_position}"
+                                       min="0"
+                                       step="1">
+                            </td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                }
+            }
+        } else {
+            if (filterSection) filterSection.style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Error loading filter config:', error);
+        if (filterSection) filterSection.style.display = 'none';
+    }
+}
+
+/**
+ * Save all filter focus positions (called during main config save)
+ * Returns: Object with { success: number, failed: number }
+ */
+async function saveModifiedFilters() {
+    const inputs = document.querySelectorAll('.filter-focus-input');
+    if (inputs.length === 0) return { success: 0, failed: 0 }; // No filters to save
+
+    let successCount = 0;
+    let failedCount = 0;
+
+    // Save all filter values
+    for (const input of inputs) {
+        const filterId = input.dataset.filterId;
+        const focusPosition = parseInt(input.value);
+
+        if (isNaN(focusPosition) || focusPosition < 0) {
+            failedCount++;
+            continue;
+        }
+
+        try {
+            const response = await fetch(`/api/adapter/filters/${filterId}`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ focus_position: focusPosition })
+            });
+
+            if (response.ok) {
+                successCount++;
+            } else {
+                failedCount++;
+                console.error(`Failed to save filter ${filterId}: HTTP ${response.status}`);
+            }
+        } catch (error) {
+            failedCount++;
+            console.error(`Error saving filter ${filterId}:`, error);
+        }
+    }
+
+    return { success: successCount, failed: failedCount };
+}
+
+/**
+ * Trigger autofocus routine
+ */
+async function triggerAutofocus() {
+    const button = document.getElementById('runAutofocusButton');
+    const buttonText = document.getElementById('autofocusButtonText');
+    const buttonSpinner = document.getElementById('autofocusButtonSpinner');
+
+    if (!button || !buttonText || !buttonSpinner) return;
+
+    // Clear any previous messages
+    hideConfigMessages();
+
+    // Disable button and show spinner
+    button.disabled = true;
+    buttonText.textContent = 'Running Autofocus...';
+    buttonSpinner.style.display = 'inline-block';
+
+    try {
+        const response = await fetch('/api/adapter/autofocus', {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            showConfigSuccess('Autofocus completed successfully');
+            // Reload filter config to show updated focus positions
+            await loadFilterConfig();
+        } else {
+            // Show clear error message (e.g., if autofocus already running or other conflict)
+            showConfigError(data.error || 'Autofocus failed');
+        }
+    } catch (error) {
+        console.error('Error triggering autofocus:', error);
+        showConfigError('Failed to trigger autofocus');
+    } finally {
+        // Re-enable button
+        button.disabled = false;
+        buttonText.textContent = 'Run Autofocus';
+        buttonSpinner.style.display = 'none';
+    }
+}
+
+/**
+ * Initialize filter configuration on page load
+ */
+export async function initFilterConfig() {
+    // Load filter config when config section is visible
+    await loadFilterConfig();
+}
+
+/**
+ * Setup autofocus button event listener (call once during init)
+ */
+export function setupAutofocusButton() {
+    const autofocusBtn = document.getElementById('runAutofocusButton');
+    if (autofocusBtn) {
+        autofocusBtn.addEventListener('click', triggerAutofocus);
     }
 }
 

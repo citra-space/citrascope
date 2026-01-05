@@ -1,6 +1,6 @@
 // CitraScope Dashboard - Main Application
 import { connectWebSocket } from './websocket.js';
-import { initConfig, currentConfig } from './config.js';
+import { initConfig, currentConfig, initFilterConfig, setupAutofocusButton } from './config.js';
 import { getTasks, getLogs } from './api.js';
 
 function updateAppUrlLinks() {
@@ -139,6 +139,11 @@ function initNavigation() {
                 const section = link.getAttribute('data-section');
                 activateNav(link);
                 showSection(section);
+
+                // Reload filter config when config section is shown
+                if (section === 'config') {
+                    initFilterConfig();
+                }
             }
         });
 
@@ -512,6 +517,12 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Initialize configuration management (loads config)
     await initConfig();
 
+    // Initialize filter configuration
+    await initFilterConfig();
+
+    // Setup autofocus button (only once)
+    setupAutofocusButton();
+
     // Update app URL links from loaded config
     updateAppUrlLinks();
 
@@ -542,7 +553,9 @@ document.addEventListener('DOMContentLoaded', async function() {
 
                 if (!response.ok) {
                     console.error('Failed to toggle processing:', result);
-                    alert('Failed to toggle task processing: ' + (result.error || 'Unknown error'));
+                    // Show specific error message (e.g., "Cannot resume during autofocus")
+                    alert((result.error || 'Failed to toggle task processing') +
+                          (response.status === 409 ? '' : ' - Unknown error'));
                 }
                 // State will be updated via WebSocket broadcast within 2 seconds
             } catch (error) {

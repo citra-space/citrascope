@@ -241,6 +241,13 @@ class CitraScopeWebApp:
                 if not self.daemon:
                     return JSONResponse({"error": "Daemon not available"}, status_code=503)
 
+                # Block config changes during autofocus
+                if self.daemon.is_autofocus_in_progress():
+                    return JSONResponse(
+                        {"error": "Cannot save configuration while autofocus is running. Check logs for progress."},
+                        status_code=409,
+                    )
+
                 # Validate required fields
                 required_fields = ["personal_access_token", "telescope_id", "hardware_adapter"]
                 for field in required_fields:
@@ -385,10 +392,95 @@ class CitraScopeWebApp:
             if not self.daemon or not self.daemon.task_manager:
                 return JSONResponse({"error": "Task manager not available"}, status_code=503)
 
+            # Block resume during autofocus
+            if self.daemon.is_autofocus_in_progress():
+                return JSONResponse(
+                    {"error": "Cannot resume task processing during autofocus. Check logs for progress."},
+                    status_code=409,
+                )
+
             self.daemon.task_manager.resume()
             await self.broadcast_status()
 
             return {"status": "active", "message": "Task processing resumed"}
+
+        @self.app.get("/api/adapter/filters")
+        async def get_filters():
+            """Get current filter configuration."""
+            if not self.daemon or not self.daemon.hardware_adapter:
+                return JSONResponse({"error": "Hardware adapter not available"}, status_code=503)
+
+            if not self.daemon.hardware_adapter.supports_filter_management():
+                return JSONResponse({"error": "Adapter does not support filter management"}, status_code=404)
+
+            try:
+                filter_config = self.daemon.hardware_adapter.get_filter_config()
+                return {"filters": filter_config}
+            except Exception as e:
+                CITRASCOPE_LOGGER.error(f"Error getting filter config: {e}", exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.patch("/api/adapter/filters/{filter_id}")
+        async def update_filter(filter_id: str, update: dict):
+            """Update focus position for a specific filter."""
+            if not self.daemon or not self.daemon.hardware_adapter:
+                return JSONResponse({"error": "Hardware adapter not available"}, status_code=503)
+
+            if not self.daemon.hardware_adapter.supports_filter_management():
+                return JSONResponse({"error": "Adapter does not support filter management"}, status_code=404)
+
+            try:
+                # Validate focus_position is provided and is a valid integer within hardware limits
+                if "focus_position" not in update:
+                    return JSONResponse({"error": "focus_position is required"}, status_code=400)
+
+                focus_position = update["focus_position"]
+                if not isinstance(focus_position, int):
+                    return JSONResponse({"error": "focus_position must be an integer"}, status_code=400)
+
+                # Typical focuser range is 0-65535 (16-bit unsigned)
+                if focus_position < 0 or focus_position > 65535:
+                    return JSONResponse({"error": "focus_position must be between 0 and 65535"}, status_code=400)
+
+                # Get current filter config
+                filter_config = self.daemon.hardware_adapter.get_filter_config()
+                if filter_id not in filter_config:
+                    return JSONResponse({"error": f"Filter {filter_id} not found"}, status_code=404)
+
+                # Update via adapter interface
+                if not self.daemon.hardware_adapter.update_filter_focus(filter_id, focus_position):
+                    return JSONResponse({"error": "Failed to update filter in adapter"}, status_code=500)
+
+                # Save to settings
+                self.daemon._save_filter_config()
+
+                return {"success": True, "filter_id": filter_id, "focus_position": focus_position}
+            except ValueError:
+                return JSONResponse({"error": "Invalid filter_id format"}, status_code=400)
+            except Exception as e:
+                CITRASCOPE_LOGGER.error(f"Error updating filter: {e}", exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.post("/api/adapter/autofocus")
+        async def trigger_autofocus():
+            """Trigger autofocus routine."""
+            if not self.daemon:
+                return JSONResponse({"error": "Daemon not available"}, status_code=503)
+
+            if not self.daemon.hardware_adapter or not self.daemon.hardware_adapter.supports_filter_management():
+                return JSONResponse({"error": "Filter management not supported"}, status_code=404)
+
+            try:
+                # Run autofocus in a separate thread to avoid blocking the async event loop
+                # Autofocus can take several minutes (slewing + focusing multiple filters)
+                success, error = await asyncio.to_thread(self.daemon.trigger_autofocus)
+                if success:
+                    return {"success": True, "message": "Autofocus completed successfully"}
+                else:
+                    return JSONResponse({"error": error}, status_code=500)
+            except Exception as e:
+                CITRASCOPE_LOGGER.error(f"Error triggering autofocus: {e}", exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
 
         @self.app.websocket("/ws")
         async def websocket_endpoint(websocket: WebSocket):
