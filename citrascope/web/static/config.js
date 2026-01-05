@@ -386,7 +386,9 @@ async function saveConfiguration(event) {
 
             showConfigSuccess(message);
         } else {
-            showConfigError(result.data.error || result.data.message || 'Failed to save configuration');
+            // Check for specific error codes
+            const errorMsg = result.data.error || result.data.message || 'Failed to save configuration';
+            showConfigError(errorMsg);
         }
     } catch (error) {
         showConfigError('Failed to save configuration: ' + error.message);
@@ -564,6 +566,9 @@ async function triggerAutofocus() {
 
     if (!button || !buttonText || !buttonSpinner) return;
 
+    // Clear any previous messages
+    hideConfigMessages();
+
     // Disable button and show spinner
     button.disabled = true;
     buttonText.textContent = 'Running Autofocus...';
@@ -581,6 +586,7 @@ async function triggerAutofocus() {
             // Reload filter config to show updated focus positions
             await loadFilterConfig();
         } else {
+            // Show clear error message (e.g., if autofocus already running or other conflict)
             showConfigError(data.error || 'Autofocus failed');
         }
     } catch (error) {

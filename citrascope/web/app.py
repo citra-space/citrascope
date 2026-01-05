@@ -241,6 +241,13 @@ class CitraScopeWebApp:
                 if not self.daemon:
                     return JSONResponse({"error": "Daemon not available"}, status_code=503)
 
+                # Block config changes during autofocus
+                if self.daemon.is_autofocus_in_progress():
+                    return JSONResponse(
+                        {"error": "Cannot save configuration while autofocus is running. Check logs for progress."},
+                        status_code=409,
+                    )
+
                 # Validate required fields
                 required_fields = ["personal_access_token", "telescope_id", "hardware_adapter"]
                 for field in required_fields:
@@ -384,6 +391,13 @@ class CitraScopeWebApp:
             """Resume task processing."""
             if not self.daemon or not self.daemon.task_manager:
                 return JSONResponse({"error": "Task manager not available"}, status_code=503)
+
+            # Block resume during autofocus
+            if self.daemon.is_autofocus_in_progress():
+                return JSONResponse(
+                    {"error": "Cannot resume task processing during autofocus. Check logs for progress."},
+                    status_code=409,
+                )
 
             self.daemon.task_manager.resume()
             await self.broadcast_status()

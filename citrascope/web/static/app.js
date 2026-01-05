@@ -553,7 +553,9 @@ document.addEventListener('DOMContentLoaded', async function() {
 
                 if (!response.ok) {
                     console.error('Failed to toggle processing:', result);
-                    alert('Failed to toggle task processing: ' + (result.error || 'Unknown error'));
+                    // Show specific error message (e.g., "Cannot resume during autofocus")
+                    alert((result.error || 'Failed to toggle task processing') +
+                          (response.status === 409 ? '' : ' - Unknown error'));
                 }
                 // State will be updated via WebSocket broadcast within 2 seconds
             } catch (error) {

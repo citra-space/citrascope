@@ -98,11 +98,13 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
         for id, filter in self.filter_map.items():
             self.logger.info(f"Focusing Filter ID: {id}, Name: {filter['name']}")
-            focus_value = self._auto_focus_one_filter(id, filter["name"])
+            # Pass existing focus position to preserve it if autofocus fails
+            existing_focus = filter.get("focus_position", self.DEFAULT_FOCUS_POSITION)
+            focus_value = self._auto_focus_one_filter(id, filter["name"], existing_focus)
             self.filter_map[id]["focus_position"] = focus_value
 
     # autofocus routine
-    def _auto_focus_one_filter(self, filter_id, filter_name) -> int:
+    def _auto_focus_one_filter(self, filter_id: int, filter_name: str, existing_focus_position: int) -> int:
 
         # change to the requested filter
         correct_filter_in_place = False
@@ -140,8 +142,13 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
         if not last_completed_autofocus.get("Success"):
             self.logger.error(f"Failed to start autofocus: {last_completed_autofocus.get('Error')}")
-            self.logger.warning("Using default focus position")
-            return starting_focus_position
+            # Preserve existing focus position if it's not the default, otherwise use default
+            if existing_focus_position != self.DEFAULT_FOCUS_POSITION:
+                self.logger.warning(f"Preserving existing focus position: {existing_focus_position}")
+                return existing_focus_position
+            else:
+                self.logger.warning(f"Using default focus position: {self.DEFAULT_FOCUS_POSITION}")
+                return self.DEFAULT_FOCUS_POSITION
 
         while (
             last_completed_autofocus["Response"]["Filter"] != filter_name

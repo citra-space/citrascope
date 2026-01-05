@@ -200,6 +200,14 @@ class CitraScopeDaemon:
             CITRASCOPE_LOGGER.error(error_msg, exc_info=True)
             return False, error_msg
 
+    def is_autofocus_in_progress(self) -> bool:
+        """Check if autofocus routine is currently running.
+
+        Returns:
+            bool: True if autofocus is in progress, False otherwise
+        """
+        return self._autofocus_in_progress
+
     def _save_filter_config(self):
         """Save filter configuration from adapter to settings if supported.
 
@@ -226,6 +234,11 @@ class CitraScopeDaemon:
     def trigger_autofocus(self) -> tuple[bool, Optional[str]]:
         """Trigger autofocus routine on the hardware adapter.
 
+        Requires task processing to be manually paused before running.
+        Checks that both:
+        1. Task processing is paused
+        2. No task is currently in-flight
+
         Returns:
             Tuple of (success, error_message)
         """
@@ -238,6 +251,14 @@ class CitraScopeDaemon:
         # Prevent concurrent autofocus operations
         if self._autofocus_in_progress:
             return False, "Autofocus already in progress"
+
+        # Require task processing to be manually paused
+        if self.task_manager:
+            if self.task_manager.is_processing_active():
+                return False, "Task processing must be paused before running autofocus"
+
+            if self.task_manager.current_task_id is not None:
+                return False, "A task is currently executing. Please wait for it to complete and try again"
 
         self._autofocus_in_progress = True
         try:
