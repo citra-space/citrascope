@@ -20,10 +20,13 @@
     <div class="container">
         <header class="d-flex flex-wrap justify-content-center py-3 mb-4 border-bottom align-items-center">
             <span class="d-flex align-items-center mb-3 mb-md-0 me-md-auto link-body-emphasis text-decoration-none">
-                <span class="fs-4 d-flex align-items-center gap-2">
+                <span class="fs-4 d-flex align-items-baseline gap-2">
                     <img src="/static/img/citra.png" alt="CitraScope Logo" class="logo-img" />
                     CitraScope
-
+                    <small class="text-muted" style="font-size: 0.875rem;">
+                        <span id="headerVersion" style="cursor: pointer; user-select: none;" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Click to check for updates">v...</span>
+                        <span id="updateIndicator" class="badge bg-info text-dark ms-1" style="display: none; font-size: 0.7rem;"></span>
+                    </small>
                 </span>
             </span>
 
@@ -346,15 +349,6 @@
                     </small>
                 </div>
             </div>
-
-            <!-- Version Info -->
-            <div class="row mt-3">
-                <div class="col">
-                    <small class="text-muted">
-                        CitraScope Version: <span id="citraScopeVersion" class="text-secondary">Loading...</span>
-                    </small>
-                </div>
-            </div>
         </form>
     </div>
 
@@ -440,6 +434,53 @@
 
     </div>
 
+
+    <!-- Version Check Modal -->
+    <div class="modal fade" id="versionModal" tabindex="-1" aria-labelledby="versionModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content bg-dark text-light border-secondary">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title" id="versionModalLabel">Version Check</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="versionCheckLoading" style="text-align: center;">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Checking...</span>
+                        </div>
+                        <p class="mt-2">Checking for updates...</p>
+                    </div>
+                    <div id="versionCheckUpToDate" style="display: none;">
+                        <p class="text-success">✓ You're up to date!</p>
+                        <p>
+                            <strong>Current version:</strong> <span id="modalCurrentVersionUpToDate">-</span>
+                        </p>
+                    </div>
+                    <div id="versionCheckUpdateAvailable" style="display: none;">
+                        <p class="text-warning">A new version of CitraScope is available!</p>
+                        <p class="mb-3">
+                            <strong>Current:</strong> <span id="modalCurrentVersion">-</span><br>
+                            <strong>Latest:</strong> <span id="modalLatestVersion">-</span>
+                        </p>
+                        <p class="mb-2">To upgrade, run:</p>
+                        <pre class="bg-secondary p-2 rounded"><code>pip install -U citrascope</code></pre>
+                        <p class="mb-0">
+                            <a href="#" id="releaseNotesLink" target="_blank" class="text-info">View release notes on GitHub →</a>
+                        </p>
+                    </div>
+                    <div id="versionCheckError" style="display: none;">
+                        <p class="text-muted">Unable to check for updates. You may be offline or GitHub is unreachable.</p>
+                        <p>
+                            <strong>Current version:</strong> <span id="modalCurrentVersionError">-</span>
+                        </p>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <script type="module" src="/static/app.js"></script>
 

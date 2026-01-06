@@ -13,7 +13,154 @@ function updateAppUrlLinks() {
     });
 }
 
-// Global state for countdown
+// --- Version Checking ---
+
+/**
+ * Compare two semantic version strings
+ * Returns: 1 if v1 > v2, -1 if v1 < v2, 0 if equal
+ */
+function compareVersions(v1, v2) {
+    // Strip 'v' prefix if present
+    v1 = v1.replace(/^v/, '');
+    v2 = v2.replace(/^v/, '');
+
+    const parts1 = v1.split('.').map(n => parseInt(n) || 0);
+    const parts2 = v2.split('.').map(n => parseInt(n) || 0);
+
+    const maxLen = Math.max(parts1.length, parts2.length);
+
+    for (let i = 0; i < maxLen; i++) {
+        const num1 = parts1[i] || 0;
+        const num2 = parts2[i] || 0;
+
+        if (num1 > num2) return 1;
+        if (num1 < num2) return -1;
+    }
+
+    return 0;
+}
+
+/**
+ * Fetch and display current version
+ */
+async function fetchVersion() {
+    try {
+        const response = await fetch('/api/version');
+        const data = await response.json();
+
+        // Update header version
+        const headerVersionEl = document.getElementById('headerVersion');
+
+        if (headerVersionEl && data.version) {
+            // Show "dev" for development, "v" prefix for releases
+            if (data.version === 'development') {
+                headerVersionEl.textContent = 'dev';
+            } else {
+                headerVersionEl.textContent = 'v' + data.version;
+            }
+        }
+    } catch (error) {
+        console.error('Error fetching version:', error);
+        const headerVersionEl = document.getElementById('headerVersion');
+
+        if (headerVersionEl) {
+            headerVersionEl.textContent = 'v?';
+        }
+    }
+}
+
+/**
+ * Check for available updates from GitHub
+ * Returns the check result for modal display
+ */
+async function checkForUpdates() {
+    try {
+        // Get current version
+        const versionResponse = await fetch('/api/version');
+        const versionData = await versionResponse.json();
+        const currentVersion = versionData.version;
+
+        // Check GitHub for latest release
+        const githubResponse = await fetch('https://api.github.com/repos/citra-space/citrascope/releases/latest');
+        if (!githubResponse.ok) {
+            return { status: 'error', currentVersion };
+        }
+
+        const releaseData = await githubResponse.json();
+        const latestVersion = releaseData.tag_name.replace(/^v/, '');
+        const releaseUrl = releaseData.html_url;
+
+        // Skip comparison for development versions
+        if (currentVersion === 'development' || currentVersion === 'unknown') {
+            return { status: 'up-to-date', currentVersion };
+        }
+
+        // Compare versions
+        if (compareVersions(latestVersion, currentVersion) > 0) {
+            // Update available - show indicator badge with version
+            const indicator = document.getElementById('updateIndicator');
+            if (indicator) {
+                indicator.textContent = latestVersion + ' Available!';
+                indicator.style.display = 'inline-block';
+            }
+
+            return {
+                status: 'update-available',
+                currentVersion,
+                latestVersion,
+                releaseUrl
+            };
+        } else {
+            // Up to date - hide indicator badge
+            const indicator = document.getElementById('updateIndicator');
+            if (indicator) {
+                indicator.style.display = 'none';
+            }
+
+            return { status: 'up-to-date', currentVersion };
+        }
+    } catch (error) {
+        // Network error
+        console.debug('Update check failed:', error);
+        return { status: 'error', currentVersion: 'unknown' };
+    }
+}
+
+/**
+ * Show version check modal with results
+ */
+async function showVersionModal() {
+    const modal = new bootstrap.Modal(document.getElementById('versionModal'));
+    modal.show();
+
+    // Show loading state
+    document.getElementById('versionCheckLoading').style.display = 'block';
+    document.getElementById('versionCheckUpToDate').style.display = 'none';
+    document.getElementById('versionCheckUpdateAvailable').style.display = 'none';
+    document.getElementById('versionCheckError').style.display = 'none';
+
+    // Perform check
+    const result = await checkForUpdates();
+
+    // Hide loading
+    document.getElementById('versionCheckLoading').style.display = 'none';
+
+    // Show appropriate result
+    if (result.status === 'update-available') {
+        document.getElementById('modalCurrentVersion').textContent = 'v' + result.currentVersion;
+        document.getElementById('modalLatestVersion').textContent = 'v' + result.latestVersion;
+        document.getElementById('releaseNotesLink').href = result.releaseUrl;
+        document.getElementById('versionCheckUpdateAvailable').style.display = 'block';
+    } else if (result.status === 'up-to-date') {
+        document.getElementById('modalCurrentVersionUpToDate').textContent = result.currentVersion === 'development' ? 'development' : 'v' + result.currentVersion;
+        document.getElementById('versionCheckUpToDate').style.display = 'block';
+    } else {
+        document.getElementById('modalCurrentVersionError').textContent = result.currentVersion === 'development' ? 'development' : result.currentVersion;
+        document.getElementById('versionCheckError').style.display = 'block';
+    }
+}
+
+// --- Task Management ---
 let nextTaskStartTime = null;
 let countdownInterval = null;
 let isTaskActive = false;
@@ -525,6 +672,19 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     // Update app URL links from loaded config
     updateAppUrlLinks();
+
+    // Fetch and display version
+    fetchVersion();
+
+    // Check for updates on load and every hour
+    checkForUpdates();
+    setInterval(checkForUpdates, 3600000); // Check every hour
+
+    // Wire up version click to open modal
+    const headerVersion = document.getElementById('headerVersion');
+    if (headerVersion) {
+        headerVersion.addEventListener('click', showVersionModal);
+    }
 
     // Connect WebSocket with handlers
     connectWebSocket({
