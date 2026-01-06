@@ -686,6 +686,12 @@ document.addEventListener('DOMContentLoaded', async function() {
         headerVersion.addEventListener('click', showVersionModal);
     }
 
+    // Wire up update indicator badge click to open modal
+    const updateIndicator = document.getElementById('updateIndicator');
+    if (updateIndicator) {
+        updateIndicator.addEventListener('click', showVersionModal);
+    }
+
     // Connect WebSocket with handlers
     connectWebSocket({
         onStatus: updateStatus,

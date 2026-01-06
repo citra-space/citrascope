@@ -49,6 +49,11 @@ body {
     gap: 0.5em;
 }
 
+/* Clickable elements */
+#headerVersion, #updateIndicator {
+    cursor: pointer;
+}
+
 /* Muted text color for placeholders */
 .text-muted-dark {
     color: #a0aec0;
