@@ -1,6 +1,6 @@
 [project]
 name = "citrascope"
-version = "0.5.0"
+version = "0.5.1"
 description = "Remotely control a telescope while it polls for tasks, collects and edge processes data, and delivers results and data for further processing."
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
@@ -90,7 +90,7 @@ omit = ["tests/*", "__init__.py"]
 allow-direct-references = true
 
 [tool.bumpversion]
-current_version = "0.5.0"
+current_version = "0.5.1"
 commit = true
 tag = true
 
