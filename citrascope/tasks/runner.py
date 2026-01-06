@@ -145,6 +145,11 @@ class TaskManager:
                 now = int(time.time())
                 completed = 0
                 while True:
+                    # Check pause status before starting each task
+                    with self._processing_lock:
+                        if not self._processing_active:
+                            break
+
                     with self.heap_lock:
                         if not (self.task_heap and self.task_heap[0][0] <= now):
                             break

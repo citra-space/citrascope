@@ -407,7 +407,7 @@ function updateProcessingState(isActive) {
         icon.textContent = 'Pause';
         button.title = 'Pause task processing';
     } else {
-        statusEl.innerHTML = '<span class="badge rounded-pill bg-warning">Paused</span>';
+        statusEl.innerHTML = '<span class="badge rounded-pill bg-warning text-dark">Paused</span>';
         icon.textContent = 'Resume';
         button.title = 'Resume task processing';
     }
