@@ -25,9 +25,6 @@
                     CitraScope
 
                 </span>
-                <span class="ms-2 me-3 d-flex align-items-center status-badge-container">
-                    <span id="wsStatus"><span class="badge rounded-pill bg-secondary" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Dashboard connection status">Connecting...</span></span>
-                </span>
             </span>
 
             <ul class="nav" id="mainNav">
@@ -58,8 +55,8 @@
                         </div>
                         <div class="card-body">
                             <div class="row mb-2">
-                                <div class="col-6 fw-semibold">Hardware</div>
-                                <div class="col-6" id="hardwareAdapter">-</div>
+                                <div class="col-6 fw-semibold">Daemon</div>
+                                <div class="col-6" id="wsStatus"><span class="badge rounded-pill bg-secondary" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Dashboard connection status">Connecting...</span></div>
                             </div>
                             <div class="row mb-2">
                                 <div class="col-6 fw-semibold">Telescope</div>
@@ -87,6 +84,10 @@
                             Telescope
                         </div>
                         <div class="card-body">
+                            <div class="row mb-2">
+                                <div class="col-6 fw-semibold">Adapter</div>
+                                <div class="col-6" id="hardwareAdapter">-</div>
+                            </div>
                             <div class="row mb-2">
                                 <div class="col-6 fw-semibold">Right Ascension</div>
                                 <div class="col-6" id="telescopeRA">-</div>
