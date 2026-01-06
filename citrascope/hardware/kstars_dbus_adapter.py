@@ -61,12 +61,12 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         super().__init__(images_dir=images_dir)
         self.logger: logging.Logger = logger
         self.bus_name = kwargs.get("bus_name") or "org.kde.kstars"
-        self.bus = None
-        self.kstars = None
-        self.ekos = None
-        self.mount = None
-        self.camera = None
-        self.scheduler = None
+        self.bus: dbus.SessionBus | None = None
+        self.kstars: dbus.Interface | None = None
+        self.ekos: dbus.Interface | None = None
+        self.mount: dbus.Interface | None = None
+        self.camera: dbus.Interface | None = None
+        self.scheduler: dbus.Interface | None = None
 
     @classmethod
     def get_settings_schema(cls) -> list[SettingSchemaEntry]:
@@ -228,6 +228,8 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         if not self.mount:
             raise RuntimeError("Mount interface not connected. Call connect() first.")
 
+        assert self.bus is not None
+
         try:
             # Get the mount object for property access
             mount_obj = self.bus.get_object(self.bus_name, "/KStars/Ekos/Mount")
@@ -266,6 +268,8 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         """
         if not self.mount:
             raise RuntimeError("Mount interface not connected. Call connect() first.")
+
+        assert self.bus is not None
 
         try:
             # Get the mount object for property access

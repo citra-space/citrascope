@@ -9,6 +9,8 @@ This project is a Python package for interacting with astronomical data and serv
 - Write docstrings for all modules, classes, and functions.
 - Prefer logging via the custom logger in `citrascope/logging/` over print statements.
 - Organize code into logical modules as per the existing structure.
+- **Type hints for nullable attributes**: Use `Type | None` for class attributes that start as `None` and are initialized later (e.g., `self.bus: dbus.SessionBus | None = None`).
+- **Satisfy type checkers**: When attributes can be None but are guaranteed non-None in certain methods (e.g., after successful connection), use `assert attribute is not None` to inform type checkers, or use explicit checks if the validation is critical for production.
 
 ## Directory Structure
 - `citrascope/api/`: API client code
