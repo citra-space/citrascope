@@ -22,12 +22,3 @@ repos:
   rev: 25.9.0
   hooks:
     - id: black
-
-- repo: local
-  hooks:
-    - id: pytest
-      name: pytest
-      entry: pytest
-      language: system
-      types: [python]
-      pass_filenames: false

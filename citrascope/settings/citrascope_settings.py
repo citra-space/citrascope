@@ -53,8 +53,8 @@ class CitraScopeSettings:
         self.log_level: str = config.get("log_level", "INFO")
         self.keep_images: bool = config.get("keep_images", False)
 
-        # Web port: CLI override if non-default, otherwise use config file
-        self.web_port: int = web_port if web_port != DEFAULT_WEB_PORT else config.get("web_port", DEFAULT_WEB_PORT)
+        # Web port: CLI-only, never loaded from or saved to config file
+        self.web_port: int = web_port
 
         # Task retry configuration
         self.max_task_retries: int = config.get("max_task_retries", 3)
@@ -90,7 +90,7 @@ class CitraScopeSettings:
         """Convert settings to dictionary for serialization.
 
         Returns:
-            Dictionary of all settings.
+            Dictionary of all settings (excluding runtime-only settings like web_port).
         """
         return {
             "host": self.host,
@@ -102,7 +102,6 @@ class CitraScopeSettings:
             "adapter_settings": self._all_adapter_settings,
             "log_level": self.log_level,
             "keep_images": self.keep_images,
-            "web_port": self.web_port,
             "max_task_retries": self.max_task_retries,
             "initial_retry_delay_seconds": self.initial_retry_delay_seconds,
             "max_retry_delay_seconds": self.max_retry_delay_seconds,
@@ -125,6 +124,9 @@ class CitraScopeSettings:
         Args:
             config: Configuration dict with flat adapter_settings for current adapter.
         """
+        # Remove runtime-only settings that should never be persisted
+        config.pop("web_port", None)
+
         # Nest incoming adapter_settings under hardware_adapter key
         adapter = config.get("hardware_adapter", self.hardware_adapter)
         if adapter:
