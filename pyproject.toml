@@ -4,7 +4,7 @@ version = "0.5.0"
 description = "Remotely control a telescope while it polls for tasks, collects and edge processes data, and delivers results and data for further processing."
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
-license = "MIT"
+license = {text = "MIT"}
 authors = [{ name = "Patrick McDavid", email = "patrick@citra.space" }]
 dependencies = [
   "click",
