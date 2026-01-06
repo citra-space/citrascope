@@ -100,7 +100,7 @@ async function checkForUpdates() {
             // Update available - show indicator badge with version
             const indicator = document.getElementById('updateIndicator');
             if (indicator) {
-                indicator.textContent = latestVersion + ' Available!';
+                indicator.textContent = `${latestVersion} Available!`;
                 indicator.style.display = 'inline-block';
             }
 
