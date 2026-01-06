@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SchedulerList version="2.6">
+  <!--
+    Ekos Scheduler Job Template for CitraScope
+
+    Placeholders to be replaced programmatically:
+    - {{JOB_NAME}}: Descriptive job name
+    - {{TARGET_RA}}: Right Ascension in hours (HH.hhhh format)
+    - {{TARGET_DEC}}: Declination in degrees (+/-DD.dddd format)
+    - {{SEQUENCE_FILE}}: Path to the ESQ sequence file
+    - {{MIN_ALTITUDE}}: Minimum altitude constraint in degrees
+  -->
+  <Job>
+    <Name>{{JOB_NAME}}</Name>
+    <Group></Group>
+    <Coordinates>
+      <J2000RA>{{TARGET_RA}}</J2000RA>
+      <J2000DE>{{TARGET_DEC}}</J2000DE>
+    </Coordinates>
+    <PositionAngle>-1</PositionAngle>
+    <Sequence>{{SEQUENCE_FILE}}</Sequence>
+    <FITSFILE></FITSFILE>
+    <StartupCondition>
+      <Condition>ASAP</Condition>
+      <CulminationOffset>0</CulminationOffset>
+    </StartupCondition>
+    <Constraints>
+      <Constraint value="{{MIN_ALTITUDE}}">MinimumAltitude</Constraint>
+      <Constraint value="false">EnforceWeather</Constraint>
+      <Constraint value="false">EnforceTwilight</Constraint>
+      <Constraint value="false">EnforceArtificialHorizon</Constraint>
+    </Constraints>
+    <CompletionCondition>
+      <Condition>Sequence</Condition>
+      <Repeat>1</Repeat>
+    </CompletionCondition>
+    <Steps>
+      <Step>Track</Step>
+      <Step>Focus</Step>
+      <Step>Align</Step>
+      <Step>Guide</Step>
+    </Steps>
+    <Priority>10</Priority>
+    <Enforced>false</Enforced>
+  </Job>
+</SchedulerList>
