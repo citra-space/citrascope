@@ -12,39 +12,5 @@
   <RefocusOnTemperatureDelta enabled='false'>1</RefocusOnTemperatureDelta>
   <RefocusEveryN enabled='false'>60</RefocusEveryN>
   <RefocusOnMeridianFlip enabled='false' />
-  <Job>
-    <Exposure>{{EXPOSURE_TIME}}</Exposure>
-    <Format>{{IMAGE_FORMAT}}</Format>
-    <Encoding>FITS</Encoding>
-    <Binning>
-      <X>{{BINNING_X}}</X>
-      <Y>{{BINNING_Y}}</Y>
-    </Binning>
-    <Frame>
-      <X>0</X>
-      <Y>0</Y>
-      <W>0</W>
-      <H>0</H>
-    </Frame>
-    <Temperature force='false'>0</Temperature>
-    <Filter>{{FILTER_NAME}}</Filter>
-    <Type>Light</Type>
-    <Count>{{FRAME_COUNT}}</Count>
-    <Delay>0</Delay>
-    <GuideDitherPerJob>0</GuideDitherPerJob>
-    <FITSDirectory>{{OUTPUT_DIR}}</FITSDirectory>
-    <PlaceholderFormat>/</PlaceholderFormat>
-    <PlaceholderSuffix>1</PlaceholderSuffix>
-    <UploadMode>0</UploadMode>
-    <Properties>
-</Properties>
-    <Calibration>
-      <PreAction>
-        <Type>1</Type>
-      </PreAction>
-      <FlatDuration dark='false'>
-        <Type>Manual</Type>
-      </FlatDuration>
-    </Calibration>
-  </Job>
+{{JOBS}}
 </SequenceQueue>

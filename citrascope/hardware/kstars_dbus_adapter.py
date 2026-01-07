@@ -242,19 +242,14 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         # Extract target info
         target_name = satellite_data.get("name", "Unknown").replace(" ", "_")
 
-        # Use '--' for no filter (Ekos convention when no filter wheel)
-        filter_name = "--" if not self.filter_wheel_name else "Luminance"
+        # Generate job blocks based on filter configuration
+        jobs_xml = self._generate_job_blocks(output_dir)
 
         # Replace placeholders
-        sequence_content = template.replace("{{EXPOSURE_TIME}}", str(self.exposure_time))
-        sequence_content = sequence_content.replace("{{FILTER_NAME}}", filter_name)
+        sequence_content = template.replace("{{JOBS}}", jobs_xml)
         sequence_content = sequence_content.replace("{{OUTPUT_DIR}}", str(output_dir))
         sequence_content = sequence_content.replace("{{TASK_ID}}", task_id)
         sequence_content = sequence_content.replace("{{TARGET_NAME}}", target_name)
-        sequence_content = sequence_content.replace("{{FRAME_COUNT}}", str(self.frame_count))
-        sequence_content = sequence_content.replace("{{BINNING_X}}", str(self.binning_x))
-        sequence_content = sequence_content.replace("{{BINNING_Y}}", str(self.binning_y))
-        sequence_content = sequence_content.replace("{{IMAGE_FORMAT}}", self.image_format)
         sequence_content = sequence_content.replace("{{CCD_NAME}}", self.ccd_name)
         sequence_content = sequence_content.replace("{{FILTER_WHEEL_NAME}}", self.filter_wheel_name)
         sequence_content = sequence_content.replace("{{OPTICAL_TRAIN}}", self.optical_train_name)
@@ -267,6 +262,94 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
 
         self.logger.info(f"Created sequence file: {sequence_file}")
         return sequence_file
+
+    def _generate_job_blocks(self, output_dir: Path) -> str:
+        """
+        Generate XML job blocks for each filter in filter_map.
+        If no filters discovered, generates single job with no filter.
+
+        Args:
+            output_dir: Base output directory for captures
+
+        Returns:
+            XML string containing one or more <Job> blocks
+        """
+        job_template = """  <Job>
+    <Exposure>{exposure}</Exposure>
+    <Format>{format}</Format>
+    <Encoding>FITS</Encoding>
+    <Binning>
+      <X>{binning_x}</X>
+      <Y>{binning_y}</Y>
+    </Binning>
+    <Frame>
+      <X>0</X>
+      <Y>0</Y>
+      <W>0</W>
+      <H>0</H>
+    </Frame>
+    <Temperature force='false'>0</Temperature>
+    <Filter>{filter_name}</Filter>
+    <Type>Light</Type>
+    <Count>{count}</Count>
+    <Delay>0</Delay>
+    <GuideDitherPerJob>0</GuideDitherPerJob>
+    <FITSDirectory>{output_dir}</FITSDirectory>
+    <PlaceholderFormat>/</PlaceholderFormat>
+    <PlaceholderSuffix>1</PlaceholderSuffix>
+    <UploadMode>0</UploadMode>
+    <Properties>
+</Properties>
+    <Calibration>
+      <PreAction>
+        <Type>1</Type>
+      </PreAction>
+      <FlatDuration dark='false'>
+        <Type>Manual</Type>
+      </FlatDuration>
+    </Calibration>
+  </Job>
+"""
+
+        jobs = []
+
+        if self.filter_map:
+            # Multi-filter mode: create one job per discovered filter
+            self.logger.info(
+                f"Generating {len(self.filter_map)} jobs for filters: "
+                f"{[f['name'] for f in self.filter_map.values()]}"
+            )
+            for filter_idx in sorted(self.filter_map.keys()):
+                filter_info = self.filter_map[filter_idx]
+                filter_name = filter_info["name"]
+
+                job_xml = job_template.format(
+                    exposure=self.exposure_time,
+                    format=self.image_format,
+                    binning_x=self.binning_x,
+                    binning_y=self.binning_y,
+                    filter_name=filter_name,
+                    count=self.frame_count,
+                    output_dir=str(output_dir),
+                )
+                jobs.append(job_xml)
+        else:
+            # Single-filter mode: use '--' for no filter
+            filter_name = "--" if not self.filter_wheel_name else "Luminance"
+            self.logger.info(f"Generating single job with filter: {filter_name}")
+
+            job_xml = job_template.format(
+                exposure=self.exposure_time,
+                format=self.image_format,
+                binning_x=self.binning_x,
+                binning_y=self.binning_y,
+                filter_name=filter_name,
+                count=self.frame_count,
+                output_dir=str(output_dir),
+            )
+            jobs.append(job_xml)
+
+        return "\n".join(jobs)
 
     def _create_scheduler_job(self, task_id: str, satellite_data: dict, sequence_file: Path) -> Path:
         """
@@ -312,7 +395,8 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
     def _wait_for_job_completion(self, timeout: int = 300, task_id: str = "", output_dir: Path = None) -> bool:
         """
         Poll the scheduler status until job completes or times out.
-        With Loop completion, we poll for images and stop when we have one.
+        With Loop completion, we poll for images and stop when we have all expected images.
+        For multi-filter sequences, waits until images from all filters are captured.
 
         Args:
             timeout: Maximum time to wait in seconds
@@ -327,7 +411,14 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
 
         assert self.bus is not None
 
-        self.logger.info(f"Waiting for scheduler job completion (timeout: {timeout}s)...")
+        # Calculate expected number of images based on filters
+        expected_filter_count = len(self.filter_map) if self.filter_map else 1
+        expected_total_images = expected_filter_count * self.frame_count
+
+        self.logger.info(
+            f"Waiting for scheduler job completion (timeout: {timeout}s, "
+            f"expecting {expected_total_images} images across {expected_filter_count} filters)..."
+        )
         start_time = time.time()
 
         # Get scheduler object for property access
@@ -345,11 +436,15 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                 # Check for images if we're using Loop completion
                 if task_id and output_dir:
                     images = self._retrieve_captured_images(task_id, output_dir)
-                    if images:
-                        self.logger.info(f"Found {len(images)} captured images, stopping scheduler")
+                    if len(images) >= expected_total_images:
+                        self.logger.info(
+                            f"Found {len(images)} images (expected {expected_total_images}), " f"stopping scheduler"
+                        )
                         self.scheduler.stop()
                         time.sleep(1)  # Give it time to stop
                         return True
+                    elif images:
+                        self.logger.debug(f"Found {len(images)}/{expected_total_images} images so far, continuing...")
 
                 # Status 0 = Idle, meaning job finished or not started
                 # If we were running and now idle, job completed
