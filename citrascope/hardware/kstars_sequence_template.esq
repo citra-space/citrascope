@@ -10,9 +10,11 @@
     - {{TASK_ID}}: Unique task identifier
     - {{TARGET_NAME}}: Target object name
     - {{FRAME_COUNT}}: Number of frames to capture
+    - {{CCD_NAME}}: CCD/Camera device name
+    - {{FILTER_WHEEL_NAME}}: Filter wheel device name (or empty)
   -->
-  <CCD>Simulator</CCD>
-  <FilterWheel>Simulator</FilterWheel>
+  <CCD>{{CCD_NAME}}</CCD>
+  <FilterWheel>{{FILTER_WHEEL_NAME}}</FilterWheel>
   <Observer>CitraScope</Observer>
   <GuiderActive>false</GuiderActive>
   <JobSequence>

@@ -17,7 +17,12 @@ class StaticTelescopeTask(AbstractBaseTelescopeTask):
             filepaths = self.hardware_adapter.take_image(self.task.id, 2.0)  # 2 second exposure
 
         if self.hardware_adapter.get_observation_strategy() == ObservationStrategy.SEQUENCE_TO_CONTROLLER:
-            # Assume the hardware adapter has already pointed the telescope and started tracking
+            # Calculate current satellite position and add to satellite_data
+            target_ra, target_dec, _, _ = self.get_target_radec_and_rates(satellite_data)
+            satellite_data["ra"] = target_ra.degrees
+            satellite_data["dec"] = target_dec.degrees
+
+            # Sequence-based adapters handle pointing and tracking themselves
             filepaths = self.hardware_adapter.perform_observation_sequence(self.task.id, satellite_data)
 
         # Take the image
