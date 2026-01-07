@@ -18,8 +18,8 @@
       <Constraint value="{{MIN_ALTITUDE}}">MinimumAltitude</Constraint>
     </Constraints>
     <CompletionCondition>
-      <Condition>Sequence</Condition>
-      <Repeat>1</Repeat>
+      <Condition>Repeat</Condition>
+      <Repeat>10</Repeat>
     </CompletionCondition>
     <Steps>
       <Step>Track</Step>

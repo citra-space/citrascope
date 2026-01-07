@@ -439,6 +439,14 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
 
             # Load the scheduler job
             try:
+                # Clear any existing jobs first to prevent state conflicts
+                try:
+                    self.scheduler.removeAllJobs()
+                    self.logger.info("Cleared existing scheduler jobs")
+                    time.sleep(0.5)  # Brief pause after clearing
+                except Exception as clear_error:
+                    self.logger.warning(f"Could not clear jobs (might not exist): {clear_error}")
+
                 success = self.scheduler.loadScheduler(str(job_file))
                 self.logger.debug(f"loadScheduler() returned: {success}")
             except Exception as dbus_error:
@@ -452,6 +460,31 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                 raise RuntimeError(f"Ekos Scheduler rejected job file: {job_file}")
 
             self.logger.info("Scheduler job loaded successfully")
+
+            # Verify what was loaded before starting
+            try:
+                scheduler_obj = self.bus.get_object(self.bus_name, "/KStars/Ekos/Scheduler")
+                props = dbus.Interface(scheduler_obj, "org.freedesktop.DBus.Properties")
+                json_jobs = props.Get("org.kde.kstars.Ekos.Scheduler", "jsonJobs")
+                self.logger.info(f"Loaded jobs: {json_jobs}")
+
+                # Parse and validate the job looks correct
+                import json
+
+                jobs = json.loads(str(json_jobs))
+                if jobs:
+                    job = jobs[0]  # We only load one job at a time
+                    self.logger.info(f"Loaded {len(jobs)} job(s):")
+                    self.logger.info(f"  Name: {job.get('name', 'Unknown')}")
+                    self.logger.info(f"  State: {job.get('state', 'Unknown')}")
+                    self.logger.info(f"  RA: {job.get('targetRA', 'N/A')}h, Dec: {job.get('targetDEC', 'N/A')}°")
+                    self.logger.info(f"  Altitude: {job.get('altitudeFormatted', 'N/A')}")
+                    self.logger.info(f"  Repeats: {job.get('repeatsRemaining', 0)}/{job.get('repeatsRequired', 0)}")
+                    self.logger.info(f"  Completed: {job.get('completedCount', 0)}")
+                else:
+                    self.logger.warning("No jobs found in scheduler after loading!")
+            except Exception as e:
+                self.logger.warning(f"Could not validate loaded jobs: {e}")
 
             # Start scheduler
             self.logger.info("Starting scheduler execution...")
