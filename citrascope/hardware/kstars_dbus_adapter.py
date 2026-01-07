@@ -1,10 +1,11 @@
+import json
 import logging
-import tempfile
+import shutil
 import time
 from pathlib import Path
 
 import dbus
-from platformdirs import user_data_dir
+from platformdirs import user_cache_dir, user_data_dir
 
 from citrascope.hardware.abstract_astro_hardware_adapter import (
     AbstractAstroHardwareAdapter,
@@ -256,7 +257,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         sequence_content = sequence_content.replace("{{OPTICAL_TRAIN}}", self.optical_train_name)
 
         # Write to temporary file
-        temp_dir = Path(tempfile.gettempdir()) / "citrascope_kstars"
+        temp_dir = Path(user_cache_dir("citrascope")) / "kstars"
         temp_dir.mkdir(exist_ok=True, parents=True)
         sequence_file = temp_dir / f"{task_id}_sequence.esq"
         sequence_file.write_text(sequence_content)
@@ -297,7 +298,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         scheduler_content = scheduler_content.replace("{{MIN_ALTITUDE}}", "0")  # 0° minimum altitude for satellites
 
         # Write to temporary file
-        temp_dir = Path(tempfile.gettempdir()) / "citrascope_kstars"
+        temp_dir = Path(user_cache_dir("citrascope")) / "kstars"
         temp_dir.mkdir(exist_ok=True, parents=True)
         job_file = temp_dir / f"{task_id}_job.esl"
         job_file.write_text(scheduler_content)
@@ -379,7 +380,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         Returns:
             List of absolute paths to captured FITS files
         """
-        self.logger.info(f"Looking for captured images in: {output_dir}")
+        self.logger.debug(f"Looking for captured images in: {output_dir}")
 
         # Check if base output directory exists
         if not output_dir.exists():
@@ -400,7 +401,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
             self.logger.warning(f"Task directory does not exist: {task_dir}")
 
             # Search entire output directory for any FITS files with task_id
-            self.logger.info(f"Searching entire output directory for task_id pattern...")
+            self.logger.debug(f"Searching entire output directory for task_id pattern...")
             all_fits = list(output_dir.rglob("*.fits")) + list(output_dir.rglob("*.fit"))
             self.logger.debug(f"Found {len(all_fits)} total FITS files in output directory")
 
@@ -462,8 +463,6 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
             # Clear task-specific directory to prevent Ekos from thinking job is already done
             task_output_dir = output_dir / task_id
             if task_output_dir.exists():
-                import shutil
-
                 shutil.rmtree(task_output_dir)
                 self.logger.info(f"Cleared existing output directory: {task_output_dir}")
 
@@ -533,8 +532,6 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                 self.logger.info(f"Loaded jobs: {json_jobs}")
 
                 # Parse and validate the job looks correct
-                import json
-
                 jobs = json.loads(str(json_jobs))
                 if jobs:
                     job = jobs[0]  # We only load one job at a time
@@ -580,6 +577,17 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                 raise RuntimeError(f"No images captured for task {task_id}")
 
             self.logger.info(f"Observation sequence complete: {len(image_paths)} images captured")
+
+            # Cleanup temp files after successful observation
+            try:
+                if sequence_file.exists():
+                    sequence_file.unlink()
+                if job_file.exists():
+                    job_file.unlink()
+                self.logger.debug(f"Cleaned up temp files: {sequence_file.name}, {job_file.name}")
+            except Exception as cleanup_error:
+                self.logger.warning(f"Failed to cleanup temp files: {cleanup_error}")
+
             return image_paths
 
         except Exception as e:
