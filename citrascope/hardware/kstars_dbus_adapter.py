@@ -360,8 +360,8 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         # Find all FITS files in task directory and subdirectories
         fits_files = list(task_dir.rglob("*.fits")) + list(task_dir.rglob("*.fit"))
 
-        # Filter for files containing the task_id in the name
-        matching_files = [str(f.absolute()) for f in fits_files if task_id in f.name]
+        # Since files are in task-specific directory, we don't need to filter by filename
+        matching_files = [str(f.absolute()) for f in fits_files]
 
         self.logger.info(f"Found {len(matching_files)} captured images for task {task_id}")
         for img_path in matching_files:
@@ -405,10 +405,12 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                 shutil.rmtree(task_output_dir)
                 self.logger.info(f"Cleared existing output directory: {task_output_dir}")
 
-            self.logger.info(f"Output directory: {output_dir}")
+            # Create task directory for this observation
+            task_output_dir.mkdir(exist_ok=True, parents=True)
+            self.logger.info(f"Output directory: {task_output_dir}")
 
-            # Create sequence and scheduler job files
-            sequence_file = self._create_sequence_file(task_id, satellite_data, output_dir)
+            # Create sequence and scheduler job files (use task-specific directory)
+            sequence_file = self._create_sequence_file(task_id, satellite_data, task_output_dir)
             job_file = self._create_scheduler_job(task_id, satellite_data, sequence_file)
 
             # Load scheduler job via DBus
