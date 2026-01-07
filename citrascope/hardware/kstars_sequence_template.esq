@@ -23,8 +23,8 @@
     <Frame>
       <X>0</X>
       <Y>0</Y>
-      <W>20000</W>
-      <H>20000</H>
+      <W>0</W>
+      <H>0</H>
     </Frame>
     <Temperature force='false'>0</Temperature>
     <Filter>{{FILTER_NAME}}</Filter>
