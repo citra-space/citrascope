@@ -66,6 +66,14 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         self.ccd_name = kwargs.get("ccd_name") or "CCD Simulator"
         self.filter_wheel_name = kwargs.get("filter_wheel_name") or ""
         self.optical_train_name = kwargs.get("optical_train_name") or "Primary"
+
+        # Capture parameters
+        self.exposure_time = kwargs.get("exposure_time", 5.0)
+        self.frame_count = kwargs.get("frame_count", 1)
+        self.binning_x = kwargs.get("binning_x", 1)
+        self.binning_y = kwargs.get("binning_y", 1)
+        self.image_format = kwargs.get("image_format", "Mono")
+
         self.bus: dbus.SessionBus | None = None
         self.kstars: dbus.Interface | None = None
         self.ekos: dbus.Interface | None = None
@@ -114,6 +122,60 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                 "description": "Name of the optical train in your Ekos profile (check Ekos logs on connect for available trains)",
                 "required": False,
                 "placeholder": "Primary",
+            },
+            {
+                "name": "exposure_time",
+                "friendly_name": "Exposure Time (seconds)",
+                "type": "float",
+                "default": 1.0,
+                "description": "Exposure duration in seconds for each frame",
+                "required": False,
+                "placeholder": "1.0",
+                "min": 0.001,
+                "max": 300.0,
+            },
+            {
+                "name": "frame_count",
+                "friendly_name": "Frame Count",
+                "type": "int",
+                "default": 1,
+                "description": "Number of frames to capture per observation",
+                "required": False,
+                "placeholder": "1",
+                "min": 1,
+                "max": 100,
+            },
+            {
+                "name": "binning_x",
+                "friendly_name": "Binning X",
+                "type": "int",
+                "default": 1,
+                "description": "Horizontal pixel binning (1=no binning, 2=2x2, etc.)",
+                "required": False,
+                "placeholder": "1",
+                "min": 1,
+                "max": 4,
+            },
+            {
+                "name": "binning_y",
+                "friendly_name": "Binning Y",
+                "type": "int",
+                "default": 1,
+                "description": "Vertical pixel binning (1=no binning, 2=2x2, etc.)",
+                "required": False,
+                "placeholder": "1",
+                "min": 1,
+                "max": 4,
+            },
+            {
+                "name": "image_format",
+                "friendly_name": "Image Format",
+                "type": "str",
+                "default": "Mono",
+                "description": "Camera image format (Mono for monochrome, RGGB/RGB for color cameras)",
+                "required": False,
+                "placeholder": "Mono",
+                "options": ["Mono", "RGGB", "RGB"],
             },
         ]
 
@@ -176,19 +238,19 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         # Extract target info
         target_name = satellite_data.get("name", "Unknown").replace(" ", "_")
 
-        # TODO: Support multiple filters - for now use single exposure
-        exposure_time = 5.0  # seconds
         # Use '--' for no filter (Ekos convention when no filter wheel)
         filter_name = "--" if not self.filter_wheel_name else "Luminance"
-        frame_count = 1
 
         # Replace placeholders
-        sequence_content = template.replace("{{EXPOSURE_TIME}}", str(exposure_time))
+        sequence_content = template.replace("{{EXPOSURE_TIME}}", str(self.exposure_time))
         sequence_content = sequence_content.replace("{{FILTER_NAME}}", filter_name)
         sequence_content = sequence_content.replace("{{OUTPUT_DIR}}", str(output_dir))
         sequence_content = sequence_content.replace("{{TASK_ID}}", task_id)
         sequence_content = sequence_content.replace("{{TARGET_NAME}}", target_name)
-        sequence_content = sequence_content.replace("{{FRAME_COUNT}}", str(frame_count))
+        sequence_content = sequence_content.replace("{{FRAME_COUNT}}", str(self.frame_count))
+        sequence_content = sequence_content.replace("{{BINNING_X}}", str(self.binning_x))
+        sequence_content = sequence_content.replace("{{BINNING_Y}}", str(self.binning_y))
+        sequence_content = sequence_content.replace("{{IMAGE_FORMAT}}", self.image_format)
         sequence_content = sequence_content.replace("{{CCD_NAME}}", self.ccd_name)
         sequence_content = sequence_content.replace("{{FILTER_WHEEL_NAME}}", self.filter_wheel_name)
         sequence_content = sequence_content.replace("{{OPTICAL_TRAIN}}", self.optical_train_name)

@@ -14,11 +14,11 @@
   <RefocusOnMeridianFlip enabled='false' />
   <Job>
     <Exposure>{{EXPOSURE_TIME}}</Exposure>
-    <Format>Mono</Format>
+    <Format>{{IMAGE_FORMAT}}</Format>
     <Encoding>FITS</Encoding>
     <Binning>
-      <X>1</X>
-      <Y>1</Y>
+      <X>{{BINNING_X}}</X>
+      <Y>{{BINNING_Y}}</Y>
     </Binning>
     <Frame>
       <X>0</X>
