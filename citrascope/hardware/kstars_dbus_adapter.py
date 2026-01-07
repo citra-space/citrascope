@@ -232,9 +232,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         scheduler_content = scheduler_content.replace("{{TARGET_RA}}", f"{ra_hours:.6f}")
         scheduler_content = scheduler_content.replace("{{TARGET_DEC}}", f"{dec_deg:.6f}")
         scheduler_content = scheduler_content.replace("{{SEQUENCE_FILE}}", str(sequence_file))
-        scheduler_content = scheduler_content.replace(
-            "{{MIN_ALTITUDE}}", "15"
-        )  # 15° minimum altitude (reasonable for most observations)
+        scheduler_content = scheduler_content.replace("{{MIN_ALTITUDE}}", "0")  # 0° minimum altitude for satellites
 
         # Write to temporary file
         temp_dir = Path(tempfile.gettempdir()) / "citrascope_kstars"

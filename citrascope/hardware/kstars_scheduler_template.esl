@@ -16,12 +16,10 @@
     </StartupCondition>
     <Constraints>
       <Constraint value="{{MIN_ALTITUDE}}">MinimumAltitude</Constraint>
-      <Constraint value="false">EnforceWeather</Constraint>
-      <Constraint value="false">EnforceTwilight</Constraint>
-      <Constraint value="false">EnforceArtificialHorizon</Constraint>
     </Constraints>
     <CompletionCondition>
-      <Condition>Loop</Condition>
+      <Condition>Sequence</Condition>
+      <Repeat>1</Repeat>
     </CompletionCondition>
     <Steps>
       <Step>Track</Step>
