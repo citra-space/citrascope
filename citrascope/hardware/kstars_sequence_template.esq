@@ -1,60 +1,50 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<SequenceQueue version="2.6">
-  <!--
-    Ekos Capture Sequence Template for CitraScope
-
-    Placeholders to be replaced programmatically:
-    - {{EXPOSURE_TIME}}: Exposure duration in seconds
-    - {{FILTER_NAME}}: Filter name (e.g., "Luminance", "Red", "Green", "Blue")
-    - {{OUTPUT_DIR}}: Base output directory
-    - {{TASK_ID}}: Unique task identifier
-    - {{TARGET_NAME}}: Target object name
-    - {{FRAME_COUNT}}: Number of frames to capture
-    - {{CCD_NAME}}: CCD/Camera device name
-    - {{FILTER_WHEEL_NAME}}: Filter wheel device name (or empty)
-    - {{OPTICAL_TRAIN}}: Optical train name (e.g., "Primary")
-  -->
-  <OpticalTrain>{{OPTICAL_TRAIN}}</OpticalTrain>
-  <CCD>{{CCD_NAME}}</CCD>
-  <FilterWheel>{{FILTER_WHEEL_NAME}}</FilterWheel>
+<SequenceQueue version='2.6'>
   <Observer>CitraScope</Observer>
-  <GuiderActive>false</GuiderActive>
-  <JobSequence>
-    <Job>
-      <Exposure>{{EXPOSURE_TIME}}</Exposure>
-      <Binning>
-        <X>1</X>
-        <Y>1</Y>
-      </Binning>
-      <Frame>
-        <X>0</X>
-        <Y>0</Y>
-        <W>0</W>
-        <H>0</H>
-      </Frame>
-      <Temperature force="false">-10</Temperature>
-      <Filter>{{FILTER_NAME}}</Filter>
-      <Type>Light</Type>
-      <Prefix>
-        <RawPrefix>{{TARGET_NAME}}_{{TASK_ID}}_{{FILTER_NAME}}</RawPrefix>
-        <FilterEnabled>false</FilterEnabled>
-        <ExpEnabled>true</ExpEnabled>
-        <TimestampEnabled>true</TimestampEnabled>
-      </Prefix>
-      <Count>{{FRAME_COUNT}}</Count>
-      <Delay>0</Delay>
-      <FITSDirectory>{{OUTPUT_DIR}}/{{TASK_ID}}/{{FILTER_NAME}}</FITSDirectory>
-      <UploadMode>local</UploadMode>
-      <FormatIndex>0</FormatIndex>
-      <Properties/>
-      <Calibration>
-        <FlatSource>
-          <Type>Manual</Type>
-        </FlatSource>
-      </Calibration>
-      <Gain>-1</Gain>
-      <Offset>-1</Offset>
-      <ISOIndex>-1</ISOIndex>
-    </Job>
-  </JobSequence>
+  <GuideDeviation enabled='false'>2</GuideDeviation>
+  <GuideStartDeviation enabled='false'>2</GuideStartDeviation>
+  <HFRCheck enabled='false'>
+    <HFRDeviation>0.5</HFRDeviation>
+    <HFRCheckAlgorithm>0</HFRCheckAlgorithm>
+    <HFRCheckThreshold>10</HFRCheckThreshold>
+    <HFRCheckFrames>1</HFRCheckFrames>
+  </HFRCheck>
+  <RefocusOnTemperatureDelta enabled='false'>1</RefocusOnTemperatureDelta>
+  <RefocusEveryN enabled='false'>60</RefocusEveryN>
+  <RefocusOnMeridianFlip enabled='false' />
+  <Job>
+    <Exposure>{{EXPOSURE_TIME}}</Exposure>
+    <Format>Mono</Format>
+    <Encoding>FITS</Encoding>
+    <Binning>
+      <X>1</X>
+      <Y>1</Y>
+    </Binning>
+    <Frame>
+      <X>0</X>
+      <Y>0</Y>
+      <W>20000</W>
+      <H>20000</H>
+    </Frame>
+    <Temperature force='false'>0</Temperature>
+    <Filter>{{FILTER_NAME}}</Filter>
+    <Type>Light</Type>
+    <Count>{{FRAME_COUNT}}</Count>
+    <Delay>0</Delay>
+    <GuideDitherPerJob>0</GuideDitherPerJob>
+    <FITSDirectory>{{OUTPUT_DIR}}</FITSDirectory>
+    <PlaceholderFormat>/</PlaceholderFormat>
+    <PlaceholderSuffix>1</PlaceholderSuffix>
+    <UploadMode>0</UploadMode>
+    <Properties>
+</Properties>
+    <Calibration>
+      <PreAction>
+        <Type>1</Type>
+      </PreAction>
+      <FlatDuration dark='false'>
+        <Type>Manual</Type>
+      </FlatDuration>
+    </Calibration>
+  </Job>
 </SequenceQueue>
