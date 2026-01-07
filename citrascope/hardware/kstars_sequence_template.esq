@@ -12,7 +12,9 @@
     - {{FRAME_COUNT}}: Number of frames to capture
     - {{CCD_NAME}}: CCD/Camera device name
     - {{FILTER_WHEEL_NAME}}: Filter wheel device name (or empty)
+    - {{OPTICAL_TRAIN}}: Optical train name (e.g., "Primary")
   -->
+  <OpticalTrain>{{OPTICAL_TRAIN}}</OpticalTrain>
   <CCD>{{CCD_NAME}}</CCD>
   <FilterWheel>{{FILTER_WHEEL_NAME}}</FilterWheel>
   <Observer>CitraScope</Observer>

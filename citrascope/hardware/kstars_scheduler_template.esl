@@ -1,15 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <SchedulerList version="2.6">
-  <!--
-    Ekos Scheduler Job Template for CitraScope
-
-    Placeholders to be replaced programmatically:
-    - {{JOB_NAME}}: Descriptive job name
-    - {{TARGET_RA}}: Right Ascension in hours (HH.hhhh format)
-    - {{TARGET_DEC}}: Declination in degrees (+/-DD.dddd format)
-    - {{SEQUENCE_FILE}}: Path to the ESQ sequence file
-    - {{MIN_ALTITUDE}}: Minimum altitude constraint in degrees
-  -->
   <Job>
     <Name>{{JOB_NAME}}</Name>
     <Group></Group>
@@ -31,16 +21,12 @@
       <Constraint value="false">EnforceArtificialHorizon</Constraint>
     </Constraints>
     <CompletionCondition>
-      <Condition>Sequence</Condition>
-      <Repeat>1</Repeat>
+      <Condition>Loop</Condition>
     </CompletionCondition>
     <Steps>
       <Step>Track</Step>
-      <Step>Focus</Step>
-      <Step>Align</Step>
-      <Step>Guide</Step>
     </Steps>
     <Priority>10</Priority>
-    <Enforced>false</Enforced>
+    <Enforced>true</Enforced>
   </Job>
 </SchedulerList>

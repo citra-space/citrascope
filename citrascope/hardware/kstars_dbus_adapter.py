@@ -65,6 +65,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         self.bus_name = kwargs.get("bus_name") or "org.kde.kstars"
         self.ccd_name = kwargs.get("ccd_name") or "CCD Simulator"
         self.filter_wheel_name = kwargs.get("filter_wheel_name") or ""
+        self.optical_train_name = kwargs.get("optical_train_name") or "Primary"
         self.bus: dbus.SessionBus | None = None
         self.kstars: dbus.Interface | None = None
         self.ekos: dbus.Interface | None = None
@@ -104,6 +105,15 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                 "description": "Name of the filter wheel device (leave empty if no filter wheel)",
                 "required": False,
                 "placeholder": "Filter Simulator",
+            },
+            {
+                "name": "optical_train_name",
+                "friendly_name": "Optical Train Name",
+                "type": "str",
+                "default": "Primary",
+                "description": "Name of the optical train in your Ekos profile (check Ekos logs on connect for available trains)",
+                "required": False,
+                "placeholder": "Primary",
             },
         ]
 
@@ -181,6 +191,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         sequence_content = sequence_content.replace("{{FRAME_COUNT}}", str(frame_count))
         sequence_content = sequence_content.replace("{{CCD_NAME}}", self.ccd_name)
         sequence_content = sequence_content.replace("{{FILTER_WHEEL_NAME}}", self.filter_wheel_name)
+        sequence_content = sequence_content.replace("{{OPTICAL_TRAIN}}", self.optical_train_name)
 
         # Write to temporary file
         temp_dir = Path(tempfile.gettempdir()) / "citrascope_kstars"
@@ -234,12 +245,15 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         self.logger.info(f"Created scheduler job: {job_file}")
         return job_file
 
-    def _wait_for_job_completion(self, timeout: int = 300) -> bool:
+    def _wait_for_job_completion(self, timeout: int = 300, task_id: str = "", output_dir: Path = None) -> bool:
         """
         Poll the scheduler status until job completes or times out.
+        With Loop completion, we poll for images and stop when we have one.
 
         Args:
             timeout: Maximum time to wait in seconds
+            task_id: Task identifier for image detection
+            output_dir: Output directory for image detection
 
         Returns:
             True if job completed successfully, False otherwise
@@ -264,13 +278,22 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
 
                 self.logger.debug(f"Scheduler status: {status}, Current job: {current_job}")
 
+                # Check for images if we're using Loop completion
+                if task_id and output_dir:
+                    images = self._retrieve_captured_images(task_id, output_dir)
+                    if images:
+                        self.logger.info(f"Found {len(images)} captured images, stopping scheduler")
+                        self.scheduler.stop()
+                        time.sleep(1)  # Give it time to stop
+                        return True
+
                 # Status 0 = Idle, meaning job finished or not started
                 # If we were running and now idle, job completed
                 if status == 0 and current_job == "":
                     self.logger.info("Scheduler job completed")
                     return True
 
-                time.sleep(2)  # Poll every 2 seconds
+                time.sleep(5)  # Poll every 5 seconds (slower since we're checking files)
 
             except dbus.DBusException as e:
                 if "ServiceUnknown" in str(e) or "NoReply" in str(e):
@@ -451,8 +474,8 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
             except Exception as e:
                 self.logger.debug(f"Could not read scheduler logs: {e}")
 
-            # Wait for completion
-            if not self._wait_for_job_completion(timeout=300):
+            # Wait for completion (with Loop mode, this polls for images and stops when found)
+            if not self._wait_for_job_completion(timeout=300, task_id=task_id, output_dir=output_dir):
                 raise RuntimeError("Scheduler job did not complete in time")
 
             # Retrieve captured images
