@@ -75,6 +75,9 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         self.binning_y = kwargs.get("binning_y", 1)
         self.image_format = kwargs.get("image_format", "Mono")
 
+        # Filter management
+        self.filter_map: dict[int, dict[str, any]] = {}
+
         self.bus: dbus.SessionBus | None = None
         self.kstars: dbus.Interface | None = None
         self.ekos: dbus.Interface | None = None
@@ -663,6 +666,9 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
             # Validate devices and imaging train
             self._validate_devices()
 
+            # Discover available filters (non-fatal if fails)
+            self.discover_filters()
+
             self.logger.info("Successfully connected to KStars via DBus")
             return True
 
@@ -689,6 +695,130 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         except Exception as e:
             self.logger.warning(f"Could not read Ekos devices: {e}")
             # Non-fatal - continue with defaults
+
+    def discover_filters(self):
+        """Discover available filters from Ekos filter wheel via INDI interface.
+
+        This is called during connect() to populate filter_map.
+        Uses INDI interface to query FILTER_NAME properties for each slot.
+        If no filter wheel is configured or discovery fails, filter_map remains empty
+        and adapter falls back to single-filter behavior.
+        """
+        try:
+            if not self.bus:
+                self.logger.debug("Cannot discover filters: DBus not connected")
+                return
+
+            self.logger.info("Attempting to discover filters...")
+
+            # Get filter wheel device name from Capture module
+            capture_obj = self.bus.get_object(self.bus_name, "/KStars/Ekos/Capture")
+            capture_props = dbus.Interface(capture_obj, "org.freedesktop.DBus.Properties")
+
+            try:
+                filter_wheel_name = capture_props.Get("org.kde.kstars.Ekos.Capture", "filterWheel")
+                if not filter_wheel_name or filter_wheel_name == "--":
+                    self.logger.info("No filter wheel configured in Capture module")
+                    return
+                self.logger.info(f"Filter wheel detected: {filter_wheel_name}")
+            except Exception as e:
+                self.logger.debug(f"Could not get filter wheel name: {e}")
+                return
+
+            # Use INDI interface to query filter properties
+            indi_obj = self.bus.get_object(self.bus_name, "/KStars/INDI")
+            indi_iface = dbus.Interface(indi_obj, "org.kde.kstars.INDI")
+
+            # Get all properties for the filter wheel device
+            properties = indi_iface.getProperties(filter_wheel_name)
+
+            # Find FILTER_NAME properties (FILTER_SLOT_NAME_1, FILTER_SLOT_NAME_2, etc.)
+            filter_slots = []
+            for prop in properties:
+                if "FILTER_NAME.FILTER_SLOT_NAME_" in prop:
+                    slot_num = prop.split("_")[-1]
+                    try:
+                        filter_slots.append(int(slot_num))
+                    except ValueError:
+                        continue
+
+            if not filter_slots:
+                self.logger.warning(f"No FILTER_NAME properties found for {filter_wheel_name}")
+                return
+
+            # Query each filter slot name
+            filter_slots.sort()
+            for slot_num in filter_slots:
+                try:
+                    filter_name = indi_iface.getText(filter_wheel_name, "FILTER_NAME", f"FILTER_SLOT_NAME_{slot_num}")
+                    # Use 0-based indexing for filter_map (slot 1 -> index 0)
+                    self.filter_map[slot_num - 1] = {
+                        "name": filter_name,
+                        "focus_position": 0,  # Will be updated via update_filter_focus()
+                    }
+                    self.logger.debug(f"Filter slot {slot_num}: {filter_name}")
+                except Exception as e:
+                    self.logger.warning(f"Could not read filter slot {slot_num}: {e}")
+
+            if self.filter_map:
+                self.logger.info(
+                    f"Discovered {len(self.filter_map)} filters: " f"{[f['name'] for f in self.filter_map.values()]}"
+                )
+            else:
+                self.logger.warning("No filters discovered from filter wheel")
+
+        except Exception as e:
+            self.logger.info(f"Filter discovery failed (non-fatal): {e}")
+            # Leave filter_map empty, use single-filter mode
+
+    def supports_filter_management(self) -> bool:
+        """Indicates whether this adapter supports filter/focus management.
+
+        Returns:
+            bool: True if filters were discovered, False otherwise.
+        """
+        return bool(self.filter_map)
+
+    def get_filter_config(self) -> dict[str, dict[str, any]]:
+        """Get the current filter configuration including focus positions.
+
+        Returns:
+            dict: Dictionary mapping filter IDs (as strings) to FilterConfig.
+                  Each FilterConfig contains:
+                  - name (str): Filter name
+                  - focus_position (int): Focuser position for this filter
+
+        Example:
+            {
+                "0": {"name": "Red", "focus_position": 9000},
+                "1": {"name": "Green", "focus_position": 9050}
+            }
+        """
+        # Convert 0-based integer keys to strings for the web interface
+        return {str(k): v for k, v in self.filter_map.items()}
+
+    def update_filter_focus(self, filter_id: str, focus_position: int) -> bool:
+        """Update the focus position for a specific filter.
+
+        Args:
+            filter_id: Filter ID as string (0-based index)
+            focus_position: New focus position in steps
+
+        Returns:
+            bool: True if update was successful, False otherwise
+        """
+        try:
+            idx = int(filter_id)
+            if idx in self.filter_map:
+                self.filter_map[idx]["focus_position"] = focus_position
+                self.logger.info(f"Updated filter '{self.filter_map[idx]['name']}' focus position to {focus_position}")
+                return True
+            else:
+                self.logger.warning(f"Filter ID {filter_id} not found in filter_map")
+                return False
+        except (ValueError, KeyError) as e:
+            self.logger.error(f"Failed to update filter focus: {e}")
+            return False
 
     def disconnect(self):
         raise NotImplementedError
