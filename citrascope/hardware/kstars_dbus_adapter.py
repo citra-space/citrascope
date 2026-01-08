@@ -305,8 +305,8 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
     <Delay>0</Delay>
     <GuideDitherPerJob>0</GuideDitherPerJob>
     <FITSDirectory>{output_dir}</FITSDirectory>
-    <PlaceholderFormat>/</PlaceholderFormat>
-    <PlaceholderSuffix>1</PlaceholderSuffix>
+    <PlaceholderFormat>%t_%F</PlaceholderFormat>
+    <PlaceholderSuffix>0</PlaceholderSuffix>
     <UploadMode>0</UploadMode>
     <Properties>
 </Properties>
