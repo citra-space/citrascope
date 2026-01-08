@@ -275,16 +275,18 @@ function collectAdapterSettings() {
             value = input.value;
         }
 
-        // Type conversion
-        if (value !== '' && value !== null) {
-            if (fieldType === 'int') {
-                value = parseInt(value, 10);
-            } else if (fieldType === 'float') {
-                value = parseFloat(value);
-            } else if (fieldType === 'bool') {
-                // Already handled above
-            }
+        // Skip empty values for non-checkbox fields (will use backend defaults)
+        if (input.type !== 'checkbox' && (value === '' || value === null || value === undefined)) {
+            return;
         }
+
+        // Type conversion
+        if (fieldType === 'int') {
+            value = parseInt(value, 10);
+        } else if (fieldType === 'float') {
+            value = parseFloat(value);
+        }
+        // bool type already handled above
 
         settings[fieldName] = value;
     });
@@ -389,6 +391,17 @@ function showConfigError(message) {
 }
 
 /**
+ * Show configuration message (can be error or success)
+ */
+function showConfigMessage(message, type = 'danger') {
+    if (type === 'danger') {
+        showConfigError(message);
+    } else {
+        showConfigSuccess(message);
+    }
+}
+
+/**
  * Show configuration success message
  */
 function showConfigSuccess(message) {
@@ -464,8 +477,15 @@ async function loadFilterConfig() {
 
                     filterIds.forEach(filterId => {
                         const filter = filters[filterId];
+                        const isEnabled = filter.enabled !== undefined ? filter.enabled : true;
                         const row = document.createElement('tr');
                         row.innerHTML = `
+                            <td>
+                                <input type="checkbox"
+                                       class="form-check-input filter-enabled-checkbox"
+                                       data-filter-id="${filterId}"
+                                       ${isEnabled ? 'checked' : ''}>
+                            </td>
                             <td>${filterId}</td>
                             <td>${filter.name}</td>
                             <td>
@@ -491,12 +511,20 @@ async function loadFilterConfig() {
 }
 
 /**
- * Save all filter focus positions (called during main config save)
+ * Save all filter focus positions and enabled states (called during main config save)
  * Returns: Object with { success: number, failed: number }
  */
 async function saveModifiedFilters() {
     const inputs = document.querySelectorAll('.filter-focus-input');
     if (inputs.length === 0) return { success: 0, failed: 0 }; // No filters to save
+
+    // Belt and suspenders: Validate at least one filter is enabled before saving
+    const checkboxes = document.querySelectorAll('.filter-enabled-checkbox');
+    const enabledCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+    if (enabledCount === 0) {
+        showConfigMessage('At least one filter must be enabled', 'danger');
+        return { success: 0, failed: inputs.length };
+    }
 
     let successCount = 0;
     let failedCount = 0;
@@ -511,20 +539,32 @@ async function saveModifiedFilters() {
             continue;
         }
 
+        // Get enabled state from corresponding checkbox
+        const checkbox = document.querySelector(`.filter-enabled-checkbox[data-filter-id="${filterId}"]`);
+        const enabled = checkbox ? checkbox.checked : true;
+
+        console.log(`Saving filter ${filterId}: focus=${focusPosition}, enabled=${enabled}`);
+
         try {
             const response = await fetch(`/api/adapter/filters/${filterId}`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ focus_position: focusPosition })
+                body: JSON.stringify({ focus_position: focusPosition, enabled: enabled })
             });
 
             if (response.ok) {
                 successCount++;
+                console.log(`Successfully saved filter ${filterId}`);
             } else {
                 failedCount++;
-                console.error(`Failed to save filter ${filterId}: HTTP ${response.status}`);
+                const data = await response.json();
+                console.error(`Failed to save filter ${filterId}: ${data.error || 'Unknown error'}`);
+                // If it's the "last enabled filter" error, show it to the user
+                if (response.status === 400 && data.error && data.error.includes('last enabled filter')) {
+                    showConfigMessage(data.error, 'danger');
+                }
             }
         } catch (error) {
             failedCount++;

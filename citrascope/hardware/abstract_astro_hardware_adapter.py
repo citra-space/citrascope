@@ -26,10 +26,12 @@ class FilterConfig(TypedDict):
     Attributes:
         name: Human-readable filter name (e.g., 'Luminance', 'Red', 'Ha')
         focus_position: Focuser position for this filter in steps
+        enabled: Whether this filter is enabled for observations (default: True)
     """
 
     name: str
     focus_position: int
+    enabled: bool
 
 
 class ObservationStrategy(Enum):

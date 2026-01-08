@@ -85,6 +85,9 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         for filter_id, filter_data in saved_filters.items():
             # Convert string keys back to int for internal use
             try:
+                # Default enabled to True for backward compatibility
+                if "enabled" not in filter_data:
+                    filter_data["enabled"] = True
                 self.filter_map[int(filter_id)] = filter_data
             except (ValueError, TypeError) as e:
                 self.logger.warning(f"Invalid filter ID '{filter_id}' in settings, skipping: {e}")
@@ -324,14 +327,17 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
 
         jobs = []
 
-        if self.filter_map:
-            # Multi-filter mode: create one job per discovered filter
+        # Filter to only enabled filters
+        enabled_filters = {fid: fdata for fid, fdata in self.filter_map.items() if fdata.get("enabled", True)}
+
+        if enabled_filters:
+            # Multi-filter mode: create one job per enabled filter
             self.logger.info(
-                f"Generating {len(self.filter_map)} jobs for filters: "
-                f"{[f['name'] for f in self.filter_map.values()]}"
+                f"Generating {len(enabled_filters)} jobs for enabled filters: "
+                f"{[f['name'] for f in enabled_filters.values()]}"
             )
-            for filter_idx in sorted(self.filter_map.keys()):
-                filter_info = self.filter_map[filter_idx]
+            for filter_idx in sorted(enabled_filters.keys()):
+                filter_info = enabled_filters[filter_idx]
                 filter_name = filter_info["name"]
 
                 job_xml = job_template.format(
@@ -424,9 +430,11 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
 
         assert self.bus is not None
 
-        # Calculate expected number of images based on filters
-        expected_filter_count = len(self.filter_map) if self.filter_map else 1
-        expected_total_images = expected_filter_count * self.frame_count
+        # Calculate expected number of images based on enabled filters
+        enabled_filter_count = (
+            sum(1 for f in self.filter_map.values() if f.get("enabled", True)) if self.filter_map else 1
+        )
+        expected_total_images = enabled_filter_count * self.frame_count
 
         self.logger.info(
             f"Waiting for scheduler job completion (timeout: {timeout}s, "
@@ -858,14 +866,16 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                     # Use 0-based indexing for filter_map (slot 1 -> index 0)
                     filter_idx = slot_num - 1
 
-                    # If filter already in map (from saved settings), preserve focus position
+                    # If filter already in map (from saved settings), preserve focus position and enabled state
                     if filter_idx in self.filter_map:
                         focus_position = self.filter_map[filter_idx].get("focus_position", 0)
+                        enabled = self.filter_map[filter_idx].get("enabled", True)
                         self.logger.debug(
-                            f"Filter slot {slot_num} ({filter_name}): using saved focus position {focus_position}"
+                            f"Filter slot {slot_num} ({filter_name}): using saved focus position {focus_position}, enabled: {enabled}"
                         )
                     else:
                         focus_position = 0
+                        enabled = True  # Default new filters to enabled
                         self.logger.debug(
                             f"Filter slot {slot_num} ({filter_name}): new filter, using default focus position"
                         )
@@ -873,6 +883,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                     self.filter_map[filter_idx] = {
                         "name": filter_name,
                         "focus_position": focus_position,
+                        "enabled": enabled,
                     }
                 except Exception as e:
                     self.logger.warning(f"Could not read filter slot {slot_num}: {e}")
@@ -897,22 +908,24 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         return bool(self.filter_map)
 
     def get_filter_config(self) -> Dict[str, Dict[str, Any]]:
-        """Get the current filter configuration including focus positions.
+        """Get the current filter configuration including focus positions and enabled state.
 
         Returns:
             dict: Dictionary mapping filter IDs (as strings) to FilterConfig.
                   Each FilterConfig contains:
                   - name (str): Filter name
                   - focus_position (int): Focuser position for this filter
+                  - enabled (bool): Whether filter is enabled for observations
 
         Example:
             {
-                "0": {"name": "Red", "focus_position": 9000},
-                "1": {"name": "Green", "focus_position": 9050}
+                "0": {"name": "Red", "focus_position": 9000, "enabled": True},
+                "1": {"name": "Green", "focus_position": 9050, "enabled": False}
             }
         """
         # Convert 0-based integer keys to strings for the web interface
-        return {str(k): v for k, v in self.filter_map.items()}
+        # Ensure enabled field is present (default to True for backward compatibility)
+        return {str(k): {**v, "enabled": v.get("enabled", True)} for k, v in self.filter_map.items()}
 
     def update_filter_focus(self, filter_id: str, focus_position: int) -> bool:
         """Update the focus position for a specific filter.
