@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SchedulerList version="2.6">
+  <Job>
+    <Name>{{JOB_NAME}}</Name>
+    <Group></Group>
+    <Coordinates>
+      <J2000RA>{{TARGET_RA}}</J2000RA>
+      <J2000DE>{{TARGET_DEC}}</J2000DE>
+    </Coordinates>
+    <PositionAngle>-1</PositionAngle>
+    <Sequence>{{SEQUENCE_FILE}}</Sequence>
+    <FITSFILE></FITSFILE>
+    <StartupCondition>
+      <Condition>ASAP</Condition>
+      <CulminationOffset>0</CulminationOffset>
+    </StartupCondition>
+    <Constraints>
+      <Constraint value="{{MIN_ALTITUDE}}">MinimumAltitude</Constraint>
+    </Constraints>
+    <CompletionCondition>
+      <Condition>Repeat</Condition>
+      <Repeat>10</Repeat>
+    </CompletionCondition>
+    <Steps>
+      <Step>Track</Step>
+    </Steps>
+    <Priority>10</Priority>
+    <Enforced>true</Enforced>
+  </Job>
+</SchedulerList>
