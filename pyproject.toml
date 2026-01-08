@@ -30,14 +30,6 @@ classifiers = [
   "Topic :: System :: Hardware :: Hardware Drivers",
   "Operating System :: OS Independent",
 ]
-
-[project.urls]
-Homepage = "https://citra.space"
-Documentation = "https://docs.citra.space/citrascope/"
-Repository = "https://github.com/citra-space/citrascope"
-Issues = "https://github.com/citra-space/citrascope/issues"
-Changelog = "https://github.com/citra-space/citrascope/releases"
-
 dependencies = [
   "click",
   "requests",
@@ -52,6 +44,13 @@ dependencies = [
 
 [project.scripts]
 citrascope = "citrascope.__main__:cli"
+
+[project.urls]
+Homepage = "https://citra.space"
+Documentation = "https://docs.citra.space/citrascope/"
+Repository = "https://github.com/citra-space/citrascope"
+Issues = "https://github.com/citra-space/citrascope/issues"
+Changelog = "https://github.com/citra-space/citrascope/releases"
 
 [project.optional-dependencies]
 indi = [
