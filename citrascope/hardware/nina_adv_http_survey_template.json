@@ -174,8 +174,8 @@
                             "_autoFocusBinning": {
                               "$id": "31",
                               "$type": "NINA.Core.Model.Equipment.BinningMode, NINA.Core",
-                              "X": 1,
-                              "Y": 1
+                              "X": {autofocus_binning},
+                              "Y": {autofocus_binning}
                             },
                             "_autoFocusGain": -1,
                             "_autoFocusOffset": -1
@@ -205,8 +205,8 @@
                           "Binning": {
                             "$id": "34",
                             "$type": "NINA.Core.Model.Equipment.BinningMode, NINA.Core",
-                            "X": 4,
-                            "Y": 4
+                            "X": {binning_x},
+                            "Y": {binning_y}
                           },
                           "ImageType": "LIGHT",
                           "ExposureCount": 130,

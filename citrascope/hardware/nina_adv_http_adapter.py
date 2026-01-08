@@ -34,6 +34,10 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         self.logger: logging.Logger = logger
         self.nina_api_path = kwargs.get("nina_api_path", "http://nina:1888/v2/api")
 
+        self.binning_x = kwargs.get("binning_x", 1)
+        self.binning_y = kwargs.get("binning_y", 1)
+        self.autofocus_binning = kwargs.get("autofocus_binning", 1)
+
         self.filter_map = {}
         # Load filter configuration from settings if available
         saved_filters = kwargs.get("filters", {})
@@ -59,6 +63,39 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
                 "required": True,
                 "placeholder": "http://localhost:1888/v2/api",
                 "pattern": r"^https?://.*",
+            },
+            {
+                "name": "autofocus_binning",
+                "friendly_name": "Autofocus Binning",
+                "type": "int",
+                "default": 1,
+                "description": "Pixel binning for autofocus (1=no binning, 2=2x2, etc.)",
+                "required": False,
+                "placeholder": "1",
+                "min": 1,
+                "max": 4,
+            },
+            {
+                "name": "binning_x",
+                "friendly_name": "Binning X",
+                "type": "int",
+                "default": 1,
+                "description": "Horizontal pixel binning for observations (1=no binning, 2=2x2, etc.)",
+                "required": False,
+                "placeholder": "1",
+                "min": 1,
+                "max": 4,
+            },
+            {
+                "name": "binning_y",
+                "friendly_name": "Binning Y",
+                "type": "int",
+                "default": 1,
+                "description": "Vertical pixel binning for observations (1=no binning, 2=2x2, etc.)",
+                "required": False,
+                "placeholder": "1",
+                "min": 1,
+                "max": 4,
             },
         ]
 
@@ -445,8 +482,11 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         """
         elset = satellite_data["most_recent_elset"]
 
-        # Load template as JSON
+        # Load template as JSON and replace binning placeholders
         template_str = self._get_sequence_template()
+        template_str = template_str.replace("{binning_x}", str(self.binning_x))
+        template_str = template_str.replace("{binning_y}", str(self.binning_y))
+        template_str = template_str.replace("{autofocus_binning}", str(self.autofocus_binning))
         sequence_json = json.loads(template_str)
 
         nina_sequence_name = f"Citra Target: {satellite_data['name']}, Task: {task_id}"
