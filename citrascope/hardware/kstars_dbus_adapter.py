@@ -78,6 +78,16 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         # Filter management
         self.filter_map: dict[int, dict[str, any]] = {}
 
+        # Pre-populate filter_map from saved settings (if any)
+        # This will be merged with discovered filters in discover_filters()
+        saved_filters = kwargs.get("filters", {})
+        for filter_id, filter_data in saved_filters.items():
+            # Convert string keys back to int for internal use
+            try:
+                self.filter_map[int(filter_id)] = filter_data
+            except (ValueError, TypeError) as e:
+                self.logger.warning(f"Invalid filter ID '{filter_id}' in settings, skipping: {e}")
+
         self.bus: dbus.SessionBus | None = None
         self.kstars: dbus.Interface | None = None
         self.ekos: dbus.Interface | None = None
@@ -496,27 +506,13 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         task_dir = output_dir / task_id
 
         if not task_dir.exists():
-            self.logger.warning(f"Task directory does not exist: {task_dir}")
-
-            # Search entire output directory for any FITS files with task_id
-            self.logger.debug(f"Searching entire output directory for task_id pattern...")
-            all_fits = list(output_dir.rglob("*.fits")) + list(output_dir.rglob("*.fit"))
-            self.logger.debug(f"Found {len(all_fits)} total FITS files in output directory")
-
-            # Look for any files with task_id in name
-            matching_files = [str(f.absolute()) for f in all_fits if task_id in f.name]
-
-            if matching_files:
-                self.logger.info(f"Found {len(matching_files)} images with task_id in filename")
-                return matching_files
-
-            # If still nothing, list all FITS files for debugging
-            if all_fits:
-                self.logger.warning(f"Found FITS files but none match task_id:")
-                for f in all_fits[:5]:  # Show first 5
-                    self.logger.warning(f"  - {f}")
-
-            return []
+            self.logger.error(f"Task directory does not exist: {task_dir}")
+            self.logger.error(f"This likely indicates Ekos failed to create the capture directory")
+            self.logger.error(f"Expected directory structure: {output_dir}/{task_id}/")
+            raise RuntimeError(
+                f"Task-specific capture directory not found: {task_dir}. "
+                f"Ekos may have failed to start the capture sequence."
+            )
 
         # Find all FITS files in task directory and subdirectories
         fits_files = list(task_dir.rglob("*.fits")) + list(task_dir.rglob("*.fit"))
@@ -572,125 +568,146 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
             sequence_file = self._create_sequence_file(task_id, satellite_data, task_output_dir)
             job_file = self._create_scheduler_job(task_id, satellite_data, sequence_file)
 
-            # Load scheduler job via DBus
-            self.logger.info(f"Loading scheduler job: {job_file}")
-
-            # Verify files exist and have content
-            if not job_file.exists():
-                raise RuntimeError(f"Scheduler job file does not exist: {job_file}")
-            if not sequence_file.exists():
-                # Before failing, check the temp files we created
-                self.logger.error(f"No images found. Debug info:")
-                self.logger.error(f"  Sequence file: {sequence_file} (exists: {sequence_file.exists()})")
-                self.logger.error(f"  Job file: {job_file} (exists: {job_file.exists()})")
-                self.logger.error(f"  Expected output: {output_dir / task_id}")
-
-                # Show what Ekos might have logged
-                try:
-                    log_text = self.scheduler.GetProperty("logText")
-                    if log_text:
-                        self.logger.error(f"  Scheduler log (last 500 chars): {str(log_text)[-500:]}")
-                except:
-                    pass
-
-                raise RuntimeError(f"Sequence file does not exist: {sequence_file}")
-
-            self.logger.debug(f"Job file size: {job_file.stat().st_size} bytes")
-            self.logger.debug(f"Sequence file size: {sequence_file.stat().st_size} bytes")
-
-            # Load the scheduler job
+            # Ensure temp files are cleaned up even on failure
             try:
-                # Clear any existing jobs first to prevent state conflicts
-                try:
-                    self.scheduler.removeAllJobs()
-                    self.logger.info("Cleared existing scheduler jobs")
-                    time.sleep(0.5)  # Brief pause after clearing
-                except Exception as clear_error:
-                    self.logger.warning(f"Could not clear jobs (might not exist): {clear_error}")
+                self._execute_observation(task_id, output_dir, sequence_file, job_file)
+            finally:
+                # Cleanup temp files
+                self._cleanup_temp_files(sequence_file, job_file)
 
-                success = self.scheduler.loadScheduler(str(job_file))
-                self.logger.debug(f"loadScheduler() returned: {success}")
-            except Exception as dbus_error:
-                self.logger.error(f"DBus error calling loadScheduler: {dbus_error}")
-                raise RuntimeError(f"DBus error loading scheduler job: {dbus_error}")
-
-            if not success:
-                # Log file contents for debugging
-                self.logger.error(f"Scheduler rejected job file. Contents:")
-                self.logger.error(job_file.read_text()[:500])  # First 500 chars
-                raise RuntimeError(f"Ekos Scheduler rejected job file: {job_file}")
-
-            self.logger.info("Scheduler job loaded successfully")
-
-            # Verify what was loaded before starting
-            try:
-                scheduler_obj = self.bus.get_object(self.bus_name, "/KStars/Ekos/Scheduler")
-                props = dbus.Interface(scheduler_obj, "org.freedesktop.DBus.Properties")
-                json_jobs = props.Get("org.kde.kstars.Ekos.Scheduler", "jsonJobs")
-                self.logger.info(f"Loaded jobs: {json_jobs}")
-
-                # Parse and validate the job looks correct
-                jobs = json.loads(str(json_jobs))
-                if jobs:
-                    job = jobs[0]  # We only load one job at a time
-                    self.logger.info(f"Loaded {len(jobs)} job(s):")
-                    self.logger.info(f"  Name: {job.get('name', 'Unknown')}")
-                    self.logger.info(f"  State: {job.get('state', 'Unknown')}")
-                    self.logger.info(f"  RA: {job.get('targetRA', 'N/A')}h, Dec: {job.get('targetDEC', 'N/A')}°")
-                    self.logger.info(f"  Altitude: {job.get('altitudeFormatted', 'N/A')}")
-                    self.logger.info(f"  Repeats: {job.get('repeatsRemaining', 0)}/{job.get('repeatsRequired', 0)}")
-                    self.logger.info(f"  Completed: {job.get('completedCount', 0)}")
-                else:
-                    self.logger.warning("No jobs found in scheduler after loading!")
-            except Exception as e:
-                self.logger.warning(f"Could not validate loaded jobs: {e}")
-
-            # Start scheduler
-            self.logger.info("Starting scheduler execution...")
-            self.scheduler.start()
-
-            # Give it a moment to start
-            time.sleep(1)
-
-            # Check scheduler logs immediately after starting
-            try:
-                scheduler_obj = self.bus.get_object(self.bus_name, "/KStars/Ekos/Scheduler")
-                props = dbus.Interface(scheduler_obj, "org.freedesktop.DBus.Properties")
-                log_lines = props.Get("org.kde.kstars.Ekos.Scheduler", "logText")
-                if log_lines:
-                    self.logger.info("Scheduler logs after start:")
-                    for line in log_lines[-10:]:  # Last 10 lines
-                        self.logger.info(f"  Ekos: {line}")
-            except Exception as e:
-                self.logger.debug(f"Could not read scheduler logs: {e}")
-
-            # Wait for completion (with Loop mode, this polls for images and stops when found)
-            if not self._wait_for_job_completion(timeout=300, task_id=task_id, output_dir=output_dir):
-                raise RuntimeError("Scheduler job did not complete in time")
-
-            # Retrieve captured images
+            # Retrieve and return captured images
             image_paths = self._retrieve_captured_images(task_id, output_dir)
-
             if not image_paths:
                 raise RuntimeError(f"No images captured for task {task_id}")
 
             self.logger.info(f"Observation sequence complete: {len(image_paths)} images captured")
-
-            # Cleanup temp files after successful observation
-            try:
-                if sequence_file.exists():
-                    sequence_file.unlink()
-                if job_file.exists():
-                    job_file.unlink()
-                self.logger.debug(f"Cleaned up temp files: {sequence_file.name}, {job_file.name}")
-            except Exception as cleanup_error:
-                self.logger.warning(f"Failed to cleanup temp files: {cleanup_error}")
-
             return image_paths
 
         except Exception as e:
             self.logger.error(f"Failed to execute observation sequence: {e}")
             raise
+
+    def _execute_observation(self, task_id: str, output_dir: Path, sequence_file: Path, job_file: Path):
+        """Execute the observation by loading scheduler job and waiting for completion.
+
+        Args:
+            task_id: Task identifier
+            output_dir: Base output directory
+            sequence_file: Path to ESQ sequence file
+            job_file: Path to ESL scheduler job file
+        """
+        # Load scheduler job via DBus
+        self.logger.info(f"Loading scheduler job: {job_file}")
+
+        # Verify files exist and have content
+        if not job_file.exists():
+            raise RuntimeError(f"Scheduler job file does not exist: {job_file}")
+        if not sequence_file.exists():
+            # Before failing, check the temp files we created
+            self.logger.error(f"No images found. Debug info:")
+            self.logger.error(f"  Sequence file: {sequence_file} (exists: {sequence_file.exists()})")
+            self.logger.error(f"  Job file: {job_file} (exists: {job_file.exists()})")
+            self.logger.error(f"  Expected output: {output_dir / task_id}")
+
+            # Show what Ekos might have logged
+            try:
+                log_text = self.scheduler.GetProperty("logText")
+                if log_text:
+                    self.logger.error(f"  Scheduler log (last 500 chars): {str(log_text)[-500:]}")
+            except:
+                pass
+
+            raise RuntimeError(f"Sequence file does not exist: {sequence_file}")
+
+        self.logger.debug(f"Job file size: {job_file.stat().st_size} bytes")
+        self.logger.debug(f"Sequence file size: {sequence_file.stat().st_size} bytes")
+
+        # Load the scheduler job
+        try:
+            # Clear any existing jobs first to prevent state conflicts
+            try:
+                self.scheduler.removeAllJobs()
+                self.logger.info("Cleared existing scheduler jobs")
+                time.sleep(0.5)  # Brief pause after clearing
+            except Exception as clear_error:
+                self.logger.warning(f"Could not clear jobs (might not exist): {clear_error}")
+
+            success = self.scheduler.loadScheduler(str(job_file))
+            self.logger.debug(f"loadScheduler() returned: {success}")
+        except Exception as dbus_error:
+            self.logger.error(f"DBus error calling loadScheduler: {dbus_error}")
+            raise RuntimeError(f"DBus error loading scheduler job: {dbus_error}")
+
+        if not success:
+            # Log file contents for debugging
+            self.logger.error(f"Scheduler rejected job file. Contents:")
+            self.logger.error(job_file.read_text()[:500])  # First 500 chars
+            raise RuntimeError(f"Ekos Scheduler rejected job file: {job_file}")
+
+        self.logger.info("Scheduler job loaded successfully")
+
+        # Verify what was loaded before starting
+        try:
+            scheduler_obj = self.bus.get_object(self.bus_name, "/KStars/Ekos/Scheduler")
+            props = dbus.Interface(scheduler_obj, "org.freedesktop.DBus.Properties")
+            json_jobs = props.Get("org.kde.kstars.Ekos.Scheduler", "jsonJobs")
+            self.logger.info(f"Loaded jobs: {json_jobs}")
+
+            # Parse and validate the job looks correct
+            jobs = json.loads(str(json_jobs))
+            if jobs:
+                job = jobs[0]  # We only load one job at a time
+                self.logger.info(f"Loaded {len(jobs)} job(s):")
+                self.logger.info(f"  Name: {job.get('name', 'Unknown')}")
+                self.logger.info(f"  State: {job.get('state', 'Unknown')}")
+                self.logger.info(f"  RA: {job.get('targetRA', 'N/A')}h, Dec: {job.get('targetDEC', 'N/A')}°")
+                self.logger.info(f"  Altitude: {job.get('altitudeFormatted', 'N/A')}")
+                self.logger.info(f"  Repeats: {job.get('repeatsRemaining', 0)}/{job.get('repeatsRequired', 0)}")
+                self.logger.info(f"  Completed: {job.get('completedCount', 0)}")
+            else:
+                self.logger.warning("No jobs found in scheduler after loading!")
+        except Exception as e:
+            self.logger.warning(f"Could not validate loaded jobs: {e}")
+
+        # Start scheduler
+        self.logger.info("Starting scheduler execution...")
+        self.scheduler.start()
+
+        # Give it a moment to start
+        time.sleep(1)
+
+        # Check scheduler logs immediately after starting
+        try:
+            scheduler_obj = self.bus.get_object(self.bus_name, "/KStars/Ekos/Scheduler")
+            props = dbus.Interface(scheduler_obj, "org.freedesktop.DBus.Properties")
+            log_lines = props.Get("org.kde.kstars.Ekos.Scheduler", "logText")
+            if log_lines:
+                self.logger.info("Scheduler logs after start:")
+                for line in log_lines[-10:]:  # Last 10 lines
+                    self.logger.info(f"  Ekos: {line}")
+        except Exception as e:
+            self.logger.debug(f"Could not read scheduler logs: {e}")
+
+        # Wait for completion (with Loop mode, this polls for images and stops when found)
+        if not self._wait_for_job_completion(timeout=300, task_id=task_id, output_dir=output_dir):
+            raise RuntimeError("Scheduler job did not complete in time")
+
+    def _cleanup_temp_files(self, sequence_file: Path, job_file: Path):
+        """Clean up temporary ESQ and ESL files.
+
+        Args:
+            sequence_file: Path to ESQ sequence file
+            job_file: Path to ESL scheduler job file
+        """
+        try:
+            if sequence_file.exists():
+                sequence_file.unlink()
+                self.logger.debug(f"Cleaned up sequence file: {sequence_file.name}")
+            if job_file.exists():
+                job_file.unlink()
+                self.logger.debug(f"Cleaned up job file: {job_file.name}")
+        except Exception as e:
+            self.logger.warning(f"Failed to cleanup temp files: {e}")
 
     def connect(self) -> bool:
         """
@@ -841,23 +858,36 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                 self.logger.warning(f"No FILTER_NAME properties found for {filter_wheel_name}")
                 return
 
-            # Query each filter slot name
+            # Query each filter slot name and merge with pre-populated filter_map
             filter_slots.sort()
             for slot_num in filter_slots:
                 try:
                     filter_name = indi_iface.getText(filter_wheel_name, "FILTER_NAME", f"FILTER_SLOT_NAME_{slot_num}")
                     # Use 0-based indexing for filter_map (slot 1 -> index 0)
-                    self.filter_map[slot_num - 1] = {
+                    filter_idx = slot_num - 1
+
+                    # If filter already in map (from saved settings), preserve focus position
+                    if filter_idx in self.filter_map:
+                        focus_position = self.filter_map[filter_idx].get("focus_position", 0)
+                        self.logger.debug(
+                            f"Filter slot {slot_num} ({filter_name}): using saved focus position {focus_position}"
+                        )
+                    else:
+                        focus_position = 0
+                        self.logger.debug(
+                            f"Filter slot {slot_num} ({filter_name}): new filter, using default focus position"
+                        )
+
+                    self.filter_map[filter_idx] = {
                         "name": filter_name,
-                        "focus_position": 0,  # Will be updated via update_filter_focus()
+                        "focus_position": focus_position,
                     }
-                    self.logger.debug(f"Filter slot {slot_num}: {filter_name}")
                 except Exception as e:
                     self.logger.warning(f"Could not read filter slot {slot_num}: {e}")
 
             if self.filter_map:
                 self.logger.info(
-                    f"Discovered {len(self.filter_map)} filters: " f"{[f['name'] for f in self.filter_map.values()]}"
+                    f"Discovered {len(self.filter_map)} filters: {[f['name'] for f in self.filter_map.values()]}"
                 )
             else:
                 self.logger.warning("No filters discovered from filter wheel")
