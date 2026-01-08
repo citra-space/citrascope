@@ -609,20 +609,6 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         if not job_file.exists():
             raise RuntimeError(f"Scheduler job file does not exist: {job_file}")
         if not sequence_file.exists():
-            # Before failing, check the temp files we created
-            self.logger.error(f"No images found. Debug info:")
-            self.logger.error(f"  Sequence file: {sequence_file} (exists: {sequence_file.exists()})")
-            self.logger.error(f"  Job file: {job_file} (exists: {job_file.exists()})")
-            self.logger.error(f"  Expected output: {output_dir / task_id}")
-
-            # Show what Ekos might have logged
-            try:
-                log_text = self.scheduler.GetProperty("logText")
-                if log_text:
-                    self.logger.error(f"  Scheduler log (last 500 chars): {str(log_text)[-500:]}")
-            except:
-                pass
-
             raise RuntimeError(f"Sequence file does not exist: {sequence_file}")
 
         self.logger.debug(f"Job file size: {job_file.stat().st_size} bytes")
