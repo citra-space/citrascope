@@ -166,9 +166,6 @@
     </div>
 
     <div class="container my-4" id="configSection" style="display: none;">
-        <div id="configError" class="alert alert-danger" style="display: none;" role="alert"></div>
-        <div id="configSuccess" class="alert alert-success" style="display: none;" role="alert"></div>
-
         <form id="configForm">
             <div class="row g-3 mb-3">
                 <!-- API Configuration Card -->
@@ -485,6 +482,9 @@
             </div>
         </div>
     </div>
+
+    <!-- Toast Container for Notifications -->
+    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;" id="toastContainer"></div>
 
     <script type="module" src="/static/app.js"></script>
 

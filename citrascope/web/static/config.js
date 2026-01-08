@@ -350,6 +350,17 @@ async function saveConfiguration(event) {
     };
 
     try {
+        // Validate filters BEFORE saving main config (belt and suspenders)
+        const inputs = document.querySelectorAll('.filter-focus-input');
+        if (inputs.length > 0) {
+            const checkboxes = document.querySelectorAll('.filter-enabled-checkbox');
+            const enabledCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+            if (enabledCount === 0) {
+                showConfigMessage('At least one filter must be enabled', 'danger');
+                return; // Exit early without saving anything
+            }
+        }
+
         const result = await saveConfig(config);
 
         if (result.ok) {
@@ -382,12 +393,56 @@ async function saveConfiguration(event) {
 }
 
 /**
+ * Create and show a Bootstrap toast notification
+ * @param {string} message - The message to display
+ * @param {string} type - 'danger' for errors, 'success' for success messages
+ * @param {boolean} autohide - Whether to auto-hide the toast
+ */
+function createToast(message, type = 'danger', autohide = false) {
+    const toastContainer = document.getElementById('toastContainer');
+    if (!toastContainer) {
+        console.error('Toast container not found');
+        return;
+    }
+
+    // Create toast element
+    const toastId = `toast-${Date.now()}`;
+    const toastHTML = `
+        <div id="${toastId}" class="toast text-bg-${type}" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header text-bg-${type}">
+                <strong class="me-auto">CitraScope</strong>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+            <div class="toast-body">
+                ${message}
+            </div>
+        </div>
+    `;
+
+    // Insert toast into container
+    toastContainer.insertAdjacentHTML('beforeend', toastHTML);
+
+    // Get the toast element and initialize Bootstrap toast
+    const toastElement = document.getElementById(toastId);
+    const toast = new bootstrap.Toast(toastElement, {
+        autohide: autohide,
+        delay: 5000
+    });
+
+    // Remove toast element from DOM after it's hidden
+    toastElement.addEventListener('hidden.bs.toast', () => {
+        toastElement.remove();
+    });
+
+    // Show the toast
+    toast.show();
+}
+
+/**
  * Show configuration error message
  */
 function showConfigError(message) {
-    const errorDiv = document.getElementById('configError');
-    errorDiv.textContent = message;
-    errorDiv.style.display = 'block';
+    createToast(message, 'danger', false);
 }
 
 /**
@@ -405,22 +460,14 @@ function showConfigMessage(message, type = 'danger') {
  * Show configuration success message
  */
 function showConfigSuccess(message) {
-    const successDiv = document.getElementById('configSuccess');
-    successDiv.textContent = message;
-    successDiv.style.display = 'block';
-
-    // Auto-hide after 5 seconds
-    setTimeout(() => {
-        successDiv.style.display = 'none';
-    }, 5000);
+    createToast(message, 'success', true);
 }
 
 /**
- * Hide all configuration messages
+ * Hide all configuration messages (no-op for toast compatibility)
  */
 function hideConfigMessages() {
-    document.getElementById('configError').style.display = 'none';
-    document.getElementById('configSuccess').style.display = 'none';
+    // No-op - toasts handle their own hiding
 }
 
 /**
