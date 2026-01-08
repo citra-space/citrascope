@@ -9,6 +9,7 @@ const DEFAULT_API_PORT = 443;
 
 let currentAdapterSchema = [];
 export let currentConfig = {};
+let savedAdapter = null; // Track the currently saved adapter
 
 export async function initConfig() {
     // Populate hardware adapter dropdown
@@ -21,8 +22,11 @@ export async function initConfig() {
             const adapter = e.target.value;
             if (adapter) {
                 await loadAdapterSchema(adapter);
+                await loadFilterConfig();
             } else {
                 document.getElementById('adapter-settings-container').innerHTML = '';
+                const filterSection = document.getElementById('filterConfigSection');
+                if (filterSection) filterSection.style.display = 'none';
             }
         });
     }
@@ -106,6 +110,7 @@ async function loadConfiguration() {
     try {
         const config = await getConfig();
         currentConfig = config; // Save for reuse when saving
+        savedAdapter = config.hardware_adapter; // Track saved adapter
 
         // Display config file path
         const configPathElement = document.getElementById('configFilePath');
@@ -364,6 +369,9 @@ async function saveConfiguration(event) {
         const result = await saveConfig(config);
 
         if (result.ok) {
+            // Update saved adapter to match newly saved config
+            savedAdapter = config.hardware_adapter;
+
             // After config saved successfully, save any modified filter focus positions
             const filterResults = await saveModifiedFilters();
 
@@ -377,6 +385,9 @@ async function saveConfiguration(event) {
             }
 
             showConfigSuccess(message);
+
+            // Reload filters to re-enable editing for the new adapter
+            await loadFilterConfig();
         } else {
             // Check for specific error codes
             const errorMsg = result.data.error || result.data.message || 'Failed to save configuration';
@@ -492,6 +503,24 @@ export function showConfigSection() {
  */
 async function loadFilterConfig() {
     const filterSection = document.getElementById('filterConfigSection');
+    const changeMessage = document.getElementById('filterAdapterChangeMessage');
+    const tableContainer = document.getElementById('filterTableContainer');
+
+    // Check if selected adapter matches saved adapter
+    const adapterSelect = document.getElementById('hardwareAdapterSelect');
+    const selectedAdapter = adapterSelect ? adapterSelect.value : null;
+
+    if (selectedAdapter && savedAdapter && selectedAdapter !== savedAdapter) {
+        // Adapter has changed but not saved yet - show message and hide table
+        if (filterSection) filterSection.style.display = 'block';
+        if (changeMessage) changeMessage.style.display = 'block';
+        if (tableContainer) tableContainer.style.display = 'none';
+        return;
+    }
+
+    // Hide message and show table when adapters match
+    if (changeMessage) changeMessage.style.display = 'none';
+    if (tableContainer) tableContainer.style.display = 'block';
 
     try {
         const response = await fetch('/api/adapter/filters');
