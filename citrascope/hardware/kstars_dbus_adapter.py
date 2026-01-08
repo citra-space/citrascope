@@ -451,7 +451,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                     images = self._retrieve_captured_images(task_id, output_dir)
                     if len(images) >= expected_total_images:
                         self.logger.info(
-                            f"Found {len(images)} images (expected {expected_total_images}), " f"stopping scheduler"
+                            f"Found {len(images)} images (expected {expected_total_images}), stopping scheduler"
                         )
                         self.scheduler.stop()
                         time.sleep(1)  # Give it time to stop
