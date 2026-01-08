@@ -235,42 +235,42 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         try:
             # start connection to all equipments
             self.logger.info("Connecting camera ...")
-            cam_status = requests.get(self.nina_api_path + self.CAM_URL + "connect").json()
+            cam_status = requests.get(self.nina_api_path + self.CAM_URL + "connect", timeout=5).json()
             if not cam_status["Success"]:
                 self.logger.error(f"Failed to connect camera: {cam_status.get('Error')}")
                 return False
             self.logger.info(f"Camera Connected!")
 
             self.logger.info("Starting camera cooling ...")
-            cool_status = requests.get(self.nina_api_path + self.CAM_URL + "cool").json()
+            cool_status = requests.get(self.nina_api_path + self.CAM_URL + "cool", timeout=5).json()
             if not cool_status["Success"]:
                 self.logger.warning(f"Failed to start camera cooling: {cool_status.get('Error')}")
             else:
                 self.logger.info("Cooler started!")
 
             self.logger.info("Connecting filterwheel ...")
-            filterwheel_status = requests.get(self.nina_api_path + self.FILTERWHEEL_URL + "connect").json()
+            filterwheel_status = requests.get(self.nina_api_path + self.FILTERWHEEL_URL + "connect", timeout=5).json()
             if not filterwheel_status["Success"]:
                 self.logger.warning(f"Failed to connect filterwheel: {filterwheel_status.get('Error')}")
             else:
                 self.logger.info(f"Filterwheel Connected!")
 
             self.logger.info("Connecting focuser ...")
-            focuser_status = requests.get(self.nina_api_path + self.FOCUSER_URL + "connect").json()
+            focuser_status = requests.get(self.nina_api_path + self.FOCUSER_URL + "connect", timeout=5).json()
             if not focuser_status["Success"]:
                 self.logger.warning(f"Failed to connect focuser: {focuser_status.get('Error')}")
             else:
                 self.logger.info(f"Focuser Connected!")
 
             self.logger.info("Connecting mount ...")
-            mount_status = requests.get(self.nina_api_path + self.MOUNT_URL + "connect").json()
+            mount_status = requests.get(self.nina_api_path + self.MOUNT_URL + "connect", timeout=5).json()
             if not mount_status["Success"]:
                 self.logger.error(f"Failed to connect mount: {mount_status.get('Error')}")
                 return False
             self.logger.info(f"Mount Connected!")
 
             self.logger.info("Unparking mount ...")
-            mount_status = requests.get(self.nina_api_path + self.MOUNT_URL + "unpark").json()
+            mount_status = requests.get(self.nina_api_path + self.MOUNT_URL + "unpark", timeout=5).json()
             if not mount_status["Success"]:
                 self.logger.error(f"Failed to unpark mount: {mount_status.get('Error')}")
                 return False
@@ -286,7 +286,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
     def discover_filters(self):
         self.logger.info("Discovering filters ...")
-        filterwheel_info = requests.get(self.nina_api_path + self.FILTERWHEEL_URL + "info").json()
+        filterwheel_info = requests.get(self.nina_api_path + self.FILTERWHEEL_URL + "info", timeout=5).json()
         if not filterwheel_info.get("Success"):
             self.logger.error(f"Failed to get filterwheel info: {filterwheel_info.get('Error')}")
             raise RuntimeError("Failed to get filterwheel info")
