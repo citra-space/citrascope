@@ -423,10 +423,6 @@ class CitraScopeWebApp:
         @self.app.patch("/api/adapter/filters/{filter_id}")
         async def update_filter(filter_id: str, update: dict):
             """Update focus position and/or enabled state for a specific filter."""
-            CITRASCOPE_LOGGER.debug(f"PATCH /api/adapter/filters/{filter_id} with update: {update}")
-
-            if not self.daemon or not self.daemon.hardware_adapter:
-                return JSONResponse({"error": "Hardware adapter not available"}, status_code=503)
 
             if not self.daemon.hardware_adapter.supports_filter_management():
                 return JSONResponse({"error": "Adapter does not support filter management"}, status_code=404)

@@ -486,7 +486,6 @@ async function loadFilterConfig() {
                                        data-filter-id="${filterId}"
                                        ${isEnabled ? 'checked' : ''}>
                             </td>
-                            <td>${filterId}</td>
                             <td>${filter.name}</td>
                             <td>
                                 <input type="number"
@@ -543,8 +542,6 @@ async function saveModifiedFilters() {
         const checkbox = document.querySelector(`.filter-enabled-checkbox[data-filter-id="${filterId}"]`);
         const enabled = checkbox ? checkbox.checked : true;
 
-        console.log(`Saving filter ${filterId}: focus=${focusPosition}, enabled=${enabled}`);
-
         try {
             const response = await fetch(`/api/adapter/filters/${filterId}`, {
                 method: 'PATCH',
@@ -556,7 +553,6 @@ async function saveModifiedFilters() {
 
             if (response.ok) {
                 successCount++;
-                console.log(`Successfully saved filter ${filterId}`);
             } else {
                 failedCount++;
                 const data = await response.json();
