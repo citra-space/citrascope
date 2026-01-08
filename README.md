@@ -1,6 +1,8 @@
 # CitraScope
 [![Pytest](https://github.com/citra-space/citrascope/actions/workflows/pytest.yml/badge.svg)](https://github.com/citra-space/citrascope/actions/workflows/pytest.yml) [![Publish Python Package](https://github.com/citra-space/citrascope/actions/workflows/pypi-publish.yml/badge.svg)](https://github.com/citra-space/citrascope/actions/workflows/pypi-publish.yml) [![PyPI version](https://badge.fury.io/py/citrascope.svg)](https://pypi.org/project/citrascope/) [![PyPI - Downloads](https://img.shields.io/pypi/dm/citrascope)](https://pypi.org/project/citrascope/) [![License](https://img.shields.io/github/license/citra-space/citrascope)](https://github.com/citra-space/citrascope/blob/main/LICENSE)
 
+**[GitHub Repository](https://github.com/citra-space/citrascope)** | **[Documentation](https://docs.citra.space/citrascope/)** | **[Citra.space](https://citra.space)**
+
 Remotely control a telescope while it polls for tasks, collects observations, and delivers data for further processing.
 
 ## Features
