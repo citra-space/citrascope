@@ -3,6 +3,7 @@ import logging
 import shutil
 import time
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 import dbus
 from platformdirs import user_cache_dir, user_data_dir
@@ -76,7 +77,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         self.image_format = kwargs.get("image_format", "Mono")
 
         # Filter management
-        self.filter_map: dict[int, dict[str, any]] = {}
+        self.filter_map: Dict[int, Dict[str, Any]] = {}
 
         # Pre-populate filter_map from saved settings (if any)
         # This will be merged with discovered filters in discover_filters()
@@ -402,7 +403,9 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         self.logger.info(f"Created scheduler job: {job_file}")
         return job_file
 
-    def _wait_for_job_completion(self, timeout: int = 300, task_id: str = "", output_dir: Path = None) -> bool:
+    def _wait_for_job_completion(
+        self, timeout: int = 300, task_id: str = "", output_dir: Optional[Path] = None
+    ) -> bool:
         """
         Poll the scheduler status until job completes or times out.
         With Loop completion, we poll for images and stop when we have all expected images.
@@ -596,6 +599,9 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
             sequence_file: Path to ESQ sequence file
             job_file: Path to ESL scheduler job file
         """
+        assert self.scheduler is not None
+        assert self.bus is not None
+
         # Load scheduler job via DBus
         self.logger.info(f"Loading scheduler job: {job_file}")
 
@@ -904,7 +910,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         """
         return bool(self.filter_map)
 
-    def get_filter_config(self) -> dict[str, dict[str, any]]:
+    def get_filter_config(self) -> Dict[str, Dict[str, Any]]:
         """Get the current filter configuration including focus positions.
 
         Returns:
