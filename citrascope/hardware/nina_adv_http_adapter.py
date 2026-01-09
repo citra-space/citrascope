@@ -30,26 +30,13 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
     SEQUENCE_URL = "/sequence/"
 
     def __init__(self, logger: logging.Logger, images_dir: Path, **kwargs):
-        super().__init__(images_dir=images_dir)
+        super().__init__(images_dir=images_dir, **kwargs)
         self.logger: logging.Logger = logger
         self.nina_api_path = kwargs.get("nina_api_path", "http://nina:1888/v2/api")
 
         self.binning_x = kwargs.get("binning_x", 1)
         self.binning_y = kwargs.get("binning_y", 1)
         self.autofocus_binning = kwargs.get("autofocus_binning", 1)
-
-        self.filter_map = {}
-        # Load filter configuration from settings if available
-        saved_filters = kwargs.get("filters", {})
-        for filter_id, filter_data in saved_filters.items():
-            # Convert string keys back to int for internal use
-            try:
-                # Default enabled to True for backward compatibility
-                if "enabled" not in filter_data:
-                    filter_data["enabled"] = True
-                self.filter_map[int(filter_id)] = filter_data
-            except (ValueError, TypeError) as e:
-                self.logger.warning(f"Invalid filter ID '{filter_id}' in settings, skipping: {e}")
 
     @classmethod
     def get_settings_schema(cls) -> list[SettingSchemaEntry]:
@@ -317,41 +304,6 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
     def supports_filter_management(self) -> bool:
         """Indicates that NINA adapter supports filter/focus management."""
         return True
-
-    def get_filter_config(self) -> dict[str, FilterConfig]:
-        """Get current filter configuration with focus positions.
-
-        Returns:
-            dict: Filter configuration mapping filter ID strings to FilterConfig
-        """
-        return {
-            str(filter_id): {
-                "name": filter_data["name"],
-                "focus_position": filter_data["focus_position"],
-                "enabled": filter_data.get("enabled", True),
-            }
-            for filter_id, filter_data in self.filter_map.items()
-        }
-
-    def update_filter_focus(self, filter_id: str, focus_position: int) -> bool:
-        """Update the focus position for a specific filter.
-
-        Args:
-            filter_id: Filter ID as string
-            focus_position: New focus position in steps
-
-        Returns:
-            bool: True if update was successful, False otherwise
-        """
-        try:
-            filter_id_int = int(filter_id)
-            if filter_id_int in self.filter_map:
-                self.filter_map[filter_id_int]["focus_position"] = focus_position
-                self.logger.info(f"Updated filter {filter_id} focus position to {focus_position}")
-                return True
-            return False
-        except (ValueError, KeyError):
-            return False
 
     def is_telescope_connected(self) -> bool:
         """Check if telescope is connected and responsive."""

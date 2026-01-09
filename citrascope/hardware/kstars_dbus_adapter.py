@@ -62,7 +62,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
             images_dir: Path to the images directory
             **kwargs: Configuration including bus_name, ccd_name, filter_wheel_name
         """
-        super().__init__(images_dir=images_dir)
+        super().__init__(images_dir=images_dir, **kwargs)
         self.logger: logging.Logger = logger
         self.bus_name = kwargs.get("bus_name") or "org.kde.kstars"
         self.ccd_name = kwargs.get("ccd_name") or "CCD Simulator"
@@ -75,22 +75,6 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         self.binning_x = kwargs.get("binning_x", 1)
         self.binning_y = kwargs.get("binning_y", 1)
         self.image_format = kwargs.get("image_format", "Mono")
-
-        # Filter management
-        self.filter_map: Dict[int, Dict[str, Any]] = {}
-
-        # Pre-populate filter_map from saved settings (if any)
-        # This will be merged with discovered filters in discover_filters()
-        saved_filters = kwargs.get("filters", {})
-        for filter_id, filter_data in saved_filters.items():
-            # Convert string keys back to int for internal use
-            try:
-                # Default enabled to True for backward compatibility
-                if "enabled" not in filter_data:
-                    filter_data["enabled"] = True
-                self.filter_map[int(filter_id)] = filter_data
-            except (ValueError, TypeError) as e:
-                self.logger.warning(f"Invalid filter ID '{filter_id}' in settings, skipping: {e}")
 
         self.bus: dbus.SessionBus | None = None
         self.kstars: dbus.Interface | None = None
@@ -438,7 +422,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
 
         self.logger.info(
             f"Waiting for scheduler job completion (timeout: {timeout}s, "
-            f"expecting {expected_total_images} images across {expected_filter_count} filters)..."
+            f"expecting {expected_total_images} images across {enabled_filter_count} filters)..."
         )
         start_time = time.time()
 
@@ -906,49 +890,6 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
             bool: True if filters were discovered, False otherwise.
         """
         return bool(self.filter_map)
-
-    def get_filter_config(self) -> Dict[str, Dict[str, Any]]:
-        """Get the current filter configuration including focus positions and enabled state.
-
-        Returns:
-            dict: Dictionary mapping filter IDs (as strings) to FilterConfig.
-                  Each FilterConfig contains:
-                  - name (str): Filter name
-                  - focus_position (int): Focuser position for this filter
-                  - enabled (bool): Whether filter is enabled for observations
-
-        Example:
-            {
-                "0": {"name": "Red", "focus_position": 9000, "enabled": True},
-                "1": {"name": "Green", "focus_position": 9050, "enabled": False}
-            }
-        """
-        # Convert 0-based integer keys to strings for the web interface
-        # Ensure enabled field is present (default to True for backward compatibility)
-        return {str(k): {**v, "enabled": v.get("enabled", True)} for k, v in self.filter_map.items()}
-
-    def update_filter_focus(self, filter_id: str, focus_position: int) -> bool:
-        """Update the focus position for a specific filter.
-
-        Args:
-            filter_id: Filter ID as string (0-based index)
-            focus_position: New focus position in steps
-
-        Returns:
-            bool: True if update was successful, False otherwise
-        """
-        try:
-            idx = int(filter_id)
-            if idx in self.filter_map:
-                self.filter_map[idx]["focus_position"] = focus_position
-                self.logger.info(f"Updated filter '{self.filter_map[idx]['name']}' focus position to {focus_position}")
-                return True
-            else:
-                self.logger.warning(f"Filter ID {filter_id} not found in filter_map")
-                return False
-        except (ValueError, KeyError) as e:
-            self.logger.error(f"Failed to update filter focus: {e}")
-            return False
 
     def disconnect(self):
         raise NotImplementedError

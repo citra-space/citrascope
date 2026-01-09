@@ -424,6 +424,9 @@ class CitraScopeWebApp:
         async def update_filter(filter_id: str, update: dict):
             """Update focus position and/or enabled state for a specific filter."""
 
+            if not self.daemon or not self.daemon.hardware_adapter:
+                return JSONResponse({"error": "Hardware adapter not available"}, status_code=503)
+
             if not self.daemon.hardware_adapter.supports_filter_management():
                 return JSONResponse({"error": "Adapter does not support filter management"}, status_code=404)
 
@@ -464,19 +467,9 @@ class CitraScopeWebApp:
                                 status_code=400,
                             )
 
-                    # Update enabled state directly in adapter's filter_map
-                    adapter = self.daemon.hardware_adapter
-                    if hasattr(adapter, "filter_map"):
-                        try:
-                            filter_id_int = int(filter_id)
-                            if filter_id_int in adapter.filter_map:
-                                adapter.filter_map[filter_id_int]["enabled"] = enabled
-                                CITRASCOPE_LOGGER.info(f"Updated filter {filter_id} enabled state to {enabled}")
-                            else:
-                                CITRASCOPE_LOGGER.warning(f"Filter {filter_id_int} not found in adapter.filter_map")
-                        except (ValueError, KeyError) as e:
-                            CITRASCOPE_LOGGER.error(f"Failed to update filter enabled state: {e}")
-                            return JSONResponse({"error": "Failed to update filter enabled state"}, status_code=500)
+                    # Update enabled state via adapter interface
+                    if not self.daemon.hardware_adapter.update_filter_enabled(filter_id, enabled):
+                        return JSONResponse({"error": "Failed to update filter enabled state"}, status_code=500)
 
                 # Save to settings
                 self.daemon._save_filter_config()
