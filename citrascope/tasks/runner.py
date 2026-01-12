@@ -228,10 +228,10 @@ class TaskManager:
                 should_autofocus = self._autofocus_requested
                 if should_autofocus:
                     self._autofocus_requested = False  # Clear flag before execution
-
-            # Also check if scheduled autofocus should run
-            if not should_autofocus and self._should_run_scheduled_autofocus():
-                should_autofocus = True
+                # Also check if scheduled autofocus should run (inside lock to prevent race condition)
+                elif self._should_run_scheduled_autofocus():
+                    should_autofocus = True
+                    self._autofocus_requested = False  # Ensure flag is clear
 
             if should_autofocus:
                 self._execute_autofocus()
@@ -342,7 +342,7 @@ class TaskManager:
             return False
 
         # Check if adapter supports autofocus
-        if not self.hardware_adapter.supports_filter_management():
+        if not self.hardware_adapter.supports_autofocus():
             return False
 
         interval_minutes = self.settings.autofocus_interval_minutes
@@ -357,26 +357,29 @@ class TaskManager:
         return elapsed_minutes >= interval_minutes
 
     def _execute_autofocus(self) -> None:
-        """Execute autofocus routine and update timestamp on success."""
+        """Execute autofocus routine and update timestamp on both success and failure."""
         try:
             self.logger.info("Starting autofocus routine...")
             self.hardware_adapter.do_autofocus()
 
             # Save updated filter configuration after autofocus
             if self.hardware_adapter.supports_filter_management():
-                filter_config = self.hardware_adapter.get_filter_config()
-                if filter_config and self.settings:
-                    self.settings.adapter_settings["filters"] = filter_config
-                    self.logger.info(f"Saved filter configuration with {len(filter_config)} filters")
-
-            # Update last autofocus timestamp (top-level setting)
-            if self.settings:
-                self.settings.last_autofocus_timestamp = int(time.time())
-                self.settings.save()
+                try:
+                    filter_config = self.hardware_adapter.get_filter_config()
+                    if filter_config and self.settings:
+                        self.settings.adapter_settings["filters"] = filter_config
+                        self.logger.info(f"Saved filter configuration with {len(filter_config)} filters")
+                except Exception as e:
+                    self.logger.warning(f"Failed to save filter configuration after autofocus: {e}")
 
             self.logger.info("Autofocus routine completed successfully")
         except Exception as e:
             self.logger.error(f"Autofocus failed: {str(e)}", exc_info=True)
+        finally:
+            # Always update timestamp to prevent retry spam
+            if self.settings:
+                self.settings.last_autofocus_timestamp = int(time.time())
+                self.settings.save()
 
     def start(self):
         self._stop_event.clear()
