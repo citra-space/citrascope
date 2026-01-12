@@ -43,6 +43,9 @@ class TaskManager:
         # Task processing control (always starts active)
         self._processing_active = True
         self._processing_lock = threading.Lock()
+        # Autofocus request flag (set by manual or scheduled triggers)
+        self._autofocus_requested = False
+        self._autofocus_lock = threading.Lock()
 
     def poll_tasks(self):
         while not self._stop_event.is_set():
@@ -219,6 +222,20 @@ class TaskManager:
             except Exception as e:
                 self.logger.error(f"Exception in task_runner loop: {e}", exc_info=True)
                 time.sleep(5)  # avoid tight error loop
+
+            # Check for autofocus requests between tasks
+            with self._autofocus_lock:
+                should_autofocus = self._autofocus_requested
+                if should_autofocus:
+                    self._autofocus_requested = False  # Clear flag before execution
+
+            # Also check if scheduled autofocus should run
+            if not should_autofocus and self._should_run_scheduled_autofocus():
+                should_autofocus = True
+
+            if should_autofocus:
+                self._execute_autofocus()
+
             self._stop_event.wait(1)
 
     def _observe_satellite(self, task: Task):
@@ -277,6 +294,89 @@ class TaskManager:
         """Check if task processing is currently active."""
         with self._processing_lock:
             return self._processing_active
+
+    def request_autofocus(self) -> bool:
+        """Request autofocus to run at next safe point between tasks.
+
+        Returns:
+            bool: True indicating request was queued.
+        """
+        with self._autofocus_lock:
+            self._autofocus_requested = True
+            self.logger.info("Autofocus requested - will run between tasks")
+            return True
+
+    def cancel_autofocus(self) -> bool:
+        """Cancel pending autofocus request if still queued.
+
+        Returns:
+            bool: True if autofocus was cancelled, False if nothing to cancel.
+        """
+        with self._autofocus_lock:
+            was_requested = self._autofocus_requested
+            self._autofocus_requested = False
+            if was_requested:
+                self.logger.info("Autofocus request cancelled")
+            return was_requested
+
+    def is_autofocus_requested(self) -> bool:
+        """Check if autofocus is currently requested/queued.
+
+        Returns:
+            bool: True if autofocus is queued, False otherwise.
+        """
+        with self._autofocus_lock:
+            return self._autofocus_requested
+
+    def _should_run_scheduled_autofocus(self) -> bool:
+        """Check if scheduled autofocus should run based on settings.
+
+        Returns:
+            bool: True if autofocus is enabled and interval has elapsed.
+        """
+        if not self.settings or not self.settings.adapter_settings:
+            return False
+
+        # Check if scheduled autofocus is enabled
+        if not self.settings.adapter_settings.get("scheduled_autofocus_enabled", False):
+            return False
+
+        # Check if adapter supports autofocus
+        if not self.hardware_adapter.supports_filter_management():
+            return False
+
+        interval_minutes = self.settings.adapter_settings.get("autofocus_interval_minutes", 60)
+        last_timestamp = self.settings.adapter_settings.get("last_autofocus_timestamp")
+
+        # If never run (None), treat as overdue and run immediately
+        if last_timestamp is None:
+            return True
+
+        # Check if interval has elapsed
+        elapsed_minutes = (int(time.time()) - last_timestamp) / 60
+        return elapsed_minutes >= interval_minutes
+
+    def _execute_autofocus(self) -> None:
+        """Execute autofocus routine and update timestamp on success."""
+        try:
+            self.logger.info("Starting autofocus routine...")
+            self.hardware_adapter.do_autofocus()
+
+            # Save updated filter configuration after autofocus
+            if self.hardware_adapter.supports_filter_management():
+                filter_config = self.hardware_adapter.get_filter_config()
+                if filter_config and self.settings:
+                    self.settings.adapter_settings["filters"] = filter_config
+                    self.logger.info(f"Saved filter configuration with {len(filter_config)} filters")
+
+            # Update last autofocus timestamp
+            if self.settings:
+                self.settings.adapter_settings["last_autofocus_timestamp"] = int(time.time())
+                self.settings.save()
+
+            self.logger.info("Autofocus routine completed successfully")
+        except Exception as e:
+            self.logger.error(f"Autofocus failed: {str(e)}", exc_info=True)
 
     def start(self):
         self._stop_event.clear()

@@ -201,6 +201,11 @@ function renderAdapterSettings(schema) {
     let html = '<h5 class="mb-3">Adapter Settings</h5><div class="row g-3 mb-4">';
 
     schema.forEach(field => {
+        // Skip readonly fields (handled elsewhere in UI)
+        if (field.readonly) {
+            return;
+        }
+
         const isRequired = field.required ? '<span class="text-danger">*</span>' : '';
         const placeholder = field.placeholder || '';
         const description = field.description || '';
@@ -648,7 +653,7 @@ async function saveModifiedFilters() {
 }
 
 /**
- * Trigger autofocus routine
+ * Trigger or cancel autofocus routine
  */
 async function triggerAutofocus() {
     const button = document.getElementById('runAutofocusButton');
@@ -657,12 +662,32 @@ async function triggerAutofocus() {
 
     if (!button || !buttonText || !buttonSpinner) return;
 
-    // Clear any previous messages
-    hideConfigMessages();
+    // Check if this is a cancel action
+    const isCancel = button.dataset.action === 'cancel';
 
-    // Disable button and show spinner
+    if (isCancel) {
+        // Cancel autofocus
+        try {
+            const response = await fetch('/api/adapter/autofocus/cancel', {
+                method: 'POST'
+            });
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                showToast('Autofocus cancelled', 'info');
+                updateAutofocusButton(false);
+            } else {
+                showToast('Nothing to cancel', 'warning');
+            }
+        } catch (error) {
+            console.error('Error cancelling autofocus:', error);
+            showToast('Failed to cancel autofocus', 'error');
+        }
+        return;
+    }
+
+    // Request autofocus
     button.disabled = true;
-    buttonText.textContent = 'Running Autofocus...';
     buttonSpinner.style.display = 'inline-block';
 
     try {
@@ -673,22 +698,76 @@ async function triggerAutofocus() {
         const data = await response.json();
 
         if (response.ok) {
-            showConfigSuccess('Autofocus completed successfully');
-            // Reload filter config to show updated focus positions
-            await loadFilterConfig();
+            showToast('Autofocus queued', 'success');
+            updateAutofocusButton(true);
         } else {
-            // Show clear error message (e.g., if autofocus already running or other conflict)
-            showConfigError(data.error || 'Autofocus failed');
+            showToast(data.error || 'Autofocus request failed', 'error');
         }
     } catch (error) {
         console.error('Error triggering autofocus:', error);
-        showConfigError('Failed to trigger autofocus');
+        showToast('Failed to trigger autofocus', 'error');
     } finally {
-        // Re-enable button
         button.disabled = false;
-        buttonText.textContent = 'Run Autofocus';
         buttonSpinner.style.display = 'none';
     }
+}
+
+/**
+ * Update autofocus button state based on whether autofocus is queued
+ */
+function updateAutofocusButton(isQueued) {
+    const button = document.getElementById('runAutofocusButton');
+    const buttonText = document.getElementById('autofocusButtonText');
+
+    if (!button || !buttonText) return;
+
+    if (isQueued) {
+        buttonText.textContent = 'Cancel Autofocus';
+        button.dataset.action = 'cancel';
+        button.classList.remove('btn-outline-primary');
+        button.classList.add('btn-outline-warning');
+    } else {
+        buttonText.textContent = 'Run Autofocus';
+        button.dataset.action = 'request';
+        button.classList.remove('btn-outline-warning');
+        button.classList.add('btn-outline-primary');
+    }
+}
+
+/**
+ * Show toast notification
+ */
+function showToast(message, type = 'info') {
+    // Use Bootstrap toast if available, otherwise fallback to alert
+    const toastContainer = document.getElementById('toastContainer');
+    if (!toastContainer) {
+        console.log(`Toast (${type}): ${message}`);
+        return;
+    }
+
+    const toastId = `toast-${Date.now()}`;
+    const bgClass = type === 'success' ? 'bg-success' :
+                    type === 'error' ? 'bg-danger' :
+                    type === 'warning' ? 'bg-warning' : 'bg-info';
+
+    const toastHtml = `
+        <div id="${toastId}" class="toast align-items-center text-white ${bgClass} border-0" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body">${message}</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    `;
+
+    toastContainer.insertAdjacentHTML('beforeend', toastHtml);
+    const toastElement = document.getElementById(toastId);
+    const toast = new bootstrap.Toast(toastElement, { delay: 3000 });
+    toast.show();
+
+    // Remove from DOM after hidden
+    toastElement.addEventListener('hidden.bs.toast', () => {
+        toastElement.remove();
+    });
 }
 
 /**

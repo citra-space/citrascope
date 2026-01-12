@@ -35,7 +35,6 @@ class CitraScopeDaemon:
         self.ground_station = None
         self.telescope_record = None
         self.configuration_error: Optional[str] = None
-        self._autofocus_in_progress = False
 
         # Create web server instance (always enabled)
         self.web_server = CitraScopeWebServer(daemon=self, host="0.0.0.0", port=self.settings.web_port)
@@ -200,14 +199,6 @@ class CitraScopeDaemon:
             CITRASCOPE_LOGGER.error(error_msg, exc_info=True)
             return False, error_msg
 
-    def is_autofocus_in_progress(self) -> bool:
-        """Check if autofocus routine is currently running.
-
-        Returns:
-            bool: True if autofocus is in progress, False otherwise
-        """
-        return self._autofocus_in_progress
-
     def _save_filter_config(self):
         """Save filter configuration from adapter to settings if supported.
 
@@ -232,12 +223,7 @@ class CitraScopeDaemon:
             CITRASCOPE_LOGGER.warning(f"Failed to save filter configuration: {e}")
 
     def trigger_autofocus(self) -> tuple[bool, Optional[str]]:
-        """Trigger autofocus routine on the hardware adapter.
-
-        Requires task processing to be manually paused before running.
-        Checks that both:
-        1. Task processing is paused
-        2. No task is currently in-flight
+        """Request autofocus to run at next safe point between tasks.
 
         Returns:
             Tuple of (success, error_message)
@@ -248,34 +234,32 @@ class CitraScopeDaemon:
         if not self.hardware_adapter.supports_filter_management():
             return False, "Hardware adapter does not support filter management"
 
-        # Prevent concurrent autofocus operations
-        if self._autofocus_in_progress:
-            return False, "Autofocus already in progress"
+        if not self.task_manager:
+            return False, "Task manager not initialized"
 
-        # Require task processing to be manually paused
-        if self.task_manager:
-            if self.task_manager.is_processing_active():
-                return False, "Task processing must be paused before running autofocus"
+        # Request autofocus - will run between tasks
+        self.task_manager.request_autofocus()
+        return True, None
 
-            if self.task_manager.current_task_id is not None:
-                return False, "A task is currently executing. Please wait for it to complete and try again"
+    def cancel_autofocus(self) -> bool:
+        """Cancel pending autofocus request if queued.
 
-        self._autofocus_in_progress = True
-        try:
-            CITRASCOPE_LOGGER.info("Starting autofocus routine...")
-            self.hardware_adapter.do_autofocus()
+        Returns:
+            bool: True if autofocus was cancelled, False if nothing to cancel.
+        """
+        if not self.task_manager:
+            return False
+        return self.task_manager.cancel_autofocus()
 
-            # Save updated filter configuration after autofocus
-            self._save_filter_config()
+    def is_autofocus_requested(self) -> bool:
+        """Check if autofocus is currently queued.
 
-            CITRASCOPE_LOGGER.info("Autofocus routine completed successfully")
-            return True, None
-        except Exception as e:
-            error_msg = f"Autofocus failed: {str(e)}"
-            CITRASCOPE_LOGGER.error(error_msg, exc_info=True)
-            return False, error_msg
-        finally:
-            self._autofocus_in_progress = False
+        Returns:
+            bool: True if autofocus is queued, False otherwise.
+        """
+        if not self.task_manager:
+            return False
+        return self.task_manager.is_autofocus_requested()
 
     def run(self):
         # Start web server FIRST, so users can monitor/configure

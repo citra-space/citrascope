@@ -37,6 +37,9 @@ class SystemStatus(BaseModel):
     ground_station_id: Optional[str] = None
     ground_station_name: Optional[str] = None
     ground_station_url: Optional[str] = None
+    autofocus_requested: bool = False
+    last_autofocus_timestamp: Optional[int] = None
+    next_autofocus_minutes: Optional[int] = None
     last_update: str = ""
 
 
@@ -241,13 +244,6 @@ class CitraScopeWebApp:
                 if not self.daemon:
                     return JSONResponse({"error": "Daemon not available"}, status_code=503)
 
-                # Block config changes during autofocus
-                if self.daemon.is_autofocus_in_progress():
-                    return JSONResponse(
-                        {"error": "Cannot save configuration while autofocus is running. Check logs for progress."},
-                        status_code=409,
-                    )
-
                 # Validate required fields
                 required_fields = ["personal_access_token", "telescope_id", "hardware_adapter"]
                 for field in required_fields:
@@ -392,13 +388,6 @@ class CitraScopeWebApp:
             if not self.daemon or not self.daemon.task_manager:
                 return JSONResponse({"error": "Task manager not available"}, status_code=503)
 
-            # Block resume during autofocus
-            if self.daemon.is_autofocus_in_progress():
-                return JSONResponse(
-                    {"error": "Cannot resume task processing during autofocus. Check logs for progress."},
-                    status_code=409,
-                )
-
             self.daemon.task_manager.resume()
             await self.broadcast_status()
 
@@ -483,7 +472,7 @@ class CitraScopeWebApp:
 
         @self.app.post("/api/adapter/autofocus")
         async def trigger_autofocus():
-            """Trigger autofocus routine."""
+            """Request autofocus to run between tasks."""
             if not self.daemon:
                 return JSONResponse({"error": "Daemon not available"}, status_code=503)
 
@@ -491,15 +480,26 @@ class CitraScopeWebApp:
                 return JSONResponse({"error": "Filter management not supported"}, status_code=404)
 
             try:
-                # Run autofocus in a separate thread to avoid blocking the async event loop
-                # Autofocus can take several minutes (slewing + focusing multiple filters)
-                success, error = await asyncio.to_thread(self.daemon.trigger_autofocus)
+                success, error = self.daemon.trigger_autofocus()
                 if success:
-                    return {"success": True, "message": "Autofocus completed successfully"}
+                    return {"success": True, "message": "Autofocus queued - will run between tasks"}
                 else:
                     return JSONResponse({"error": error}, status_code=500)
             except Exception as e:
-                CITRASCOPE_LOGGER.error(f"Error triggering autofocus: {e}", exc_info=True)
+                CITRASCOPE_LOGGER.error(f"Error queueing autofocus: {e}", exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.post("/api/adapter/autofocus/cancel")
+        async def cancel_autofocus():
+            """Cancel pending autofocus request."""
+            if not self.daemon:
+                return JSONResponse({"error": "Daemon not available"}, status_code=503)
+
+            try:
+                was_cancelled = self.daemon.cancel_autofocus()
+                return {"success": was_cancelled}
+            except Exception as e:
+                CITRASCOPE_LOGGER.error(f"Error cancelling autofocus: {e}", exc_info=True)
                 return JSONResponse({"error": str(e)}, status_code=500)
 
         @self.app.websocket("/ws")
@@ -553,8 +553,30 @@ class CitraScopeWebApp:
             if hasattr(self.daemon, "task_manager") and self.daemon.task_manager:
                 task_manager = self.daemon.task_manager
                 self.status.current_task = task_manager.current_task_id
+                self.status.autofocus_requested = task_manager.is_autofocus_requested()
                 with task_manager.heap_lock:
                     self.status.tasks_pending = len(task_manager.task_heap)
+
+            # Get autofocus timing information
+            if self.daemon.settings and self.daemon.settings.adapter_settings:
+                adapter_settings = self.daemon.settings.adapter_settings
+                self.status.last_autofocus_timestamp = adapter_settings.get("last_autofocus_timestamp")
+
+                # Calculate next autofocus time if scheduled is enabled
+                if adapter_settings.get("scheduled_autofocus_enabled", False):
+                    last_ts = adapter_settings.get("last_autofocus_timestamp")
+                    interval_minutes = adapter_settings.get("autofocus_interval_minutes", 60)
+                    if last_ts is not None:
+                        import time
+
+                        elapsed_minutes = (int(time.time()) - last_ts) / 60
+                        remaining = max(0, interval_minutes - elapsed_minutes)
+                        self.status.next_autofocus_minutes = int(remaining)
+                    else:
+                        # Never run - will trigger immediately
+                        self.status.next_autofocus_minutes = 0
+                else:
+                    self.status.next_autofocus_minutes = None
 
             # Get ground station information from daemon (available after API validation)
             if hasattr(self.daemon, "ground_station") and self.daemon.ground_station:
