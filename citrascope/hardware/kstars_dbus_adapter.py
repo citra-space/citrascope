@@ -62,7 +62,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
             images_dir: Path to the images directory
             **kwargs: Configuration including bus_name, ccd_name, filter_wheel_name
         """
-        super().__init__(images_dir=images_dir)
+        super().__init__(images_dir=images_dir, **kwargs)
         self.logger: logging.Logger = logger
         self.bus_name = kwargs.get("bus_name") or "org.kde.kstars"
         self.ccd_name = kwargs.get("ccd_name") or "CCD Simulator"
@@ -75,19 +75,6 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         self.binning_x = kwargs.get("binning_x", 1)
         self.binning_y = kwargs.get("binning_y", 1)
         self.image_format = kwargs.get("image_format", "Mono")
-
-        # Filter management
-        self.filter_map: Dict[int, Dict[str, Any]] = {}
-
-        # Pre-populate filter_map from saved settings (if any)
-        # This will be merged with discovered filters in discover_filters()
-        saved_filters = kwargs.get("filters", {})
-        for filter_id, filter_data in saved_filters.items():
-            # Convert string keys back to int for internal use
-            try:
-                self.filter_map[int(filter_id)] = filter_data
-            except (ValueError, TypeError) as e:
-                self.logger.warning(f"Invalid filter ID '{filter_id}' in settings, skipping: {e}")
 
         self.bus: dbus.SessionBus | None = None
         self.kstars: dbus.Interface | None = None
@@ -324,14 +311,17 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
 
         jobs = []
 
-        if self.filter_map:
-            # Multi-filter mode: create one job per discovered filter
+        # Filter to only enabled filters
+        enabled_filters = {fid: fdata for fid, fdata in self.filter_map.items() if fdata.get("enabled", True)}
+
+        if enabled_filters:
+            # Multi-filter mode: create one job per enabled filter
             self.logger.info(
-                f"Generating {len(self.filter_map)} jobs for filters: "
-                f"{[f['name'] for f in self.filter_map.values()]}"
+                f"Generating {len(enabled_filters)} jobs for enabled filters: "
+                f"{[f['name'] for f in enabled_filters.values()]}"
             )
-            for filter_idx in sorted(self.filter_map.keys()):
-                filter_info = self.filter_map[filter_idx]
+            for filter_idx in sorted(enabled_filters.keys()):
+                filter_info = enabled_filters[filter_idx]
                 filter_name = filter_info["name"]
 
                 job_xml = job_template.format(
@@ -424,13 +414,15 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
 
         assert self.bus is not None
 
-        # Calculate expected number of images based on filters
-        expected_filter_count = len(self.filter_map) if self.filter_map else 1
-        expected_total_images = expected_filter_count * self.frame_count
+        # Calculate expected number of images based on enabled filters
+        enabled_filter_count = (
+            sum(1 for f in self.filter_map.values() if f.get("enabled", True)) if self.filter_map else 1
+        )
+        expected_total_images = enabled_filter_count * self.frame_count
 
         self.logger.info(
             f"Waiting for scheduler job completion (timeout: {timeout}s, "
-            f"expecting {expected_total_images} images across {expected_filter_count} filters)..."
+            f"expecting {expected_total_images} images across {enabled_filter_count} filters)..."
         )
         start_time = time.time()
 
@@ -858,14 +850,16 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                     # Use 0-based indexing for filter_map (slot 1 -> index 0)
                     filter_idx = slot_num - 1
 
-                    # If filter already in map (from saved settings), preserve focus position
+                    # If filter already in map (from saved settings), preserve focus position and enabled state
                     if filter_idx in self.filter_map:
                         focus_position = self.filter_map[filter_idx].get("focus_position", 0)
+                        enabled = self.filter_map[filter_idx].get("enabled", True)
                         self.logger.debug(
-                            f"Filter slot {slot_num} ({filter_name}): using saved focus position {focus_position}"
+                            f"Filter slot {slot_num} ({filter_name}): using saved focus position {focus_position}, enabled: {enabled}"
                         )
                     else:
                         focus_position = 0
+                        enabled = True  # Default new filters to enabled
                         self.logger.debug(
                             f"Filter slot {slot_num} ({filter_name}): new filter, using default focus position"
                         )
@@ -873,6 +867,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                     self.filter_map[filter_idx] = {
                         "name": filter_name,
                         "focus_position": focus_position,
+                        "enabled": enabled,
                     }
                 except Exception as e:
                     self.logger.warning(f"Could not read filter slot {slot_num}: {e}")
@@ -895,47 +890,6 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
             bool: True if filters were discovered, False otherwise.
         """
         return bool(self.filter_map)
-
-    def get_filter_config(self) -> Dict[str, Dict[str, Any]]:
-        """Get the current filter configuration including focus positions.
-
-        Returns:
-            dict: Dictionary mapping filter IDs (as strings) to FilterConfig.
-                  Each FilterConfig contains:
-                  - name (str): Filter name
-                  - focus_position (int): Focuser position for this filter
-
-        Example:
-            {
-                "0": {"name": "Red", "focus_position": 9000},
-                "1": {"name": "Green", "focus_position": 9050}
-            }
-        """
-        # Convert 0-based integer keys to strings for the web interface
-        return {str(k): v for k, v in self.filter_map.items()}
-
-    def update_filter_focus(self, filter_id: str, focus_position: int) -> bool:
-        """Update the focus position for a specific filter.
-
-        Args:
-            filter_id: Filter ID as string (0-based index)
-            focus_position: New focus position in steps
-
-        Returns:
-            bool: True if update was successful, False otherwise
-        """
-        try:
-            idx = int(filter_id)
-            if idx in self.filter_map:
-                self.filter_map[idx]["focus_position"] = focus_position
-                self.logger.info(f"Updated filter '{self.filter_map[idx]['name']}' focus position to {focus_position}")
-                return True
-            else:
-                self.logger.warning(f"Filter ID {filter_id} not found in filter_map")
-                return False
-        except (ValueError, KeyError) as e:
-            self.logger.error(f"Failed to update filter focus: {e}")
-            return False
 
     def disconnect(self):
         raise NotImplementedError

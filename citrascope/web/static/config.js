@@ -9,6 +9,7 @@ const DEFAULT_API_PORT = 443;
 
 let currentAdapterSchema = [];
 export let currentConfig = {};
+let savedAdapter = null; // Track the currently saved adapter
 
 export async function initConfig() {
     // Populate hardware adapter dropdown
@@ -21,8 +22,11 @@ export async function initConfig() {
             const adapter = e.target.value;
             if (adapter) {
                 await loadAdapterSchema(adapter);
+                await loadFilterConfig();
             } else {
                 document.getElementById('adapter-settings-container').innerHTML = '';
+                const filterSection = document.getElementById('filterConfigSection');
+                if (filterSection) filterSection.style.display = 'none';
             }
         });
     }
@@ -106,6 +110,7 @@ async function loadConfiguration() {
     try {
         const config = await getConfig();
         currentConfig = config; // Save for reuse when saving
+        savedAdapter = config.hardware_adapter; // Track saved adapter
 
         // Display config file path
         const configPathElement = document.getElementById('configFilePath');
@@ -275,16 +280,18 @@ function collectAdapterSettings() {
             value = input.value;
         }
 
-        // Type conversion
-        if (value !== '' && value !== null) {
-            if (fieldType === 'int') {
-                value = parseInt(value, 10);
-            } else if (fieldType === 'float') {
-                value = parseFloat(value);
-            } else if (fieldType === 'bool') {
-                // Already handled above
-            }
+        // Skip empty values for non-checkbox fields (will use backend defaults)
+        if (input.type !== 'checkbox' && (value === '' || value === null || value === undefined)) {
+            return;
         }
+
+        // Type conversion
+        if (fieldType === 'int') {
+            value = parseInt(value, 10);
+        } else if (fieldType === 'float') {
+            value = parseFloat(value);
+        }
+        // bool type already handled above
 
         settings[fieldName] = value;
     });
@@ -348,9 +355,23 @@ async function saveConfiguration(event) {
     };
 
     try {
+        // Validate filters BEFORE saving main config (belt and suspenders)
+        const inputs = document.querySelectorAll('.filter-focus-input');
+        if (inputs.length > 0) {
+            const checkboxes = document.querySelectorAll('.filter-enabled-checkbox');
+            const enabledCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+            if (enabledCount === 0) {
+                showConfigMessage('At least one filter must be enabled', 'danger');
+                return; // Exit early without saving anything
+            }
+        }
+
         const result = await saveConfig(config);
 
         if (result.ok) {
+            // Update saved adapter to match newly saved config
+            savedAdapter = config.hardware_adapter;
+
             // After config saved successfully, save any modified filter focus positions
             const filterResults = await saveModifiedFilters();
 
@@ -364,6 +385,9 @@ async function saveConfiguration(event) {
             }
 
             showConfigSuccess(message);
+
+            // Reload filters to re-enable editing for the new adapter
+            await loadFilterConfig();
         } else {
             // Check for specific error codes
             const errorMsg = result.data.error || result.data.message || 'Failed to save configuration';
@@ -380,34 +404,81 @@ async function saveConfiguration(event) {
 }
 
 /**
+ * Create and show a Bootstrap toast notification
+ * @param {string} message - The message to display
+ * @param {string} type - 'danger' for errors, 'success' for success messages
+ * @param {boolean} autohide - Whether to auto-hide the toast
+ */
+function createToast(message, type = 'danger', autohide = false) {
+    const toastContainer = document.getElementById('toastContainer');
+    if (!toastContainer) {
+        console.error('Toast container not found');
+        return;
+    }
+
+    // Create toast element
+    const toastId = `toast-${Date.now()}`;
+    const toastHTML = `
+        <div id="${toastId}" class="toast text-bg-${type}" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header text-bg-${type}">
+                <strong class="me-auto">CitraScope</strong>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+            <div class="toast-body">
+                ${message}
+            </div>
+        </div>
+    `;
+
+    // Insert toast into container
+    toastContainer.insertAdjacentHTML('beforeend', toastHTML);
+
+    // Get the toast element and initialize Bootstrap toast
+    const toastElement = document.getElementById(toastId);
+    const toast = new bootstrap.Toast(toastElement, {
+        autohide: autohide,
+        delay: 5000
+    });
+
+    // Remove toast element from DOM after it's hidden
+    toastElement.addEventListener('hidden.bs.toast', () => {
+        toastElement.remove();
+    });
+
+    // Show the toast
+    toast.show();
+}
+
+/**
  * Show configuration error message
  */
 function showConfigError(message) {
-    const errorDiv = document.getElementById('configError');
-    errorDiv.textContent = message;
-    errorDiv.style.display = 'block';
+    createToast(message, 'danger', false);
+}
+
+/**
+ * Show configuration message (can be error or success)
+ */
+function showConfigMessage(message, type = 'danger') {
+    if (type === 'danger') {
+        showConfigError(message);
+    } else {
+        showConfigSuccess(message);
+    }
 }
 
 /**
  * Show configuration success message
  */
 function showConfigSuccess(message) {
-    const successDiv = document.getElementById('configSuccess');
-    successDiv.textContent = message;
-    successDiv.style.display = 'block';
-
-    // Auto-hide after 5 seconds
-    setTimeout(() => {
-        successDiv.style.display = 'none';
-    }, 5000);
+    createToast(message, 'success', true);
 }
 
 /**
- * Hide all configuration messages
+ * Hide all configuration messages (no-op for toast compatibility)
  */
 function hideConfigMessages() {
-    document.getElementById('configError').style.display = 'none';
-    document.getElementById('configSuccess').style.display = 'none';
+    // No-op - toasts handle their own hiding
 }
 
 /**
@@ -432,6 +503,24 @@ export function showConfigSection() {
  */
 async function loadFilterConfig() {
     const filterSection = document.getElementById('filterConfigSection');
+    const changeMessage = document.getElementById('filterAdapterChangeMessage');
+    const tableContainer = document.getElementById('filterTableContainer');
+
+    // Check if selected adapter matches saved adapter
+    const adapterSelect = document.getElementById('hardwareAdapterSelect');
+    const selectedAdapter = adapterSelect ? adapterSelect.value : null;
+
+    if (selectedAdapter && savedAdapter && selectedAdapter !== savedAdapter) {
+        // Adapter has changed but not saved yet - show message and hide table
+        if (filterSection) filterSection.style.display = 'block';
+        if (changeMessage) changeMessage.style.display = 'block';
+        if (tableContainer) tableContainer.style.display = 'none';
+        return;
+    }
+
+    // Hide message and show table when adapters match
+    if (changeMessage) changeMessage.style.display = 'none';
+    if (tableContainer) tableContainer.style.display = 'block';
 
     try {
         const response = await fetch('/api/adapter/filters');
@@ -464,9 +553,15 @@ async function loadFilterConfig() {
 
                     filterIds.forEach(filterId => {
                         const filter = filters[filterId];
+                        const isEnabled = filter.enabled !== undefined ? filter.enabled : true;
                         const row = document.createElement('tr');
                         row.innerHTML = `
-                            <td>${filterId}</td>
+                            <td>
+                                <input type="checkbox"
+                                       class="form-check-input filter-enabled-checkbox"
+                                       data-filter-id="${filterId}"
+                                       ${isEnabled ? 'checked' : ''}>
+                            </td>
                             <td>${filter.name}</td>
                             <td>
                                 <input type="number"
@@ -491,12 +586,20 @@ async function loadFilterConfig() {
 }
 
 /**
- * Save all filter focus positions (called during main config save)
+ * Save all filter focus positions and enabled states (called during main config save)
  * Returns: Object with { success: number, failed: number }
  */
 async function saveModifiedFilters() {
     const inputs = document.querySelectorAll('.filter-focus-input');
     if (inputs.length === 0) return { success: 0, failed: 0 }; // No filters to save
+
+    // Belt and suspenders: Validate at least one filter is enabled before saving
+    const checkboxes = document.querySelectorAll('.filter-enabled-checkbox');
+    const enabledCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+    if (enabledCount === 0) {
+        showConfigMessage('At least one filter must be enabled', 'danger');
+        return { success: 0, failed: inputs.length };
+    }
 
     let successCount = 0;
     let failedCount = 0;
@@ -511,20 +614,29 @@ async function saveModifiedFilters() {
             continue;
         }
 
+        // Get enabled state from corresponding checkbox
+        const checkbox = document.querySelector(`.filter-enabled-checkbox[data-filter-id="${filterId}"]`);
+        const enabled = checkbox ? checkbox.checked : true;
+
         try {
             const response = await fetch(`/api/adapter/filters/${filterId}`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ focus_position: focusPosition })
+                body: JSON.stringify({ focus_position: focusPosition, enabled: enabled })
             });
 
             if (response.ok) {
                 successCount++;
             } else {
                 failedCount++;
-                console.error(`Failed to save filter ${filterId}: HTTP ${response.status}`);
+                const data = await response.json();
+                console.error(`Failed to save filter ${filterId}: ${data.error || 'Unknown error'}`);
+                // If it's the "last enabled filter" error, show it to the user
+                if (response.status === 400 && data.error && data.error.includes('last enabled filter')) {
+                    showConfigMessage(data.error, 'danger');
+                }
             }
         } catch (error) {
             failedCount++;

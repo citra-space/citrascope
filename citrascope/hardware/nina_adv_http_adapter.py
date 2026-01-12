@@ -30,23 +30,13 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
     SEQUENCE_URL = "/sequence/"
 
     def __init__(self, logger: logging.Logger, images_dir: Path, **kwargs):
-        super().__init__(images_dir=images_dir)
+        super().__init__(images_dir=images_dir, **kwargs)
         self.logger: logging.Logger = logger
         self.nina_api_path = kwargs.get("nina_api_path", "http://nina:1888/v2/api")
 
         self.binning_x = kwargs.get("binning_x", 1)
         self.binning_y = kwargs.get("binning_y", 1)
         self.autofocus_binning = kwargs.get("autofocus_binning", 1)
-
-        self.filter_map = {}
-        # Load filter configuration from settings if available
-        saved_filters = kwargs.get("filters", {})
-        for filter_id, filter_data in saved_filters.items():
-            # Convert string keys back to int for internal use
-            try:
-                self.filter_map[int(filter_id)] = filter_data
-            except (ValueError, TypeError) as e:
-                self.logger.warning(f"Invalid filter ID '{filter_id}' in settings, skipping: {e}")
 
     @classmethod
     def get_settings_schema(cls) -> list[SettingSchemaEntry]:
@@ -100,18 +90,23 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         ]
 
     def do_autofocus(self):
-        """Perform autofocus routine for all filters.
+        """Perform autofocus routine for all enabled filters.
 
         Slews telescope to Mirach (bright reference star) and runs autofocus
-        for each filter in the filter map, updating focus positions.
+        for each enabled filter in the filter map, updating focus positions.
 
         Raises:
-            RuntimeError: If no filters discovered or network requests fail
+            RuntimeError: If no filters discovered or no enabled filters
         """
         if not self.filter_map:
             raise RuntimeError("No filters discovered. Cannot perform autofocus.")
 
-        self.logger.info("Performing autofocus routine ...")
+        # Filter to only enabled filters
+        enabled_filters = {fid: fdata for fid, fdata in self.filter_map.items() if fdata.get("enabled", True)}
+        if not enabled_filters:
+            raise RuntimeError("No enabled filters. Cannot perform autofocus.")
+
+        self.logger.info(f"Performing autofocus routine on {len(enabled_filters)} enabled filter(s) ...")
         # move telescope to bright star and start autofocus
         # Mirach ra=(1+9/60.+47.45/3600.)*15 dec=(35+37/60.+11.1/3600.)
         ra = (1 + 9 / 60.0 + 47.45 / 3600.0) * 15
@@ -133,7 +128,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             self.logger.info("Waiting for mount to finish slewing...")
             time.sleep(5)
 
-        for id, filter in self.filter_map.items():
+        for id, filter in enabled_filters.items():
             self.logger.info(f"Focusing Filter ID: {id}, Name: {filter['name']}")
             # Pass existing focus position to preserve it if autofocus fails
             existing_focus = filter.get("focus_position", self.DEFAULT_FOCUS_POSITION)
@@ -227,42 +222,42 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         try:
             # start connection to all equipments
             self.logger.info("Connecting camera ...")
-            cam_status = requests.get(self.nina_api_path + self.CAM_URL + "connect").json()
+            cam_status = requests.get(self.nina_api_path + self.CAM_URL + "connect", timeout=5).json()
             if not cam_status["Success"]:
                 self.logger.error(f"Failed to connect camera: {cam_status.get('Error')}")
                 return False
             self.logger.info(f"Camera Connected!")
 
             self.logger.info("Starting camera cooling ...")
-            cool_status = requests.get(self.nina_api_path + self.CAM_URL + "cool").json()
+            cool_status = requests.get(self.nina_api_path + self.CAM_URL + "cool", timeout=5).json()
             if not cool_status["Success"]:
                 self.logger.warning(f"Failed to start camera cooling: {cool_status.get('Error')}")
             else:
                 self.logger.info("Cooler started!")
 
             self.logger.info("Connecting filterwheel ...")
-            filterwheel_status = requests.get(self.nina_api_path + self.FILTERWHEEL_URL + "connect").json()
+            filterwheel_status = requests.get(self.nina_api_path + self.FILTERWHEEL_URL + "connect", timeout=5).json()
             if not filterwheel_status["Success"]:
                 self.logger.warning(f"Failed to connect filterwheel: {filterwheel_status.get('Error')}")
             else:
                 self.logger.info(f"Filterwheel Connected!")
 
             self.logger.info("Connecting focuser ...")
-            focuser_status = requests.get(self.nina_api_path + self.FOCUSER_URL + "connect").json()
+            focuser_status = requests.get(self.nina_api_path + self.FOCUSER_URL + "connect", timeout=5).json()
             if not focuser_status["Success"]:
                 self.logger.warning(f"Failed to connect focuser: {focuser_status.get('Error')}")
             else:
                 self.logger.info(f"Focuser Connected!")
 
             self.logger.info("Connecting mount ...")
-            mount_status = requests.get(self.nina_api_path + self.MOUNT_URL + "connect").json()
+            mount_status = requests.get(self.nina_api_path + self.MOUNT_URL + "connect", timeout=5).json()
             if not mount_status["Success"]:
                 self.logger.error(f"Failed to connect mount: {mount_status.get('Error')}")
                 return False
             self.logger.info(f"Mount Connected!")
 
             self.logger.info("Unparking mount ...")
-            mount_status = requests.get(self.nina_api_path + self.MOUNT_URL + "unpark").json()
+            mount_status = requests.get(self.nina_api_path + self.MOUNT_URL + "unpark", timeout=5).json()
             if not mount_status["Success"]:
                 self.logger.error(f"Failed to unpark mount: {mount_status.get('Error')}")
                 return False
@@ -278,7 +273,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
     def discover_filters(self):
         self.logger.info("Discovering filters ...")
-        filterwheel_info = requests.get(self.nina_api_path + self.FILTERWHEEL_URL + "info").json()
+        filterwheel_info = requests.get(self.nina_api_path + self.FILTERWHEEL_URL + "info", timeout=5).json()
         if not filterwheel_info.get("Success"):
             self.logger.error(f"Failed to get filterwheel info: {filterwheel_info.get('Error')}")
             raise RuntimeError("Failed to get filterwheel info")
@@ -287,19 +282,21 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         for filter in filters:
             filter_id = filter["Id"]
             filter_name = filter["Name"]
-            # Use existing focus position if filter already in map, otherwise use default
+            # Use existing focus position and enabled state if filter already in map
             if filter_id in self.filter_map:
                 focus_position = self.filter_map[filter_id].get("focus_position", self.DEFAULT_FOCUS_POSITION)
+                enabled = self.filter_map[filter_id].get("enabled", True)
                 self.logger.info(
-                    f"Discovered filter: {filter_name} with ID: {filter_id}, using saved focus position: {focus_position}"
+                    f"Discovered filter: {filter_name} with ID: {filter_id}, using saved focus position: {focus_position}, enabled: {enabled}"
                 )
             else:
                 focus_position = self.DEFAULT_FOCUS_POSITION
+                enabled = True  # Default new filters to enabled
                 self.logger.info(
                     f"Discovered new filter: {filter_name} with ID: {filter_id}, using default focus position: {focus_position}"
                 )
 
-            self.filter_map[filter_id] = {"name": filter_name, "focus_position": focus_position}
+            self.filter_map[filter_id] = {"name": filter_name, "focus_position": focus_position, "enabled": enabled}
 
     def disconnect(self):
         pass
@@ -307,37 +304,6 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
     def supports_filter_management(self) -> bool:
         """Indicates that NINA adapter supports filter/focus management."""
         return True
-
-    def get_filter_config(self) -> dict[str, FilterConfig]:
-        """Get current filter configuration with focus positions.
-
-        Returns:
-            dict: Filter configuration mapping filter ID strings to FilterConfig
-        """
-        return {
-            str(filter_id): {"name": filter_data["name"], "focus_position": filter_data["focus_position"]}
-            for filter_id, filter_data in self.filter_map.items()
-        }
-
-    def update_filter_focus(self, filter_id: str, focus_position: int) -> bool:
-        """Update the focus position for a specific filter.
-
-        Args:
-            filter_id: Filter ID as string
-            focus_position: New focus position in steps
-
-        Returns:
-            bool: True if update was successful, False otherwise
-        """
-        try:
-            filter_id_int = int(filter_id)
-            if filter_id_int in self.filter_map:
-                self.filter_map[filter_id_int]["focus_position"] = focus_position
-                self.logger.info(f"Updated filter {filter_id} focus position to {focus_position}")
-                return True
-            return False
-        except (ValueError, KeyError):
-            return False
 
     def is_telescope_connected(self) -> bool:
         """Check if telescope is connected and responsive."""
@@ -526,7 +492,12 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
         id_counter = [base_id]  # Use list so it can be modified in nested function
 
-        for filter_id, filter_info in self.filter_map.items():
+        # Filter to only enabled filters for observation
+        enabled_filters = {fid: fdata for fid, fdata in self.filter_map.items() if fdata.get("enabled", True)}
+        if not enabled_filters:
+            raise RuntimeError("No enabled filters available for observation sequence")
+
+        for filter_id, filter_info in enabled_filters.items():
             filter_name = filter_info["name"]
             focus_position = filter_info["focus_position"]
 
@@ -605,7 +576,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             raise RuntimeError("Failed to get images list from NINA")
 
         images_to_download = []
-        expected_image_count = len(self.filter_map)  # One image per filter
+        expected_image_count = len(enabled_filters)  # One image per enabled filter
         images_found = len(images_response["Response"])
         self.logger.info(
             f"Found {images_found} images in NINA image history, considering the last {expected_image_count}"

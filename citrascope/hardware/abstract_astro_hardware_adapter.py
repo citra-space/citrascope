@@ -26,10 +26,12 @@ class FilterConfig(TypedDict):
     Attributes:
         name: Human-readable filter name (e.g., 'Luminance', 'Red', 'Ha')
         focus_position: Focuser position for this filter in steps
+        enabled: Whether this filter is enabled for observations (default: True)
     """
 
     name: str
     focus_position: int
+    enabled: bool
 
 
 class ObservationStrategy(Enum):
@@ -43,14 +45,28 @@ class AbstractAstroHardwareAdapter(ABC):
 
     _slew_min_distance_deg: float = 2.0
     scope_slew_rate_degrees_per_second: float = 0.0
+    DEFAULT_FOCUS_POSITION: int = 0  # Default focus position, can be overridden by subclasses
 
-    def __init__(self, images_dir: Path):
-        """Initialize the adapter with images directory.
+    def __init__(self, images_dir: Path, **kwargs):
+        """Initialize the adapter with images directory and optional filter configuration.
 
         Args:
             images_dir: Path to the images directory
+            **kwargs: Additional configuration including 'filters' dict
         """
         self.images_dir = images_dir
+        self.filter_map = {}
+
+        # Load filter configuration from settings if available
+        saved_filters = kwargs.get("filters", {})
+        for filter_id, filter_data in saved_filters.items():
+            try:
+                # Default enabled to True for backward compatibility
+                if "enabled" not in filter_data:
+                    filter_data["enabled"] = True
+                self.filter_map[int(filter_id)] = filter_data
+            except (ValueError, TypeError):
+                pass  # Skip invalid filter IDs
 
     @classmethod
     @abstractmethod
@@ -217,14 +233,22 @@ class AbstractAstroHardwareAdapter(ABC):
                   Each FilterConfig contains:
                   - name (str): Filter name
                   - focus_position (int): Focuser position for this filter
+                  - enabled (bool): Whether filter is enabled for observations
 
         Example:
             {
-                "1": {"name": "Luminance", "focus_position": 9000},
-                "2": {"name": "Red", "focus_position": 9050}
+                "1": {"name": "Luminance", "focus_position": 9000, "enabled": True},
+                "2": {"name": "Red", "focus_position": 9050, "enabled": False}
             }
         """
-        return {}
+        return {
+            str(filter_id): {
+                "name": filter_data["name"],
+                "focus_position": filter_data["focus_position"],
+                "enabled": filter_data.get("enabled", True),
+            }
+            for filter_id, filter_data in self.filter_map.items()
+        }
 
     def update_filter_focus(self, filter_id: str, focus_position: int) -> bool:
         """Update the focus position for a specific filter.
@@ -236,4 +260,30 @@ class AbstractAstroHardwareAdapter(ABC):
         Returns:
             bool: True if update was successful, False otherwise
         """
-        return False
+        try:
+            filter_id_int = int(filter_id)
+            if filter_id_int in self.filter_map:
+                self.filter_map[filter_id_int]["focus_position"] = focus_position
+                return True
+            return False
+        except (ValueError, KeyError):
+            return False
+
+    def update_filter_enabled(self, filter_id: str, enabled: bool) -> bool:
+        """Update the enabled state for a specific filter.
+
+        Args:
+            filter_id: Filter ID as string
+            enabled: New enabled state
+
+        Returns:
+            bool: True if update was successful, False otherwise
+        """
+        try:
+            filter_id_int = int(filter_id)
+            if filter_id_int in self.filter_map:
+                self.filter_map[filter_id_int]["enabled"] = enabled
+                return True
+            return False
+        except (ValueError, KeyError):
+            return False

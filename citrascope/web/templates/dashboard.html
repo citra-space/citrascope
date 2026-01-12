@@ -166,9 +166,6 @@
     </div>
 
     <div class="container my-4" id="configSection" style="display: none;">
-        <div id="configError" class="alert alert-danger" style="display: none;" role="alert"></div>
-        <div id="configSuccess" class="alert alert-success" style="display: none;" role="alert"></div>
-
         <form id="configForm">
             <div class="row g-3 mb-3">
                 <!-- API Configuration Card -->
@@ -252,21 +249,28 @@
                                         <div><small class="text-muted">Note: Pause task processing before running autofocus</small></div>
                                     </div>
                                 </div>
-                                <div id="filterTableContainer">
-                                    <table class="table table-dark table-sm">
-                                        <thead>
-                                            <tr>
-                                                <th>Filter ID</th>
-                                                <th>Name</th>
-                                                <th>Focus Position</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="filterTableBody">
-                                            <!-- Filter rows will be populated by JavaScript -->
-                                        </tbody>
-                                    </table>
-                                    <div id="noFiltersMessage" class="text-muted small" style="display: none;">
-                                        No filters configured. Connect to hardware to discover filters.
+                                <p id="filterAdapterChangeMessage" class="text-muted mb-3" style="display: none;">
+                                    Save configuration to edit filter settings for this adapter
+                                </p>
+                                <div class="row">
+                                    <div class="col-12 col-md-8 col-lg-6">
+                                        <div id="filterTableContainer">
+                                            <table class="table table-dark table-sm">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Enabled</th>
+                                                        <th>Name</th>
+                                                        <th>Focus Position</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="filterTableBody">
+                                                    <!-- Filter rows will be populated by JavaScript -->
+                                                </tbody>
+                                            </table>
+                                            <div id="noFiltersMessage" class="text-muted small" style="display: none;">
+                                                No filters configured. Connect to hardware to discover filters.
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -481,6 +485,9 @@
             </div>
         </div>
     </div>
+
+    <!-- Toast Container for Notifications -->
+    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;" id="toastContainer"></div>
 
     <script type="module" src="/static/app.js"></script>
 

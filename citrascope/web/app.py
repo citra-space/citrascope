@@ -422,7 +422,8 @@ class CitraScopeWebApp:
 
         @self.app.patch("/api/adapter/filters/{filter_id}")
         async def update_filter(filter_id: str, update: dict):
-            """Update focus position for a specific filter."""
+            """Update focus position and/or enabled state for a specific filter."""
+
             if not self.daemon or not self.daemon.hardware_adapter:
                 return JSONResponse({"error": "Hardware adapter not available"}, status_code=503)
 
@@ -430,31 +431,50 @@ class CitraScopeWebApp:
                 return JSONResponse({"error": "Adapter does not support filter management"}, status_code=404)
 
             try:
-                # Validate focus_position is provided and is a valid integer within hardware limits
-                if "focus_position" not in update:
-                    return JSONResponse({"error": "focus_position is required"}, status_code=400)
-
-                focus_position = update["focus_position"]
-                if not isinstance(focus_position, int):
-                    return JSONResponse({"error": "focus_position must be an integer"}, status_code=400)
-
-                # Typical focuser range is 0-65535 (16-bit unsigned)
-                if focus_position < 0 or focus_position > 65535:
-                    return JSONResponse({"error": "focus_position must be between 0 and 65535"}, status_code=400)
-
                 # Get current filter config
                 filter_config = self.daemon.hardware_adapter.get_filter_config()
                 if filter_id not in filter_config:
                     return JSONResponse({"error": f"Filter {filter_id} not found"}, status_code=404)
 
-                # Update via adapter interface
-                if not self.daemon.hardware_adapter.update_filter_focus(filter_id, focus_position):
-                    return JSONResponse({"error": "Failed to update filter in adapter"}, status_code=500)
+                # Validate focus_position if provided
+                if "focus_position" in update:
+                    focus_position = update["focus_position"]
+                    if not isinstance(focus_position, int):
+                        return JSONResponse({"error": "focus_position must be an integer"}, status_code=400)
+
+                    # Typical focuser range is 0-65535 (16-bit unsigned)
+                    if focus_position < 0 or focus_position > 65535:
+                        return JSONResponse({"error": "focus_position must be between 0 and 65535"}, status_code=400)
+
+                    # Update focus position via adapter interface
+                    if not self.daemon.hardware_adapter.update_filter_focus(filter_id, focus_position):
+                        return JSONResponse({"error": "Failed to update filter focus in adapter"}, status_code=500)
+
+                # Validate and update enabled state if provided
+                if "enabled" in update:
+                    enabled = update["enabled"]
+                    if not isinstance(enabled, bool):
+                        return JSONResponse({"error": "enabled must be a boolean"}, status_code=400)
+
+                    # Belt and suspenders: Ensure at least one filter remains enabled
+                    if not enabled:
+                        enabled_count = sum(1 for f in filter_config.values() if f.get("enabled", True))
+                        if enabled_count <= 1:
+                            return JSONResponse(
+                                {
+                                    "error": "Cannot disable last enabled filter. At least one filter must remain enabled."
+                                },
+                                status_code=400,
+                            )
+
+                    # Update enabled state via adapter interface
+                    if not self.daemon.hardware_adapter.update_filter_enabled(filter_id, enabled):
+                        return JSONResponse({"error": "Failed to update filter enabled state"}, status_code=500)
 
                 # Save to settings
                 self.daemon._save_filter_config()
 
-                return {"success": True, "filter_id": filter_id, "focus_position": focus_position}
+                return {"success": True, "filter_id": filter_id, "updated": update}
             except ValueError:
                 return JSONResponse({"error": "Invalid filter_id format"}, status_code=400)
             except Exception as e:
