@@ -301,6 +301,10 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
     def disconnect(self):
         pass
 
+    def supports_autofocus(self) -> bool:
+        """Indicates that NINA adapter supports autofocus."""
+        return True
+
     def supports_filter_management(self) -> bool:
         """Indicates that NINA adapter supports filter/focus management."""
         return True

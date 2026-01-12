@@ -217,6 +217,14 @@ class AbstractAstroHardwareAdapter(ABC):
         """
         raise NotImplementedError(f"{self.__class__.__name__} does not support autofocus")
 
+    def supports_autofocus(self) -> bool:
+        """Indicates whether this adapter supports autofocus functionality.
+
+        Returns:
+            bool: True if the adapter can perform autofocus, False otherwise.
+        """
+        return False
+
     def supports_filter_management(self) -> bool:
         """Indicates whether this adapter supports filter/focus management.
 

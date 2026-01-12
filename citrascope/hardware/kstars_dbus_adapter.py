@@ -883,6 +883,14 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
             self.logger.info(f"Filter discovery failed (non-fatal): {e}")
             # Leave filter_map empty, use single-filter mode
 
+    def supports_autofocus(self) -> bool:
+        """Indicates that KStars adapter does not support autofocus yet.
+
+        Returns:
+            bool: False (autofocus not implemented).
+        """
+        return False
+
     def supports_filter_management(self) -> bool:
         """Indicates whether this adapter supports filter/focus management.
 

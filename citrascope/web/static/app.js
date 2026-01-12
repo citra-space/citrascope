@@ -393,6 +393,89 @@ function updateStatus(status) {
     if (status.processing_active !== undefined) {
         updateProcessingState(status.processing_active);
     }
+
+    // Update autofocus status
+    updateAutofocusStatus(status);
+}
+
+function updateAutofocusStatus(status) {
+    // Update autofocus button state
+    const button = document.getElementById('runAutofocusButton');
+    const buttonText = document.getElementById('autofocusButtonText');
+
+    if (button && buttonText && status.autofocus_requested !== undefined) {
+        if (status.autofocus_requested) {
+            buttonText.textContent = 'Cancel Autofocus';
+            button.dataset.action = 'cancel';
+            button.classList.remove('btn-outline-primary');
+            button.classList.add('btn-outline-warning');
+        } else {
+            buttonText.textContent = 'Run Autofocus';
+            button.dataset.action = 'request';
+            button.classList.remove('btn-outline-warning');
+            button.classList.add('btn-outline-primary');
+        }
+    }
+
+    // Update last autofocus display
+    const lastAutofocusDisplay = document.getElementById('lastAutofocusDisplay');
+    if (lastAutofocusDisplay) {
+        if (status.last_autofocus_timestamp) {
+            const timestamp = status.last_autofocus_timestamp * 1000; // Convert to milliseconds
+            const now = Date.now();
+            const elapsed = now - timestamp;
+            lastAutofocusDisplay.textContent = formatElapsedTime(elapsed);
+        } else {
+            lastAutofocusDisplay.textContent = 'Never';
+        }
+    }
+
+    // Update next autofocus display
+    const nextAutofocusDisplay = document.getElementById('nextAutofocusDisplay');
+    const nextAutofocusTime = document.getElementById('nextAutofocusTime');
+
+    if (nextAutofocusDisplay && nextAutofocusTime) {
+        if (status.next_autofocus_minutes !== null && status.next_autofocus_minutes !== undefined) {
+            nextAutofocusDisplay.style.display = 'block';
+            if (status.next_autofocus_minutes === 0) {
+                nextAutofocusTime.textContent = 'now (overdue)';
+            } else {
+                nextAutofocusTime.textContent = formatMinutes(status.next_autofocus_minutes);
+            }
+        } else {
+            nextAutofocusDisplay.style.display = 'none';
+        }
+    }
+}
+
+function formatElapsedTime(milliseconds) {
+    const seconds = Math.floor(milliseconds / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (days > 0) {
+        return `${days} day${days !== 1 ? 's' : ''} ago`;
+    } else if (hours > 0) {
+        return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
+    } else if (minutes > 0) {
+        return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
+    } else {
+        return 'just now';
+    }
+}
+
+function formatMinutes(minutes) {
+    const hours = Math.floor(minutes / 60);
+    const mins = Math.floor(minutes % 60);
+
+    if (hours > 0) {
+        if (mins > 0) {
+            return `${hours}h ${mins}m`;
+        }
+        return `${hours}h`;
+    }
+    return `${mins}m`;
 }
 
 function updateProcessingState(isActive) {
