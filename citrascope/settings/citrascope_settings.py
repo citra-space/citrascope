@@ -49,9 +49,6 @@ class CitraScopeSettings:
         # Current adapter's settings slice
         self.adapter_settings: Dict[str, Any] = self._all_adapter_settings.get(self.hardware_adapter, {})
 
-        # Validate adapter settings (autofocus interval)
-        self._validate_adapter_settings()
-
         # Runtime settings (all loaded from config file, configurable via web UI)
         self.log_level: str = config.get("log_level", "INFO")
         self.keep_images: bool = config.get("keep_images", False)
@@ -68,6 +65,22 @@ class CitraScopeSettings:
         self.file_logging_enabled: bool = config.get("file_logging_enabled", True)
         self.log_retention_days: int = config.get("log_retention_days", 30)
 
+        # Autofocus configuration (top-level/global settings)
+        self.scheduled_autofocus_enabled: bool = config.get("scheduled_autofocus_enabled", False)
+        self.autofocus_interval_minutes: int = config.get("autofocus_interval_minutes", 60)
+        self.last_autofocus_timestamp: Optional[int] = config.get("last_autofocus_timestamp")
+
+        # Validate autofocus interval
+        if (
+            not isinstance(self.autofocus_interval_minutes, int)
+            or self.autofocus_interval_minutes < 1
+            or self.autofocus_interval_minutes > 1439
+        ):
+            CITRASCOPE_LOGGER.warning(
+                f"Invalid autofocus_interval_minutes ({self.autofocus_interval_minutes}). Setting to default 60 minutes."
+            )
+            self.autofocus_interval_minutes = 60
+
     def get_images_dir(self) -> Path:
         """Get the path to the images directory.
 
@@ -80,20 +93,6 @@ class CitraScopeSettings:
         """Create images directory if it doesn't exist."""
         if not self._images_dir.exists():
             self._images_dir.mkdir(parents=True)
-
-    def _validate_adapter_settings(self) -> None:
-        """Validate adapter-specific settings and apply defaults/corrections."""
-        if not self.adapter_settings:
-            return
-
-        # Validate autofocus_interval_minutes is between 1 and 1439 (23h 59m)
-        interval = self.adapter_settings.get("autofocus_interval_minutes")
-        if interval is not None:
-            if not isinstance(interval, int) or interval < 1 or interval > 1439:
-                CITRASCOPE_LOGGER.warning(
-                    f"Invalid autofocus_interval_minutes ({interval}). Setting to default 60 minutes."
-                )
-                self.adapter_settings["autofocus_interval_minutes"] = 60
 
     def is_configured(self) -> bool:
         """Check if minimum required configuration is present.
@@ -124,6 +123,9 @@ class CitraScopeSettings:
             "max_retry_delay_seconds": self.max_retry_delay_seconds,
             "file_logging_enabled": self.file_logging_enabled,
             "log_retention_days": self.log_retention_days,
+            "scheduled_autofocus_enabled": self.scheduled_autofocus_enabled,
+            "autofocus_interval_minutes": self.autofocus_interval_minutes,
+            "last_autofocus_timestamp": self.last_autofocus_timestamp,
         }
 
     def save(self) -> None:

@@ -163,6 +163,16 @@ async function loadConfiguration() {
         document.getElementById('keep_images').checked = config.keep_images || false;
         document.getElementById('file_logging_enabled').checked = config.file_logging_enabled !== undefined ? config.file_logging_enabled : true;
 
+        // Load autofocus settings (top-level)
+        const scheduledAutofocusEnabled = document.getElementById('scheduled_autofocus_enabled');
+        const autofocusInterval = document.getElementById('autofocus_interval_minutes');
+        if (scheduledAutofocusEnabled) {
+            scheduledAutofocusEnabled.checked = config.scheduled_autofocus_enabled || false;
+        }
+        if (autofocusInterval) {
+            autofocusInterval.value = config.autofocus_interval_minutes || 60;
+        }
+
         // Load adapter-specific settings if adapter is selected
         if (config.hardware_adapter) {
             await loadAdapterSchema(config.hardware_adapter);
@@ -348,6 +358,9 @@ async function saveConfiguration(event) {
         log_level: document.getElementById('logLevel').value,
         keep_images: document.getElementById('keep_images').checked,
         file_logging_enabled: document.getElementById('file_logging_enabled').checked,
+        // Autofocus settings (top-level)
+        scheduled_autofocus_enabled: document.getElementById('scheduled_autofocus_enabled')?.checked || false,
+        autofocus_interval_minutes: parseInt(document.getElementById('autofocus_interval_minutes')?.value || 60, 10),
         // API settings from endpoint selector
         host: host,
         port: port,
@@ -357,6 +370,7 @@ async function saveConfiguration(event) {
         initial_retry_delay_seconds: currentConfig.initial_retry_delay_seconds || 30,
         max_retry_delay_seconds: currentConfig.max_retry_delay_seconds || 300,
         log_retention_days: currentConfig.log_retention_days || 30,
+        last_autofocus_timestamp: currentConfig.last_autofocus_timestamp, // Preserve timestamp
     };
 
     try {

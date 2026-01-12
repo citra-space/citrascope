@@ -185,6 +185,9 @@ class CitraScopeWebApp:
                 "max_task_retries": settings.max_task_retries,
                 "initial_retry_delay_seconds": settings.initial_retry_delay_seconds,
                 "max_retry_delay_seconds": settings.max_retry_delay_seconds,
+                "scheduled_autofocus_enabled": settings.scheduled_autofocus_enabled,
+                "autofocus_interval_minutes": settings.autofocus_interval_minutes,
+                "last_autofocus_timestamp": settings.last_autofocus_timestamp,
                 "app_url": app_url,
                 "config_file_path": config_path,
                 "log_file_path": log_file_path,
@@ -558,14 +561,14 @@ class CitraScopeWebApp:
                     self.status.tasks_pending = len(task_manager.task_heap)
 
             # Get autofocus timing information
-            if self.daemon.settings and self.daemon.settings.adapter_settings:
-                adapter_settings = self.daemon.settings.adapter_settings
-                self.status.last_autofocus_timestamp = adapter_settings.get("last_autofocus_timestamp")
+            if self.daemon.settings:
+                settings = self.daemon.settings
+                self.status.last_autofocus_timestamp = settings.last_autofocus_timestamp
 
                 # Calculate next autofocus time if scheduled is enabled
-                if adapter_settings.get("scheduled_autofocus_enabled", False):
-                    last_ts = adapter_settings.get("last_autofocus_timestamp")
-                    interval_minutes = adapter_settings.get("autofocus_interval_minutes", 60)
+                if settings.scheduled_autofocus_enabled:
+                    last_ts = settings.last_autofocus_timestamp
+                    interval_minutes = settings.autofocus_interval_minutes
                     if last_ts is not None:
                         import time
 

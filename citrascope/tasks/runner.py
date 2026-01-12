@@ -334,19 +334,19 @@ class TaskManager:
         Returns:
             bool: True if autofocus is enabled and interval has elapsed.
         """
-        if not self.settings or not self.settings.adapter_settings:
+        if not self.settings:
             return False
 
-        # Check if scheduled autofocus is enabled
-        if not self.settings.adapter_settings.get("scheduled_autofocus_enabled", False):
+        # Check if scheduled autofocus is enabled (top-level setting)
+        if not self.settings.scheduled_autofocus_enabled:
             return False
 
         # Check if adapter supports autofocus
         if not self.hardware_adapter.supports_filter_management():
             return False
 
-        interval_minutes = self.settings.adapter_settings.get("autofocus_interval_minutes", 60)
-        last_timestamp = self.settings.adapter_settings.get("last_autofocus_timestamp")
+        interval_minutes = self.settings.autofocus_interval_minutes
+        last_timestamp = self.settings.last_autofocus_timestamp
 
         # If never run (None), treat as overdue and run immediately
         if last_timestamp is None:
@@ -369,9 +369,9 @@ class TaskManager:
                     self.settings.adapter_settings["filters"] = filter_config
                     self.logger.info(f"Saved filter configuration with {len(filter_config)} filters")
 
-            # Update last autofocus timestamp
+            # Update last autofocus timestamp (top-level setting)
             if self.settings:
-                self.settings.adapter_settings["last_autofocus_timestamp"] = int(time.time())
+                self.settings.last_autofocus_timestamp = int(time.time())
                 self.settings.save()
 
             self.logger.info("Autofocus routine completed successfully")

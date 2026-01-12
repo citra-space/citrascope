@@ -87,34 +87,6 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
                 "min": 1,
                 "max": 4,
             },
-            {
-                "name": "scheduled_autofocus_enabled",
-                "friendly_name": "Enable Scheduled Autofocus",
-                "type": "bool",
-                "default": False,
-                "description": "Automatically run autofocus at regular intervals",
-                "required": False,
-            },
-            {
-                "name": "autofocus_interval_minutes",
-                "friendly_name": "Autofocus Interval (minutes)",
-                "type": "int",
-                "default": 60,
-                "description": "How often to run autofocus automatically (30-1439 minutes)",
-                "required": False,
-                "options": [30, 60, 120, 180],
-                "min": 1,
-                "max": 1439,
-            },
-            {
-                "name": "last_autofocus_timestamp",
-                "friendly_name": "Last Autofocus",
-                "type": "int",
-                "default": None,
-                "description": "Unix timestamp of last successful autofocus (read-only)",
-                "required": False,
-                "readonly": True,
-            },
         ]
 
     def do_autofocus(self):
