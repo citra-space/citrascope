@@ -1,6 +1,7 @@
 // Configuration management for CitraScope
 
 import { getConfig, saveConfig, getConfigStatus, getHardwareAdapters, getAdapterSchema } from './api.js';
+import { getFilterColor } from './filters.js';
 
 // API Host constants - must match backend constants in app.py
 const PROD_API_HOST = 'api.citra.space';
@@ -556,6 +557,9 @@ async function loadFilterConfig() {
             // Show the filter section
             if (filterSection) filterSection.style.display = 'block';
 
+            // Update enabled filters display on dashboard
+            updateEnabledFiltersDisplay(data.filters);
+
             // Populate filter table
             const tbody = document.getElementById('filterTableBody');
             const noFiltersMsg = document.getElementById('noFiltersMessage');
@@ -573,6 +577,7 @@ async function loadFilterConfig() {
                     filterIds.forEach(filterId => {
                         const filter = filters[filterId];
                         const isEnabled = filter.enabled !== undefined ? filter.enabled : true;
+                        const filterColor = getFilterColor(filter.name);
                         const row = document.createElement('tr');
                         row.innerHTML = `
                             <td>
@@ -581,7 +586,9 @@ async function loadFilterConfig() {
                                        data-filter-id="${filterId}"
                                        ${isEnabled ? 'checked' : ''}>
                             </td>
-                            <td>${filter.name}</td>
+                            <td>
+                                <span class="badge" style="background-color: ${filterColor}; color: white;">${filter.name}</span>
+                            </td>
                             <td>
                                 <input type="number"
                                        class="form-control form-control-sm filter-focus-input"
@@ -790,6 +797,28 @@ function showToast(message, type = 'info') {
 export async function initFilterConfig() {
     // Load filter config when config section is visible
     await loadFilterConfig();
+}
+
+/**
+ * Update the enabled filters display on the dashboard.
+ * @param {Object} filters - Filter configuration object
+ */
+function updateEnabledFiltersDisplay(filters) {
+    const filtersEl = document.getElementById('enabledFilters');
+    if (!filtersEl) return;
+
+    const enabledFilters = Object.values(filters)
+        .filter(filter => filter.enabled !== false)
+        .map(filter => filter.name);
+
+    if (enabledFilters.length > 0) {
+        filtersEl.innerHTML = enabledFilters.map(filterName => {
+            const color = getFilterColor(filterName);
+            return `<span class="badge me-1" style="background-color: ${color}; color: white;">${filterName}</span>`;
+        }).join('');
+    } else {
+        filtersEl.textContent = '-';
+    }
 }
 
 /**

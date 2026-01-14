@@ -363,11 +363,9 @@ function updateStatus(status) {
         document.getElementById('tasksPending').textContent = status.tasks_pending || '0';
     }
 
-    if (status.telescope_ra !== null) {
-        document.getElementById('telescopeRA').textContent = status.telescope_ra.toFixed(4) + '°';
-    }
-    if (status.telescope_dec !== null) {
-        document.getElementById('telescopeDEC').textContent = status.telescope_dec.toFixed(4) + '°';
+    if (status.telescope_ra !== null && status.telescope_dec !== null) {
+        document.getElementById('telescopeCoords').textContent =
+            status.telescope_ra.toFixed(3) + '° / ' + status.telescope_dec.toFixed(3) + '°';
     }
 
     // Update ground station information
