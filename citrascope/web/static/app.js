@@ -239,6 +239,44 @@ function stopCountdown() {
     }
 }
 
+// --- Last Capture Image Logic ---
+let lastImageTimestamp = null;
+
+function updateLastCaptureImage(timestamp, target) {
+    const imageEl = document.getElementById('lastCaptureImage');
+    const placeholderEl = document.getElementById('noImagePlaceholder');
+    const timestampEl = document.getElementById('lastCaptureTimestamp');
+    const targetEl = document.getElementById('lastCaptureTarget');
+
+    if (timestamp && timestamp !== lastImageTimestamp) {
+        // New image available - reload with cache busting
+        lastImageTimestamp = timestamp;
+        imageEl.src = `/api/preview-image?t=${timestamp}`;
+        imageEl.style.display = 'block';
+        placeholderEl.style.display = 'none';
+        timestampEl.style.display = 'block';
+
+        // Format timestamp
+        const date = new Date(timestamp * 1000);
+        timestampEl.textContent = `Captured: ${date.toLocaleString()}`;
+
+        // Display target name if available
+        if (target) {
+            targetEl.textContent = target;
+            targetEl.style.display = 'block';
+        } else {
+            targetEl.style.display = 'none';
+        }
+    } else if (!timestamp) {
+        // No image available
+        lastImageTimestamp = null;
+        imageEl.style.display = 'none';
+        placeholderEl.style.display = 'block';
+        timestampEl.style.display = 'none';
+        targetEl.style.display = 'none';
+    }
+}
+
 // --- Navigation Logic ---
 function initNavigation() {
     // Initialize Bootstrap tooltips
@@ -366,6 +404,11 @@ function updateStatus(status) {
     if (status.telescope_ra !== null && status.telescope_dec !== null) {
         document.getElementById('telescopeCoords').textContent =
             status.telescope_ra.toFixed(3) + '° / ' + status.telescope_dec.toFixed(3) + '°';
+    }
+
+    // Update last capture image
+    if (status.last_image_update_ts !== undefined) {
+        updateLastCaptureImage(status.last_image_update_ts, status.last_image_target);
     }
 
     // Update ground station information

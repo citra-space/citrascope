@@ -1,11 +1,14 @@
 import os
+import threading
 import time
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 from dateutil import parser as dtparser
 from skyfield.api import Angle, EarthSatellite, load, wgs84
 
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
+from citrascope.imaging.converter import convert_fits_to_preview_bytes
 
 
 class AbstractBaseTelescopeTask(ABC):
@@ -64,6 +67,22 @@ class AbstractBaseTelescopeTask(ABC):
         else:
             filepaths = filepath
 
+        # Generate preview in background thread (don't block uploads)
+        self.preview_bytes: bytes | None = None
+        self.preview_target: str | None = None
+        preview_thread = None
+
+        def generate_preview():
+            if filepaths:
+                self.preview_bytes = convert_fits_to_preview_bytes(Path(filepaths[-1]))
+                if self.preview_bytes:
+                    self.preview_target = self.task.satelliteName
+
+        if filepaths:
+            preview_thread = threading.Thread(target=generate_preview, daemon=True)
+            preview_thread.start()
+
+        # Upload images while preview generates in parallel
         for filepath in filepaths:
             upload_result = self.api_client.upload_image(self.task.id, self.telescope_record["id"], filepath)
             if upload_result:
@@ -72,13 +91,22 @@ class AbstractBaseTelescopeTask(ABC):
                 self.logger.error(f"Failed to upload image {filepath}")
                 return False
 
-            if not self.keep_images:
+        # Wait for preview generation to complete before deleting files
+        if preview_thread:
+            preview_thread.join(timeout=5.0)  # Wait max 5 seconds
+            if preview_thread.is_alive():
+                self.logger.warning("Preview generation still running after 5s timeout")
+
+        # Now safe to delete files (preview has finished reading)
+        if not self.keep_images:
+            for filepath in filepaths:
                 try:
                     os.remove(filepath)
                     self.logger.debug(f"Deleted local image file {filepath} after upload.")
                 except Exception as e:
                     self.logger.error(f"Failed to delete local image file {filepath}: {e}")
-            else:
+        else:
+            for filepath in filepaths:
                 self.logger.info(f"Keeping local image file {filepath} (--keep-images flag set).")
 
         marked_complete = self.api_client.mark_task_complete(self.task.id)
