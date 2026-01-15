@@ -140,3 +140,44 @@ class CitraApiClient(AbstractCitraApiClient):
             if self.logger:
                 self.logger.error(f"Failed to mark task {task_id} as failed: {e}")
             return None
+
+    def expand_filters(self, filter_names):
+        """Expand filter names to full spectral specifications.
+
+        Args:
+            filter_names: List of filter name strings (e.g., ["Red", "Ha", "Clear"])
+
+        Returns:
+            Response dict with 'filters' array, or None on error
+        """
+        try:
+            body = {"filter_names": filter_names}
+            response = self._request("POST", "/filters/expand", json=body)
+            if self.logger:
+                self.logger.debug(f"POST /filters/expand: {response}")
+            return response
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Failed to expand filters: {e}")
+            return None
+
+    def update_telescope_spectral_config(self, telescope_id, spectral_config):
+        """Update telescope's spectral configuration.
+
+        Args:
+            telescope_id: Telescope UUID string
+            spectral_config: Dict with spectral configuration (discrete filters, etc.)
+
+        Returns:
+            Response from PATCH request, or None on error
+        """
+        try:
+            body = [{"id": telescope_id, "spectralConfig": spectral_config}]
+            response = self._request("PATCH", "/telescopes", json=body)
+            if self.logger:
+                self.logger.debug(f"PATCH /telescopes spectral_config: {response}")
+            return response
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Failed to update telescope spectral config: {e}")
+            return None

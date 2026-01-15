@@ -4,6 +4,7 @@ from typing import Optional
 from citrascope.api.citra_api_client import AbstractCitraApiClient, CitraApiClient
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
 from citrascope.hardware.adapter_registry import get_adapter_class
+from citrascope.hardware.filter_sync import sync_filters_to_backend
 from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.logging._citrascope_logger import setup_file_logging
 from citrascope.settings.citrascope_settings import CitraScopeSettings
@@ -219,8 +220,26 @@ class CitraScopeDaemon:
                 self.settings.adapter_settings["filters"] = filter_config
                 self.settings.save()
                 CITRASCOPE_LOGGER.info(f"Saved filter configuration with {len(filter_config)} filters")
+                # Sync enabled filters to backend
+                self._sync_filters_to_backend()
         except Exception as e:
             CITRASCOPE_LOGGER.warning(f"Failed to save filter configuration: {e}")
+
+    def _sync_filters_to_backend(self):
+        """Sync enabled filters to backend API.
+
+        Extracts enabled filter names from hardware adapter, expands them via
+        the filter library API, then updates the telescope's spectral_config.
+        Logs warnings on failure without blocking daemon operations.
+        """
+        if not self.hardware_adapter or not self.api_client or not self.telescope_record:
+            return
+
+        try:
+            filter_config = self.hardware_adapter.get_filter_config()
+            sync_filters_to_backend(self.api_client, self.telescope_record["id"], filter_config, CITRASCOPE_LOGGER)
+        except Exception as e:
+            CITRASCOPE_LOGGER.warning(f"Failed to sync filters to backend: {e}", exc_info=True)
 
     def trigger_autofocus(self) -> tuple[bool, Optional[str]]:
         """Request autofocus to run at next safe point between tasks.
