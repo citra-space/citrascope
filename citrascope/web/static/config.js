@@ -670,6 +670,20 @@ async function saveModifiedFilters() {
         }
     }
 
+    // After all filter updates, sync to backend once
+    if (successCount > 0) {
+        try {
+            const syncResponse = await fetch('/api/adapter/filters/sync', {
+                method: 'POST'
+            });
+            if (!syncResponse.ok) {
+                console.error('Failed to sync filters to backend');
+            }
+        } catch (error) {
+            console.error('Error syncing filters to backend:', error);
+        }
+    }
+
     return { success: successCount, failed: failedCount };
 }
 

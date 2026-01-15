@@ -428,6 +428,8 @@ class CitraScopeWebApp:
                 if filter_id not in filter_config:
                     return JSONResponse({"error": f"Filter {filter_id} not found"}, status_code=404)
 
+                enabled_changed = False
+
                 # Validate focus_position if provided
                 if "focus_position" in update:
                     focus_position = update["focus_position"]
@@ -463,7 +465,7 @@ class CitraScopeWebApp:
                     if not self.daemon.hardware_adapter.update_filter_enabled(filter_id, enabled):
                         return JSONResponse({"error": "Failed to update filter enabled state"}, status_code=500)
 
-                # Save to settings
+                # Always save local config (sync to backend happens via explicit /sync endpoint)
                 self.daemon._save_filter_config()
 
                 return {"success": True, "filter_id": filter_id, "updated": update}
@@ -471,6 +473,22 @@ class CitraScopeWebApp:
                 return JSONResponse({"error": "Invalid filter_id format"}, status_code=400)
             except Exception as e:
                 CITRASCOPE_LOGGER.error(f"Error updating filter: {e}", exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.post("/api/adapter/filters/sync")
+        async def sync_filters_to_backend():
+            """Explicitly sync filter configuration to backend API.
+
+            Call this after batch filter updates to sync enabled filters to backend.
+            """
+            if not self.daemon or not self.daemon.hardware_adapter:
+                return JSONResponse({"error": "Hardware adapter not initialized"}, status_code=503)
+
+            try:
+                self.daemon._sync_filters_to_backend()
+                return {"success": True, "message": "Filters synced to backend"}
+            except Exception as e:
+                CITRASCOPE_LOGGER.error(f"Error syncing filters to backend: {e}", exc_info=True)
                 return JSONResponse({"error": str(e)}, status_code=500)
 
         @self.app.post("/api/adapter/autofocus")

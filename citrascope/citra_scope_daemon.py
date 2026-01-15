@@ -180,6 +180,8 @@ class CitraScopeDaemon:
 
             # Save filter configuration if adapter supports it
             self._save_filter_config()
+            # Sync discovered filters to backend on startup
+            self._sync_filters_to_backend()
 
             self.task_manager = TaskManager(
                 self.api_client,
@@ -208,6 +210,9 @@ class CitraScopeDaemon:
         - After autofocus to save updated focus positions
         - After manual filter focus updates via web API
 
+        Note: This only saves locally. Call _sync_filters_to_backend() separately
+        when enabled filters change to update the backend.
+
         Thread safety: This modifies self.settings and writes to disk.
         Should be called from main daemon thread or properly synchronized.
         """
@@ -220,8 +225,6 @@ class CitraScopeDaemon:
                 self.settings.adapter_settings["filters"] = filter_config
                 self.settings.save()
                 CITRASCOPE_LOGGER.info(f"Saved filter configuration with {len(filter_config)} filters")
-                # Sync enabled filters to backend
-                self._sync_filters_to_backend()
         except Exception as e:
             CITRASCOPE_LOGGER.warning(f"Failed to save filter configuration: {e}")
 
