@@ -627,64 +627,74 @@ async function saveModifiedFilters() {
         return { success: 0, failed: inputs.length };
     }
 
-    let successCount = 0;
-    let failedCount = 0;
-
-    // Save all filter values
+    // Collect all filter updates into array
+    const filterUpdates = [];
     for (const input of inputs) {
         const filterId = input.dataset.filterId;
         const focusPosition = parseInt(input.value);
 
         if (isNaN(focusPosition) || focusPosition < 0) {
-            failedCount++;
-            continue;
+            continue; // Skip invalid entries
         }
 
         // Get enabled state from corresponding checkbox
         const checkbox = document.querySelector(`.filter-enabled-checkbox[data-filter-id="${filterId}"]`);
         const enabled = checkbox ? checkbox.checked : true;
 
-        try {
-            const response = await fetch(`/api/adapter/filters/${filterId}`, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ focus_position: focusPosition, enabled: enabled })
-            });
+        filterUpdates.push({
+            filter_id: filterId,
+            focus_position: focusPosition,
+            enabled: enabled
+        });
+    }
 
-            if (response.ok) {
-                successCount++;
-            } else {
-                failedCount++;
-                const data = await response.json();
-                console.error(`Failed to save filter ${filterId}: ${data.error || 'Unknown error'}`);
-                // If it's the "last enabled filter" error, show it to the user
-                if (response.status === 400 && data.error && data.error.includes('last enabled filter')) {
-                    showConfigMessage(data.error, 'danger');
+    if (filterUpdates.length === 0) {
+        return { success: 0, failed: 0 };
+    }
+
+    // Send single batch update
+    try {
+        const response = await fetch('/api/adapter/filters/batch', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(filterUpdates)
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            const successCount = data.updated_count || 0;
+
+            // After batch update, sync to backend
+            try {
+                const syncResponse = await fetch('/api/adapter/filters/sync', {
+                    method: 'POST'
+                });
+                if (!syncResponse.ok) {
+                    console.error('Failed to sync filters to backend');
                 }
+            } catch (error) {
+                console.error('Error syncing filters to backend:', error);
             }
-        } catch (error) {
-            failedCount++;
-            console.error(`Error saving filter ${filterId}:`, error);
-        }
-    }
 
-    // After all filter updates, sync to backend once
-    if (successCount > 0) {
-        try {
-            const syncResponse = await fetch('/api/adapter/filters/sync', {
-                method: 'POST'
-            });
-            if (!syncResponse.ok) {
-                console.error('Failed to sync filters to backend');
+            return { success: successCount, failed: 0 };
+        } else {
+            const data = await response.json();
+            const errorMsg = data.error || 'Unknown error';
+            console.error(`Failed to save filters: ${errorMsg}`);
+
+            // Show error to user
+            if (response.status === 400 && errorMsg.includes('last enabled filter')) {
+                showConfigMessage(errorMsg, 'danger');
             }
-        } catch (error) {
-            console.error('Error syncing filters to backend:', error);
-        }
-    }
 
-    return { success: successCount, failed: failedCount };
+            return { success: 0, failed: filterUpdates.length };
+        }
+    } catch (error) {
+        console.error('Error saving filters:', error);
+        return { success: 0, failed: filterUpdates.length };
+    }
 }
 
 /**
