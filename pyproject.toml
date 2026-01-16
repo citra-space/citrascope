@@ -75,7 +75,6 @@ dev = [
   "flake8",
   "flake8-pytest-style",
   "bump-my-version",
-  "MarkupSafe>=2.0.0",
   "citrascope[test]",
 ]
 test = ["pytest", "pytest-cov", "mockito"]
