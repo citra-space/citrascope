@@ -28,3 +28,17 @@ class AbstractCitraApiClient(ABC):
         PUT to /telescopes to report online status.
         """
         pass
+
+    @abstractmethod
+    def expand_filters(self, filter_names):
+        """
+        POST to /filters/expand to expand filter names to spectral specs.
+        """
+        pass
+
+    @abstractmethod
+    def update_telescope_spectral_config(self, telescope_id, spectral_config):
+        """
+        PATCH to /telescopes to update telescope's spectral configuration.
+        """
+        pass

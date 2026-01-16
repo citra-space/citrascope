@@ -70,3 +70,11 @@ class MockCitraApiClient(AbstractCitraApiClient):
     def put_telescope_status(self, body):
         """Mock PUT to /telescopes for online status reporting."""
         return {"status": "ok", "body": body}
+
+    def expand_filters(self, filter_names):
+        """Simulate expanding filter names to spectral specifications."""
+        return [{"name": name, "wavelength_nm": 550, "bandwidth_nm": 100} for name in filter_names]
+
+    def update_telescope_spectral_config(self, telescope_id, spectral_config):
+        """Simulate updating telescope spectral configuration."""
+        return {"status": "ok", "telescope_id": telescope_id, "spectral_config": spectral_config}
