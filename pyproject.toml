@@ -40,7 +40,6 @@ dependencies = [
   "uvicorn[standard]>=0.24.0",
   "websockets>=12.0",
   "platformdirs>=4.0.0",
-  "decorator>=5.0.0",  # Constraint to avoid old versions with use_2to3
 ]
 
 [project.scripts]
@@ -74,8 +73,6 @@ dev = [
   "flake8",
   "flake8-pytest-style",
   "bump-my-version",
-  "Mako>=1.1.0",
-  "MarkupSafe>=2.0.0",
   "citrascope[test]",
 ]
 test = ["pytest", "pytest-cov", "mockito"]
