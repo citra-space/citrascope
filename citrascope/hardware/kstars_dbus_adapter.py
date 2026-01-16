@@ -223,7 +223,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
             raise FileNotFoundError(f"Template not found: {template_path}")
         return template_path.read_text()
 
-    def _create_sequence_file(self, task_id: str, satellite_data: dict, output_dir: Path) -> Path:
+    def _create_sequence_file(self, task_id: str, satellite_data: dict, output_dir: Path, task=None) -> Path:
         """
         Create an ESQ sequence file from template.
 
@@ -231,6 +231,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
             task_id: Unique task identifier
             satellite_data: Dictionary containing target information
             output_dir: Base output directory for captures
+            task: Optional task object containing filter assignment
 
         Returns:
             Path to the created sequence file
@@ -241,7 +242,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         target_name = satellite_data.get("name", "Unknown").replace(" ", "_")
 
         # Generate job blocks based on filter configuration
-        jobs_xml = self._generate_job_blocks(output_dir)
+        jobs_xml = self._generate_job_blocks(output_dir, task)
 
         # Replace placeholders
         sequence_content = template.replace("{{JOBS}}", jobs_xml)
@@ -261,13 +262,14 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         self.logger.info(f"Created sequence file: {sequence_file}")
         return sequence_file
 
-    def _generate_job_blocks(self, output_dir: Path) -> str:
+    def _generate_job_blocks(self, output_dir: Path, task=None) -> str:
         """
         Generate XML job blocks for each filter in filter_map.
         If no filters discovered, generates single job with no filter.
 
         Args:
             output_dir: Base output directory for captures
+            task: Optional task object containing filter assignment
 
         Returns:
             XML string containing one or more <Job> blocks
@@ -311,18 +313,43 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
 
         jobs = []
 
-        # Filter to only enabled filters
-        enabled_filters = {fid: fdata for fid, fdata in self.filter_map.items() if fdata.get("enabled", True)}
+        # Determine which filters to use based on task assignment
+        if task and task.assigned_filter_name:
+            # Task specifies a specific filter - find it
+            target_filter_id = None
+            target_filter_info = None
+            for fid, fdata in self.filter_map.items():
+                if fdata["name"] == task.assigned_filter_name:
+                    if not fdata.get("enabled", True):
+                        raise RuntimeError(
+                            f"Requested filter '{task.assigned_filter_name}' is disabled for task {task.id}"
+                        )
+                    target_filter_id = fid
+                    target_filter_info = fdata
+                    break
 
-        if enabled_filters:
-            # Multi-filter mode: create one job per enabled filter
-            self.logger.info(
-                f"Generating {len(enabled_filters)} jobs for enabled filters: "
-                f"{[f['name'] for f in enabled_filters.values()]}"
-            )
-            for filter_idx in sorted(enabled_filters.keys()):
-                filter_info = enabled_filters[filter_idx]
-                filter_name = filter_info["name"]
+            if target_filter_id is None:
+                raise RuntimeError(
+                    f"Requested filter '{task.assigned_filter_name}' not found in filter map for task {task.id}"
+                )
+
+            filters_to_use = {target_filter_id: target_filter_info}
+            self.logger.info(f"Using filter '{task.assigned_filter_name}' for task {task.id}")
+        else:
+            # No filter specified - look for Clear or Luminance
+            filters_to_use = None
+            for fid, fdata in self.filter_map.items():
+                if fdata.get("enabled", True) and fdata["name"] in ["Clear", "Luminance"]:
+                    filters_to_use = {fid: fdata}
+                    task_id_str = task.id if task else "unknown"
+                    self.logger.info(f"Using default filter '{fdata['name']}' for task {task_id_str}")
+                    break
+
+            if filters_to_use is None:
+                # Fall back to '--' for no filter
+                filter_name = "--" if not self.filter_wheel_name else "Luminance"
+                task_id_str = task.id if task else "unknown"
+                self.logger.info(f"Using fallback filter '{filter_name}' for task {task_id_str}")
 
                 job_xml = job_template.format(
                     exposure=self.exposure_time,
@@ -334,10 +361,12 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                     output_dir=str(output_dir),
                 )
                 jobs.append(job_xml)
-        else:
-            # Single-filter mode: use '--' for no filter
-            filter_name = "--" if not self.filter_wheel_name else "Luminance"
-            self.logger.info(f"Generating single job with filter: {filter_name}")
+                return "\n".join(jobs)
+
+        # Generate jobs for selected filters
+        for filter_idx in sorted(filters_to_use.keys()):
+            filter_info = filters_to_use[filter_idx]
+            filter_name = filter_info["name"]
 
             job_xml = job_template.format(
                 exposure=self.exposure_time,
@@ -521,12 +550,12 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
 
         return matching_files
 
-    def perform_observation_sequence(self, task_id: str, satellite_data: dict) -> list[str]:
+    def perform_observation_sequence(self, task, satellite_data: dict) -> list[str]:
         """
         Execute a complete observation sequence using Ekos Scheduler.
 
         Args:
-            task_id: Unique task identifier
+            task: Task object containing id and filter assignment
             satellite_data: Dictionary with keys: 'name', and either 'ra'/'dec' or TLE data
 
         Returns:
@@ -550,7 +579,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
             output_dir.mkdir(exist_ok=True, parents=True)
 
             # Clear task-specific directory to prevent Ekos from thinking job is already done
-            task_output_dir = output_dir / task_id
+            task_output_dir = output_dir / task.id
             if task_output_dir.exists():
                 shutil.rmtree(task_output_dir)
                 self.logger.info(f"Cleared existing output directory: {task_output_dir}")
@@ -560,18 +589,18 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
             self.logger.info(f"Output directory: {task_output_dir}")
 
             # Create sequence and scheduler job files (use task-specific directory)
-            sequence_file = self._create_sequence_file(task_id, satellite_data, task_output_dir)
-            job_file = self._create_scheduler_job(task_id, satellite_data, sequence_file)
+            sequence_file = self._create_sequence_file(task.id, satellite_data, task_output_dir, task)
+            job_file = self._create_scheduler_job(task.id, satellite_data, sequence_file)
 
             # Ensure temp files are cleaned up even on failure
             try:
-                self._execute_observation(task_id, output_dir, sequence_file, job_file)
+                self._execute_observation(task.id, output_dir, sequence_file, job_file)
             finally:
                 # Cleanup temp files
                 self._cleanup_temp_files(sequence_file, job_file)
 
             # Retrieve and return captured images
-            image_paths = self._retrieve_captured_images(task_id, output_dir)
+            image_paths = self._retrieve_captured_images(task.id, output_dir)
             if not image_paths:
                 raise RuntimeError(f"No images captured for task {task_id}")
 

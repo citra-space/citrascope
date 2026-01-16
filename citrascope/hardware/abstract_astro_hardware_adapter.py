@@ -127,7 +127,7 @@ class AbstractAstroHardwareAdapter(ABC):
         pass
 
     @abstractmethod
-    def perform_observation_sequence(self, task_id, satellite_data) -> str:
+    def perform_observation_sequence(self, task, satellite_data) -> str:
         """For hardware driven by sequences, perform the observation sequence and return image path."""
         pass
 

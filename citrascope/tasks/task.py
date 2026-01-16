@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass
@@ -18,6 +19,7 @@ class Task:
     telescopeName: str
     groundStationId: str
     groundStationName: str
+    assigned_filter_name: Optional[str] = None
 
     @classmethod
     def from_dict(cls, data: dict) -> "Task":
@@ -37,6 +39,7 @@ class Task:
             telescopeName=data.get("telescopeName", ""),
             groundStationId=data.get("groundStationId", ""),
             groundStationName=data.get("groundStationName", ""),
+            assigned_filter_name=data.get("assigned_filter_name"),
         )
 
     def __repr__(self):

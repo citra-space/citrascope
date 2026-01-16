@@ -12,18 +12,23 @@ class StaticTelescopeTask(AbstractBaseTelescopeTask):
             raise ValueError("Could not fetch valid satellite data or TLE.")
 
         filepath = None
-        if self.hardware_adapter.get_observation_strategy() == ObservationStrategy.MANUAL:
-            self.point_to_lead_position(satellite_data)
-            filepaths = self.hardware_adapter.take_image(self.task.id, 2.0)  # 2 second exposure
+        try:
+            if self.hardware_adapter.get_observation_strategy() == ObservationStrategy.MANUAL:
+                self.point_to_lead_position(satellite_data)
+                filepaths = self.hardware_adapter.take_image(self.task.id, 2.0)  # 2 second exposure
 
-        if self.hardware_adapter.get_observation_strategy() == ObservationStrategy.SEQUENCE_TO_CONTROLLER:
-            # Calculate current satellite position and add to satellite_data
-            target_ra, target_dec, _, _ = self.get_target_radec_and_rates(satellite_data)
-            satellite_data["ra"] = target_ra.degrees
-            satellite_data["dec"] = target_dec.degrees
+            if self.hardware_adapter.get_observation_strategy() == ObservationStrategy.SEQUENCE_TO_CONTROLLER:
+                # Calculate current satellite position and add to satellite_data
+                target_ra, target_dec, _, _ = self.get_target_radec_and_rates(satellite_data)
+                satellite_data["ra"] = target_ra.degrees
+                satellite_data["dec"] = target_dec.degrees
 
-            # Sequence-based adapters handle pointing and tracking themselves
-            filepaths = self.hardware_adapter.perform_observation_sequence(self.task.id, satellite_data)
+                # Sequence-based adapters handle pointing and tracking themselves
+                filepaths = self.hardware_adapter.perform_observation_sequence(self.task, satellite_data)
+        except RuntimeError as e:
+            # Filter errors and other hardware errors
+            self.logger.error(f"Observation failed for task {self.task.id}: {e}")
+            raise
 
         # Take the image
         return self.upload_image_and_mark_complete(filepaths)

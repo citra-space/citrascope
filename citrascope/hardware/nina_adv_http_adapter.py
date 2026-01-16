@@ -440,11 +440,11 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             for item in data:
                 self._update_all_ids(item, id_counter)
 
-    def perform_observation_sequence(self, task_id, satellite_data) -> str | list[str]:
+    def perform_observation_sequence(self, task, satellite_data) -> str | list[str]:
         """Create and execute a NINA sequence for the given satellite.
 
         Args:
-            task_id: Unique identifier for this observation task
+            task: Task object containing id and filter assignment
             satellite_data: Satellite data including TLE information
 
         Returns:
@@ -459,7 +459,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         template_str = template_str.replace("{autofocus_binning}", str(self.autofocus_binning))
         sequence_json = json.loads(template_str)
 
-        nina_sequence_name = f"Citra Target: {satellite_data['name']}, Task: {task_id}"
+        nina_sequence_name = f"Citra Target: {satellite_data['name']}, Task: {task.id}"
 
         # Replace basic placeholders (use \r\n for Windows NINA compatibility)
         tle_data = f"{elset['tle'][0]}\r\n{elset['tle'][1]}"
@@ -496,12 +496,49 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
         id_counter = [base_id]  # Use list so it can be modified in nested function
 
-        # Filter to only enabled filters for observation
-        enabled_filters = {fid: fdata for fid, fdata in self.filter_map.items() if fdata.get("enabled", True)}
-        if not enabled_filters:
-            raise RuntimeError("No enabled filters available for observation sequence")
+        # Determine which filters to use based on task assignment
+        if task.assigned_filter_name:
+            # Task specifies a specific filter - find it
+            target_filter_id = None
+            target_filter_info = None
+            for fid, fdata in self.filter_map.items():
+                if fdata["name"] == task.assigned_filter_name:
+                    if not fdata.get("enabled", True):
+                        raise RuntimeError(
+                            f"Requested filter '{task.assigned_filter_name}' is disabled for task {task.id}"
+                        )
+                    target_filter_id = fid
+                    target_filter_info = fdata
+                    break
 
-        for filter_id, filter_info in enabled_filters.items():
+            if target_filter_id is None:
+                raise RuntimeError(
+                    f"Requested filter '{task.assigned_filter_name}' not found in filter map for task {task.id}"
+                )
+
+            filters_to_use = {target_filter_id: target_filter_info}
+            self.logger.info(f"Using filter '{task.assigned_filter_name}' for task {task.id}")
+        else:
+            # No filter specified - look for Clear or Luminance
+            filters_to_use = None
+            for fid, fdata in self.filter_map.items():
+                if fdata.get("enabled", True) and fdata["name"] in ["Clear", "Luminance"]:
+                    filters_to_use = {fid: fdata}
+                    self.logger.info(f"Using default filter '{fdata['name']}' for task {task.id}")
+                    break
+
+            if filters_to_use is None:
+                # Fall back to first enabled filter
+                enabled_filters = {fid: fdata for fid, fdata in self.filter_map.items() if fdata.get("enabled", True)}
+                if not enabled_filters:
+                    raise RuntimeError("No enabled filters available for observation sequence")
+                first_filter_id = next(iter(enabled_filters))
+                filters_to_use = {first_filter_id: enabled_filters[first_filter_id]}
+                self.logger.info(
+                    f"Using first available filter '{enabled_filters[first_filter_id]['name']}' for task {task.id}"
+                )
+
+        for filter_id, filter_info in filters_to_use.items():
             filter_name = filter_info["name"]
             focus_position = filter_info["focus_position"]
 
@@ -521,7 +558,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             # Add this triplet to the sequence
             new_items.extend(filter_triplet)
 
-            self.logger.info(f"Added filter {filter_name} (ID: {filter_id}) with focus position {focus_position}")
+            self.logger.debug(f"Added filter {filter_name} (ID: {filter_id}) with focus position {focus_position}")
 
         # Update the items list
         tle_items.clear()
