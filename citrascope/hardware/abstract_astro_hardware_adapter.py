@@ -233,6 +233,72 @@ class AbstractAstroHardwareAdapter(ABC):
         """
         return False
 
+    def select_filters_for_task(self, task, allow_no_filter: bool = False) -> dict | None:
+        """Select which filters to use for a task based on assignment.
+
+        This method handles the common logic for filter selection:
+        - If task specifies assigned_filter_name, find and validate that filter
+        - If no filter specified, look for Clear/Luminance filter (case-insensitive)
+        - Fall back to first enabled filter, or None if allow_no_filter=True
+
+        Args:
+            task: Task object with optional assigned_filter_name field
+            allow_no_filter: If True, return None when no filters available (for KStars '--')
+
+        Returns:
+            dict: Dictionary mapping filter IDs to filter info {id: {name, focus_position, enabled}}
+                  Returns None only if allow_no_filter=True and no suitable filter found
+
+        Raises:
+            RuntimeError: If assigned filter not found, disabled, or no filters available when required
+        """
+        # Task specifies a specific filter - find it
+        if task and task.assigned_filter_name:
+            target_filter_id = None
+            target_filter_info = None
+            for fid, fdata in self.filter_map.items():
+                # Case-insensitive comparison
+                if fdata["name"].lower() == task.assigned_filter_name.lower():
+                    if not fdata.get("enabled", True):
+                        raise RuntimeError(
+                            f"Requested filter '{task.assigned_filter_name}' is disabled for task {task.id}"
+                        )
+                    target_filter_id = fid
+                    target_filter_info = fdata
+                    break
+
+            if target_filter_id is None:
+                raise RuntimeError(
+                    f"Requested filter '{task.assigned_filter_name}' not found in filter map for task {task.id}"
+                )
+
+            task_id_str = task.id if task else "unknown"
+            self.logger.info(f"Using filter '{task.assigned_filter_name}' for task {task_id_str}")
+            return {target_filter_id: target_filter_info}
+
+        # No filter specified - look for Clear or Luminance (case-insensitive)
+        clear_filter_names = ["clear", "luminance", "lum", "l"]
+        for fid, fdata in self.filter_map.items():
+            if fdata.get("enabled", True) and fdata["name"].lower() in clear_filter_names:
+                task_id_str = task.id if task else "unknown"
+                self.logger.info(f"Using default filter '{fdata['name']}' for task {task_id_str}")
+                return {fid: fdata}
+
+        # No clear filter found - try first enabled filter
+        enabled_filters = {fid: fdata for fid, fdata in self.filter_map.items() if fdata.get("enabled", True)}
+        if enabled_filters:
+            first_filter_id = next(iter(enabled_filters))
+            task_id_str = task.id if task else "unknown"
+            self.logger.info(
+                f"Using first available filter '{enabled_filters[first_filter_id]['name']}' for task {task_id_str}"
+            )
+            return {first_filter_id: enabled_filters[first_filter_id]}
+
+        # No enabled filters available
+        if allow_no_filter:
+            return None
+        raise RuntimeError("No enabled filters available for observation sequence")
+
     def get_filter_config(self) -> dict[str, FilterConfig]:
         """Get the current filter configuration including focus positions.
 

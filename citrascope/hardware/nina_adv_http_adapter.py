@@ -496,47 +496,8 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
         id_counter = [base_id]  # Use list so it can be modified in nested function
 
-        # Determine which filters to use based on task assignment
-        if task.assigned_filter_name:
-            # Task specifies a specific filter - find it
-            target_filter_id = None
-            target_filter_info = None
-            for fid, fdata in self.filter_map.items():
-                if fdata["name"] == task.assigned_filter_name:
-                    if not fdata.get("enabled", True):
-                        raise RuntimeError(
-                            f"Requested filter '{task.assigned_filter_name}' is disabled for task {task.id}"
-                        )
-                    target_filter_id = fid
-                    target_filter_info = fdata
-                    break
-
-            if target_filter_id is None:
-                raise RuntimeError(
-                    f"Requested filter '{task.assigned_filter_name}' not found in filter map for task {task.id}"
-                )
-
-            filters_to_use = {target_filter_id: target_filter_info}
-            self.logger.info(f"Using filter '{task.assigned_filter_name}' for task {task.id}")
-        else:
-            # No filter specified - look for Clear or Luminance
-            filters_to_use = None
-            for fid, fdata in self.filter_map.items():
-                if fdata.get("enabled", True) and fdata["name"] in ["Clear", "Luminance"]:
-                    filters_to_use = {fid: fdata}
-                    self.logger.info(f"Using default filter '{fdata['name']}' for task {task.id}")
-                    break
-
-            if filters_to_use is None:
-                # Fall back to first enabled filter
-                enabled_filters = {fid: fdata for fid, fdata in self.filter_map.items() if fdata.get("enabled", True)}
-                if not enabled_filters:
-                    raise RuntimeError("No enabled filters available for observation sequence")
-                first_filter_id = next(iter(enabled_filters))
-                filters_to_use = {first_filter_id: enabled_filters[first_filter_id]}
-                self.logger.info(
-                    f"Using first available filter '{enabled_filters[first_filter_id]['name']}' for task {task.id}"
-                )
+        # Select filters to use for this task
+        filters_to_use = self.select_filters_for_task(task, allow_no_filter=False)
 
         for filter_id, filter_info in filters_to_use.items():
             filter_name = filter_info["name"]
@@ -617,7 +578,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             raise RuntimeError("Failed to get images list from NINA")
 
         images_to_download = []
-        expected_image_count = len(enabled_filters)  # One image per enabled filter
+        expected_image_count = len(filters_to_use)  # One image per filter in sequence
         images_found = len(images_response["Response"])
         self.logger.info(
             f"Found {images_found} images in NINA image history, considering the last {expected_image_count}"

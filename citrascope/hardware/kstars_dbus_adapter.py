@@ -313,55 +313,26 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
 
         jobs = []
 
-        # Determine which filters to use based on task assignment
-        if task and task.assigned_filter_name:
-            # Task specifies a specific filter - find it
-            target_filter_id = None
-            target_filter_info = None
-            for fid, fdata in self.filter_map.items():
-                if fdata["name"] == task.assigned_filter_name:
-                    if not fdata.get("enabled", True):
-                        raise RuntimeError(
-                            f"Requested filter '{task.assigned_filter_name}' is disabled for task {task.id}"
-                        )
-                    target_filter_id = fid
-                    target_filter_info = fdata
-                    break
+        # Select filters to use for this task (allow_no_filter for KStars '--' fallback)
+        filters_to_use = self.select_filters_for_task(task, allow_no_filter=True)
 
-            if target_filter_id is None:
-                raise RuntimeError(
-                    f"Requested filter '{task.assigned_filter_name}' not found in filter map for task {task.id}"
-                )
+        if filters_to_use is None:
+            # No filters available - use '--' for no filter wheel
+            filter_name = "--" if not self.filter_wheel_name else "Luminance"
+            task_id_str = task.id if task else "unknown"
+            self.logger.info(f"Using fallback filter '{filter_name}' for task {task_id_str}")
 
-            filters_to_use = {target_filter_id: target_filter_info}
-            self.logger.info(f"Using filter '{task.assigned_filter_name}' for task {task.id}")
-        else:
-            # No filter specified - look for Clear or Luminance
-            filters_to_use = None
-            for fid, fdata in self.filter_map.items():
-                if fdata.get("enabled", True) and fdata["name"] in ["Clear", "Luminance"]:
-                    filters_to_use = {fid: fdata}
-                    task_id_str = task.id if task else "unknown"
-                    self.logger.info(f"Using default filter '{fdata['name']}' for task {task_id_str}")
-                    break
-
-            if filters_to_use is None:
-                # Fall back to '--' for no filter
-                filter_name = "--" if not self.filter_wheel_name else "Luminance"
-                task_id_str = task.id if task else "unknown"
-                self.logger.info(f"Using fallback filter '{filter_name}' for task {task_id_str}")
-
-                job_xml = job_template.format(
-                    exposure=self.exposure_time,
-                    format=self.image_format,
-                    binning_x=self.binning_x,
-                    binning_y=self.binning_y,
-                    filter_name=filter_name,
-                    count=self.frame_count,
-                    output_dir=str(output_dir),
-                )
-                jobs.append(job_xml)
-                return "\n".join(jobs)
+            job_xml = job_template.format(
+                exposure=self.exposure_time,
+                format=self.image_format,
+                binning_x=self.binning_x,
+                binning_y=self.binning_y,
+                filter_name=filter_name,
+                count=self.frame_count,
+                output_dir=str(output_dir),
+            )
+            jobs.append(job_xml)
+            return "\n".join(jobs)
 
         # Generate jobs for selected filters
         for filter_idx in sorted(filters_to_use.keys()):
@@ -602,7 +573,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
             # Retrieve and return captured images
             image_paths = self._retrieve_captured_images(task.id, output_dir)
             if not image_paths:
-                raise RuntimeError(f"No images captured for task {task_id}")
+                raise RuntimeError(f"No images captured for task {task.id}")
 
             self.logger.info(f"Observation sequence complete: {len(image_paths)} images captured")
             return image_paths
