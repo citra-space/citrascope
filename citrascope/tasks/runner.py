@@ -38,10 +38,6 @@ class TaskManager:
         self._stop_event = threading.Event()
         self.current_task_id = None  # Track currently executing task
         self.keep_images = keep_images
-        # Preview image storage
-        self.preview_image_bytes: bytes | None = None
-        self.preview_image_timestamp: int | None = None
-        self.preview_image_target: str | None = None
         self.task_retry_counts = {}  # Track retry attempts per task ID
         self.task_last_failure = {}  # Track last failure timestamp per task ID
         # Task processing control (always starts active)
@@ -244,7 +240,7 @@ class TaskManager:
 
     def _observe_satellite(self, task: Task):
 
-        # take a still
+        # stake a still
         static_task = StaticTelescopeTask(
             self.api_client,
             self.hardware_adapter,
@@ -254,15 +250,7 @@ class TaskManager:
             task,
             self.keep_images,
         )
-        success = static_task.execute()
-
-        # Read preview data from task instance if available
-        if success and hasattr(static_task, "preview_bytes") and static_task.preview_bytes:
-            self.preview_image_bytes = static_task.preview_bytes
-            self.preview_image_timestamp = int(time.time())
-            self.preview_image_target = static_task.preview_target
-
-        return success
+        return static_task.execute()
 
         # track the sat for a while with longer exposure
         # tracking_task = TrackingTelescopeTask(

@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -40,8 +40,6 @@ class SystemStatus(BaseModel):
     autofocus_requested: bool = False
     last_autofocus_timestamp: Optional[int] = None
     next_autofocus_minutes: Optional[int] = None
-    last_image_update_ts: Optional[int] = None
-    last_image_target: Optional[str] = None
     last_update: str = ""
 
 
@@ -215,19 +213,6 @@ class CitraScopeWebApp:
                 return {"version": pkg_version}
             except PackageNotFoundError:
                 return {"version": "development"}
-
-        @self.app.get("/api/preview-image")
-        async def get_preview_image():
-            """Get the last captured preview image."""
-            if (
-                self.daemon
-                and self.daemon.task_manager
-                and hasattr(self.daemon.task_manager, "preview_image_bytes")
-                and self.daemon.task_manager.preview_image_bytes
-            ):
-                return Response(content=self.daemon.task_manager.preview_image_bytes, media_type="image/png")
-            else:
-                return JSONResponse({"error": "No preview image available"}, status_code=404)
 
         @self.app.get("/api/hardware-adapters")
         async def get_hardware_adapters():
@@ -595,18 +580,6 @@ class CitraScopeWebApp:
                         self.status.next_autofocus_minutes = 0
                 else:
                     self.status.next_autofocus_minutes = None
-
-            # Get preview timestamp and target from task manager
-            if (
-                hasattr(self.daemon, "task_manager")
-                and self.daemon.task_manager
-                and hasattr(self.daemon.task_manager, "preview_image_timestamp")
-            ):
-                self.status.last_image_update_ts = self.daemon.task_manager.preview_image_timestamp
-                self.status.last_image_target = getattr(self.daemon.task_manager, "preview_image_target", None)
-            else:
-                self.status.last_image_update_ts = None
-                self.status.last_image_target = None
 
             # Get ground station information from daemon (available after API validation)
             if hasattr(self.daemon, "ground_station") and self.daemon.ground_station:
