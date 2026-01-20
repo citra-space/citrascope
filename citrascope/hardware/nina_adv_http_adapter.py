@@ -440,11 +440,11 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             for item in data:
                 self._update_all_ids(item, id_counter)
 
-    def perform_observation_sequence(self, task_id, satellite_data) -> str | list[str]:
+    def perform_observation_sequence(self, task, satellite_data) -> str | list[str]:
         """Create and execute a NINA sequence for the given satellite.
 
         Args:
-            task_id: Unique identifier for this observation task
+            task: Task object containing id and filter assignment
             satellite_data: Satellite data including TLE information
 
         Returns:
@@ -459,7 +459,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         template_str = template_str.replace("{autofocus_binning}", str(self.autofocus_binning))
         sequence_json = json.loads(template_str)
 
-        nina_sequence_name = f"Citra Target: {satellite_data['name']}, Task: {task_id}"
+        nina_sequence_name = f"Citra Target: {satellite_data['name']}, Task: {task.id}"
 
         # Replace basic placeholders (use \r\n for Windows NINA compatibility)
         tle_data = f"{elset['tle'][0]}\r\n{elset['tle'][1]}"
@@ -496,12 +496,10 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
         id_counter = [base_id]  # Use list so it can be modified in nested function
 
-        # Filter to only enabled filters for observation
-        enabled_filters = {fid: fdata for fid, fdata in self.filter_map.items() if fdata.get("enabled", True)}
-        if not enabled_filters:
-            raise RuntimeError("No enabled filters available for observation sequence")
+        # Select filters to use for this task
+        filters_to_use = self.select_filters_for_task(task, allow_no_filter=False)
 
-        for filter_id, filter_info in enabled_filters.items():
+        for filter_id, filter_info in filters_to_use.items():
             filter_name = filter_info["name"]
             focus_position = filter_info["focus_position"]
 
@@ -521,7 +519,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             # Add this triplet to the sequence
             new_items.extend(filter_triplet)
 
-            self.logger.info(f"Added filter {filter_name} (ID: {filter_id}) with focus position {focus_position}")
+            self.logger.debug(f"Added filter {filter_name} (ID: {filter_id}) with focus position {focus_position}")
 
         # Update the items list
         tle_items.clear()
@@ -580,7 +578,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             raise RuntimeError("Failed to get images list from NINA")
 
         images_to_download = []
-        expected_image_count = len(enabled_filters)  # One image per enabled filter
+        expected_image_count = len(filters_to_use)  # One image per filter in sequence
         images_found = len(images_response["Response"])
         self.logger.info(
             f"Found {images_found} images in NINA image history, considering the last {expected_image_count}"
