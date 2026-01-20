@@ -41,6 +41,7 @@ This project is a Python package for interacting with astronomical data and serv
 
 ## Common Tasks
 - Add new API integrations in `citrascope/api/`.
+  - Reference the [DEV Citra.space API documentation](https://dev.api.citra.space/docs) for endpoint specifications and data models
 - Extend or add hardware adapters:
   - Create new adapter class implementing `AbstractAstroHardwareAdapter` in `citrascope/hardware/`
   - Register it in `citrascope/hardware/adapter_registry.py` by adding an entry to `REGISTERED_ADAPTERS`
