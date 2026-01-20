@@ -49,10 +49,24 @@ body {
     gap: 0.5em;
 }
 
+#processingStatus {
+    display: inline-block;
+    min-width: 70px;
+}
+
 /* Task processing switch alignment */
 #toggleProcessingSwitch {
     margin-top: 6px;
     cursor: pointer;
+}
+
+#toggleProcessingSwitch:checked {
+    background-color: #198754;
+    border-color: #198754;
+}
+
+#toggleProcessingSwitch:focus {
+    box-shadow: 0 0 0 0.25rem rgba(25, 135, 84, 0.25);
 }
 
 /* Clickable elements */
