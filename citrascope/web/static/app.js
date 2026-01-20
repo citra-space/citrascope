@@ -478,19 +478,16 @@ function formatMinutes(minutes) {
 
 function updateProcessingState(isActive) {
     const statusEl = document.getElementById('processingStatus');
-    const button = document.getElementById('toggleProcessingButton');
-    const icon = document.getElementById('processingButtonIcon');
+    const switchEl = document.getElementById('toggleProcessingSwitch');
 
-    if (!statusEl || !button || !icon) return;
+    if (!statusEl || !switchEl) return;
 
     if (isActive) {
         statusEl.innerHTML = '<span class="badge rounded-pill bg-success">Active</span>';
-        icon.textContent = 'Pause';
-        button.title = 'Pause task processing';
+        switchEl.checked = true;
     } else {
         statusEl.innerHTML = '<span class="badge rounded-pill bg-warning text-dark">Paused</span>';
-        icon.textContent = 'Resume';
-        button.title = 'Resume task processing';
+        switchEl.checked = false;
     }
 }
 
@@ -785,16 +782,15 @@ document.addEventListener('DOMContentLoaded', async function() {
     loadTasks();
     loadLogs();
 
-    // Add pause/resume button handler
-    const toggleButton = document.getElementById('toggleProcessingButton');
-    if (toggleButton) {
-        toggleButton.addEventListener('click', async () => {
-            const icon = document.getElementById('processingButtonIcon');
-            const currentlyPaused = icon && icon.textContent === 'Resume';
-            const endpoint = currentlyPaused ? '/api/tasks/resume' : '/api/tasks/pause';
+    // Add pause/resume switch handler
+    const toggleSwitch = document.getElementById('toggleProcessingSwitch');
+    if (toggleSwitch) {
+        toggleSwitch.addEventListener('change', async (e) => {
+            const isChecked = e.target.checked;
+            const endpoint = isChecked ? '/api/tasks/resume' : '/api/tasks/pause';
 
             try {
-                toggleButton.disabled = true;
+                toggleSwitch.disabled = true;
                 const response = await fetch(endpoint, { method: 'POST' });
                 const result = await response.json();
 
@@ -803,13 +799,17 @@ document.addEventListener('DOMContentLoaded', async function() {
                     // Show specific error message (e.g., "Cannot resume during autofocus")
                     alert((result.error || 'Failed to toggle task processing') +
                           (response.status === 409 ? '' : ' - Unknown error'));
+                    // Revert switch state on error
+                    toggleSwitch.checked = !isChecked;
                 }
                 // State will be updated via WebSocket broadcast within 2 seconds
             } catch (error) {
                 console.error('Error toggling processing:', error);
                 alert('Error toggling task processing');
+                // Revert switch state on error
+                toggleSwitch.checked = !isChecked;
             } finally {
-                toggleButton.disabled = false;
+                toggleSwitch.disabled = false;
             }
         });
     }

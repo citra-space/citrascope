@@ -49,6 +49,12 @@ body {
     gap: 0.5em;
 }
 
+/* Task processing switch alignment */
+#toggleProcessingSwitch {
+    margin-top: 6px;
+    cursor: pointer;
+}
+
 /* Clickable elements */
 #headerVersion, #updateIndicator {
     cursor: pointer;

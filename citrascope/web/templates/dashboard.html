@@ -73,9 +73,10 @@
                                 <div class="col-6 fw-semibold">Task Processing</div>
                                 <div class="col-6 d-flex align-items-center gap-2">
                                     <span id="processingStatus"><span class="badge rounded-pill bg-success">Active</span></span>
-                                    <button id="toggleProcessingButton" class="btn btn-sm btn-secondary" title="Pause task processing">
-                                        <span id="processingButtonIcon">Pause</span>
-                                    </button>
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="toggleProcessingSwitch" checked title="Toggle task processing">
+                                        <label class="form-check-label visually-hidden" for="toggleProcessingSwitch">Task Processing</label>
+                                    </div>
                                 </div>
                             </div>
                         </div>
