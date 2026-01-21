@@ -392,6 +392,11 @@ function updateStatus(status) {
         updateProcessingState(status.processing_active);
     }
 
+    // Update automated scheduling state
+    if (status.automated_scheduling !== undefined) {
+        updateAutomatedSchedulingState(status.automated_scheduling);
+    }
+
     // Update autofocus status
     updateAutofocusStatus(status);
 }
@@ -483,10 +488,25 @@ function updateProcessingState(isActive) {
     if (!statusEl || !switchEl) return;
 
     if (isActive) {
-        statusEl.innerHTML = '<span class="badge rounded-pill bg-success">Active</span>';
+        statusEl.innerHTML = '<span class="badge rounded-pill bg-success">Enabled</span>';
         switchEl.checked = true;
     } else {
-        statusEl.innerHTML = '<span class="badge rounded-pill bg-warning text-dark">Paused</span>';
+        statusEl.innerHTML = '<span class="badge rounded-pill bg-secondary">Disabled</span>';
+        switchEl.checked = false;
+    }
+}
+
+function updateAutomatedSchedulingState(isEnabled) {
+    const statusEl = document.getElementById('automatedSchedulingStatus');
+    const switchEl = document.getElementById('toggleAutomatedSchedulingSwitch');
+
+    if (!statusEl || !switchEl) return;
+
+    if (isEnabled) {
+        statusEl.innerHTML = '<span class="badge rounded-pill bg-success">Enabled</span>';
+        switchEl.checked = true;
+    } else {
+        statusEl.innerHTML = '<span class="badge rounded-pill bg-secondary">Disabled</span>';
         switchEl.checked = false;
     }
 }
@@ -782,6 +802,10 @@ document.addEventListener('DOMContentLoaded', async function() {
     loadTasks();
     loadLogs();
 
+    // Initialize Bootstrap tooltips
+    const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+    const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+
     // Add pause/resume switch handler
     const toggleSwitch = document.getElementById('toggleProcessingSwitch');
     if (toggleSwitch) {
@@ -810,6 +834,39 @@ document.addEventListener('DOMContentLoaded', async function() {
                 toggleSwitch.checked = !isChecked;
             } finally {
                 toggleSwitch.disabled = false;
+            }
+        });
+    }
+
+    // Add automated scheduling switch handler
+    const automatedSchedulingSwitch = document.getElementById('toggleAutomatedSchedulingSwitch');
+    if (automatedSchedulingSwitch) {
+        automatedSchedulingSwitch.addEventListener('change', async (e) => {
+            const isChecked = e.target.checked;
+
+            try {
+                automatedSchedulingSwitch.disabled = true;
+                const response = await fetch('/api/telescope/automated-scheduling', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: isChecked })
+                });
+                const result = await response.json();
+
+                if (!response.ok) {
+                    console.error('Failed to toggle automated scheduling:', result);
+                    alert(result.error || 'Failed to toggle automated scheduling');
+                    // Revert switch state on error
+                    automatedSchedulingSwitch.checked = !isChecked;
+                }
+                // State will be updated via WebSocket broadcast
+            } catch (error) {
+                console.error('Error toggling automated scheduling:', error);
+                alert('Error toggling automated scheduling');
+                // Revert switch state on error
+                automatedSchedulingSwitch.checked = !isChecked;
+            } finally {
+                automatedSchedulingSwitch.disabled = false;
             }
         });
     }

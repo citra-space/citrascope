@@ -31,6 +31,7 @@ class SystemStatus(BaseModel):
     current_task: Optional[str] = None
     tasks_pending: int = 0
     processing_active: bool = True
+    automated_scheduling: bool = False
     hardware_adapter: str = "unknown"
     telescope_ra: Optional[float] = None
     telescope_dec: Optional[float] = None
@@ -396,6 +397,39 @@ class CitraScopeWebApp:
 
             return {"status": "active", "message": "Task processing resumed"}
 
+        @self.app.patch("/api/telescope/automated-scheduling")
+        async def update_automated_scheduling(request: Dict[str, bool]):
+            """Toggle automated scheduling on/off."""
+            if not self.daemon or not self.daemon.task_manager:
+                return JSONResponse({"error": "Task manager not available"}, status_code=503)
+
+            if not self.daemon.api_client:
+                return JSONResponse({"error": "API client not available"}, status_code=503)
+
+            enabled = request.get("enabled")
+            if enabled is None:
+                return JSONResponse({"error": "Missing 'enabled' field in request body"}, status_code=400)
+
+            try:
+                # Update server via Citra API
+                telescope_id = self.daemon.telescope_record["id"]
+                payload = [{"id": telescope_id, "automatedScheduling": enabled}]
+
+                response = self.daemon.api_client._request("PATCH", "/telescopes", json=payload)
+
+                if response:
+                    # Update local cache
+                    self.daemon.task_manager._automated_scheduling = enabled
+                    CITRASCOPE_LOGGER.info(f"Automated scheduling set to {'enabled' if enabled else 'disabled'}")
+                    await self.broadcast_status()
+                    return {"status": "success", "enabled": enabled}
+                else:
+                    return JSONResponse({"error": "Failed to update telescope on server"}, status_code=500)
+
+            except Exception as e:
+                CITRASCOPE_LOGGER.error(f"Error updating automated scheduling: {e}", exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
         @self.app.get("/api/adapter/filters")
         async def get_filters():
             """Get current filter configuration."""
@@ -664,6 +698,7 @@ class CitraScopeWebApp:
             # Update task processing state
             if hasattr(self.daemon, "task_manager") and self.daemon.task_manager:
                 self.status.processing_active = self.daemon.task_manager.is_processing_active()
+                self.status.automated_scheduling = self.daemon.task_manager._automated_scheduling or False
 
             self.status.last_update = datetime.now().isoformat()
 

@@ -46,6 +46,8 @@ class TaskManager:
         # Autofocus request flag (set by manual or scheduled triggers)
         self._autofocus_requested = False
         self._autofocus_lock = threading.Lock()
+        # Automated scheduling state (initialized from server on startup)
+        self._automated_scheduling = telescope_record.get("automatedScheduling", False) if telescope_record else False
 
     def poll_tasks(self):
         while not self._stop_event.is_set():
