@@ -33,6 +33,11 @@ REGISTERED_ADAPTERS: Dict[str, Dict[str, str]] = {
         "class_name": "KStarsDBusAdapter",
         "description": "KStars/Ekos via D-Bus - Linux astronomy suite",
     },
+    "direct": {
+        "module": "citrascope.hardware.direct_hardware_adapter",
+        "class_name": "DirectHardwareAdapter",
+        "description": "Direct Hardware Control - Composable device adapters for cameras, mounts, etc.",
+    },
 }
 
 

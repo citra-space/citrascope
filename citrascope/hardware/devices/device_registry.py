@@ -1,0 +1,171 @@
+"""Device adapter registry.
+
+This module provides a centralized registry for all device adapters.
+Similar to the hardware adapter registry, but for individual device types.
+"""
+
+import importlib
+from typing import Dict, Type
+
+from citrascope.hardware.devices.camera import AbstractCamera
+from citrascope.hardware.devices.filter_wheel import AbstractFilterWheel
+from citrascope.hardware.devices.focuser import AbstractFocuser
+from citrascope.hardware.devices.mount import AbstractMount
+
+# Registry of available camera devices
+CAMERA_DEVICES: Dict[str, Dict[str, str]] = {
+    "ximea": {
+        "module": "citrascope.hardware.devices.camera.ximea_camera",
+        "class_name": "XimeaHyperspectralCamera",
+        "description": "Ximea Hyperspectral Camera (MQ series)",
+    },
+    # Future cameras:
+    # "zwo": {...},
+    # "ascom": {...},
+    # "qhy": {...},
+}
+
+# Registry of available mount devices
+MOUNT_DEVICES: Dict[str, Dict[str, str]] = {
+    # Future mounts:
+    # "celestron": {...},
+    # "skywatcher": {...},
+    # "ascom": {...},
+}
+
+# Registry of available filter wheel devices
+FILTER_WHEEL_DEVICES: Dict[str, Dict[str, str]] = {
+    # Future filter wheels:
+    # "zwo": {...},
+    # "ascom": {...},
+}
+
+# Registry of available focuser devices
+FOCUSER_DEVICES: Dict[str, Dict[str, str]] = {
+    # Future focusers:
+    # "moonlite": {...},
+    # "ascom": {...},
+}
+
+
+def get_camera_class(camera_type: str) -> Type[AbstractCamera]:
+    """Get the camera class for the given camera type.
+
+    Args:
+        camera_type: The type of camera (e.g., "ximea", "zwo")
+
+    Returns:
+        The camera adapter class
+
+    Raises:
+        ValueError: If the camera type is not registered
+        ImportError: If the camera module cannot be imported
+    """
+    if camera_type not in CAMERA_DEVICES:
+        available = ", ".join(f"'{name}'" for name in CAMERA_DEVICES.keys())
+        raise ValueError(f"Unknown camera type: '{camera_type}'. Valid options are: {available}")
+
+    device_info = CAMERA_DEVICES[camera_type]
+    module = importlib.import_module(device_info["module"])
+    device_class = getattr(module, device_info["class_name"])
+
+    return device_class
+
+
+def get_mount_class(mount_type: str) -> Type[AbstractMount]:
+    """Get the mount class for the given mount type.
+
+    Args:
+        mount_type: The type of mount
+
+    Returns:
+        The mount adapter class
+
+    Raises:
+        ValueError: If the mount type is not registered
+        ImportError: If the mount module cannot be imported
+    """
+    if mount_type not in MOUNT_DEVICES:
+        available = ", ".join(f"'{name}'" for name in MOUNT_DEVICES.keys())
+        raise ValueError(f"Unknown mount type: '{mount_type}'. Valid options are: {available}")
+
+    device_info = MOUNT_DEVICES[mount_type]
+    module = importlib.import_module(device_info["module"])
+    device_class = getattr(module, device_info["class_name"])
+
+    return device_class
+
+
+def get_filter_wheel_class(filter_wheel_type: str) -> Type[AbstractFilterWheel]:
+    """Get the filter wheel class for the given filter wheel type.
+
+    Args:
+        filter_wheel_type: The type of filter wheel
+
+    Returns:
+        The filter wheel adapter class
+
+    Raises:
+        ValueError: If the filter wheel type is not registered
+        ImportError: If the filter wheel module cannot be imported
+    """
+    if filter_wheel_type not in FILTER_WHEEL_DEVICES:
+        available = ", ".join(f"'{name}'" for name in FILTER_WHEEL_DEVICES.keys())
+        raise ValueError(f"Unknown filter wheel type: '{filter_wheel_type}'. Valid options are: {available}")
+
+    device_info = FILTER_WHEEL_DEVICES[filter_wheel_type]
+    module = importlib.import_module(device_info["module"])
+    device_class = getattr(module, device_info["class_name"])
+
+    return device_class
+
+
+def get_focuser_class(focuser_type: str) -> Type[AbstractFocuser]:
+    """Get the focuser class for the given focuser type.
+
+    Args:
+        focuser_type: The type of focuser
+
+    Returns:
+        The focuser adapter class
+
+    Raises:
+        ValueError: If the focuser type is not registered
+        ImportError: If the focuser module cannot be imported
+    """
+    if focuser_type not in FOCUSER_DEVICES:
+        available = ", ".join(f"'{name}'" for name in FOCUSER_DEVICES.keys())
+        raise ValueError(f"Unknown focuser type: '{focuser_type}'. Valid options are: {available}")
+
+    device_info = FOCUSER_DEVICES[focuser_type]
+    module = importlib.import_module(device_info["module"])
+    device_class = getattr(module, device_info["class_name"])
+
+    return device_class
+
+
+def list_devices(device_type: str) -> Dict[str, Dict[str, str]]:
+    """Get a dictionary of all registered devices of a specific type.
+
+    Args:
+        device_type: Type of device ("camera", "mount", "filter_wheel", "focuser")
+
+    Returns:
+        Dict mapping device names to their info
+    """
+    registries = {
+        "camera": CAMERA_DEVICES,
+        "mount": MOUNT_DEVICES,
+        "filter_wheel": FILTER_WHEEL_DEVICES,
+        "focuser": FOCUSER_DEVICES,
+    }
+
+    registry = registries.get(device_type, {})
+    return {
+        name: {
+            "description": info["description"],
+            "module": info["module"],
+            "class_name": info["class_name"],
+        }
+        for name, info in registry.items()
+    }
