@@ -211,7 +211,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         focuser_options = [{"value": k, "label": v["friendly_name"]} for k, v in focuser_devices.items()]
 
         schema: list[Any] = [
-            # Device type selection
+            # Camera is always required
             {
                 "name": "camera_type",
                 "friendly_name": "Camera Type",
@@ -222,37 +222,50 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                 "options": camera_options,
                 "group": "Camera",
             },
-            {
-                "name": "mount_type",
-                "friendly_name": "Mount Type",
-                "type": "str",
-                "default": "",
-                "description": "Type of mount device (leave empty for static camera setups)",
-                "required": False,
-                "options": mount_options,
-                "group": "Mount",
-            },
-            {
-                "name": "filter_wheel_type",
-                "friendly_name": "Filter Wheel Type",
-                "type": "str",
-                "default": "",
-                "description": "Type of filter wheel device (leave empty if none)",
-                "required": False,
-                "options": filter_wheel_options,
-                "group": "Filter Wheel",
-            },
-            {
-                "name": "focuser_type",
-                "friendly_name": "Focuser Type",
-                "type": "str",
-                "default": "",
-                "description": "Type of focuser device (leave empty if none)",
-                "required": False,
-                "options": focuser_options,
-                "group": "Focuser",
-            },
         ]
+
+        # Only include optional device fields if devices are available
+        if mount_options:
+            schema.append(
+                {
+                    "name": "mount_type",
+                    "friendly_name": "Mount Type",
+                    "type": "str",
+                    "default": "",
+                    "description": "Type of mount device (leave empty for static camera setups)",
+                    "required": False,
+                    "options": mount_options,
+                    "group": "Mount",
+                }
+            )
+
+        if filter_wheel_options:
+            schema.append(
+                {
+                    "name": "filter_wheel_type",
+                    "friendly_name": "Filter Wheel Type",
+                    "type": "str",
+                    "default": "",
+                    "description": "Type of filter wheel device (leave empty if none)",
+                    "required": False,
+                    "options": filter_wheel_options,
+                    "group": "Filter Wheel",
+                }
+            )
+
+        if focuser_options:
+            schema.append(
+                {
+                    "name": "focuser_type",
+                    "friendly_name": "Focuser Type",
+                    "type": "str",
+                    "default": "",
+                    "description": "Type of focuser device (leave empty if none)",
+                    "required": False,
+                    "options": focuser_options,
+                    "group": "Focuser",
+                }
+            )
 
         # Dynamically add device-specific settings if device types are provided
         camera_type = kwargs.get("camera_type")
@@ -329,6 +342,9 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             self.logger.info("No mount configured (static camera mode)")
 
         # Connect camera
+        if not self.camera:
+            self.logger.error("Camera not initialized (missing dependencies)")
+            return False
         if not self.camera.connect():
             self.logger.error("Failed to connect to camera")
             success = False
@@ -350,7 +366,8 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         self.logger.info("Disconnecting from direct hardware devices...")
 
         # Disconnect all devices
-        self.camera.disconnect()
+        if self.camera:
+            self.camera.disconnect()
 
         if self.mount:
             self.mount.disconnect()
@@ -379,6 +396,8 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         Returns:
             True if camera is connected and responsive
         """
+        if not self.camera:
+            return False
         return self.camera.is_connected()
 
     def _do_point_telescope(self, ra: float, dec: float):
@@ -443,6 +462,9 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         Returns:
             Path to the last saved image
         """
+        if not self.camera:
+            raise RuntimeError("Camera not initialized (missing dependencies)")
+
         self.logger.info(f"Taking {count} exposure(s): {exposure_time}s, " f"gain={gain}, offset={offset}")
 
         last_image_path = ""
@@ -568,6 +590,8 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         Returns:
             Temperature in Celsius, or None if unavailable
         """
+        if not self.camera:
+            return None
         return self.camera.get_temperature()
 
     def get_missing_dependencies(self) -> list[dict[str, str]]:
@@ -583,7 +607,8 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         self.logger.warning("Aborting all operations")
 
         # Abort camera exposure if running
-        self.camera.abort_exposure()
+        if self.camera:
+            self.camera.abort_exposure()
 
         # Stop mount slew if running
         if self.mount and self.mount.is_slewing():
@@ -603,7 +628,10 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         """
         devices = []
 
-        devices.append(f"Camera: {self.camera.get_friendly_name()}")
+        if self.camera:
+            devices.append(f"Camera: {self.camera.get_friendly_name()}")
+        else:
+            devices.append("Camera: Not initialized (missing dependencies)")
 
         if self.mount:
             devices.append(f"Mount: {self.mount.get_friendly_name()}")
@@ -663,6 +691,8 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         Returns:
             True if camera is connected
         """
+        if not self.camera:
+            return False
         return self.camera.is_connected()
 
     def take_image(self, task_id: str, exposure_duration_seconds: float = 1.0) -> str:
@@ -675,13 +705,18 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         Returns:
             Path to the saved image
         """
+        if not self.camera:
+            raise RuntimeError("Camera not initialized (missing dependencies)")
+
         # Generate save path with task ID
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         save_path = self.images_dir / f"task_{task_id}_{timestamp}.fits"
 
-        return self.camera.take_exposure(
-            duration=exposure_duration_seconds,
-            save_path=save_path,
+        return str(
+            self.camera.take_exposure(
+                duration=exposure_duration_seconds,
+                save_path=save_path,
+            )
         )
 
     def set_custom_tracking_rate(self, ra_rate: float, dec_rate: float):
@@ -696,7 +731,10 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             return
 
         self.logger.info(f'Setting custom tracking rate: RA={ra_rate}"/s, Dec={dec_rate}"/s')
-        self.mount.set_tracking_rate(ra_rate, dec_rate)
+        if hasattr(self.mount, "set_tracking_rate"):
+            self.mount.set_tracking_rate(ra_rate, dec_rate)  # type: ignore
+        else:
+            self.logger.warning("Mount does not support custom tracking rates")
 
     def get_tracking_rate(self) -> tuple[float, float]:
         """Get current telescope tracking rate.
@@ -706,7 +744,9 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         """
         if not self.mount:
             return (0.0, 0.0)
-        return self.mount.get_tracking_rate()
+        if hasattr(self.mount, "get_tracking_rate"):
+            return self.mount.get_tracking_rate()  # type: ignore
+        return (0.0, 0.0)
 
     def perform_alignment(self, target_ra: float, target_dec: float) -> bool:
         """Perform plate-solving alignment.
