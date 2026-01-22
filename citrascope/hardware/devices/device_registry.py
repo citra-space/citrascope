@@ -19,6 +19,11 @@ CAMERA_DEVICES: Dict[str, Dict[str, str]] = {
         "class_name": "XimeaHyperspectralCamera",
         "description": "Ximea Hyperspectral Camera (MQ series)",
     },
+    "rpi_hq": {
+        "module": "citrascope.hardware.devices.camera.rpi_hq_camera",
+        "class_name": "RaspberryPiHQCamera",
+        "description": "Raspberry Pi High Quality Camera (IMX477)",
+    },
     # Future cameras:
     # "zwo": {...},
     # "ascom": {...},
@@ -151,7 +156,7 @@ def list_devices(device_type: str) -> Dict[str, Dict[str, str]]:
         device_type: Type of device ("camera", "mount", "filter_wheel", "focuser")
 
     Returns:
-        Dict mapping device names to their info
+        Dict mapping device names to their info including friendly_name
     """
     registries = {
         "camera": CAMERA_DEVICES,
@@ -161,14 +166,35 @@ def list_devices(device_type: str) -> Dict[str, Dict[str, str]]:
     }
 
     registry = registries.get(device_type, {})
-    return {
-        name: {
+    result = {}
+
+    for name, info in registry.items():
+        # Try to get friendly name from device class
+        try:
+            if device_type == "camera":
+                device_class = get_camera_class(name)
+            elif device_type == "mount":
+                device_class = get_mount_class(name)
+            elif device_type == "filter_wheel":
+                device_class = get_filter_wheel_class(name)
+            elif device_type == "focuser":
+                device_class = get_focuser_class(name)
+            else:
+                continue
+
+            friendly_name = device_class.get_friendly_name()
+        except Exception:
+            # Fallback to description if friendly_name not available
+            friendly_name = info["description"]
+
+        result[name] = {
+            "friendly_name": friendly_name,
             "description": info["description"],
             "module": info["module"],
             "class_name": info["class_name"],
         }
-        for name, info in registry.items()
-    }
+
+    return result
 
 
 def get_device_schema(device_type: str, device_name: str) -> list:

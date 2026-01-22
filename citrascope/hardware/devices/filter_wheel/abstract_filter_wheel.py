@@ -1,61 +1,16 @@
 """Abstract filter wheel device interface."""
 
-import logging
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import Optional
 
-from citrascope.hardware.abstract_astro_hardware_adapter import SettingSchemaEntry
+from citrascope.hardware.devices.abstract_hardware_device import AbstractHardwareDevice
 
 
-class AbstractFilterWheel(ABC):
+class AbstractFilterWheel(AbstractHardwareDevice):
     """Abstract base class for filter wheel devices.
 
     Provides a common interface for controlling motorized filter wheels.
     """
-
-    logger: logging.Logger
-
-    def __init__(self, logger: logging.Logger, **kwargs):
-        """Initialize the filter wheel device.
-
-        Args:
-            logger: Logger instance for this device
-            **kwargs: Device-specific configuration parameters
-        """
-        self.logger = logger
-
-    @classmethod
-    @abstractmethod
-    def get_settings_schema(cls) -> list[SettingSchemaEntry]:
-        """Return schema describing configurable settings for this filter wheel.
-
-        Returns:
-            List of setting schema entries (without the 'filter_wheel_' prefix)
-        """
-        pass
-
-    @abstractmethod
-    def connect(self) -> bool:
-        """Connect to the filter wheel device.
-
-        Returns:
-            True if connection successful, False otherwise
-        """
-        pass
-
-    @abstractmethod
-    def disconnect(self):
-        """Disconnect from the filter wheel device."""
-        pass
-
-    @abstractmethod
-    def is_connected(self) -> bool:
-        """Check if filter wheel is connected and responsive.
-
-        Returns:
-            True if connected, False otherwise
-        """
-        pass
 
     @abstractmethod
     def set_filter_position(self, position: int) -> bool:

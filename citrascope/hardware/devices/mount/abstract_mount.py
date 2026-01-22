@@ -1,61 +1,16 @@
 """Abstract mount device interface."""
 
-import logging
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import Optional, Tuple
 
-from citrascope.hardware.abstract_astro_hardware_adapter import SettingSchemaEntry
+from citrascope.hardware.devices.abstract_hardware_device import AbstractHardwareDevice
 
 
-class AbstractMount(ABC):
+class AbstractMount(AbstractHardwareDevice):
     """Abstract base class for telescope mount devices.
 
     Provides a common interface for controlling equatorial and alt-az mounts.
     """
-
-    logger: logging.Logger
-
-    def __init__(self, logger: logging.Logger, **kwargs):
-        """Initialize the mount device.
-
-        Args:
-            logger: Logger instance for this device
-            **kwargs: Device-specific configuration parameters
-        """
-        self.logger = logger
-
-    @classmethod
-    @abstractmethod
-    def get_settings_schema(cls) -> list[SettingSchemaEntry]:
-        """Return schema describing configurable settings for this mount.
-
-        Returns:
-            List of setting schema entries (without the 'mount_' prefix)
-        """
-        pass
-
-    @abstractmethod
-    def connect(self) -> bool:
-        """Connect to the mount device.
-
-        Returns:
-            True if connection successful, False otherwise
-        """
-        pass
-
-    @abstractmethod
-    def disconnect(self):
-        """Disconnect from the mount device."""
-        pass
-
-    @abstractmethod
-    def is_connected(self) -> bool:
-        """Check if mount is connected and responsive.
-
-        Returns:
-            True if connected, False otherwise
-        """
-        pass
 
     @abstractmethod
     def slew_to_radec(self, ra: float, dec: float) -> bool:

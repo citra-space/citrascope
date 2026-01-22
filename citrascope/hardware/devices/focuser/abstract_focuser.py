@@ -1,61 +1,16 @@
 """Abstract focuser device interface."""
 
-import logging
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import Optional
 
-from citrascope.hardware.abstract_astro_hardware_adapter import SettingSchemaEntry
+from citrascope.hardware.devices.abstract_hardware_device import AbstractHardwareDevice
 
 
-class AbstractFocuser(ABC):
+class AbstractFocuser(AbstractHardwareDevice):
     """Abstract base class for focuser devices.
 
     Provides a common interface for controlling motorized focusers.
     """
-
-    logger: logging.Logger
-
-    def __init__(self, logger: logging.Logger, **kwargs):
-        """Initialize the focuser device.
-
-        Args:
-            logger: Logger instance for this device
-            **kwargs: Device-specific configuration parameters
-        """
-        self.logger = logger
-
-    @classmethod
-    @abstractmethod
-    def get_settings_schema(cls) -> list[SettingSchemaEntry]:
-        """Return schema describing configurable settings for this focuser.
-
-        Returns:
-            List of setting schema entries (without the 'focuser_' prefix)
-        """
-        pass
-
-    @abstractmethod
-    def connect(self) -> bool:
-        """Connect to the focuser device.
-
-        Returns:
-            True if connection successful, False otherwise
-        """
-        pass
-
-    @abstractmethod
-    def disconnect(self):
-        """Disconnect from the focuser device."""
-        pass
-
-    @abstractmethod
-    def is_connected(self) -> bool:
-        """Check if focuser is connected and responsive.
-
-        Returns:
-            True if connected, False otherwise
-        """
-        pass
 
     @abstractmethod
     def move_absolute(self, position: int) -> bool:

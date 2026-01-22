@@ -24,6 +24,15 @@ class XimeaHyperspectralCamera(AbstractCamera):
     """
 
     @classmethod
+    def get_friendly_name(cls) -> str:
+        """Return human-readable name for this camera device.
+
+        Returns:
+            Friendly display name
+        """
+        return "Ximea Hyperspectral Camera (MQ Series)"
+
+    @classmethod
     def get_settings_schema(cls) -> list[SettingSchemaEntry]:
         """Return schema for Ximea camera settings.
 

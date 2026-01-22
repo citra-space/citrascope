@@ -123,10 +123,17 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             List of setting schema entries
         """
         # Get available devices for dropdown options
-        camera_options = list(list_devices("camera").keys())
-        mount_options = list(list_devices("mount").keys())
-        filter_wheel_options = list(list_devices("filter_wheel").keys())
-        focuser_options = list(list_devices("focuser").keys())
+        camera_devices = list_devices("camera")
+        mount_devices = list_devices("mount")
+        filter_wheel_devices = list_devices("filter_wheel")
+        focuser_devices = list_devices("focuser")
+
+        # Build options as list of dicts with value (key) and display (friendly_name)
+        # Format: [{"value": "rpi_hq", "label": "Raspberry Pi HQ Camera"}, ...]
+        camera_options = [{"value": k, "label": v["friendly_name"]} for k, v in camera_devices.items()]
+        mount_options = [{"value": k, "label": v["friendly_name"]} for k, v in mount_devices.items()]
+        filter_wheel_options = [{"value": k, "label": v["friendly_name"]} for k, v in filter_wheel_devices.items()]
+        focuser_options = [{"value": k, "label": v["friendly_name"]} for k, v in focuser_devices.items()]
 
         schema: list[Any] = [
             # Device type selection
@@ -134,7 +141,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                 "name": "camera_type",
                 "friendly_name": "Camera Type",
                 "type": "str",
-                "default": camera_options[0] if camera_options else "",
+                "default": camera_options[0]["value"] if camera_options else "",
                 "description": "Type of camera device to use",
                 "required": True,
                 "options": camera_options,
@@ -170,7 +177,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
 
         # Dynamically add device-specific settings if device types are provided
         camera_type = kwargs.get("camera_type")
-        if camera_type and camera_type in camera_options:
+        if camera_type and camera_type in camera_devices:
             camera_schema = get_device_schema("camera", camera_type)
             for entry in camera_schema:
                 prefixed_entry = dict(entry)
@@ -178,7 +185,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                 schema.append(prefixed_entry)
 
         mount_type = kwargs.get("mount_type")
-        if mount_type and mount_type in mount_options:
+        if mount_type and mount_type in mount_devices:
             mount_schema = get_device_schema("mount", mount_type)
             for entry in mount_schema:
                 prefixed_entry = dict(entry)
@@ -186,7 +193,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                 schema.append(prefixed_entry)
 
         filter_wheel_type = kwargs.get("filter_wheel_type")
-        if filter_wheel_type and filter_wheel_type in filter_wheel_options:
+        if filter_wheel_type and filter_wheel_type in filter_wheel_devices:
             fw_schema = get_device_schema("filter_wheel", filter_wheel_type)
             for entry in fw_schema:
                 prefixed_entry = dict(entry)
@@ -194,7 +201,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                 schema.append(prefixed_entry)
 
         focuser_type = kwargs.get("focuser_type")
-        if focuser_type and focuser_type in focuser_options:
+        if focuser_type and focuser_type in focuser_devices:
             focuser_schema = get_device_schema("focuser", focuser_type)
             for entry in focuser_schema:
                 prefixed_entry = dict(entry)
