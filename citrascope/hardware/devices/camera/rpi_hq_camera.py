@@ -119,7 +119,7 @@ class RaspberryPiHQCamera(AbstractCamera):
         try:
             # Lazy import
             if self._picamera2_module is None:
-                import picamera2
+                import picamera2  # type: ignore
 
                 self._picamera2_module = picamera2
 
@@ -197,6 +197,9 @@ class RaspberryPiHQCamera(AbstractCamera):
         """
         if not self.is_connected():
             raise RuntimeError("Camera not connected")
+
+        if self._camera is None:
+            raise RuntimeError("Camera instance is None")
 
         if save_path is None:
             timestamp = time.strftime("%Y%m%d_%H%M%S")
