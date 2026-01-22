@@ -181,7 +181,7 @@ class CitraScopeWebApp:
                 "personal_access_token": settings.personal_access_token,
                 "telescope_id": settings.telescope_id,
                 "hardware_adapter": settings.hardware_adapter,
-                "adapter_settings": settings.adapter_settings,
+                "adapter_settings": settings._all_adapter_settings,
                 "log_level": settings.log_level,
                 "keep_images": settings.keep_images,
                 "max_task_retries": settings.max_task_retries,

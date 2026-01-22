@@ -22,9 +22,11 @@ export async function initConfig() {
         adapterSelect.addEventListener('change', async (e) => {
             const adapter = e.target.value;
             if (adapter) {
-                // Get the saved settings for this adapter to generate correct schema
-                const savedSettings = currentConfig.adapter_settings || {};
-                await loadAdapterSchema(adapter, savedSettings);
+                // Extract the NEW adapter's saved settings from the nested structure
+                const allAdapterSettings = currentConfig.adapter_settings || {};
+                const newAdapterSettings = allAdapterSettings[adapter] || {};
+                await loadAdapterSchema(adapter, newAdapterSettings);
+                populateAdapterSettings(newAdapterSettings);
                 await loadFilterConfig();
             } else {
                 document.getElementById('adapter-settings-container').innerHTML = '';
@@ -178,8 +180,12 @@ async function loadConfiguration() {
 
         // Load adapter-specific settings if adapter is selected
         if (config.hardware_adapter) {
-            await loadAdapterSchema(config.hardware_adapter, config.adapter_settings || {});
-            populateAdapterSettings(config.adapter_settings || {});
+            // adapter_settings is nested: {"nina": {...}, "kstars": {...}, "direct": {...}}
+            // Extract the current adapter's settings
+            const allAdapterSettings = config.adapter_settings || {};
+            const currentAdapterSettings = allAdapterSettings[config.hardware_adapter] || {};
+            await loadAdapterSchema(config.hardware_adapter, currentAdapterSettings);
+            populateAdapterSettings(currentAdapterSettings);
         }
     } catch (error) {
         console.error('Failed to load config:', error);
