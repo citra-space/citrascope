@@ -244,7 +244,7 @@ function renderAdapterSettings(schema) {
             const description = field.description || '';
             const displayName = field.friendly_name || field.name;
 
-            html += '<div class="col-12 col-md-6">';
+            html += '<div class="col-12 col-md-4">';
             html += `<label for="adapter_${field.name}" class="form-label">${displayName} ${isRequired}</label>`;
 
             if (field.type === 'bool') {

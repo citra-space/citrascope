@@ -279,26 +279,53 @@ function initNavigation() {
             }
         }
 
-        nav.addEventListener('click', function(e) {
-            const link = e.target.closest('a[data-section]');
+        function navigateToSection(section) {
+            const link = nav.querySelector(`a[data-section="${section}"]`);
             if (link) {
-                e.preventDefault();
-                const section = link.getAttribute('data-section');
                 activateNav(link);
                 showSection(section);
+                window.location.hash = section;
 
                 // Reload filter config when config section is shown
                 if (section === 'config') {
                     initFilterConfig();
                 }
             }
+        }
+
+        nav.addEventListener('click', function(e) {
+            const link = e.target.closest('a[data-section]');
+            if (link) {
+                e.preventDefault();
+                const section = link.getAttribute('data-section');
+                navigateToSection(section);
+            }
         });
 
-        // Default to first nav item
-        const first = nav.querySelector('a[data-section]');
-        if (first) {
-            activateNav(first);
-            showSection(first.getAttribute('data-section'));
+        // Handle hash changes (back/forward navigation)
+        window.addEventListener('hashchange', function() {
+            const hash = window.location.hash.substring(1);
+            if (hash && sections[hash]) {
+                const link = nav.querySelector(`a[data-section="${hash}"]`);
+                if (link) {
+                    activateNav(link);
+                    showSection(hash);
+                    if (hash === 'config') {
+                        initFilterConfig();
+                    }
+                }
+            }
+        });
+
+        // Initialize from hash or default to first nav item
+        const hash = window.location.hash.substring(1);
+        if (hash && sections[hash]) {
+            navigateToSection(hash);
+        } else {
+            const first = nav.querySelector('a[data-section]');
+            if (first) {
+                navigateToSection(first.getAttribute('data-section'));
+            }
         }
     }
 }
