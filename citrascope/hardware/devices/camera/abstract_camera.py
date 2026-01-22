@@ -5,6 +5,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
 
+from citrascope.hardware.abstract_astro_hardware_adapter import SettingSchemaEntry
+
 
 class AbstractCamera(ABC):
     """Abstract base class for camera devices.
@@ -23,6 +25,16 @@ class AbstractCamera(ABC):
             **kwargs: Device-specific configuration parameters
         """
         self.logger = logger
+
+    @classmethod
+    @abstractmethod
+    def get_settings_schema(cls) -> list[SettingSchemaEntry]:
+        """Return schema describing configurable settings for this camera.
+
+        Returns:
+            List of setting schema entries (without the 'camera_' prefix)
+        """
+        pass
 
     @abstractmethod
     def connect(self) -> bool:

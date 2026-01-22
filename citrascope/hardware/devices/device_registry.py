@@ -169,3 +169,31 @@ def list_devices(device_type: str) -> Dict[str, Dict[str, str]]:
         }
         for name, info in registry.items()
     }
+
+
+def get_device_schema(device_type: str, device_name: str) -> list:
+    """Get the configuration schema for a specific device.
+
+    Args:
+        device_type: Type of device ("camera", "mount", "filter_wheel", "focuser")
+        device_name: The name of the device (e.g., "ximea", "celestron")
+
+    Returns:
+        The device's settings schema
+
+    Raises:
+        ValueError: If the device type or name is not registered
+        ImportError: If the device module cannot be imported
+    """
+    if device_type == "camera":
+        device_class = get_camera_class(device_name)
+    elif device_type == "mount":
+        device_class = get_mount_class(device_name)
+    elif device_type == "filter_wheel":
+        device_class = get_filter_wheel_class(device_name)
+    elif device_type == "focuser":
+        device_class = get_focuser_class(device_name)
+    else:
+        raise ValueError(f"Unknown device type: '{device_type}'")
+
+    return device_class.get_settings_schema()

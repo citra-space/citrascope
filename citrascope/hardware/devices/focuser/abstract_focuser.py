@@ -4,6 +4,8 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Optional
 
+from citrascope.hardware.abstract_astro_hardware_adapter import SettingSchemaEntry
+
 
 class AbstractFocuser(ABC):
     """Abstract base class for focuser devices.
@@ -21,6 +23,16 @@ class AbstractFocuser(ABC):
             **kwargs: Device-specific configuration parameters
         """
         self.logger = logger
+
+    @classmethod
+    @abstractmethod
+    def get_settings_schema(cls) -> list[SettingSchemaEntry]:
+        """Return schema describing configurable settings for this focuser.
+
+        Returns:
+            List of setting schema entries (without the 'focuser_' prefix)
+        """
+        pass
 
     @abstractmethod
     def connect(self) -> bool:

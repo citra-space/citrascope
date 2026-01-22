@@ -13,6 +13,7 @@ from citrascope.hardware.abstract_astro_hardware_adapter import (
 from citrascope.hardware.devices.camera import AbstractCamera
 from citrascope.hardware.devices.device_registry import (
     get_camera_class,
+    get_device_schema,
     get_filter_wheel_class,
     get_focuser_class,
     get_mount_class,
@@ -108,12 +109,15 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             self.logger.info(f"  Focuser: {focuser_type}")
 
     @classmethod
-    def get_settings_schema(cls) -> list[SettingSchemaEntry]:
+    def get_settings_schema(cls, **kwargs) -> list[SettingSchemaEntry]:
         """Return schema for direct hardware adapter settings.
 
         This includes device type selection and adapter-level settings.
-        Device-specific settings should be prefixed with device type
-        (e.g., camera_serial_number, mount_port).
+        If device types are provided in kwargs, will dynamically include
+        device-specific settings with appropriate prefixes.
+
+        Args:
+            **kwargs: Can include camera_type, mount_type, etc. to get dynamic schemas
 
         Returns:
             List of setting schema entries
@@ -124,7 +128,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         filter_wheel_options = list(list_devices("filter_wheel").keys())
         focuser_options = list(list_devices("focuser").keys())
 
-        schema = [
+        schema: list[Any] = [
             # Device type selection
             {
                 "name": "camera_type",
@@ -162,68 +166,40 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                 "required": False,
                 "options": focuser_options,
             },
-            # Adapter-level settings
-            {
-                "name": "settle_time_seconds",
-                "friendly_name": "Mount Settle Time",
-                "type": "float",
-                "default": 2.0,
-                "description": "Time to wait after slew before exposing (seconds)",
-                "required": False,
-                "min": 0.0,
-                "max": 60.0,
-            },
-            # Camera-specific settings (examples - actual settings come from device)
-            {
-                "name": "camera_serial_number",
-                "friendly_name": "Camera Serial Number",
-                "type": "str",
-                "default": "",
-                "description": "Camera serial number (for multi-camera setups)",
-                "required": False,
-                "placeholder": "Leave empty to auto-detect",
-            },
-            {
-                "name": "camera_default_gain",
-                "friendly_name": "Camera Default Gain",
-                "type": "float",
-                "default": 0.0,
-                "description": "Default camera gain setting",
-                "required": False,
-                "min": 0.0,
-                "max": 60.0,
-            },
-            {
-                "name": "camera_spectral_bands",
-                "friendly_name": "Spectral Bands (Hyperspectral)",
-                "type": "int",
-                "default": 25,
-                "description": "Number of spectral bands (for hyperspectral cameras)",
-                "required": False,
-                "min": 1,
-                "max": 500,
-            },
-            # Mount-specific settings (examples)
-            {
-                "name": "mount_port",
-                "friendly_name": "Mount Serial Port",
-                "type": "str",
-                "default": "",
-                "description": "Serial port for mount connection (e.g., /dev/ttyUSB0, COM3)",
-                "required": False,
-                "placeholder": "/dev/ttyUSB0 or COM3",
-            },
-            {
-                "name": "mount_baud_rate",
-                "friendly_name": "Mount Baud Rate",
-                "type": "int",
-                "default": 9600,
-                "description": "Baud rate for serial communication",
-                "required": False,
-                "options": ["9600", "19200", "38400", "57600", "115200"],
-            },
         ]
 
+        # Dynamically add device-specific settings if device types are provided
+        camera_type = kwargs.get("camera_type")
+        if camera_type and camera_type in camera_options:
+            camera_schema = get_device_schema("camera", camera_type)
+            for entry in camera_schema:
+                prefixed_entry = dict(entry)
+                prefixed_entry["name"] = f"camera_{entry['name']}"
+                schema.append(prefixed_entry)
+
+        mount_type = kwargs.get("mount_type")
+        if mount_type and mount_type in mount_options:
+            mount_schema = get_device_schema("mount", mount_type)
+            for entry in mount_schema:
+                prefixed_entry = dict(entry)
+                prefixed_entry["name"] = f"mount_{entry['name']}"
+                schema.append(prefixed_entry)
+
+        filter_wheel_type = kwargs.get("filter_wheel_type")
+        if filter_wheel_type and filter_wheel_type in filter_wheel_options:
+            fw_schema = get_device_schema("filter_wheel", filter_wheel_type)
+            for entry in fw_schema:
+                prefixed_entry = dict(entry)
+                prefixed_entry["name"] = f"filter_wheel_{entry['name']}"
+                schema.append(prefixed_entry)
+
+        focuser_type = kwargs.get("focuser_type")
+        if focuser_type and focuser_type in focuser_options:
+            focuser_schema = get_device_schema("focuser", focuser_type)
+            for entry in focuser_schema:
+                prefixed_entry = dict(entry)
+                prefixed_entry["name"] = f"focuser_{entry['name']}"
+                schema.append(prefixed_entry)
         return cast(list[SettingSchemaEntry], schema)
 
     def get_observation_strategy(self) -> ObservationStrategy:

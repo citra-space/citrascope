@@ -4,6 +4,8 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Optional, Tuple
 
+from citrascope.hardware.abstract_astro_hardware_adapter import SettingSchemaEntry
+
 
 class AbstractMount(ABC):
     """Abstract base class for telescope mount devices.
@@ -21,6 +23,16 @@ class AbstractMount(ABC):
             **kwargs: Device-specific configuration parameters
         """
         self.logger = logger
+
+    @classmethod
+    @abstractmethod
+    def get_settings_schema(cls) -> list[SettingSchemaEntry]:
+        """Return schema describing configurable settings for this mount.
+
+        Returns:
+            List of setting schema entries (without the 'mount_' prefix)
+        """
+        pass
 
     @abstractmethod
     def connect(self) -> bool:

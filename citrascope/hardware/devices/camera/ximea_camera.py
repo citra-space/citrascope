@@ -3,8 +3,9 @@
 import logging
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 
+from citrascope.hardware.abstract_astro_hardware_adapter import SettingSchemaEntry
 from citrascope.hardware.devices.camera import AbstractCamera
 
 
@@ -21,6 +22,65 @@ class XimeaHyperspectralCamera(AbstractCamera):
         spectral_bands (int): Number of spectral bands (e.g., 25 for MQ022HG-IM-SM5X5)
         output_format (str): Output format - 'raw', 'demosaiced', 'datacube'
     """
+
+    @classmethod
+    def get_settings_schema(cls) -> list[SettingSchemaEntry]:
+        """Return schema for Ximea camera settings.
+
+        Returns:
+            List of setting schema entries (without 'camera_' prefix)
+        """
+        schema = [
+            {
+                "name": "serial_number",
+                "friendly_name": "Camera Serial Number",
+                "type": "str",
+                "default": "",
+                "description": "Camera serial number (for multi-camera setups)",
+                "required": False,
+                "placeholder": "Leave empty to auto-detect",
+            },
+            {
+                "name": "default_gain",
+                "friendly_name": "Default Gain (dB)",
+                "type": "float",
+                "default": 0.0,
+                "description": "Default camera gain setting in dB",
+                "required": False,
+                "min": 0.0,
+                "max": 24.0,
+            },
+            {
+                "name": "default_exposure_ms",
+                "friendly_name": "Default Exposure (ms)",
+                "type": "float",
+                "default": 100.0,
+                "description": "Default exposure time in milliseconds",
+                "required": False,
+                "min": 0.1,
+                "max": 10000.0,
+            },
+            {
+                "name": "spectral_bands",
+                "friendly_name": "Spectral Bands",
+                "type": "int",
+                "default": 25,
+                "description": "Number of spectral bands (e.g., 25 for MQ022HG-IM-SM5X5)",
+                "required": False,
+                "min": 1,
+                "max": 500,
+            },
+            {
+                "name": "output_format",
+                "friendly_name": "Output Format",
+                "type": "str",
+                "default": "raw",
+                "description": "Output format for hyperspectral data",
+                "required": False,
+                "options": ["raw", "demosaiced", "datacube"],
+            },
+        ]
+        return cast(list[SettingSchemaEntry], schema)
 
     def __init__(self, logger: logging.Logger, **kwargs):
         """Initialize the Ximea camera.
