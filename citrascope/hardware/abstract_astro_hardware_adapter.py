@@ -70,7 +70,7 @@ class AbstractAstroHardwareAdapter(ABC):
 
     @classmethod
     @abstractmethod
-    def get_settings_schema(cls) -> list[SettingSchemaEntry]:
+    def get_settings_schema(cls, **kwargs) -> list[SettingSchemaEntry]:
         """
         Return a schema describing configurable settings for this hardware adapter.
 

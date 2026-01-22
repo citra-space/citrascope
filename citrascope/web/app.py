@@ -42,6 +42,7 @@ class SystemStatus(BaseModel):
     last_autofocus_timestamp: Optional[int] = None
     next_autofocus_minutes: Optional[int] = None
     last_update: str = ""
+    missing_dependencies: List[Dict[str, str]] = []  # List of {device, packages, install_cmd}
 
 
 class HardwareConfig(BaseModel):
@@ -227,12 +228,27 @@ class CitraScopeWebApp:
             }
 
         @self.app.get("/api/hardware-adapters/{adapter_name}/schema")
-        async def get_adapter_schema(adapter_name: str):
-            """Get configuration schema for a specific hardware adapter."""
+        async def get_adapter_schema(adapter_name: str, current_settings: str = ""):
+            """Get configuration schema for a specific hardware adapter.
+
+            Args:
+                adapter_name: Name of the adapter
+                current_settings: JSON string of current adapter_settings (for dynamic schemas)
+            """
+            import json
+
             from citrascope.hardware.adapter_registry import get_adapter_schema as get_schema
 
             try:
-                schema = get_schema(adapter_name)
+                # Parse current settings if provided
+                settings_kwargs = {}
+                if current_settings:
+                    try:
+                        settings_kwargs = json.loads(current_settings)
+                    except json.JSONDecodeError:
+                        pass  # Ignore invalid JSON, use empty kwargs
+
+                schema = get_schema(adapter_name, **settings_kwargs)
                 return {"schema": schema}
             except ValueError as e:
                 # Invalid adapter name
@@ -699,6 +715,15 @@ class CitraScopeWebApp:
             if hasattr(self.daemon, "task_manager") and self.daemon.task_manager:
                 self.status.processing_active = self.daemon.task_manager.is_processing_active()
                 self.status.automated_scheduling = self.daemon.task_manager._automated_scheduling or False
+
+            # Check for missing dependencies from adapter
+            self.status.missing_dependencies = []
+            if hasattr(self.daemon, "hardware_adapter") and self.daemon.hardware_adapter:
+                if hasattr(self.daemon.hardware_adapter, "get_missing_dependencies"):
+                    try:
+                        self.status.missing_dependencies = self.daemon.hardware_adapter.get_missing_dependencies()
+                    except Exception as e:
+                        CITRASCOPE_LOGGER.debug(f"Could not check missing dependencies: {e}")
 
             self.status.last_update = datetime.now().isoformat()
 

@@ -84,7 +84,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         self.scheduler: dbus.Interface | None = None
 
     @classmethod
-    def get_settings_schema(cls) -> list[SettingSchemaEntry]:
+    def get_settings_schema(cls, **kwargs) -> list[SettingSchemaEntry]:
         """
         Return a schema describing configurable settings for the KStars DBus adapter.
         """

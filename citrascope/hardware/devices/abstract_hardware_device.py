@@ -35,6 +35,18 @@ class AbstractHardwareDevice(ABC):
 
     @classmethod
     @abstractmethod
+    def get_dependencies(cls) -> dict[str, str | list[str]]:
+        """Return required Python packages and installation info.
+
+        Returns:
+            Dict with keys:
+                - packages: list of required package names
+                - install_extra: pyproject.toml extra name for pip install
+        """
+        pass
+
+    @classmethod
+    @abstractmethod
     def get_settings_schema(cls) -> list[SettingSchemaEntry]:
         """Return schema describing configurable settings for this device.
 

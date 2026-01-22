@@ -12,6 +12,7 @@ from citrascope.hardware.abstract_astro_hardware_adapter import (
 )
 from citrascope.hardware.devices.camera import AbstractCamera
 from citrascope.hardware.devices.device_registry import (
+    check_dependencies,
     get_camera_class,
     get_device_schema,
     get_filter_wheel_class,
@@ -54,6 +55,9 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         super().__init__(images_dir, **kwargs)
         self.logger = logger
 
+        # Track dependency issues for reporting
+        self._dependency_issues: list[dict[str, str]] = []
+
         # Extract device types from settings
         camera_type = kwargs.get("camera_type")
         mount_type = kwargs.get("mount_type")
@@ -69,29 +73,100 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         filter_wheel_settings = {k[13:]: v for k, v in kwargs.items() if k.startswith("filter_wheel_")}
         focuser_settings = {k[8:]: v for k, v in kwargs.items() if k.startswith("focuser_")}
 
-        # Instantiate device adapters
-        self.logger.info(f"Instantiating camera: {camera_type}")
+        # Check and instantiate camera (required)
+        self.logger.info(f"Checking camera dependencies: {camera_type}")
         camera_class = get_camera_class(camera_type)
-        self.camera: AbstractCamera = camera_class(logger=self.logger, **camera_settings)
+        camera_deps = check_dependencies(camera_class)
 
+        self.camera: Optional[AbstractCamera] = None
+        if not camera_deps["available"]:
+            self.logger.warning(
+                f"Camera '{camera_type}' missing dependencies: {', '.join(camera_deps['missing'])}. "
+                f"Install with: {camera_deps['install_cmd']}"
+            )
+            self._dependency_issues.append(
+                {
+                    "device_type": "Camera",
+                    "device_name": camera_class.get_friendly_name(),
+                    "missing_packages": ", ".join(camera_deps["missing"]),
+                    "install_cmd": camera_deps["install_cmd"],
+                }
+            )
+        else:
+            self.logger.info(f"Instantiating camera: {camera_type}")
+            self.camera = camera_class(logger=self.logger, **camera_settings)
+
+        # Check and instantiate mount (optional)
         self.mount: Optional[AbstractMount] = None
         if mount_type:
-            self.logger.info(f"Instantiating mount: {mount_type}")
+            self.logger.info(f"Checking mount dependencies: {mount_type}")
             mount_class = get_mount_class(mount_type)
-            self.mount = mount_class(logger=self.logger, **mount_settings)
+            mount_deps = check_dependencies(mount_class)
 
-        # Optional devices
+            if not mount_deps["available"]:
+                self.logger.warning(
+                    f"Mount '{mount_type}' missing dependencies: {', '.join(mount_deps['missing'])}. "
+                    f"Install with: {mount_deps['install_cmd']}"
+                )
+                self._dependency_issues.append(
+                    {
+                        "device_type": "Mount",
+                        "device_name": mount_class.get_friendly_name(),
+                        "missing_packages": ", ".join(mount_deps["missing"]),
+                        "install_cmd": mount_deps["install_cmd"],
+                    }
+                )
+            else:
+                self.logger.info(f"Instantiating mount: {mount_type}")
+                self.mount = mount_class(logger=self.logger, **mount_settings)
+
+        # Check and instantiate filter wheel (optional)
         self.filter_wheel: Optional[AbstractFilterWheel] = None
         if filter_wheel_type:
-            self.logger.info(f"Instantiating filter wheel: {filter_wheel_type}")
+            self.logger.info(f"Checking filter wheel dependencies: {filter_wheel_type}")
             filter_wheel_class = get_filter_wheel_class(filter_wheel_type)
-            self.filter_wheel = filter_wheel_class(logger=self.logger, **filter_wheel_settings)
+            fw_deps = check_dependencies(filter_wheel_class)
 
+            if not fw_deps["available"]:
+                self.logger.warning(
+                    f"Filter wheel '{filter_wheel_type}' missing dependencies: {', '.join(fw_deps['missing'])}. "
+                    f"Install with: {fw_deps['install_cmd']}"
+                )
+                self._dependency_issues.append(
+                    {
+                        "device_type": "Filter Wheel",
+                        "device_name": filter_wheel_class.get_friendly_name(),
+                        "missing_packages": ", ".join(fw_deps["missing"]),
+                        "install_cmd": fw_deps["install_cmd"],
+                    }
+                )
+            else:
+                self.logger.info(f"Instantiating filter wheel: {filter_wheel_type}")
+                self.filter_wheel = filter_wheel_class(logger=self.logger, **filter_wheel_settings)
+
+        # Check and instantiate focuser (optional)
         self.focuser: Optional[AbstractFocuser] = None
         if focuser_type:
-            self.logger.info(f"Instantiating focuser: {focuser_type}")
+            self.logger.info(f"Checking focuser dependencies: {focuser_type}")
             focuser_class = get_focuser_class(focuser_type)
-            self.focuser = focuser_class(logger=self.logger, **focuser_settings)
+            focuser_deps = check_dependencies(focuser_class)
+
+            if not focuser_deps["available"]:
+                self.logger.warning(
+                    f"Focuser '{focuser_type}' missing dependencies: {', '.join(focuser_deps['missing'])}. "
+                    f"Install with: {focuser_deps['install_cmd']}"
+                )
+                self._dependency_issues.append(
+                    {
+                        "device_type": "Focuser",
+                        "device_name": focuser_class.get_friendly_name(),
+                        "missing_packages": ", ".join(focuser_deps["missing"]),
+                        "install_cmd": focuser_deps["install_cmd"],
+                    }
+                )
+            else:
+                self.logger.info(f"Instantiating focuser: {focuser_type}")
+                self.focuser = focuser_class(logger=self.logger, **focuser_settings)
 
         # State tracking
         self._current_filter_position: Optional[int] = None
@@ -342,7 +417,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             Tuple of (RA in degrees, Dec in degrees), or (0.0, 0.0) if no mount
         """
         if not self.mount:
-            self.logger.warning("No mount configured - returning default RA/Dec")
+            # self.logger.warning("No mount configured - returning default RA/Dec")
             return (0.0, 0.0)
         return self.mount.get_radec()
 
@@ -491,6 +566,14 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         """
         return self.camera.get_temperature()
 
+    def get_missing_dependencies(self) -> list[dict[str, str]]:
+        """Check for missing dependencies on all configured devices.
+
+        Returns:
+            List of dicts with keys: device_type, device_name, missing_packages, install_cmd
+        """
+        return self._dependency_issues
+
     def abort_current_operation(self):
         """Abort any ongoing operations."""
         self.logger.warning("Aborting all operations")
@@ -505,3 +588,146 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         # Stop focuser if moving
         if self.focuser and self.focuser.is_moving():
             self.focuser.abort_move()
+
+    # Required abstract method implementations
+
+    def list_devices(self) -> list[str]:
+        """List all connected devices.
+
+        Returns:
+            List of device names/descriptions
+        """
+        devices = []
+
+        devices.append(f"Camera: {self.camera.get_friendly_name()}")
+
+        if self.mount:
+            devices.append(f"Mount: {self.mount.get_friendly_name()}")
+        else:
+            devices.append("Mount: None (static camera mode)")
+
+        if self.filter_wheel:
+            devices.append(f"Filter Wheel: {self.filter_wheel.get_friendly_name()}")
+
+        if self.focuser:
+            devices.append(f"Focuser: {self.focuser.get_friendly_name()}")
+
+        return devices
+
+    def select_telescope(self, device_name: str) -> bool:
+        """Select telescope device (not applicable for direct control).
+
+        Direct hardware adapter has mount pre-configured at initialization.
+
+        Args:
+            device_name: Ignored
+
+        Returns:
+            True if mount is configured and connected
+        """
+        if not self.mount:
+            self.logger.warning("No mount configured")
+            return False
+        return self.mount.is_connected()
+
+    def get_telescope_direction(self) -> tuple[float, float]:
+        """Get current telescope RA/Dec position.
+
+        Returns:
+            Tuple of (RA in degrees, Dec in degrees)
+        """
+        return self.get_scope_radec()
+
+    def telescope_is_moving(self) -> bool:
+        """Check if telescope is currently moving.
+
+        Returns:
+            True if mount is slewing, False otherwise
+        """
+        if not self.mount:
+            return False
+        return self.mount.is_slewing()
+
+    def select_camera(self, device_name: str) -> bool:
+        """Select camera device (not applicable for direct control).
+
+        Direct hardware adapter has camera pre-configured at initialization.
+
+        Args:
+            device_name: Ignored
+
+        Returns:
+            True if camera is connected
+        """
+        return self.camera.is_connected()
+
+    def take_image(self, task_id: str, exposure_duration_seconds: float = 1.0) -> str:
+        """Capture an image with the camera.
+
+        Args:
+            task_id: Task ID for organizing images
+            exposure_duration_seconds: Exposure time in seconds
+
+        Returns:
+            Path to the saved image
+        """
+        # Generate save path with task ID
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        save_path = self.images_dir / f"task_{task_id}_{timestamp}.fits"
+
+        return self.camera.take_exposure(
+            duration=exposure_duration_seconds,
+            save_path=save_path,
+        )
+
+    def set_custom_tracking_rate(self, ra_rate: float, dec_rate: float):
+        """Set custom tracking rate for telescope.
+
+        Args:
+            ra_rate: RA tracking rate in arcseconds/second
+            dec_rate: Dec tracking rate in arcseconds/second
+        """
+        if not self.mount:
+            self.logger.warning("No mount configured - cannot set tracking rate")
+            return
+
+        self.logger.info(f'Setting custom tracking rate: RA={ra_rate}"/s, Dec={dec_rate}"/s')
+        self.mount.set_tracking_rate(ra_rate, dec_rate)
+
+    def get_tracking_rate(self) -> tuple[float, float]:
+        """Get current telescope tracking rate.
+
+        Returns:
+            Tuple of (RA rate in arcsec/s, Dec rate in arcsec/s), or (0.0, 0.0) if no mount
+        """
+        if not self.mount:
+            return (0.0, 0.0)
+        return self.mount.get_tracking_rate()
+
+    def perform_alignment(self, target_ra: float, target_dec: float) -> bool:
+        """Perform plate-solving alignment.
+
+        Args:
+            target_ra: Target RA in degrees
+            target_dec: Target Dec in degrees
+
+        Returns:
+            True if alignment successful
+
+        Note:
+            Basic implementation - subclasses can override with plate-solving
+        """
+        if not self.mount:
+            self.logger.warning("No mount configured - cannot perform alignment")
+            return False
+
+        # Basic alignment: just slew to position
+        # TODO: Add plate-solving support
+        self.logger.info(f"Performing basic alignment to RA={target_ra:.4f}°, Dec={target_dec:.4f}°")
+
+        try:
+            self._do_point_telescope(target_ra, target_dec)
+            return True
+        except Exception as e:
+            self.logger.error(f"Alignment failed: {e}")
+            return False

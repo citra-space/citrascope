@@ -31,6 +31,18 @@ class RaspberryPiHQCamera(AbstractCamera):
         return "Raspberry Pi HQ Camera"
 
     @classmethod
+    def get_dependencies(cls) -> dict[str, str | list[str]]:
+        """Return required Python packages.
+
+        Returns:
+            Dict with packages and install extra
+        """
+        return {
+            "packages": ["picamera2"],
+            "install_extra": "rpi",
+        }
+
+    @classmethod
     def get_settings_schema(cls) -> list[SettingSchemaEntry]:
         """Return schema for Raspberry Pi HQ Camera settings.
 

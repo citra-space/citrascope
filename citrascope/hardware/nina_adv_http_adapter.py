@@ -39,7 +39,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         self.autofocus_binning = kwargs.get("autofocus_binning", 1)
 
     @classmethod
-    def get_settings_schema(cls) -> list[SettingSchemaEntry]:
+    def get_settings_schema(cls, **kwargs) -> list[SettingSchemaEntry]:
         """
         Return a schema describing configurable settings for the NINA Advanced HTTP adapter.
         """

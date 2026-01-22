@@ -399,6 +399,33 @@ function updateStatus(status) {
 
     // Update autofocus status
     updateAutofocusStatus(status);
+
+    // Update missing dependencies display
+    updateMissingDependencies(status.missing_dependencies || []);
+}
+
+function updateMissingDependencies(missingDeps) {
+    const dashboardContainer = document.getElementById('missingDependenciesAlert');
+    const configContainer = document.getElementById('configMissingDependenciesAlert');
+
+    const containers = [dashboardContainer, configContainer].filter(c => c);
+
+    if (missingDeps.length === 0) {
+        containers.forEach(container => container.style.display = 'none');
+        return;
+    }
+
+    let html = '<strong><i class="bi bi-exclamation-triangle-fill me-2"></i>Missing Dependencies:</strong><ul class="mb-0 mt-2">';
+    missingDeps.forEach(dep => {
+        html += `<li><strong>${dep.device_name}</strong>: Missing ${dep.missing_packages}<br>`;
+        html += `<code class="small">${dep.install_cmd}</code></li>`;
+    });
+    html += '</ul>';
+
+    containers.forEach(container => {
+        container.innerHTML = html;
+        container.style.display = 'block';
+    });
 }
 
 function updateAutofocusStatus(status) {

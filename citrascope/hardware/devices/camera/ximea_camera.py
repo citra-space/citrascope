@@ -33,6 +33,18 @@ class XimeaHyperspectralCamera(AbstractCamera):
         return "Ximea Hyperspectral Camera (MQ Series)"
 
     @classmethod
+    def get_dependencies(cls) -> dict[str, str | list[str]]:
+        """Return required Python packages.
+
+        Returns:
+            Dict with packages and install extra
+        """
+        return {
+            "packages": ["ximea"],
+            "install_extra": "ximea",
+        }
+
+    @classmethod
     def get_settings_schema(cls) -> list[SettingSchemaEntry]:
         """Return schema for Ximea camera settings.
 

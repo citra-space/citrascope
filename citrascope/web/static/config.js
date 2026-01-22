@@ -176,7 +176,7 @@ async function loadConfiguration() {
 
         // Load adapter-specific settings if adapter is selected
         if (config.hardware_adapter) {
-            await loadAdapterSchema(config.hardware_adapter);
+            await loadAdapterSchema(config.hardware_adapter, config.adapter_settings || {});
             populateAdapterSettings(config.adapter_settings || {});
         }
     } catch (error) {
@@ -187,9 +187,16 @@ async function loadConfiguration() {
 /**
  * Load adapter schema and render settings form
  */
-async function loadAdapterSchema(adapterName) {
+async function loadAdapterSchema(adapterName, currentSettings = {}) {
     try {
-        const data = await getAdapterSchema(adapterName);
+        // Pass current adapter settings for dynamic schema generation
+        const settingsParam = Object.keys(currentSettings).length > 0
+            ? `?current_settings=${encodeURIComponent(JSON.stringify(currentSettings))}`
+            : '';
+
+        const response = await fetch(`/api/hardware-adapters/${adapterName}/schema${settingsParam}`);
+        const data = await response.json();
+
         currentAdapterSchema = data.schema || [];
         renderAdapterSettings(currentAdapterSchema);
     } catch (error) {
@@ -235,7 +242,10 @@ function renderAdapterSettings(schema) {
             html += `<select id="adapter_${field.name}" class="form-select adapter-setting" data-field="${field.name}" data-type="${field.type}" ${field.required ? 'required' : ''}>`;
             html += `<option value="">-- Select ${displayName} --</option>`;
             field.options.forEach(opt => {
-                html += `<option value="${opt}">${opt}</option>`;
+                // Handle both object format {value, label} and plain string options
+                const optValue = typeof opt === 'object' ? opt.value : opt;
+                const optLabel = typeof opt === 'object' ? opt.label : opt;
+                html += `<option value="${optValue}">${optLabel}</option>`;
             });
             html += `</select>`;
         } else if (field.type === 'int' || field.type === 'float') {
@@ -260,6 +270,28 @@ function renderAdapterSettings(schema) {
 
     html += '</div>';
     container.innerHTML = html;
+
+    // Add change listeners to device type fields to reload schema dynamically
+    const deviceTypeFields = ['camera_type', 'mount_type', 'filter_wheel_type', 'focuser_type'];
+    deviceTypeFields.forEach(fieldName => {
+        const select = document.getElementById(`adapter_${fieldName}`);
+        if (select) {
+            select.addEventListener('change', async () => {
+                // Get current adapter name
+                const adapterSelect = document.getElementById('hardwareAdapterSelect');
+                if (!adapterSelect || !adapterSelect.value) return;
+
+                // Collect current settings
+                const currentSettings = collectAdapterSettings();
+
+                // Reload schema with new device type selection
+                await loadAdapterSchema(adapterSelect.value, currentSettings);
+
+                // Repopulate settings (preserves user's selections)
+                populateAdapterSettings(currentSettings);
+            });
+        }
+    });
 }
 
 /**

@@ -115,6 +115,16 @@ class CitraScopeDaemon:
             # Initialize hardware adapter
             self.hardware_adapter = self._create_hardware_adapter()
 
+            # Check for missing dependencies (non-fatal, just warn)
+            if hasattr(self.hardware_adapter, "get_missing_dependencies"):
+                missing_deps = self.hardware_adapter.get_missing_dependencies()
+                if missing_deps:
+                    for dep in missing_deps:
+                        CITRASCOPE_LOGGER.warning(
+                            f"{dep['device_type']} '{dep['device_name']}' missing dependencies: {dep['missing_packages']}. "
+                            f"Install with: {dep['install_cmd']}"
+                        )
+
             # Initialize telescope
             success, error = self._initialize_telescope()
 

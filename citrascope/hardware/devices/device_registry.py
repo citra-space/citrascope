@@ -5,7 +5,7 @@ Similar to the hardware adapter registry, but for individual device types.
 """
 
 import importlib
-from typing import Dict, Type
+from typing import Any, Dict, Type
 
 from citrascope.hardware.devices.camera import AbstractCamera
 from citrascope.hardware.devices.filter_wheel import AbstractFilterWheel
@@ -23,6 +23,11 @@ CAMERA_DEVICES: Dict[str, Dict[str, str]] = {
         "module": "citrascope.hardware.devices.camera.rpi_hq_camera",
         "class_name": "RaspberryPiHQCamera",
         "description": "Raspberry Pi High Quality Camera (IMX477)",
+    },
+    "usb_camera": {
+        "module": "citrascope.hardware.devices.camera.usb_camera",
+        "class_name": "UsbCamera",
+        "description": "USB Camera via OpenCV (guide cameras, planetary cameras, etc.)",
     },
     # Future cameras:
     # "zwo": {...},
@@ -223,3 +228,36 @@ def get_device_schema(device_type: str, device_name: str) -> list:
         raise ValueError(f"Unknown device type: '{device_type}'")
 
     return device_class.get_settings_schema()
+
+
+def check_dependencies(device_class: Type[Any]) -> dict[str, Any]:
+    """Check if dependencies for a device are available.
+
+    Args:
+        device_class: Device class to check
+
+    Returns:
+        Dict with keys:
+            - available (bool): True if all dependencies installed
+            - missing (list[str]): List of missing package names
+            - install_cmd (str): Command to install missing packages
+    """
+    deps = device_class.get_dependencies()
+    packages = deps.get("packages", [])
+    install_extra = deps.get("install_extra", "")
+
+    missing = []
+    for package in packages:
+        try:
+            importlib.import_module(package)
+        except ImportError:
+            missing.append(package)
+
+    available = len(missing) == 0
+    install_cmd = f"pip install citrascope[{install_extra}]" if install_extra else f"pip install {' '.join(missing)}"
+
+    return {
+        "available": available,
+        "missing": missing,
+        "install_cmd": install_cmd,
+    }
