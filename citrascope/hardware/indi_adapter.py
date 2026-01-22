@@ -60,6 +60,7 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
                 "description": "INDI server hostname or IP address",
                 "required": True,
                 "placeholder": "localhost or 192.168.1.100",
+                "group": "Connection",
             },
             {
                 "name": "port",
@@ -71,6 +72,7 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
                 "placeholder": "7624",
                 "min": 1,
                 "max": 65535,
+                "group": "Connection",
             },
             {
                 "name": "telescope_name",
@@ -80,6 +82,7 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
                 "description": "Name of the telescope device (leave empty to auto-detect)",
                 "required": False,
                 "placeholder": "Telescope Simulator",
+                "group": "Devices",
             },
             {
                 "name": "camera_name",
@@ -89,6 +92,7 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
                 "description": "Name of the camera device (leave empty to auto-detect)",
                 "required": False,
                 "placeholder": "CCD Simulator",
+                "group": "Devices",
             },
         ]
 

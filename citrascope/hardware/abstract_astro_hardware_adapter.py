@@ -18,6 +18,7 @@ class SettingSchemaEntry(TypedDict, total=False):
     max: float  # Maximum value for numeric types
     pattern: str  # Regex pattern for string validation
     options: list[str]  # List of valid options for select/dropdown inputs
+    group: str  # Group name for organizing settings in UI (e.g., 'Camera', 'Mount', 'Advanced')
 
 
 class FilterConfig(TypedDict):

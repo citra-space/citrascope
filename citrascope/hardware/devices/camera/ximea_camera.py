@@ -60,6 +60,7 @@ class XimeaHyperspectralCamera(AbstractCamera):
                 "description": "Camera serial number (for multi-camera setups)",
                 "required": False,
                 "placeholder": "Leave empty to auto-detect",
+                "group": "Camera",
             },
             {
                 "name": "default_gain",
@@ -70,6 +71,7 @@ class XimeaHyperspectralCamera(AbstractCamera):
                 "required": False,
                 "min": 0.0,
                 "max": 24.0,
+                "group": "Camera",
             },
             {
                 "name": "default_exposure_ms",
@@ -80,6 +82,7 @@ class XimeaHyperspectralCamera(AbstractCamera):
                 "required": False,
                 "min": 0.1,
                 "max": 10000.0,
+                "group": "Camera",
             },
             {
                 "name": "spectral_bands",
@@ -90,6 +93,7 @@ class XimeaHyperspectralCamera(AbstractCamera):
                 "required": False,
                 "min": 1,
                 "max": 500,
+                "group": "Camera",
             },
             {
                 "name": "output_format",
@@ -99,6 +103,7 @@ class XimeaHyperspectralCamera(AbstractCamera):
                 "description": "Output format for hyperspectral data",
                 "required": False,
                 "options": ["raw", "demosaiced", "datacube"],
+                "group": "Camera",
             },
         ]
         return cast(list[SettingSchemaEntry], schema)

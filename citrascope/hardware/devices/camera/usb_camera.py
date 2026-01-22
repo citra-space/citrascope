@@ -62,6 +62,7 @@ class UsbCamera(AbstractCamera):
                 "description": "Select which camera to use",
                 "required": False,
                 "options": available_cameras,
+                "group": "Camera",
             },
             {
                 "name": "output_format",
@@ -71,6 +72,7 @@ class UsbCamera(AbstractCamera):
                 "description": "Image output format",
                 "required": False,
                 "options": ["fits", "png", "jpg"],
+                "group": "Camera",
             },
         ]
         return cast(list[SettingSchemaEntry], schema)

@@ -59,6 +59,7 @@ class RaspberryPiHQCamera(AbstractCamera):
                 "required": False,
                 "min": 1.0,
                 "max": 16.0,
+                "group": "Camera",
             },
             {
                 "name": "default_exposure_ms",
@@ -69,6 +70,7 @@ class RaspberryPiHQCamera(AbstractCamera):
                 "required": False,
                 "min": 0.1,
                 "max": 600000.0,
+                "group": "Camera",
             },
             {
                 "name": "output_format",
@@ -78,6 +80,7 @@ class RaspberryPiHQCamera(AbstractCamera):
                 "description": "Image output format",
                 "required": False,
                 "options": ["fits", "png", "jpg", "raw"],
+                "group": "Camera",
             },
         ]
         return cast(list[SettingSchemaEntry], schema)

@@ -216,59 +216,73 @@ function renderAdapterSettings(schema) {
         return;
     }
 
-    let html = '<h5 class="mb-3">Adapter Settings</h5><div class="row g-3 mb-4">';
+    // Group fields by their 'group' property
+    const grouped = schema.reduce((acc, field) => {
+        if (field.readonly) return acc; // Skip readonly fields
+        const group = field.group || 'General';
+        if (!acc[group]) acc[group] = [];
+        acc[group].push(field);
+        return acc;
+    }, {});
 
-    schema.forEach(field => {
-        // Skip readonly fields (handled elsewhere in UI)
-        if (field.readonly) {
-            return;
-        }
+    let html = '<h5 class="mb-3">Adapter Settings</h5>';
 
-        const isRequired = field.required ? '<span class="text-danger">*</span>' : '';
-        const placeholder = field.placeholder || '';
-        const description = field.description || '';
-        const displayName = field.friendly_name || field.name;
+    // Render each group as a card
+    Object.entries(grouped).forEach(([groupName, fields]) => {
+        html += `<div class="card bg-dark border-secondary mb-3">`;
+        html += `<div class="card-header">`;
+        html += `<h6 class="mb-0"><i class="bi bi-${getGroupIcon(groupName)} me-2"></i>${groupName}</h6>`;
+        html += `</div>`;
+        html += `<div class="card-body">`;
+        html += `<div class="row g-3">`;
 
-        html += '<div class="col-12 col-md-6">';
-        html += `<label for="adapter_${field.name}" class="form-label">${displayName} ${isRequired}</label>`;
-
-        if (field.type === 'bool') {
-            html += `<div class="form-check mt-2">`;
-            html += `<input class="form-check-input adapter-setting" type="checkbox" id="adapter_${field.name}" data-field="${field.name}" data-type="${field.type}">`;
-            html += `<label class="form-check-label" for="adapter_${field.name}">${description}</label>`;
-            html += `</div>`;
-        } else if (field.options && field.options.length > 0) {
+        fields.forEach(field => {
+            const isRequired = field.required ? '<span class="text-danger">*</span>' : '';
+            const placeholder = field.placeholder || '';
+            const description = field.description || '';
             const displayName = field.friendly_name || field.name;
-            html += `<select id="adapter_${field.name}" class="form-select adapter-setting" data-field="${field.name}" data-type="${field.type}" ${field.required ? 'required' : ''}>`;
-            html += `<option value="">-- Select ${displayName} --</option>`;
-            field.options.forEach(opt => {
-                // Handle both object format {value, label} and plain string options
-                const optValue = typeof opt === 'object' ? opt.value : opt;
-                const optLabel = typeof opt === 'object' ? opt.label : opt;
-                html += `<option value="${optValue}">${optLabel}</option>`;
-            });
-            html += `</select>`;
-        } else if (field.type === 'int' || field.type === 'float') {
-            const min = field.min !== undefined ? `min="${field.min}"` : '';
-            const max = field.max !== undefined ? `max="${field.max}"` : '';
-            html += `<input type="number" id="adapter_${field.name}" class="form-control adapter-setting" `;
-            html += `data-field="${field.name}" data-type="${field.type}" `;
-            html += `placeholder="${placeholder}" ${min} ${max} ${field.required ? 'required' : ''}>`;
-        } else {
-            // Default to text input
-            const pattern = field.pattern ? `pattern="${field.pattern}"` : '';
-            html += `<input type="text" id="adapter_${field.name}" class="form-control adapter-setting" `;
-            html += `data-field="${field.name}" data-type="${field.type}" `;
-            html += `placeholder="${placeholder}" ${pattern} ${field.required ? 'required' : ''}>`;
-        }
 
-        if (description && field.type !== 'bool') {
-            html += `<small class="text-muted">${description}</small>`;
-        }
-        html += '</div>';
+            html += '<div class="col-12 col-md-6">';
+            html += `<label for="adapter_${field.name}" class="form-label">${displayName} ${isRequired}</label>`;
+
+            if (field.type === 'bool') {
+                html += `<div class="form-check mt-2">`;
+                html += `<input class="form-check-input adapter-setting" type="checkbox" id="adapter_${field.name}" data-field="${field.name}" data-type="${field.type}">`;
+                html += `<label class="form-check-label" for="adapter_${field.name}">${description}</label>`;
+                html += `</div>`;
+            } else if (field.options && field.options.length > 0) {
+                html += `<select id="adapter_${field.name}" class="form-select adapter-setting" data-field="${field.name}" data-type="${field.type}" ${field.required ? 'required' : ''}>`;
+                html += `<option value="">-- Select ${displayName} --</option>`;
+                field.options.forEach(opt => {
+                    // Handle both object format {value, label} and plain string options
+                    const optValue = typeof opt === 'object' ? opt.value : opt;
+                    const optLabel = typeof opt === 'object' ? opt.label : opt;
+                    html += `<option value="${optValue}">${optLabel}</option>`;
+                });
+                html += `</select>`;
+            } else if (field.type === 'int' || field.type === 'float') {
+                const min = field.min !== undefined ? `min="${field.min}"` : '';
+                const max = field.max !== undefined ? `max="${field.max}"` : '';
+                html += `<input type="number" id="adapter_${field.name}" class="form-control adapter-setting" `;
+                html += `data-field="${field.name}" data-type="${field.type}" `;
+                html += `placeholder="${placeholder}" ${min} ${max} ${field.required ? 'required' : ''}>`;
+            } else {
+                // Default to text input
+                const pattern = field.pattern ? `pattern="${field.pattern}"` : '';
+                html += `<input type="text" id="adapter_${field.name}" class="form-control adapter-setting" `;
+                html += `data-field="${field.name}" data-type="${field.type}" `;
+                html += `placeholder="${placeholder}" ${pattern} ${field.required ? 'required' : ''}>`;
+            }
+
+            if (description && field.type !== 'bool') {
+                html += `<small class="text-muted">${description}</small>`;
+            }
+            html += '</div>';
+        });
+
+        html += `</div></div></div>`; // Close row, card-body, card
     });
 
-    html += '</div>';
     container.innerHTML = html;
 
     // Add change listeners to device type fields to reload schema dynamically
@@ -292,6 +306,24 @@ function renderAdapterSettings(schema) {
             });
         }
     });
+}
+
+/**
+ * Get Bootstrap icon name for a group
+ */
+function getGroupIcon(groupName) {
+    const icons = {
+        'Camera': 'camera',
+        'Mount': 'compass',
+        'Filter Wheel': 'circle',
+        'Focuser': 'eyeglasses',
+        'Connection': 'ethernet',
+        'Devices': 'hdd-network',
+        'Imaging': 'image',
+        'General': 'gear',
+        'Advanced': 'sliders'
+    };
+    return icons[groupName] || 'gear';
 }
 
 /**

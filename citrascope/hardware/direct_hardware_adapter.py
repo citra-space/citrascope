@@ -220,6 +220,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                 "description": "Type of camera device to use",
                 "required": True,
                 "options": camera_options,
+                "group": "Camera",
             },
             {
                 "name": "mount_type",
@@ -229,6 +230,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                 "description": "Type of mount device (leave empty for static camera setups)",
                 "required": False,
                 "options": mount_options,
+                "group": "Mount",
             },
             {
                 "name": "filter_wheel_type",
@@ -238,6 +240,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                 "description": "Type of filter wheel device (leave empty if none)",
                 "required": False,
                 "options": filter_wheel_options,
+                "group": "Filter Wheel",
             },
             {
                 "name": "focuser_type",
@@ -247,6 +250,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                 "description": "Type of focuser device (leave empty if none)",
                 "required": False,
                 "options": focuser_options,
+                "group": "Focuser",
             },
         ]
 
