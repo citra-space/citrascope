@@ -22,6 +22,11 @@ class UsbCamera(AbstractCamera):
         output_format (str): Output format - 'fits', 'png', 'jpg'
     """
 
+    # Class-level cache for camera detection (shared across all instances)
+    _camera_cache: list[dict[str, str | int]] | None = None
+    _cache_timestamp: float = 0
+    _cache_ttl: float = float("inf")  # Cache forever until daemon restart
+
     @classmethod
     def get_friendly_name(cls) -> str:
         """Return human-readable name for this camera device.
@@ -42,6 +47,15 @@ class UsbCamera(AbstractCamera):
             "packages": ["cv2", "cv2_enumerate_cameras"],
             "install_extra": "usb-camera",
         }
+
+    @classmethod
+    def clear_camera_cache(cls):
+        """Clear cached camera list to force re-detection.
+
+        Call this from a "Scan Hardware" button or when hardware changes are expected.
+        """
+        cls._camera_cache = None
+        cls._cache_timestamp = 0
 
     @classmethod
     def get_settings_schema(cls) -> list[SettingSchemaEntry]:
@@ -84,6 +98,18 @@ class UsbCamera(AbstractCamera):
         Returns:
             List of camera options as dicts with 'value' (index) and 'label' (name)
         """
+        import time
+
+        # Check cache first
+        cache_age = time.time() - cls._cache_timestamp
+        if cls._camera_cache is not None and cache_age < cls._cache_ttl:
+            from citrascope.logging import CITRASCOPE_LOGGER
+
+            CITRASCOPE_LOGGER.debug(f"Using cached camera list (age: {cache_age:.1f}s)")
+            return cls._camera_cache
+
+        start_time = time.time()
+
         cameras = []
         try:
             import cv2
@@ -136,6 +162,16 @@ class UsbCamera(AbstractCamera):
         except Exception:
             # Any other error, provide default
             cameras.append({"value": 0, "label": "Camera 0 (default)"})
+
+        elapsed = time.time() - start_time
+        if elapsed > 0.1:  # Log if takes more than 100ms
+            from citrascope.logging import CITRASCOPE_LOGGER
+
+            CITRASCOPE_LOGGER.info(f"Camera detection took {elapsed:.3f}s, found {len(cameras)} camera(s)")
+
+        # Cache the results
+        cls._camera_cache = cameras
+        cls._cache_timestamp = time.time()
 
         return cameras
 

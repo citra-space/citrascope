@@ -242,6 +242,10 @@ def check_dependencies(device_class: Type[Any]) -> dict[str, Any]:
             - missing (list[str]): List of missing package names
             - install_cmd (str): Command to install missing packages
     """
+    import time
+
+    start_time = time.time()
+
     deps = device_class.get_dependencies()
     packages = deps.get("packages", [])
     install_extra = deps.get("install_extra", "")
@@ -255,6 +259,12 @@ def check_dependencies(device_class: Type[Any]) -> dict[str, Any]:
 
     available = len(missing) == 0
     install_cmd = f"pip install citrascope[{install_extra}]" if install_extra else f"pip install {' '.join(missing)}"
+
+    elapsed = time.time() - start_time
+    if elapsed > 0.05:  # Log if takes more than 50ms
+        from citrascope.logging import CITRASCOPE_LOGGER
+
+        CITRASCOPE_LOGGER.info(f"Dependency check for {device_class.__name__} took {elapsed:.3f}s")
 
     return {
         "available": available,

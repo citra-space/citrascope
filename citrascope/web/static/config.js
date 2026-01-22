@@ -19,10 +19,12 @@ export async function initConfig() {
     // Hardware adapter selection change
     const adapterSelect = document.getElementById('hardwareAdapterSelect');
     if (adapterSelect) {
-        adapterSelect.addEventListener('change', async function(e) {
+        adapterSelect.addEventListener('change', async (e) => {
             const adapter = e.target.value;
             if (adapter) {
-                await loadAdapterSchema(adapter);
+                // Get the saved settings for this adapter to generate correct schema
+                const savedSettings = currentConfig.adapter_settings || {};
+                await loadAdapterSchema(adapter, savedSettings);
                 await loadFilterConfig();
             } else {
                 document.getElementById('adapter-settings-container').innerHTML = '';
@@ -35,7 +37,7 @@ export async function initConfig() {
     // API endpoint selection change
     const apiEndpointSelect = document.getElementById('apiEndpoint');
     if (apiEndpointSelect) {
-        apiEndpointSelect.addEventListener('change', function(e) {
+        apiEndpointSelect.addEventListener('change', (e) => {
             const customContainer = document.getElementById('customHostContainer');
             if (e.target.value === 'custom') {
                 customContainer.style.display = 'block';
@@ -697,7 +699,7 @@ async function saveModifiedFilters() {
         const filterId = input.dataset.filterId;
         const focusPosition = parseInt(input.value);
 
-        if (isNaN(focusPosition) || focusPosition < 0) {
+        if (Number.isNaN(focusPosition) || focusPosition < 0) {
             continue; // Skip invalid entries
         }
 
