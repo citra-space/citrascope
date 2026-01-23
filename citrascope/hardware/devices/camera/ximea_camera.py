@@ -141,27 +141,54 @@ class XimeaHyperspectralCamera(AbstractCamera):
             try:
                 from ximea import xiapi
             except ImportError:
-                self.logger.error("ximea-api package not installed. Install with: pip install ximea-api")
+                self.logger.error(
+                    "XIMEA Python bindings not found. Installation instructions:\n"
+                    "1. Download and mount XIMEA macOS Software Package from:\n"
+                    "   https://www.ximea.com/support/wiki/apis/XIMEA_macOS_Software_Package\n"
+                    "2. Run the installer on the mounted volume\n"
+                    "3. Copy Python bindings to your venv:\n"
+                    "   cp -r /Volumes/XIMEA/Examples/xiPython/v3/ximea $VIRTUAL_ENV/lib/python*/site-packages/\n"
+                    "4. Verify installation: python -c 'import ximea; print(ximea.__version__)'\n"
+                    "Note: The XIMEA bindings are not available via pip and must be installed manually."
+                )
                 return False
 
             self.logger.info("Connecting to Ximea hyperspectral camera...")
+            self.logger.debug("Ximea xiapi module imported successfully")
 
             # Create camera instance
+            self.logger.debug("Creating Ximea camera instance...")
             self._camera = xiapi.Camera()
+            self.logger.debug("Camera instance created")
 
             # Open camera (by serial number if specified)
             if self.serial_number:
                 self.logger.info(f"Opening camera with serial number: {self.serial_number}")
-                self._camera.open_device_by_SN(self.serial_number)
+                try:
+                    self._camera.open_device_by_SN(self.serial_number)
+                    self.logger.debug(f"Camera with SN {self.serial_number} opened successfully")
+                except Exception as e:
+                    self.logger.error(f"Failed to open camera by serial number {self.serial_number}: {e}")
+                    raise
             else:
-                self.logger.info("Opening first available Ximea camera")
-                self._camera.open_device()
+                self.logger.info("Opening first available Ximea camera (no serial number specified)")
+                try:
+                    self._camera.open_device()
+                    self.logger.debug("First available camera opened successfully")
+                except Exception as e:
+                    self.logger.error(f"Failed to open first available camera: {e}")
+                    self.logger.info("Make sure camera is connected and no other application is using it")
+                    raise
 
             # Configure camera
+            self.logger.debug("Configuring camera...")
             self._configure_camera()
+            self.logger.debug("Camera configuration complete")
 
             # Cache camera info
+            self.logger.debug("Reading camera info...")
             self._camera_info = self._read_camera_info()
+            self.logger.debug(f"Camera info: {self._camera_info}")
 
             self._is_connected = True
             self.logger.info(
@@ -171,8 +198,14 @@ class XimeaHyperspectralCamera(AbstractCamera):
             return True
 
         except Exception as e:
-            self.logger.error(f"Failed to connect to Ximea camera: {e}")
+            self.logger.error(f"Failed to connect to Ximea camera: {e}", exc_info=True)
             self._is_connected = False
+            if self._camera is not None:
+                try:
+                    self._camera.close_device()
+                except Exception as close_error:
+                    self.logger.debug(f"Error closing camera after failed connection: {close_error}")
+                self._camera = None
             return False
 
     def disconnect(self):
