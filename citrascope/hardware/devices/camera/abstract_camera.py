@@ -89,3 +89,14 @@ class AbstractCamera(AbstractHardwareDevice):
             Dictionary containing camera specs (resolution, pixel size, bit depth, etc.)
         """
         pass
+
+    def is_hyperspectral(self) -> bool:
+        """Indicates whether this camera captures hyperspectral data.
+
+        Hyperspectral cameras capture multiple spectral bands simultaneously
+        (e.g., snapshot mosaic sensors like Ximea MQ series).
+
+        Returns:
+            bool: True if hyperspectral camera, False otherwise (default)
+        """
+        return False

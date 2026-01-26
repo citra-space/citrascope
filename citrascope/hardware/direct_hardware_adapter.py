@@ -594,6 +594,16 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             return None
         return self.camera.get_temperature()
 
+    def is_hyperspectral(self) -> bool:
+        """Indicates whether this adapter uses a hyperspectral camera.
+
+        Returns:
+            bool: True if camera is hyperspectral, False otherwise
+        """
+        if self.camera:
+            return self.camera.is_hyperspectral()
+        return False
+
     def get_missing_dependencies(self) -> list[dict[str, str]]:
         """Check for missing dependencies on all configured devices.
 

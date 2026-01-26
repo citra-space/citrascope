@@ -450,6 +450,14 @@ class XimeaHyperspectralCamera(AbstractCamera):
         """
         return False
 
+    def is_hyperspectral(self) -> bool:
+        """Indicates whether this camera captures hyperspectral data.
+
+        Returns:
+            bool: True (Ximea MQ cameras are hyperspectral)
+        """
+        return True
+
     def get_camera_info(self) -> dict:
         """Get camera capabilities and information.
 

@@ -234,6 +234,17 @@ class AbstractAstroHardwareAdapter(ABC):
         """
         return False
 
+    def is_hyperspectral(self) -> bool:
+        """Indicates whether this adapter uses a hyperspectral camera.
+
+        Hyperspectral cameras capture multiple spectral bands simultaneously
+        (e.g., snapshot mosaic sensors) and do not require discrete filter changes.
+
+        Returns:
+            bool: True if using hyperspectral imaging, False otherwise (default)
+        """
+        return False
+
     def select_filters_for_task(self, task, allow_no_filter: bool = False) -> dict | None:
         """Select which filters to use for a task based on assignment.
 
