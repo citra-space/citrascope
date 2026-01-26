@@ -19,8 +19,10 @@ class XimeaHyperspectralCamera(AbstractCamera):
         serial_number (str): Camera serial number for multi-camera setups
         default_gain (float): Default gain in dB
         default_exposure_ms (float): Default exposure time in milliseconds
-        spectral_bands (int): Number of spectral bands (e.g., 25 for MQ022HG-IM-SM5X5)
-        output_format (str): Output format - 'raw', 'demosaiced', 'datacube'
+        spectral_bands (int): Number of spectral bands (e.g., 16 for SM4X4, 25 for SM5X5)
+        output_format (str): Output format - 'raw' (2D mosaic) or 'datacube' (3D bands)
+        vertical_flip (bool): Flip image vertically
+        horizontal_flip (bool): Flip image horizontally
     """
 
     @classmethod
