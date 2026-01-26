@@ -621,6 +621,45 @@ class CitraScopeWebApp:
                 CITRASCOPE_LOGGER.error(f"Error cancelling autofocus: {e}", exc_info=True)
                 return JSONResponse({"error": str(e)}, status_code=500)
 
+        @self.app.post("/api/camera/capture")
+        async def camera_capture(request: Dict[str, Any]):
+            """Trigger a test camera capture."""
+            if not self.daemon:
+                return JSONResponse({"error": "Daemon not available"}, status_code=503)
+
+            if not self.daemon.hardware_adapter:
+                return JSONResponse({"error": "Hardware adapter not available"}, status_code=503)
+
+            try:
+                duration = request.get("duration", 0.1)
+
+                # Validate exposure duration
+                if duration <= 0:
+                    return JSONResponse({"error": "Exposure duration must be positive"}, status_code=400)
+
+                CITRASCOPE_LOGGER.info(f"Test capture requested: {duration}s exposure")
+
+                # Take exposure using hardware adapter
+                filepath = self.daemon.hardware_adapter.expose_camera(
+                    exposure_time=duration, gain=None, offset=None, count=1
+                )
+
+                # Get file info
+                file_path = Path(filepath)
+                if not file_path.exists():
+                    return JSONResponse({"error": "Capture completed but file not found"}, status_code=500)
+
+                filename = file_path.name
+                file_format = file_path.suffix.upper().lstrip(".")
+
+                CITRASCOPE_LOGGER.info(f"Test capture complete: {filename}")
+
+                return {"success": True, "filename": filename, "filepath": str(file_path), "format": file_format}
+
+            except Exception as e:
+                CITRASCOPE_LOGGER.error(f"Error during test capture: {e}", exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
         @self.app.websocket("/ws")
         async def websocket_endpoint(websocket: WebSocket):
             """WebSocket endpoint for real-time updates."""

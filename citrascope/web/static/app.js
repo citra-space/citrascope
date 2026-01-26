@@ -1,6 +1,6 @@
 // CitraScope Dashboard - Main Application
 import { connectWebSocket } from './websocket.js';
-import { initConfig, currentConfig, initFilterConfig, setupAutofocusButton } from './config.js';
+import { initConfig, currentConfig, initFilterConfig, setupAutofocusButton, createToast } from './config.js';
 import { getTasks, getLogs } from './api.js';
 
 function updateAppUrlLinks() {
@@ -362,15 +362,91 @@ function updateWSStatus(connected, reconnectInfo = '') {
     }
 }
 
+// --- Camera Control ---
+window.showCameraControl = function() {
+    const modal = new bootstrap.Modal(document.getElementById('cameraControlModal'));
+
+    // Populate images directory link from config
+    const imagesDirLink = document.getElementById('imagesDirLink');
+    if (imagesDirLink && currentConfig.images_dir_path) {
+        imagesDirLink.textContent = currentConfig.images_dir_path;
+        imagesDirLink.href = `file://${currentConfig.images_dir_path}`;
+    }
+
+    // Clear previous capture result
+    document.getElementById('captureResult').style.display = 'none';
+
+    modal.show();
+};
+
+window.captureImage = async function() {
+    const captureButton = document.getElementById('captureButton');
+    const buttonText = document.getElementById('captureButtonText');
+    const spinner = document.getElementById('captureButtonSpinner');
+    const exposureDuration = parseFloat(document.getElementById('exposureDuration').value);
+
+    // Validate exposure duration
+    if (isNaN(exposureDuration) || exposureDuration <= 0) {
+        createToast('Invalid exposure duration', 'danger', false);
+        return;
+    }
+
+    // Show loading state
+    captureButton.disabled = true;
+    spinner.style.display = 'inline-block';
+    buttonText.textContent = 'Capturing...';
+
+    try {
+        const response = await fetch('/api/camera/capture', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ duration: exposureDuration })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            // Show capture result
+            document.getElementById('captureFilename').textContent = data.filename;
+            document.getElementById('captureFormat').textContent = data.format || 'Unknown';
+            document.getElementById('captureResult').style.display = 'block';
+
+            createToast('Image captured successfully', 'success', true);
+        } else {
+            const errorMsg = data.error || 'Failed to capture image';
+            createToast(errorMsg, 'danger', false);
+        }
+    } catch (error) {
+        console.error('Capture error:', error);
+        createToast('Failed to capture image: ' + error.message, 'danger', false);
+    } finally {
+        // Reset button state
+        captureButton.disabled = false;
+        spinner.style.display = 'none';
+        buttonText.textContent = 'Capture';
+    }
+};
+
 // --- Status Updates ---
 function updateStatus(status) {
     document.getElementById('hardwareAdapter').textContent = status.hardware_adapter || '-';
     document.getElementById('telescopeConnected').innerHTML = status.telescope_connected
         ? '<span class="badge rounded-pill bg-success">Connected</span>'
         : '<span class="badge rounded-pill bg-danger">Disconnected</span>';
-    document.getElementById('cameraConnected').innerHTML = status.camera_connected
-        ? '<span class="badge rounded-pill bg-success">Connected</span>'
-        : '<span class="badge rounded-pill bg-danger">Disconnected</span>';
+    // Update camera status with control button when connected
+    const cameraEl = document.getElementById('cameraConnected');
+    if (status.camera_connected) {
+        cameraEl.innerHTML = `
+            <span class="badge rounded-pill bg-success">Connected</span>
+            <button class="btn btn-sm btn-outline-light" onclick="showCameraControl()">
+                <i class="bi bi-camera"></i> Control
+            </button>
+        `;
+    } else {
+        cameraEl.innerHTML = '<span class="badge rounded-pill bg-danger">Disconnected</span>';
+    }
 
     // Update current task display
     if (status.current_task && status.current_task !== 'None') {

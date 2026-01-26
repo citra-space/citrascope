@@ -271,9 +271,10 @@ function renderAdapterSettings(schema) {
             } else if (field.type === 'int' || field.type === 'float') {
                 const min = field.min !== undefined ? `min="${field.min}"` : '';
                 const max = field.max !== undefined ? `max="${field.max}"` : '';
+                const step = field.type === 'float' ? 'step="any"' : '';
                 html += `<input type="number" id="adapter_${field.name}" class="form-control adapter-setting" `;
                 html += `data-field="${field.name}" data-type="${field.type}" `;
-                html += `placeholder="${placeholder}" ${min} ${max} ${field.required ? 'required' : ''}>`;
+                html += `placeholder="${placeholder}" ${min} ${max} ${step} ${field.required ? 'required' : ''}>`;
             } else {
                 // Default to text input
                 const pattern = field.pattern ? `pattern="${field.pattern}"` : '';
@@ -501,7 +502,7 @@ async function saveConfiguration(event) {
  * @param {string} type - 'danger' for errors, 'success' for success messages
  * @param {boolean} autohide - Whether to auto-hide the toast
  */
-function createToast(message, type = 'danger', autohide = false) {
+export function createToast(message, type = 'danger', autohide = false) {
     const toastContainer = document.getElementById('toastContainer');
     if (!toastContainer) {
         console.error('Toast container not found');

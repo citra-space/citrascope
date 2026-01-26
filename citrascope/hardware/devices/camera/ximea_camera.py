@@ -78,10 +78,10 @@ class XimeaHyperspectralCamera(AbstractCamera):
                 "friendly_name": "Default Exposure (ms)",
                 "type": "float",
                 "default": 100.0,
-                "description": "Default exposure time in milliseconds",
+                "description": "Default exposure time in milliseconds (e.g., 300 = 0.3 seconds)",
                 "required": False,
-                "min": 0.1,
-                "max": 10000.0,
+                "min": 0.001,
+                "max": 300000.0,
                 "group": "Camera",
             },
             {
@@ -100,9 +100,27 @@ class XimeaHyperspectralCamera(AbstractCamera):
                 "friendly_name": "Output Format",
                 "type": "str",
                 "default": "raw",
-                "description": "Output format for hyperspectral data",
+                "description": "Output format: raw (2D mosaic) or datacube (3D separated bands)",
                 "required": False,
-                "options": ["raw", "demosaiced", "datacube"],
+                "options": ["raw", "datacube"],
+                "group": "Camera",
+            },
+            {
+                "name": "vertical_flip",
+                "friendly_name": "Vertical Flip",
+                "type": "bool",
+                "default": False,
+                "description": "Flip image vertically (upside down)",
+                "required": False,
+                "group": "Camera",
+            },
+            {
+                "name": "horizontal_flip",
+                "friendly_name": "Horizontal Flip",
+                "type": "bool",
+                "default": False,
+                "description": "Flip image horizontally (mirror)",
+                "required": False,
                 "group": "Camera",
             },
         ]
@@ -122,6 +140,8 @@ class XimeaHyperspectralCamera(AbstractCamera):
         self.default_exposure_ms: float = kwargs.get("default_exposure_ms", 100.0)
         self.spectral_bands: int = kwargs.get("spectral_bands", 25)
         self.output_format: str = kwargs.get("output_format", "raw")
+        self.vertical_flip: bool = kwargs.get("vertical_flip", False)
+        self.horizontal_flip: bool = kwargs.get("horizontal_flip", False)
 
         # Camera handle (will be initialized on connect)
         self._camera = None
@@ -263,25 +283,58 @@ class XimeaHyperspectralCamera(AbstractCamera):
             f"binning={binning}x{binning}"
         )
 
-        # Configure exposure parameters
-        exposure_ms = duration * 1000.0
-        self._camera.set_exposure(int(exposure_ms))
+        # Configure exposure parameters (xiAPI expects microseconds)
+        exposure_us = duration * 1000000.0
+        self.logger.debug(f"Setting exposure to {int(exposure_us)} microseconds ({duration}s)")
+        self._camera.set_exposure(int(exposure_us))
+        actual_exposure = self._camera.get_exposure()
+        self.logger.debug(f"Exposure set and verified: {actual_exposure} microseconds")
 
-        if gain is not None:
-            self._camera.set_gain(float(gain))
+        # Set gain (use default if not specified)
+        gain_to_use = gain if gain is not None else self.default_gain
+        try:
+            # Check if camera supports gain and get valid range
+            min_gain = self._camera.get_gain_minimum()
+            max_gain = self._camera.get_gain_maximum()
+
+            # Clamp gain to valid range
+            if gain_to_use < min_gain or gain_to_use > max_gain:
+                self.logger.warning(
+                    f"Requested gain {gain_to_use} dB is outside valid range "
+                    f"[{min_gain}, {max_gain}] dB. Clamping to valid range."
+                )
+                gain_to_use = max(min_gain, min(gain_to_use, max_gain))
+
+            self.logger.debug(f"Setting gain to {gain_to_use} dB (range: {min_gain}-{max_gain} dB)")
+            self._camera.set_gain(float(gain_to_use))
+            actual_gain = self._camera.get_gain()
+            self.logger.debug(f"Gain set and verified: {actual_gain} dB")
+        except Exception as e:
+            self.logger.warning(f"Could not set gain: {e}. Continuing with current camera gain setting.")
 
         if binning > 1:
+            self.logger.debug(f"Setting downsampling to {binning}x{binning}")
             self._camera.set_downsampling(str(binning))
+            actual_binning = self._camera.get_downsampling()
+            self.logger.debug(f"Downsampling set and verified: {actual_binning}")
 
         # Create image buffer
         img = xiapi.Image()
 
         # Start acquisition
+        self.logger.debug("Starting camera acquisition...")
         self._camera.start_acquisition()
+        self.logger.debug("Acquisition started")
 
         try:
-            # Get image
-            self._camera.get_image(img, timeout=int(exposure_ms + 5000))
+            # Get image (timeout in milliseconds: exposure time + 5 second buffer)
+            timeout_ms = int((exposure_us / 1000.0) + 5000)
+            self.logger.debug(f"Waiting for image with timeout of {timeout_ms}ms...")
+            start_time = time.time()
+            self._camera.get_image(img, timeout=timeout_ms)
+            capture_time = time.time() - start_time
+            self.logger.debug(f"Image captured in {capture_time:.2f}s")
+            self.logger.debug(f"Image size: {img.width}x{img.height}, format: {img.frm}")
 
             # Generate save path
             if save_path is None:
@@ -289,6 +342,7 @@ class XimeaHyperspectralCamera(AbstractCamera):
                 save_path = Path(f"ximea_hyperspectral_{timestamp}.tiff")
 
             # Save image (format depends on output_format setting)
+            self.logger.debug(f"Saving image to: {save_path}")
             self._save_hyperspectral_image(img, save_path)
 
             self.logger.info(f"Hyperspectral image saved to: {save_path}")
@@ -296,10 +350,13 @@ class XimeaHyperspectralCamera(AbstractCamera):
 
         finally:
             # Stop acquisition
+            self.logger.debug("Stopping acquisition...")
             self._camera.stop_acquisition()
+            self.logger.debug("Acquisition stopped")
 
             # Reset binning if changed
             if binning > 1:
+                self.logger.debug("Resetting downsampling to 1")
                 self._camera.set_downsampling("1")
 
     def abort_exposure(self):
@@ -375,15 +432,36 @@ class XimeaHyperspectralCamera(AbstractCamera):
             return
 
         try:
-            # Set default exposure
-            self._camera.set_exposure(int(self.default_exposure_ms))
+            # Set default exposure (xiAPI expects microseconds)
+            default_exposure_us = self.default_exposure_ms * 1000
+            self._camera.set_exposure(int(default_exposure_us))
 
             # Set default gain
-            self._camera.set_gain(self.default_gain)
+            try:
+                min_gain = self._camera.get_gain_minimum()
+                max_gain = self._camera.get_gain_maximum()
+                gain_to_set = max(min_gain, min(self.default_gain, max_gain))
+                self._camera.set_gain(gain_to_set)
+                self.logger.debug(f"Gain set to {gain_to_set} dB (range: {min_gain}-{max_gain} dB)")
+            except Exception as e:
+                self.logger.warning(f"Could not set default gain: {e}")
 
             # Set image format
             # For hyperspectral, typically use RAW16 or RAW8
             self._camera.set_imgdataformat("XI_RAW16")
+
+            # Set image orientation
+            if self.vertical_flip:
+                self.logger.debug("Enabling vertical flip")
+                self._camera.enable_vertical_flip()
+            else:
+                self._camera.disable_vertical_flip()
+
+            if self.horizontal_flip:
+                self.logger.debug("Enabling horizontal flip")
+                self._camera.enable_horizontal_flip()
+            else:
+                self._camera.disable_horizontal_flip()
 
             self.logger.info("Ximea camera configured with default settings")
 
@@ -427,25 +505,132 @@ class XimeaHyperspectralCamera(AbstractCamera):
             img: Ximea image object
             save_path: Path to save the image
         """
-        # This is a stub - actual implementation would depend on desired output format
-        # Options:
-        # - Raw mosaic TIFF (single 2D image with spectral mosaic pattern)
-        # - Demosaiced datacube (3D array: width x height x spectral_bands)
-        # - ENVI format for hyperspectral software compatibility
-
         import numpy as np
 
         # Get image data as numpy array
         data = img.get_image_data_numpy()
 
-        # TODO: Implement proper hyperspectral data handling based on output_format
-        # For now, save as simple TIFF
-        try:
-            from PIL import Image
+        # Process based on output_format setting
+        if self.output_format == "datacube":
+            # Create 3D datacube by demosaicing the spectral mosaic
+            datacube = self._demosaic_to_datacube(data)
 
-            pil_img = Image.fromarray(data)
-            pil_img.save(save_path)
-        except ImportError:
-            # Fallback: save as numpy array
+            # Save as multi-extension FITS (one extension per spectral band)
+            try:
+                from astropy.io import fits
+
+                # Create primary HDU with basic metadata
+                primary_hdu = fits.PrimaryHDU()
+                primary_hdu.header["HIERARCH SPECTRAL_TYPE"] = "hyperspectral"
+                primary_hdu.header["HIERARCH SPECTRAL_BANDS"] = self.spectral_bands
+                primary_hdu.header["HIERARCH OUTPUT_FORMAT"] = "datacube"
+                primary_hdu.header["HIERARCH SENSOR_TYPE"] = "snapshot_mosaic"
+
+                # Create image HDU for each spectral band
+                hdu_list = [primary_hdu]
+                for i in range(datacube.shape[2]):
+                    band_hdu = fits.ImageHDU(datacube[:, :, i], name=f"BAND_{i:03d}")
+                    band_hdu.header["BANDNUM"] = i
+                    # TODO: Add wavelength information once calibrated
+                    hdu_list.append(band_hdu)
+
+                hdul = fits.HDUList(hdu_list)
+                hdul.writeto(save_path, overwrite=True)
+                self.logger.debug(f"Saved hyperspectral datacube as multi-extension FITS: {save_path}")
+            except ImportError:
+                # Fallback: save as 3D numpy array
+                np.save(save_path.with_suffix(".npy"), datacube)
+                self.logger.warning("astropy not available, saved datacube as .npy")
+
+        else:  # "raw" or default
+            # Save raw mosaic as-is
+            self._save_raw_image(data, save_path)
+
+    def _save_raw_image(self, data, save_path: Path):
+        """Save raw image data based on file extension.
+
+        Args:
+            data: Numpy array of image data
+            save_path: Path to save the image
+        """
+        import numpy as np
+
+        suffix = save_path.suffix.lower()
+
+        if suffix == ".fits":
+            try:
+                from astropy.io import fits
+
+                hdu = fits.PrimaryHDU(data)
+                hdu.header["HIERARCH SPECTRAL_TYPE"] = "hyperspectral"
+                hdu.header["HIERARCH SPECTRAL_BANDS"] = self.spectral_bands
+                hdu.header["HIERARCH OUTPUT_FORMAT"] = "raw"
+                hdu.header["HIERARCH SENSOR_TYPE"] = "snapshot_mosaic"
+                hdu.writeto(save_path, overwrite=True)
+                self.logger.debug(f"Saved hyperspectral image as FITS: {save_path}")
+            except ImportError:
+                np.save(save_path.with_suffix(".npy"), data)
+                self.logger.warning("astropy not available, saved as .npy instead of FITS")
+        elif suffix in [".tif", ".tiff"]:
+            try:
+                from PIL import Image
+
+                pil_img = Image.fromarray(data)
+                pil_img.save(save_path)
+                self.logger.debug(f"Saved hyperspectral image as TIFF: {save_path}")
+            except ImportError:
+                np.save(save_path.with_suffix(".npy"), data)
+                self.logger.warning("PIL not available, saved as .npy instead of TIFF")
+        else:
+            # Default: save as numpy array
             np.save(save_path.with_suffix(".npy"), data)
-            self.logger.warning("PIL not available, saved as .npy instead of TIFF")
+            self.logger.debug(f"Saved hyperspectral image as numpy array: {save_path.with_suffix('.npy')}")
+
+    def _demosaic_to_datacube(self, mosaic_data):
+        """Demosaic snapshot mosaic into spectral datacube.
+
+        Args:
+            mosaic_data: 2D numpy array with spectral mosaic pattern
+
+        Returns:
+            3D numpy array (height, width, bands) with separated spectral bands
+        """
+        import numpy as np
+
+        # Determine mosaic pattern size from spectral_bands
+        # SM4X4 = 16 bands (4x4 pattern), SM5X5 = 25 bands (5x5 pattern)
+        if self.spectral_bands == 16:
+            pattern_size = 4
+        elif self.spectral_bands == 25:
+            pattern_size = 5
+        else:
+            self.logger.warning(
+                f"Unexpected spectral_bands={self.spectral_bands}. "
+                f"Assuming 4x4 mosaic (16 bands). Update camera settings if incorrect."
+            )
+            pattern_size = 4
+
+        height, width = mosaic_data.shape
+
+        # Calculate output dimensions (spatial resolution reduced by pattern size)
+        out_height = height // pattern_size
+        out_width = width // pattern_size
+        num_bands = pattern_size * pattern_size
+
+        # Create output datacube
+        datacube = np.zeros((out_height, out_width, num_bands), dtype=mosaic_data.dtype)
+
+        # Extract each spectral band from the mosaic
+        for band_idx in range(num_bands):
+            row_offset = band_idx // pattern_size
+            col_offset = band_idx % pattern_size
+
+            # Extract this band's pixels from the mosaic
+            band_data = mosaic_data[row_offset::pattern_size, col_offset::pattern_size]
+
+            # Handle size mismatch (if image dimensions aren't perfect multiples)
+            datacube[:, :, band_idx] = band_data[:out_height, :out_width]
+
+        self.logger.debug(f"Demosaiced {height}x{width} mosaic into {out_height}x{out_width}x{num_bands} datacube")
+
+        return datacube
