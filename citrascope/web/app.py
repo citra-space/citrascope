@@ -636,6 +636,8 @@ class CitraScopeWebApp:
                 # Validate exposure duration
                 if duration <= 0:
                     return JSONResponse({"error": "Exposure duration must be positive"}, status_code=400)
+                if duration > 300:
+                    return JSONResponse({"error": "Exposure duration must be 300 seconds or less"}, status_code=400)
 
                 CITRASCOPE_LOGGER.info(f"Test capture requested: {duration}s exposure")
 

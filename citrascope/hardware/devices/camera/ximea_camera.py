@@ -83,7 +83,7 @@ class XimeaHyperspectralCamera(AbstractCamera):
                 "description": "Default exposure time in milliseconds (e.g., 300 = 0.3 seconds)",
                 "required": False,
                 "min": 0.001,
-                "max": 300000.0,
+                "max": 1000.0,  # Hardware limitation: ~1 second max for MQ series
                 "group": "Camera",
             },
             {
@@ -292,6 +292,9 @@ class XimeaHyperspectralCamera(AbstractCamera):
         actual_exposure = self._camera.get_exposure()
         self.logger.debug(f"Exposure set and verified: {actual_exposure} microseconds")
 
+        # Store for FITS metadata
+        self._last_exposure_us = actual_exposure
+
         # Set gain (use default if not specified)
         gain_to_use = gain if gain is not None else self.default_gain
         try:
@@ -311,6 +314,9 @@ class XimeaHyperspectralCamera(AbstractCamera):
             self._camera.set_gain(float(gain_to_use))
             actual_gain = self._camera.get_gain()
             self.logger.debug(f"Gain set and verified: {actual_gain} dB")
+
+            # Store for FITS metadata
+            self._last_gain_db = actual_gain
         except Exception as e:
             self.logger.warning(f"Could not set gain: {e}. Continuing with current camera gain setting.")
 
@@ -519,14 +525,31 @@ class XimeaHyperspectralCamera(AbstractCamera):
 
             # Save as multi-extension FITS (one extension per spectral band)
             try:
+                # Create primary HDU with basic metadata
+                from datetime import datetime, timezone
+
                 from astropy.io import fits
 
-                # Create primary HDU with basic metadata
                 primary_hdu = fits.PrimaryHDU()
+                # Hyperspectral metadata
                 primary_hdu.header["HIERARCH SPECTRAL_TYPE"] = "hyperspectral"
                 primary_hdu.header["HIERARCH SPECTRAL_BANDS"] = self.spectral_bands
                 primary_hdu.header["HIERARCH OUTPUT_FORMAT"] = "datacube"
                 primary_hdu.header["HIERARCH SENSOR_TYPE"] = "snapshot_mosaic"
+
+                # Capture metadata
+                if hasattr(self, "_last_exposure_us"):
+                    primary_hdu.header["EXPTIME"] = self._last_exposure_us / 1000000.0  # seconds
+                if hasattr(self, "_last_gain_db"):
+                    primary_hdu.header["GAIN"] = self._last_gain_db
+                primary_hdu.header["DATE-OBS"] = datetime.now(timezone.utc).isoformat()
+
+                # Camera metadata
+                if self._camera_info:
+                    if "serial_number" in self._camera_info:
+                        primary_hdu.header["CAMSER"] = self._camera_info["serial_number"]
+                    if "model" in self._camera_info:
+                        primary_hdu.header["INSTRUME"] = self._camera_info["model"]
 
                 # Create image HDU for each spectral band
                 hdu_list = [primary_hdu]
@@ -561,13 +584,31 @@ class XimeaHyperspectralCamera(AbstractCamera):
 
         if suffix == ".fits":
             try:
+                from datetime import datetime, timezone
+
                 from astropy.io import fits
 
                 hdu = fits.PrimaryHDU(data)
+                # Hyperspectral metadata
                 hdu.header["HIERARCH SPECTRAL_TYPE"] = "hyperspectral"
                 hdu.header["HIERARCH SPECTRAL_BANDS"] = self.spectral_bands
                 hdu.header["HIERARCH OUTPUT_FORMAT"] = "raw"
                 hdu.header["HIERARCH SENSOR_TYPE"] = "snapshot_mosaic"
+
+                # Capture metadata
+                if hasattr(self, "_last_exposure_us"):
+                    hdu.header["EXPTIME"] = self._last_exposure_us / 1000000.0  # seconds
+                if hasattr(self, "_last_gain_db"):
+                    hdu.header["GAIN"] = self._last_gain_db
+                hdu.header["DATE-OBS"] = datetime.now(timezone.utc).isoformat()
+
+                # Camera metadata
+                if self._camera_info:
+                    if "serial_number" in self._camera_info:
+                        hdu.header["CAMSER"] = self._camera_info["serial_number"]
+                    if "model" in self._camera_info:
+                        hdu.header["INSTRUME"] = self._camera_info["model"]
+
                 hdu.writeto(save_path, overwrite=True)
                 self.logger.debug(f"Saved hyperspectral image as FITS: {save_path}")
             except ImportError:
