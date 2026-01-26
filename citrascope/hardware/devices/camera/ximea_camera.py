@@ -125,6 +125,16 @@ class XimeaHyperspectralCamera(AbstractCamera):
                 "required": False,
                 "group": "Camera",
             },
+            {
+                "name": "wavelength_calibration",
+                "friendly_name": "Wavelength Calibration (nm)",
+                "type": "str",
+                "default": "",
+                "description": "Comma-separated wavelengths in nanometers for each spectral band (e.g., 470,520,570,620)",
+                "required": False,
+                "placeholder": "Leave empty if not calibrated",
+                "group": "Camera",
+            },
         ]
         return cast(list[SettingSchemaEntry], schema)
 
@@ -144,6 +154,22 @@ class XimeaHyperspectralCamera(AbstractCamera):
         self.output_format: str = kwargs.get("output_format", "raw")
         self.vertical_flip: bool = kwargs.get("vertical_flip", False)
         self.horizontal_flip: bool = kwargs.get("horizontal_flip", False)
+
+        # Parse wavelength calibration (comma-separated string to list of floats)
+        wavelength_str = kwargs.get("wavelength_calibration", "")
+        self.wavelength_calibration: list[float] = []
+        if wavelength_str:
+            try:
+                self.wavelength_calibration = [float(w.strip()) for w in wavelength_str.split(",")]
+                if len(self.wavelength_calibration) != self.spectral_bands:
+                    self.logger.warning(
+                        f"Wavelength calibration has {len(self.wavelength_calibration)} values "
+                        f"but spectral_bands is {self.spectral_bands}. Calibration will not be used."
+                    )
+                    self.wavelength_calibration = []
+            except ValueError as e:
+                self.logger.warning(f"Invalid wavelength_calibration format: {e}. Expected comma-separated numbers.")
+                self.wavelength_calibration = []
 
         # Camera handle (will be initialized on connect)
         self._camera = None
@@ -551,12 +577,22 @@ class XimeaHyperspectralCamera(AbstractCamera):
                     if "model" in self._camera_info:
                         primary_hdu.header["INSTRUME"] = self._camera_info["model"]
 
+                # Wavelength calibration metadata in primary header (if available)
+                if self.wavelength_calibration:
+                    primary_hdu.header["HIERARCH WAVELENGTH_UNIT"] = "nm"
+                    primary_hdu.header["HIERARCH WAVELENGTH_COUNT"] = len(self.wavelength_calibration)
+
                 # Create image HDU for each spectral band
                 hdu_list = [primary_hdu]
                 for i in range(datacube.shape[2]):
                     band_hdu = fits.ImageHDU(datacube[:, :, i], name=f"BAND_{i:03d}")
                     band_hdu.header["BANDNUM"] = i
-                    # TODO: Add wavelength information once calibrated
+
+                    # Add wavelength information if calibrated
+                    if self.wavelength_calibration and i < len(self.wavelength_calibration):
+                        band_hdu.header["WAVELENG"] = self.wavelength_calibration[i]
+                        band_hdu.header["WAVEUNIT"] = "nm"
+
                     hdu_list.append(band_hdu)
 
                 hdul = fits.HDUList(hdu_list)
@@ -609,6 +645,22 @@ class XimeaHyperspectralCamera(AbstractCamera):
                     if "model" in self._camera_info:
                         hdu.header["INSTRUME"] = self._camera_info["model"]
 
+                # Wavelength calibration metadata (if available)
+                if self.wavelength_calibration:
+                    hdu.header["HIERARCH WAVELENGTH_UNIT"] = "nm"
+                    hdu.header["HIERARCH WAVELENGTH_COUNT"] = len(self.wavelength_calibration)
+                    # Store wavelengths as comma-separated values (FITS has 80 char limit per line)
+                    wavelength_str = ",".join(str(w) for w in self.wavelength_calibration)
+                    # Split into multiple HIERARCH keywords if needed
+                    if len(wavelength_str) <= 68:  # 80 - len('HIERARCH WAVELENGTHS = ')
+                        hdu.header["HIERARCH WAVELENGTHS"] = wavelength_str
+                    else:
+                        # Split into chunks
+                        chunk_size = 68
+                        for i, chunk_start in enumerate(range(0, len(wavelength_str), chunk_size)):
+                            chunk = wavelength_str[chunk_start : chunk_start + chunk_size]
+                            hdu.header[f"HIERARCH WAVELENGTHS_{i}"] = chunk
+
                 hdu.writeto(save_path, overwrite=True)
                 self.logger.debug(f"Saved hyperspectral image as FITS: {save_path}")
             except ImportError:
@@ -632,29 +684,34 @@ class XimeaHyperspectralCamera(AbstractCamera):
     def _demosaic_to_datacube(self, mosaic_data):
         """Demosaic snapshot mosaic into spectral datacube.
 
+        Extracts individual spectral bands from a snapshot mosaic pattern.
+        The mosaic must be a perfect square (N×N pattern) where N² = spectral_bands.
+
         Args:
             mosaic_data: 2D numpy array with spectral mosaic pattern
 
         Returns:
             3D numpy array (height, width, bands) with separated spectral bands
+
+        Raises:
+            ValueError: If spectral_bands is not a perfect square
         """
+        import math
+
         import numpy as np
 
-        # Determine mosaic pattern size from spectral_bands
-        # SM4X4 = 16 bands (4x4 pattern), SM5X5 = 25 bands (5x5 pattern)
-        if self.spectral_bands == 16:
-            pattern_size = 4
-        elif self.spectral_bands == 25:
-            pattern_size = 5
-        else:
-            self.logger.warning(
-                f"Unexpected spectral_bands={self.spectral_bands}. "
-                f"Assuming 4x4 mosaic (16 bands). Update camera settings if incorrect."
+        # Calculate pattern size from spectral_bands using square root
+        # This works for any N×N pattern (4×4=16, 5×5=25, 6×6=36, 7×7=49, 8×8=64, etc.)
+        pattern_size = int(math.sqrt(self.spectral_bands))
+
+        # Validate that spectral_bands is a perfect square
+        if pattern_size * pattern_size != self.spectral_bands:
+            raise ValueError(
+                f"spectral_bands ({self.spectral_bands}) is not a perfect square. "
+                f"Snapshot mosaic sensors must have N×N pattern (e.g., 4×4=16, 5×5=25, 6×6=36). "
+                f"Nearest valid values: {(pattern_size)**2} ({pattern_size}×{pattern_size}) "
+                f"or {(pattern_size+1)**2} ({pattern_size+1}×{pattern_size+1})."
             )
-            pattern_size = 4
-
-        height, width = mosaic_data.shape
-
         # Calculate output dimensions (spatial resolution reduced by pattern size)
         out_height = height // pattern_size
         out_width = width // pattern_size
