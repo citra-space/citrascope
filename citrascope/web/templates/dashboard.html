@@ -67,7 +67,7 @@
                             </div>
                             <div class="row mb-2">
                                 <div class="col-6 fw-semibold">Camera</div>
-                                <div class="col-6" id="cameraConnected"><span class="badge rounded-pill bg-secondary">Unknown</span></div>
+                                <div class="col-6 d-flex align-items-center gap-2" id="cameraConnected"><span class="badge rounded-pill bg-secondary">Unknown</span></div>
                             </div>
                             <div class="row mb-2">
                                 <div class="col-6 fw-semibold">
@@ -96,6 +96,10 @@
                                         <label class="form-check-label visually-hidden" for="toggleProcessingSwitch">Task Processing</label>
                                     </div>
                                 </div>
+                            </div>
+                            <!-- Missing Dependencies Alert -->
+                            <div id="missingDependenciesAlert" class="alert alert-warning mt-3 mb-0" role="alert" style="display: none;">
+                                <!-- Populated by JavaScript -->
                             </div>
                         </div>
                     </div>
@@ -254,6 +258,11 @@
 
                             <!-- Dynamic Adapter Settings Container -->
                             <div id="adapter-settings-container"></div>
+
+                            <!-- Missing Dependencies Alert (Config Page) -->
+                            <div id="configMissingDependenciesAlert" class="alert alert-warning mt-3" role="alert" style="display: none;">
+                                <!-- Populated by JavaScript -->
+                            </div>
 
                             <!-- Filter Configuration Section (shown when adapter supports filters) -->
                             <div id="filterConfigSection" style="display: none; margin-top: 1.5rem;">
@@ -528,6 +537,54 @@
                 </div>
                 <div class="modal-footer border-secondary">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Camera Control Modal -->
+    <div class="modal fade" id="cameraControlModal" tabindex="-1" aria-labelledby="cameraControlModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content bg-dark text-light border-secondary">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title" id="cameraControlModalLabel"><i class="bi bi-camera"></i> Camera Control</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label for="exposureDuration" class="form-label">Exposure Duration (seconds)</label>
+                            <input type="number" id="exposureDuration" class="form-control" value="0.1" min="0.001" max="300" step="0.001">
+                            <small class="text-muted">Range: 0.001 to 300 seconds</small>
+                        </div>
+                    </div>
+
+                    <!-- Capture Result Area -->
+                    <div id="captureResult" class="mt-3" style="display: none;">
+                        <hr class="border-secondary">
+                        <h6>Latest Capture</h6>
+                        <div class="alert alert-success mb-2">
+                            <strong>Filename:</strong> <span id="captureFilename"></span><br>
+                            <strong>Format:</strong> <span id="captureFormat"></span>
+                        </div>
+                    </div>
+
+                    <!-- Images Directory -->
+                    <div class="mt-3">
+                        <hr class="border-secondary">
+                        <h6>Images Directory</h6>
+                        <p class="text-muted small mb-1">All captured images are saved to:</p>
+                        <p><a href="#" id="imagesDirLink" class="text-break"></a></p>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="captureButton" onclick="captureImage()">
+                        <span id="captureButtonText">Capture</span>
+                        <span id="captureButtonSpinner" class="spinner-border spinner-border-sm ms-2" role="status" style="display: none;">
+                            <span class="visually-hidden">Capturing...</span>
+                        </span>
+                    </button>
                 </div>
             </div>
         </div>

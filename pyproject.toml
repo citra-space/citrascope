@@ -58,6 +58,25 @@ indi = [
   "pixelemon",
   "plotly", # temp for pixelemon issue
 ]
+usb-camera = [
+  "opencv-python>=4.8.0",
+  "cv2-enumerate-cameras>=1.0.0",
+]
+rpi = [
+  "picamera2>=0.3.12",
+]
+ximea = [
+  "ximea-api>=1.0.0",
+]
+all-hardware = [
+  "pyindi-client",
+  "pixelemon",
+  "plotly",
+  "opencv-python>=4.8.0",
+  "cv2-enumerate-cameras>=1.0.0",
+  "picamera2>=0.3.12",
+  "ximea-api>=1.0.0",
+]
 kstars = [
   "dbus-python",
 ]

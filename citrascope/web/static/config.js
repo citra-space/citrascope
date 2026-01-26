@@ -19,10 +19,14 @@ export async function initConfig() {
     // Hardware adapter selection change
     const adapterSelect = document.getElementById('hardwareAdapterSelect');
     if (adapterSelect) {
-        adapterSelect.addEventListener('change', async function(e) {
+        adapterSelect.addEventListener('change', async (e) => {
             const adapter = e.target.value;
             if (adapter) {
-                await loadAdapterSchema(adapter);
+                // Extract the NEW adapter's saved settings from the nested structure
+                const allAdapterSettings = currentConfig.adapter_settings || {};
+                const newAdapterSettings = allAdapterSettings[adapter] || {};
+                await loadAdapterSchema(adapter, newAdapterSettings);
+                populateAdapterSettings(newAdapterSettings);
                 await loadFilterConfig();
             } else {
                 document.getElementById('adapter-settings-container').innerHTML = '';
@@ -35,7 +39,7 @@ export async function initConfig() {
     // API endpoint selection change
     const apiEndpointSelect = document.getElementById('apiEndpoint');
     if (apiEndpointSelect) {
-        apiEndpointSelect.addEventListener('change', function(e) {
+        apiEndpointSelect.addEventListener('change', (e) => {
             const customContainer = document.getElementById('customHostContainer');
             if (e.target.value === 'custom') {
                 customContainer.style.display = 'block';
@@ -176,8 +180,12 @@ async function loadConfiguration() {
 
         // Load adapter-specific settings if adapter is selected
         if (config.hardware_adapter) {
-            await loadAdapterSchema(config.hardware_adapter);
-            populateAdapterSettings(config.adapter_settings || {});
+            // adapter_settings is nested: {"nina": {...}, "kstars": {...}, "direct": {...}}
+            // Extract the current adapter's settings
+            const allAdapterSettings = config.adapter_settings || {};
+            const currentAdapterSettings = allAdapterSettings[config.hardware_adapter] || {};
+            await loadAdapterSchema(config.hardware_adapter, currentAdapterSettings);
+            populateAdapterSettings(currentAdapterSettings);
         }
     } catch (error) {
         console.error('Failed to load config:', error);
@@ -187,9 +195,16 @@ async function loadConfiguration() {
 /**
  * Load adapter schema and render settings form
  */
-async function loadAdapterSchema(adapterName) {
+async function loadAdapterSchema(adapterName, currentSettings = {}) {
     try {
-        const data = await getAdapterSchema(adapterName);
+        // Pass current adapter settings for dynamic schema generation
+        const settingsParam = Object.keys(currentSettings).length > 0
+            ? `?current_settings=${encodeURIComponent(JSON.stringify(currentSettings))}`
+            : '';
+
+        const response = await fetch(`/api/hardware-adapters/${adapterName}/schema${settingsParam}`);
+        const data = await response.json();
+
         currentAdapterSchema = data.schema || [];
         renderAdapterSettings(currentAdapterSchema);
     } catch (error) {
@@ -209,57 +224,115 @@ function renderAdapterSettings(schema) {
         return;
     }
 
-    let html = '<h5 class="mb-3">Adapter Settings</h5><div class="row g-3 mb-4">';
+    // Group fields by their 'group' property
+    const grouped = schema.reduce((acc, field) => {
+        if (field.readonly) return acc; // Skip readonly fields
+        const group = field.group || 'General';
+        if (!acc[group]) acc[group] = [];
+        acc[group].push(field);
+        return acc;
+    }, {});
 
-    schema.forEach(field => {
-        // Skip readonly fields (handled elsewhere in UI)
-        if (field.readonly) {
-            return;
-        }
+    let html = '<h5 class="mb-3">Adapter Settings</h5>';
 
-        const isRequired = field.required ? '<span class="text-danger">*</span>' : '';
-        const placeholder = field.placeholder || '';
-        const description = field.description || '';
-        const displayName = field.friendly_name || field.name;
+    // Render each group as a card
+    Object.entries(grouped).forEach(([groupName, fields]) => {
+        html += `<div class="card bg-dark border-secondary mb-3">`;
+        html += `<div class="card-header">`;
+        html += `<h6 class="mb-0"><i class="bi bi-${getGroupIcon(groupName)} me-2"></i>${groupName}</h6>`;
+        html += `</div>`;
+        html += `<div class="card-body">`;
+        html += `<div class="row g-3">`;
 
-        html += '<div class="col-12 col-md-6">';
-        html += `<label for="adapter_${field.name}" class="form-label">${displayName} ${isRequired}</label>`;
-
-        if (field.type === 'bool') {
-            html += `<div class="form-check mt-2">`;
-            html += `<input class="form-check-input adapter-setting" type="checkbox" id="adapter_${field.name}" data-field="${field.name}" data-type="${field.type}">`;
-            html += `<label class="form-check-label" for="adapter_${field.name}">${description}</label>`;
-            html += `</div>`;
-        } else if (field.options && field.options.length > 0) {
+        fields.forEach(field => {
+            const isRequired = field.required ? '<span class="text-danger">*</span>' : '';
+            const placeholder = field.placeholder || '';
+            const description = field.description || '';
             const displayName = field.friendly_name || field.name;
-            html += `<select id="adapter_${field.name}" class="form-select adapter-setting" data-field="${field.name}" data-type="${field.type}" ${field.required ? 'required' : ''}>`;
-            html += `<option value="">-- Select ${displayName} --</option>`;
-            field.options.forEach(opt => {
-                html += `<option value="${opt}">${opt}</option>`;
-            });
-            html += `</select>`;
-        } else if (field.type === 'int' || field.type === 'float') {
-            const min = field.min !== undefined ? `min="${field.min}"` : '';
-            const max = field.max !== undefined ? `max="${field.max}"` : '';
-            html += `<input type="number" id="adapter_${field.name}" class="form-control adapter-setting" `;
-            html += `data-field="${field.name}" data-type="${field.type}" `;
-            html += `placeholder="${placeholder}" ${min} ${max} ${field.required ? 'required' : ''}>`;
-        } else {
-            // Default to text input
-            const pattern = field.pattern ? `pattern="${field.pattern}"` : '';
-            html += `<input type="text" id="adapter_${field.name}" class="form-control adapter-setting" `;
-            html += `data-field="${field.name}" data-type="${field.type}" `;
-            html += `placeholder="${placeholder}" ${pattern} ${field.required ? 'required' : ''}>`;
-        }
 
-        if (description && field.type !== 'bool') {
-            html += `<small class="text-muted">${description}</small>`;
-        }
-        html += '</div>';
+            html += '<div class="col-12 col-md-4">';
+            html += `<label for="adapter_${field.name}" class="form-label">${displayName} ${isRequired}</label>`;
+
+            if (field.type === 'bool') {
+                html += `<div class="form-check mt-2">`;
+                html += `<input class="form-check-input adapter-setting" type="checkbox" id="adapter_${field.name}" data-field="${field.name}" data-type="${field.type}">`;
+                html += `<label class="form-check-label" for="adapter_${field.name}">${description}</label>`;
+                html += `</div>`;
+            } else if (field.options && field.options.length > 0) {
+                html += `<select id="adapter_${field.name}" class="form-select adapter-setting" data-field="${field.name}" data-type="${field.type}" ${field.required ? 'required' : ''}>`;
+                html += `<option value="">-- Select ${displayName} --</option>`;
+                field.options.forEach(opt => {
+                    // Handle both object format {value, label} and plain string options
+                    const optValue = typeof opt === 'object' ? opt.value : opt;
+                    const optLabel = typeof opt === 'object' ? opt.label : opt;
+                    html += `<option value="${optValue}">${optLabel}</option>`;
+                });
+                html += `</select>`;
+            } else if (field.type === 'int' || field.type === 'float') {
+                const min = field.min !== undefined ? `min="${field.min}"` : '';
+                const max = field.max !== undefined ? `max="${field.max}"` : '';
+                const step = field.type === 'float' ? 'step="any"' : '';
+                html += `<input type="number" id="adapter_${field.name}" class="form-control adapter-setting" `;
+                html += `data-field="${field.name}" data-type="${field.type}" `;
+                html += `placeholder="${placeholder}" ${min} ${max} ${step} ${field.required ? 'required' : ''}>`;
+            } else {
+                // Default to text input
+                const pattern = field.pattern ? `pattern="${field.pattern}"` : '';
+                html += `<input type="text" id="adapter_${field.name}" class="form-control adapter-setting" `;
+                html += `data-field="${field.name}" data-type="${field.type}" `;
+                html += `placeholder="${placeholder}" ${pattern} ${field.required ? 'required' : ''}>`;
+            }
+
+            if (description && field.type !== 'bool') {
+                html += `<small class="text-muted">${description}</small>`;
+            }
+            html += '</div>';
+        });
+
+        html += `</div></div></div>`; // Close row, card-body, card
     });
 
-    html += '</div>';
     container.innerHTML = html;
+
+    // Add change listeners to device type fields to reload schema dynamically
+    const deviceTypeFields = ['camera_type', 'mount_type', 'filter_wheel_type', 'focuser_type'];
+    deviceTypeFields.forEach(fieldName => {
+        const select = document.getElementById(`adapter_${fieldName}`);
+        if (select) {
+            select.addEventListener('change', async () => {
+                // Get current adapter name
+                const adapterSelect = document.getElementById('hardwareAdapterSelect');
+                if (!adapterSelect || !adapterSelect.value) return;
+
+                // Collect current settings
+                const currentSettings = collectAdapterSettings();
+
+                // Reload schema with new device type selection
+                await loadAdapterSchema(adapterSelect.value, currentSettings);
+
+                // Repopulate settings (preserves user's selections)
+                populateAdapterSettings(currentSettings);
+            });
+        }
+    });
+}
+
+/**
+ * Get Bootstrap icon name for a group
+ */
+function getGroupIcon(groupName) {
+    const icons = {
+        'Camera': 'camera',
+        'Mount': 'compass',
+        'Filter Wheel': 'circle',
+        'Focuser': 'eyeglasses',
+        'Connection': 'ethernet',
+        'Devices': 'hdd-network',
+        'Imaging': 'image',
+        'General': 'gear',
+        'Advanced': 'sliders'
+    };
+    return icons[groupName] || 'gear';
 }
 
 /**
@@ -429,7 +502,7 @@ async function saveConfiguration(event) {
  * @param {string} type - 'danger' for errors, 'success' for success messages
  * @param {boolean} autohide - Whether to auto-hide the toast
  */
-function createToast(message, type = 'danger', autohide = false) {
+export function createToast(message, type = 'danger', autohide = false) {
     const toastContainer = document.getElementById('toastContainer');
     if (!toastContainer) {
         console.error('Toast container not found');
@@ -633,7 +706,7 @@ async function saveModifiedFilters() {
         const filterId = input.dataset.filterId;
         const focusPosition = parseInt(input.value);
 
-        if (isNaN(focusPosition) || focusPosition < 0) {
+        if (Number.isNaN(focusPosition) || focusPosition < 0) {
             continue; // Skip invalid entries
         }
 

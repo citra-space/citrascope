@@ -18,6 +18,7 @@ class SettingSchemaEntry(TypedDict, total=False):
     max: float  # Maximum value for numeric types
     pattern: str  # Regex pattern for string validation
     options: list[str]  # List of valid options for select/dropdown inputs
+    group: str  # Group name for organizing settings in UI (e.g., 'Camera', 'Mount', 'Advanced')
 
 
 class FilterConfig(TypedDict):
@@ -70,7 +71,7 @@ class AbstractAstroHardwareAdapter(ABC):
 
     @classmethod
     @abstractmethod
-    def get_settings_schema(cls) -> list[SettingSchemaEntry]:
+    def get_settings_schema(cls, **kwargs) -> list[SettingSchemaEntry]:
         """
         Return a schema describing configurable settings for this hardware adapter.
 
@@ -230,6 +231,17 @@ class AbstractAstroHardwareAdapter(ABC):
 
         Returns:
             bool: True if the adapter manages filters and focus positions, False otherwise.
+        """
+        return False
+
+    def is_hyperspectral(self) -> bool:
+        """Indicates whether this adapter uses a hyperspectral camera.
+
+        Hyperspectral cameras capture multiple spectral bands simultaneously
+        (e.g., snapshot mosaic sensors) and do not require discrete filter changes.
+
+        Returns:
+            bool: True if using hyperspectral imaging, False otherwise (default)
         """
         return False
 

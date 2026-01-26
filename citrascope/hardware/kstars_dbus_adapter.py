@@ -84,7 +84,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         self.scheduler: dbus.Interface | None = None
 
     @classmethod
-    def get_settings_schema(cls) -> list[SettingSchemaEntry]:
+    def get_settings_schema(cls, **kwargs) -> list[SettingSchemaEntry]:
         """
         Return a schema describing configurable settings for the KStars DBus adapter.
         """
@@ -97,6 +97,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                 "description": "D-Bus service name for KStars (default: org.kde.kstars)",
                 "required": False,
                 "placeholder": "org.kde.kstars",
+                "group": "Connection",
             },
             {
                 "name": "ccd_name",
@@ -106,6 +107,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                 "description": "Name of the camera device in your Ekos profile (check Ekos logs on connect for available devices)",
                 "required": False,
                 "placeholder": "CCD Simulator",
+                "group": "Devices",
             },
             {
                 "name": "filter_wheel_name",
@@ -115,6 +117,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                 "description": "Name of the filter wheel device (leave empty if no filter wheel)",
                 "required": False,
                 "placeholder": "Filter Simulator",
+                "group": "Devices",
             },
             {
                 "name": "optical_train_name",
@@ -124,6 +127,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                 "description": "Name of the optical train in your Ekos profile (check Ekos logs on connect for available trains)",
                 "required": False,
                 "placeholder": "Primary",
+                "group": "Devices",
             },
             {
                 "name": "exposure_time",
@@ -135,6 +139,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                 "placeholder": "1.0",
                 "min": 0.001,
                 "max": 300.0,
+                "group": "Imaging",
             },
             {
                 "name": "frame_count",
@@ -146,6 +151,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                 "placeholder": "1",
                 "min": 1,
                 "max": 100,
+                "group": "Imaging",
             },
             {
                 "name": "binning_x",
@@ -157,6 +163,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                 "placeholder": "1",
                 "min": 1,
                 "max": 4,
+                "group": "Imaging",
             },
             {
                 "name": "binning_y",
@@ -168,6 +175,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                 "placeholder": "1",
                 "min": 1,
                 "max": 4,
+                "group": "Imaging",
             },
             {
                 "name": "image_format",
@@ -178,6 +186,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                 "required": False,
                 "placeholder": "Mono",
                 "options": ["Mono", "RGGB", "RGB"],
+                "group": "Imaging",
             },
         ]
 

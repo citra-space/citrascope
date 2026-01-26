@@ -1,6 +1,6 @@
 // CitraScope Dashboard - Main Application
 import { connectWebSocket } from './websocket.js';
-import { initConfig, currentConfig, initFilterConfig, setupAutofocusButton } from './config.js';
+import { initConfig, currentConfig, initFilterConfig, setupAutofocusButton, createToast } from './config.js';
 import { getTasks, getLogs } from './api.js';
 
 function updateAppUrlLinks() {
@@ -279,26 +279,53 @@ function initNavigation() {
             }
         }
 
-        nav.addEventListener('click', function(e) {
-            const link = e.target.closest('a[data-section]');
+        function navigateToSection(section) {
+            const link = nav.querySelector(`a[data-section="${section}"]`);
             if (link) {
-                e.preventDefault();
-                const section = link.getAttribute('data-section');
                 activateNav(link);
                 showSection(section);
+                window.location.hash = section;
 
                 // Reload filter config when config section is shown
                 if (section === 'config') {
                     initFilterConfig();
                 }
             }
+        }
+
+        nav.addEventListener('click', function(e) {
+            const link = e.target.closest('a[data-section]');
+            if (link) {
+                e.preventDefault();
+                const section = link.getAttribute('data-section');
+                navigateToSection(section);
+            }
         });
 
-        // Default to first nav item
-        const first = nav.querySelector('a[data-section]');
-        if (first) {
-            activateNav(first);
-            showSection(first.getAttribute('data-section'));
+        // Handle hash changes (back/forward navigation)
+        window.addEventListener('hashchange', function() {
+            const hash = window.location.hash.substring(1);
+            if (hash && sections[hash]) {
+                const link = nav.querySelector(`a[data-section="${hash}"]`);
+                if (link) {
+                    activateNav(link);
+                    showSection(hash);
+                    if (hash === 'config') {
+                        initFilterConfig();
+                    }
+                }
+            }
+        });
+
+        // Initialize from hash or default to first nav item
+        const hash = window.location.hash.substring(1);
+        if (hash && sections[hash]) {
+            navigateToSection(hash);
+        } else {
+            const first = nav.querySelector('a[data-section]');
+            if (first) {
+                navigateToSection(first.getAttribute('data-section'));
+            }
         }
     }
 }
@@ -335,15 +362,91 @@ function updateWSStatus(connected, reconnectInfo = '') {
     }
 }
 
+// --- Camera Control ---
+window.showCameraControl = function() {
+    const modal = new bootstrap.Modal(document.getElementById('cameraControlModal'));
+
+    // Populate images directory link from config
+    const imagesDirLink = document.getElementById('imagesDirLink');
+    if (imagesDirLink && currentConfig.images_dir_path) {
+        imagesDirLink.textContent = currentConfig.images_dir_path;
+        imagesDirLink.href = `file://${currentConfig.images_dir_path}`;
+    }
+
+    // Clear previous capture result
+    document.getElementById('captureResult').style.display = 'none';
+
+    modal.show();
+};
+
+window.captureImage = async function() {
+    const captureButton = document.getElementById('captureButton');
+    const buttonText = document.getElementById('captureButtonText');
+    const spinner = document.getElementById('captureButtonSpinner');
+    const exposureDuration = parseFloat(document.getElementById('exposureDuration').value);
+
+    // Validate exposure duration
+    if (isNaN(exposureDuration) || exposureDuration <= 0) {
+        createToast('Invalid exposure duration', 'danger', false);
+        return;
+    }
+
+    // Show loading state
+    captureButton.disabled = true;
+    spinner.style.display = 'inline-block';
+    buttonText.textContent = 'Capturing...';
+
+    try {
+        const response = await fetch('/api/camera/capture', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ duration: exposureDuration })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            // Show capture result
+            document.getElementById('captureFilename').textContent = data.filename;
+            document.getElementById('captureFormat').textContent = data.format || 'Unknown';
+            document.getElementById('captureResult').style.display = 'block';
+
+            createToast('Image captured successfully', 'success', true);
+        } else {
+            const errorMsg = data.error || 'Failed to capture image';
+            createToast(errorMsg, 'danger', false);
+        }
+    } catch (error) {
+        console.error('Capture error:', error);
+        createToast('Failed to capture image: ' + error.message, 'danger', false);
+    } finally {
+        // Reset button state
+        captureButton.disabled = false;
+        spinner.style.display = 'none';
+        buttonText.textContent = 'Capture';
+    }
+};
+
 // --- Status Updates ---
 function updateStatus(status) {
     document.getElementById('hardwareAdapter').textContent = status.hardware_adapter || '-';
     document.getElementById('telescopeConnected').innerHTML = status.telescope_connected
         ? '<span class="badge rounded-pill bg-success">Connected</span>'
         : '<span class="badge rounded-pill bg-danger">Disconnected</span>';
-    document.getElementById('cameraConnected').innerHTML = status.camera_connected
-        ? '<span class="badge rounded-pill bg-success">Connected</span>'
-        : '<span class="badge rounded-pill bg-danger">Disconnected</span>';
+    // Update camera status with control button when connected
+    const cameraEl = document.getElementById('cameraConnected');
+    if (status.camera_connected) {
+        cameraEl.innerHTML = `
+            <span class="badge rounded-pill bg-success">Connected</span>
+            <button class="btn btn-sm btn-outline-light" onclick="showCameraControl()">
+                <i class="bi bi-camera"></i> Control
+            </button>
+        `;
+    } else {
+        cameraEl.innerHTML = '<span class="badge rounded-pill bg-danger">Disconnected</span>';
+    }
 
     // Update current task display
     if (status.current_task && status.current_task !== 'None') {
@@ -399,6 +502,33 @@ function updateStatus(status) {
 
     // Update autofocus status
     updateAutofocusStatus(status);
+
+    // Update missing dependencies display
+    updateMissingDependencies(status.missing_dependencies || []);
+}
+
+function updateMissingDependencies(missingDeps) {
+    const dashboardContainer = document.getElementById('missingDependenciesAlert');
+    const configContainer = document.getElementById('configMissingDependenciesAlert');
+
+    const containers = [dashboardContainer, configContainer].filter(c => c);
+
+    if (missingDeps.length === 0) {
+        containers.forEach(container => container.style.display = 'none');
+        return;
+    }
+
+    let html = '<strong><i class="bi bi-exclamation-triangle-fill me-2"></i>Missing Dependencies:</strong><ul class="mb-0 mt-2">';
+    missingDeps.forEach(dep => {
+        html += `<li><strong>${dep.device_name}</strong>: Missing ${dep.missing_packages}<br>`;
+        html += `<code class="small">${dep.install_cmd}</code></li>`;
+    });
+    html += '</ul>';
+
+    containers.forEach(container => {
+        container.innerHTML = html;
+        container.style.display = 'block';
+    });
 }
 
 function updateAutofocusStatus(status) {

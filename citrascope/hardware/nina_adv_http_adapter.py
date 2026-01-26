@@ -39,7 +39,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         self.autofocus_binning = kwargs.get("autofocus_binning", 1)
 
     @classmethod
-    def get_settings_schema(cls) -> list[SettingSchemaEntry]:
+    def get_settings_schema(cls, **kwargs) -> list[SettingSchemaEntry]:
         """
         Return a schema describing configurable settings for the NINA Advanced HTTP adapter.
         """
@@ -53,6 +53,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
                 "required": True,
                 "placeholder": "http://localhost:1888/v2/api",
                 "pattern": r"^https?://.*",
+                "group": "Connection",
             },
             {
                 "name": "autofocus_binning",
@@ -64,6 +65,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
                 "placeholder": "1",
                 "min": 1,
                 "max": 4,
+                "group": "Imaging",
             },
             {
                 "name": "binning_x",
@@ -75,6 +77,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
                 "placeholder": "1",
                 "min": 1,
                 "max": 4,
+                "group": "Imaging",
             },
             {
                 "name": "binning_y",
@@ -86,6 +89,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
                 "placeholder": "1",
                 "min": 1,
                 "max": 4,
+                "group": "Imaging",
             },
         ]
 
