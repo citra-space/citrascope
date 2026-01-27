@@ -181,20 +181,12 @@ async function loadConfiguration() {
         // Load time sync settings (monitoring always enabled)
         const timeCheckInterval = document.getElementById('time_check_interval_minutes');
         const timeOffsetPause = document.getElementById('time_offset_pause_ms');
-        const gpsEnabled = document.getElementById('gps_time_source_enabled');
-        const gpsDevicePath = document.getElementById('gps_device_path');
 
         if (timeCheckInterval) {
             timeCheckInterval.value = config.time_check_interval_minutes || 5;
         }
         if (timeOffsetPause) {
             timeOffsetPause.value = config.time_offset_pause_ms || 500;
-        }
-        if (gpsEnabled) {
-            gpsEnabled.checked = config.gps_time_source_enabled || false;
-        }
-        if (gpsDevicePath) {
-            gpsDevicePath.value = config.gps_device_path || '/dev/ttyUSB0';
         }
 
         // Load adapter-specific settings if adapter is selected
@@ -457,8 +449,6 @@ async function saveConfiguration(event) {
         // Time sync settings (monitoring always enabled)
         time_check_interval_minutes: parseInt(document.getElementById('time_check_interval_minutes')?.value || 5, 10),
         time_offset_pause_ms: parseFloat(document.getElementById('time_offset_pause_ms')?.value || 500),
-        gps_time_source_enabled: document.getElementById('gps_time_source_enabled')?.checked || false,
-        gps_device_path: document.getElementById('gps_device_path')?.value || '/dev/ttyUSB0',
         // API settings from endpoint selector
         host: host,
         port: port,
@@ -469,7 +459,6 @@ async function saveConfiguration(event) {
         max_retry_delay_seconds: currentConfig.max_retry_delay_seconds || 300,
         log_retention_days: currentConfig.log_retention_days || 30,
         last_autofocus_timestamp: currentConfig.last_autofocus_timestamp, // Preserve timestamp
-        last_time_check_timestamp: currentConfig.last_time_check_timestamp, // Preserve timestamp
     };
 
     try {

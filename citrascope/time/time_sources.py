@@ -60,37 +60,3 @@ class NTPTimeSource(AbstractTimeSource):
     def get_source_name(self) -> str:
         """Get the name of this time source."""
         return "ntp"
-
-
-class GPSTimeSource(AbstractTimeSource):
-    """
-    GPS-based time source (STUB - not yet implemented).
-
-    This is a placeholder for future GPS receiver support.
-    When implemented, this will read NMEA sentences from a serial GPS receiver
-    and optionally use PPS (pulse-per-second) for high-precision timing.
-    """
-
-    def __init__(self, device_path: str = "/dev/ttyUSB0"):
-        """
-        Initialize GPS time source.
-
-        Args:
-            device_path: Serial device path for GPS receiver
-
-        Raises:
-            NotImplementedError: GPS support not yet implemented
-        """
-        self.device_path = device_path
-        raise NotImplementedError(
-            "GPS time source support is not yet implemented. "
-            "Use NTP time source instead, or contribute GPS support to CitraScope!"
-        )
-
-    def get_offset_ms(self) -> Optional[float]:
-        """Get clock offset from GPS receiver (not implemented)."""
-        raise NotImplementedError("GPS time source not yet implemented")
-
-    def get_source_name(self) -> str:
-        """Get the name of this time source."""
-        return "gps"

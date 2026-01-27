@@ -6,14 +6,14 @@ from typing import Callable, Optional
 
 from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.time.time_health import TimeHealth, TimeStatus
-from citrascope.time.time_sources import AbstractTimeSource, GPSTimeSource, NTPTimeSource
+from citrascope.time.time_sources import AbstractTimeSource, NTPTimeSource
 
 
 class TimeMonitor:
     """
     Background thread that monitors system clock synchronization.
 
-    Periodically checks clock offset against NTP (or GPS if configured),
+    Periodically checks clock offset against NTP servers,
     logs warnings/errors based on drift severity, and notifies callback
     when critical drift requires pausing observations.
     """
@@ -22,8 +22,6 @@ class TimeMonitor:
         self,
         check_interval_minutes: int = 5,
         pause_threshold_ms: float = 500.0,
-        use_gps: bool = False,
-        gps_device_path: str = "/dev/ttyUSB0",
         pause_callback: Optional[Callable[[TimeHealth], None]] = None,
     ):
         """
@@ -32,29 +30,15 @@ class TimeMonitor:
         Args:
             check_interval_minutes: Minutes between time sync checks
             pause_threshold_ms: Threshold in ms that triggers task pause
-            use_gps: Use GPS time source instead of NTP
-            gps_device_path: Device path for GPS receiver
             pause_callback: Callback function when threshold exceeded
         """
         self.check_interval_minutes = check_interval_minutes
         self.pause_threshold_ms = pause_threshold_ms
         self.pause_callback = pause_callback
 
-        # Initialize time source (GPS with NTP fallback, or NTP only)
-        self.time_source: AbstractTimeSource
-        self.fallback_source: Optional[AbstractTimeSource] = None
-
-        if use_gps:
-            try:
-                self.time_source = GPSTimeSource(device_path=gps_device_path)
-                self.fallback_source = NTPTimeSource()
-                CITRASCOPE_LOGGER.info(f"Time monitor initialized with GPS source ({gps_device_path})")
-            except NotImplementedError:
-                CITRASCOPE_LOGGER.warning("GPS time source not implemented, falling back to NTP")
-                self.time_source = NTPTimeSource()
-        else:
-            self.time_source = NTPTimeSource()
-            CITRASCOPE_LOGGER.info("Time monitor initialized with NTP source")
+        # Initialize NTP time source
+        self.time_source: AbstractTimeSource = NTPTimeSource()
+        CITRASCOPE_LOGGER.info("Time monitor initialized with NTP source")
 
         # Thread control
         self._stop_event = threading.Event()
@@ -110,8 +94,8 @@ class TimeMonitor:
     def _check_time_sync(self) -> None:
         """Perform a single time synchronization check."""
         try:
-            # Query time source for offset
-            offset_ms = self._query_with_fallback()
+            # Query NTP for offset
+            offset_ms = self.time_source.get_offset_ms()
 
             # Calculate health status
             health = TimeHealth.from_offset(
@@ -142,27 +126,6 @@ class TimeMonitor:
             )
             with self._lock:
                 self._current_health = health
-
-    def _query_with_fallback(self) -> Optional[float]:
-        """
-        Query time source with fallback to NTP if GPS fails.
-
-        Returns:
-            Clock offset in milliseconds, or None if all sources fail.
-        """
-        offset_ms = self.time_source.get_offset_ms()
-
-        if offset_ms is None and self.fallback_source is not None:
-            CITRASCOPE_LOGGER.warning(
-                f"Primary time source ({self.time_source.get_source_name()}) failed, " "falling back to NTP"
-            )
-            offset_ms = self.fallback_source.get_offset_ms()
-            if offset_ms is not None:
-                # Update source to reflect fallback
-                self.time_source = self.fallback_source
-                self.fallback_source = None
-
-        return offset_ms
 
     def _log_health_status(self, health: TimeHealth) -> None:
         """Log time health status at appropriate level."""

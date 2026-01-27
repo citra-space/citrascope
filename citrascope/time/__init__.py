@@ -2,7 +2,7 @@
 
 from citrascope.time.time_health import TimeHealth, TimeStatus
 from citrascope.time.time_monitor import TimeMonitor
-from citrascope.time.time_sources import AbstractTimeSource, NTPTimeSource, GPSTimeSource
+from citrascope.time.time_sources import AbstractTimeSource, NTPTimeSource
 
 __all__ = [
     "TimeHealth",
@@ -10,5 +10,4 @@ __all__ = [
     "TimeMonitor",
     "AbstractTimeSource",
     "NTPTimeSource",
-    "GPSTimeSource",
 ]

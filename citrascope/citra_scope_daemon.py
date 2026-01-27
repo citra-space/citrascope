@@ -215,8 +215,6 @@ class CitraScopeDaemon:
             self.time_monitor = TimeMonitor(
                 check_interval_minutes=self.settings.time_check_interval_minutes,
                 pause_threshold_ms=self.settings.time_offset_pause_ms,
-                use_gps=self.settings.gps_time_source_enabled,
-                gps_device_path=self.settings.gps_device_path,
                 pause_callback=self._on_time_drift_pause,
             )
             self.time_monitor.start()
@@ -333,7 +331,7 @@ class CitraScopeDaemon:
         self.task_manager.pause()
         CITRASCOPE_LOGGER.warning(
             "Task processing paused due to time sync issues. "
-            "Fix NTP/GPS configuration and manually resume via web interface."
+            "Fix NTP configuration and manually resume via web interface."
         )
 
     def run(self):

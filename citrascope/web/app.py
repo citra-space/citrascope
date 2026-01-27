@@ -193,8 +193,6 @@ class CitraScopeWebApp:
                 "last_autofocus_timestamp": settings.last_autofocus_timestamp,
                 "time_check_interval_minutes": settings.time_check_interval_minutes,
                 "time_offset_pause_ms": settings.time_offset_pause_ms,
-                "gps_time_source_enabled": settings.gps_time_source_enabled,
-                "gps_device_path": settings.gps_device_path,
                 "app_url": app_url,
                 "config_file_path": config_path,
                 "log_file_path": log_file_path,

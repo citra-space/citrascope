@@ -1,7 +1,6 @@
 """Time health status calculation and monitoring."""
 
 from dataclasses import dataclass
-from datetime import datetime
 from enum import Enum
 from typing import Optional
 
@@ -10,8 +9,6 @@ class TimeStatus(str, Enum):
     """Time synchronization status levels."""
 
     OK = "ok"
-    WARNING = "warning"
-    ERROR = "error"
     CRITICAL = "critical"
     UNKNOWN = "unknown"
 
@@ -27,10 +24,7 @@ class TimeHealth:
     """Current time sync status level."""
 
     source: str
-    """Time source used (ntp, gps, unknown)."""
-
-    last_check: datetime
-    """Timestamp of last time sync check."""
+    """Time source used (ntp, unknown)."""
 
     message: Optional[str] = None
     """Optional status message or error description."""
@@ -85,13 +79,12 @@ class TimeHealth:
             offset_ms=offset_ms,
             status=status,
             source=source,
-            last_check=datetime.now(),
             message=message,
         )
 
     def is_safe_for_observations(self) -> bool:
         """Check if time sync is acceptable for astronomical observations."""
-        return self.status in (TimeStatus.OK, TimeStatus.WARNING)
+        return self.status == TimeStatus.OK
 
     def requires_critical_action(self) -> bool:
         """Check if critical action is required (pause observations)."""
@@ -103,6 +96,5 @@ class TimeHealth:
             "offset_ms": self.offset_ms,
             "status": self.status.value,
             "source": self.source,
-            "last_check": int(self.last_check.timestamp()),
             "message": self.message,
         }
