@@ -82,12 +82,8 @@ class TimeHealth:
             message=message,
         )
 
-    def is_safe_for_observations(self) -> bool:
-        """Check if time sync is acceptable for astronomical observations."""
-        return self.status == TimeStatus.OK
-
-    def requires_critical_action(self) -> bool:
-        """Check if critical action is required (pause observations)."""
+    def should_pause_observations(self) -> bool:
+        """Check if observations should be paused due to time sync issues."""
         return self.status == TimeStatus.CRITICAL
 
     def to_dict(self) -> dict:

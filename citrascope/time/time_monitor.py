@@ -112,7 +112,7 @@ class TimeMonitor:
             self._log_health_status(health)
 
             # Notify callback if critical
-            if health.requires_critical_action():
+            if health.should_pause_observations():
                 self._handle_critical_drift(health)
 
         except Exception as e:
