@@ -1,0 +1,201 @@
+"""Time synchronization monitoring thread for CitraScope."""
+
+import threading
+import time
+from typing import Callable, Optional
+
+from citrascope.logging import CITRASCOPE_LOGGER
+from citrascope.time.time_health import TimeHealth, TimeStatus
+from citrascope.time.time_sources import AbstractTimeSource, GPSTimeSource, NTPTimeSource
+
+
+class TimeMonitor:
+    """
+    Background thread that monitors system clock synchronization.
+
+    Periodically checks clock offset against NTP (or GPS if configured),
+    logs warnings/errors based on drift severity, and notifies callback
+    when critical drift requires pausing observations.
+    """
+
+    def __init__(
+        self,
+        check_interval_minutes: int = 5,
+        pause_threshold_ms: float = 500.0,
+        use_gps: bool = False,
+        gps_device_path: str = "/dev/ttyUSB0",
+        pause_callback: Optional[Callable[[TimeHealth], None]] = None,
+    ):
+        """
+        Initialize time monitor.
+
+        Args:
+            check_interval_minutes: Minutes between time sync checks
+            pause_threshold_ms: Threshold in ms that triggers task pause
+            use_gps: Use GPS time source instead of NTP
+            gps_device_path: Device path for GPS receiver
+            pause_callback: Callback function when threshold exceeded
+        """
+        self.check_interval_minutes = check_interval_minutes
+        self.pause_threshold_ms = pause_threshold_ms
+        self.pause_callback = pause_callback
+
+        # Initialize time source (GPS with NTP fallback, or NTP only)
+        self.time_source: AbstractTimeSource
+        self.fallback_source: Optional[AbstractTimeSource] = None
+
+        if use_gps:
+            try:
+                self.time_source = GPSTimeSource(device_path=gps_device_path)
+                self.fallback_source = NTPTimeSource()
+                CITRASCOPE_LOGGER.info(f"Time monitor initialized with GPS source ({gps_device_path})")
+            except NotImplementedError:
+                CITRASCOPE_LOGGER.warning("GPS time source not implemented, falling back to NTP")
+                self.time_source = NTPTimeSource()
+        else:
+            self.time_source = NTPTimeSource()
+            CITRASCOPE_LOGGER.info("Time monitor initialized with NTP source")
+
+        # Thread control
+        self._stop_event = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+        self._lock = threading.Lock()
+
+        # Current health status
+        self._current_health: Optional[TimeHealth] = None
+        self._last_critical_notification = 0.0
+
+    def start(self) -> None:
+        """Start the time monitoring thread."""
+        if self._thread is not None and self._thread.is_alive():
+            CITRASCOPE_LOGGER.warning("Time monitor already running")
+            return
+
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._monitor_loop, daemon=True)
+        self._thread.start()
+        CITRASCOPE_LOGGER.info(f"Time monitor started (check interval: {self.check_interval_minutes} minutes)")
+
+    def stop(self) -> None:
+        """Stop the time monitoring thread."""
+        if self._thread is None:
+            return
+
+        CITRASCOPE_LOGGER.info("Stopping time monitor...")
+        self._stop_event.set()
+        self._thread.join(timeout=5.0)
+        self._thread = None
+        CITRASCOPE_LOGGER.info("Time monitor stopped")
+
+    def get_current_health(self) -> Optional[TimeHealth]:
+        """Get the current time health status (thread-safe)."""
+        with self._lock:
+            return self._current_health
+
+    def _monitor_loop(self) -> None:
+        """Main monitoring loop (runs in background thread)."""
+        # Perform initial check immediately
+        self._check_time_sync()
+
+        # Then check periodically
+        interval_seconds = self.check_interval_minutes * 60
+
+        while not self._stop_event.is_set():
+            # Wait for interval or stop signal
+            if self._stop_event.wait(timeout=interval_seconds):
+                break
+
+            self._check_time_sync()
+
+    def _check_time_sync(self) -> None:
+        """Perform a single time synchronization check."""
+        try:
+            # Query time source for offset
+            offset_ms = self._query_with_fallback()
+
+            # Calculate health status
+            health = TimeHealth.from_offset(
+                offset_ms=offset_ms,
+                source=self.time_source.get_source_name(),
+                pause_threshold=self.pause_threshold_ms,
+            )
+
+            # Store current health (thread-safe)
+            with self._lock:
+                self._current_health = health
+
+            # Log based on status
+            self._log_health_status(health)
+
+            # Notify callback if critical
+            if health.requires_critical_action():
+                self._handle_critical_drift(health)
+
+        except Exception as e:
+            CITRASCOPE_LOGGER.error(f"Time sync check failed: {e}", exc_info=True)
+            # Create unknown status on error
+            health = TimeHealth.from_offset(
+                offset_ms=None,
+                source="unknown",
+                pause_threshold=self.pause_threshold_ms,
+                message=f"Check failed: {e}",
+            )
+            with self._lock:
+                self._current_health = health
+
+    def _query_with_fallback(self) -> Optional[float]:
+        """
+        Query time source with fallback to NTP if GPS fails.
+
+        Returns:
+            Clock offset in milliseconds, or None if all sources fail.
+        """
+        offset_ms = self.time_source.get_offset_ms()
+
+        if offset_ms is None and self.fallback_source is not None:
+            CITRASCOPE_LOGGER.warning(
+                f"Primary time source ({self.time_source.get_source_name()}) failed, " "falling back to NTP"
+            )
+            offset_ms = self.fallback_source.get_offset_ms()
+            if offset_ms is not None:
+                # Update source to reflect fallback
+                self.time_source = self.fallback_source
+                self.fallback_source = None
+
+        return offset_ms
+
+    def _log_health_status(self, health: TimeHealth) -> None:
+        """Log time health status at appropriate level."""
+        if health.offset_ms is None:
+            CITRASCOPE_LOGGER.warning("Time sync check failed - offset unknown")
+            return
+
+        offset_str = f"{health.offset_ms:+.1f}ms"
+
+        if health.status == TimeStatus.OK:
+            CITRASCOPE_LOGGER.info(f"Time sync OK: {offset_str}")
+        elif health.status == TimeStatus.CRITICAL:
+            CITRASCOPE_LOGGER.critical(
+                f"CRITICAL time drift: offset {offset_str} exceeds {self.pause_threshold_ms}ms threshold. "
+                "Task processing will be paused."
+            )
+
+    def _handle_critical_drift(self, health: TimeHealth) -> None:
+        """
+        Handle critical time drift by notifying callback.
+
+        Args:
+            health: Current time health status
+        """
+        # Rate-limit notifications (max once per 5 minutes)
+        now = time.time()
+        if now - self._last_critical_notification < 300:
+            return
+
+        self._last_critical_notification = now
+
+        if self.pause_callback is not None:
+            try:
+                self.pause_callback(health)
+            except Exception as e:
+                CITRASCOPE_LOGGER.error(f"Pause callback failed: {e}", exc_info=True)

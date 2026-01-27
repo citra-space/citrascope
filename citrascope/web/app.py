@@ -41,6 +41,7 @@ class SystemStatus(BaseModel):
     autofocus_requested: bool = False
     last_autofocus_timestamp: Optional[int] = None
     next_autofocus_minutes: Optional[int] = None
+    time_health: Optional[Dict[str, Any]] = None
     last_update: str = ""
     missing_dependencies: List[Dict[str, str]] = []  # List of {device, packages, install_cmd}
 
@@ -190,6 +191,10 @@ class CitraScopeWebApp:
                 "scheduled_autofocus_enabled": settings.scheduled_autofocus_enabled,
                 "autofocus_interval_minutes": settings.autofocus_interval_minutes,
                 "last_autofocus_timestamp": settings.last_autofocus_timestamp,
+                "time_check_interval_minutes": settings.time_check_interval_minutes,
+                "time_offset_pause_ms": settings.time_offset_pause_ms,
+                "gps_time_source_enabled": settings.gps_time_source_enabled,
+                "gps_device_path": settings.gps_device_path,
                 "app_url": app_url,
                 "config_file_path": config_path,
                 "log_file_path": log_file_path,
@@ -737,6 +742,14 @@ class CitraScopeWebApp:
                         self.status.next_autofocus_minutes = 0
                 else:
                     self.status.next_autofocus_minutes = None
+
+            # Get time sync status from time monitor
+            if hasattr(self.daemon, "time_monitor") and self.daemon.time_monitor:
+                health = self.daemon.time_monitor.get_current_health()
+                self.status.time_health = health.to_dict() if health else None
+            else:
+                # Time monitoring not initialized yet
+                self.status.time_health = None
 
             # Get ground station information from daemon (available after API validation)
             if hasattr(self.daemon, "ground_station") and self.daemon.ground_station:

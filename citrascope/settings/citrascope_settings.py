@@ -81,6 +81,13 @@ class CitraScopeSettings:
             )
             self.autofocus_interval_minutes = 60
 
+        # Time synchronization monitoring configuration (always enabled)
+        self.time_check_interval_minutes: int = config.get("time_check_interval_minutes", 5)
+        self.time_offset_pause_ms: float = config.get("time_offset_pause_ms", 500.0)
+        self.gps_time_source_enabled: bool = config.get("gps_time_source_enabled", False)
+        self.gps_device_path: str = config.get("gps_device_path", "/dev/ttyUSB0")
+        self.last_time_check_timestamp: Optional[int] = config.get("last_time_check_timestamp")
+
     def get_images_dir(self) -> Path:
         """Get the path to the images directory.
 
@@ -126,6 +133,11 @@ class CitraScopeSettings:
             "scheduled_autofocus_enabled": self.scheduled_autofocus_enabled,
             "autofocus_interval_minutes": self.autofocus_interval_minutes,
             "last_autofocus_timestamp": self.last_autofocus_timestamp,
+            "time_check_interval_minutes": self.time_check_interval_minutes,
+            "time_offset_pause_ms": self.time_offset_pause_ms,
+            "gps_time_source_enabled": self.gps_time_source_enabled,
+            "gps_device_path": self.gps_device_path,
+            "last_time_check_timestamp": self.last_time_check_timestamp,
         }
 
     def save(self) -> None:

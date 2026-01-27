@@ -97,6 +97,17 @@
                                     </div>
                                 </div>
                             </div>
+                            <div class="row">
+                                <div class="col-6 fw-semibold">
+                                    <span data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="top" title="System clock synchronization status. Accurate time is critical for astronomical observations">
+                                        Time Sync
+                                    </span>
+                                </div>
+                                <div class="col-6 d-flex align-items-center gap-2">
+                                    <span id="timeSyncStatus"><span class="badge rounded-pill bg-secondary">Unknown</span></span>
+                                    <small class="text-muted" id="timeOffsetDisplay">-</small>
+                                </div>
+                            </div>
                             <!-- Missing Dependencies Alert -->
                             <div id="missingDependenciesAlert" class="alert alert-warning mt-3 mb-0" role="alert" style="display: none;">
                                 <!-- Populated by JavaScript -->
@@ -328,6 +339,39 @@
                                             Next autofocus in: <span id="nextAutofocusTime">--</span>
                                         </div>
                                     </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Time Synchronization Settings Card -->
+                <div class="col-12">
+                    <div class="card bg-dark text-light border-secondary">
+                        <div class="card-header">
+                            <h5 class="mb-0">Time Synchronization</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-12 col-md-4">
+                                    <label for="time_offset_pause_ms" class="form-label">Pause Threshold (ms)</label>
+                                    <input type="number" class="form-control form-control-sm" id="time_offset_pause_ms" min="1" max="10000" step="1" value="500">
+                                    <small class="text-muted">Clock drift that triggers task pause</small>
+                                </div>
+                                <div class="col-12 col-md-4">
+                                    <label class="form-label">GPS Time Source</label>
+                                    <div class="form-check mt-2">
+                                        <input class="form-check-input" type="checkbox" id="gps_time_source_enabled">
+                                        <label class="form-check-label" for="gps_time_source_enabled">
+                                            Use GPS instead of NTP
+                                        </label>
+                                    </div>
+                                    <small class="text-muted">Experimental</small>
+                                </div>
+                                <div class="col-12 col-md-4">
+                                    <label for="gps_device_path" class="form-label">GPS Device Path</label>
+                                    <input type="text" class="form-control form-control-sm" id="gps_device_path" placeholder="/dev/ttyUSB0">
+                                    <small class="text-muted">Serial device for GPS receiver</small>
                                 </div>
                             </div>
                         </div>
