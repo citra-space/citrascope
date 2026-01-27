@@ -81,6 +81,10 @@ class CitraScopeSettings:
             )
             self.autofocus_interval_minutes = 60
 
+        # Time synchronization monitoring configuration (always enabled)
+        self.time_check_interval_minutes: int = config.get("time_check_interval_minutes", 5)
+        self.time_offset_pause_ms: float = config.get("time_offset_pause_ms", 500.0)
+
     def get_images_dir(self) -> Path:
         """Get the path to the images directory.
 
@@ -126,6 +130,8 @@ class CitraScopeSettings:
             "scheduled_autofocus_enabled": self.scheduled_autofocus_enabled,
             "autofocus_interval_minutes": self.autofocus_interval_minutes,
             "last_autofocus_timestamp": self.last_autofocus_timestamp,
+            "time_check_interval_minutes": self.time_check_interval_minutes,
+            "time_offset_pause_ms": self.time_offset_pause_ms,
         }
 
     def save(self) -> None:

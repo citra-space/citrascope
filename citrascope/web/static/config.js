@@ -178,6 +178,13 @@ async function loadConfiguration() {
             autofocusInterval.value = config.autofocus_interval_minutes || 60;
         }
 
+        // Load time sync settings (monitoring always enabled)
+        const timeOffsetPause = document.getElementById('time_offset_pause_ms');
+
+        if (timeOffsetPause) {
+            timeOffsetPause.value = config.time_offset_pause_ms || 500;
+        }
+
         // Load adapter-specific settings if adapter is selected
         if (config.hardware_adapter) {
             // adapter_settings is nested: {"nina": {...}, "kstars": {...}, "direct": {...}}
@@ -435,6 +442,8 @@ async function saveConfiguration(event) {
         // Autofocus settings (top-level)
         scheduled_autofocus_enabled: document.getElementById('scheduled_autofocus_enabled')?.checked || false,
         autofocus_interval_minutes: parseInt(document.getElementById('autofocus_interval_minutes')?.value || 60, 10),
+        // Time sync settings (monitoring always enabled)
+        time_offset_pause_ms: parseFloat(document.getElementById('time_offset_pause_ms')?.value || 500),
         // API settings from endpoint selector
         host: host,
         port: port,

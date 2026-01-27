@@ -503,6 +503,9 @@ function updateStatus(status) {
     // Update autofocus status
     updateAutofocusStatus(status);
 
+    // Update time sync status
+    updateTimeSyncStatus(status);
+
     // Update missing dependencies display
     updateMissingDependencies(status.missing_dependencies || []);
 }
@@ -579,6 +582,78 @@ function updateAutofocusStatus(status) {
             nextAutofocusDisplay.style.display = 'none';
         }
     }
+}
+
+function updateTimeSyncStatus(status) {
+    const statusEl = document.getElementById('timeSyncStatus');
+    const offsetEl = document.getElementById('timeOffsetDisplay');
+
+    if (!statusEl || !offsetEl) {
+        return;
+    }
+
+    const timeHealth = status.time_health;
+
+    // Handle missing health data
+    if (!timeHealth) {
+        statusEl.innerHTML = '<span class="badge rounded-pill bg-secondary" data-bs-toggle="tooltip" title="Time sync status unknown">Unknown</span>';
+        offsetEl.textContent = '-';
+        return;
+    }
+
+    // Determine badge color based on status
+    let badgeClass = 'bg-secondary';
+    let badgeText = 'Unknown';
+    let tooltipText = 'Time sync status unknown';
+
+    switch (timeHealth.status) {
+        case 'ok':
+            badgeClass = 'bg-success';
+            badgeText = 'OK';
+            tooltipText = 'Time sync within threshold';
+            break;
+        case 'critical':
+            badgeClass = 'bg-danger';
+            badgeText = 'Paused';
+            tooltipText = 'Time drift exceeded threshold - tasks paused';
+            break;
+        case 'unknown':
+        default:
+            badgeClass = 'bg-secondary';
+            badgeText = 'Unknown';
+            tooltipText = 'Unable to check time sync';
+            break;
+    }
+
+    statusEl.innerHTML = `<span class="badge rounded-pill ${badgeClass}" data-bs-toggle="tooltip" title="${tooltipText}">${badgeText}</span>`;
+
+    // Format offset display
+    if (timeHealth.offset_ms !== null && timeHealth.offset_ms !== undefined) {
+        const offset = timeHealth.offset_ms;
+        const absOffset = Math.abs(offset);
+        const sign = offset >= 0 ? '+' : '-';
+
+        if (absOffset < 1) {
+            offsetEl.textContent = `${sign}${absOffset.toFixed(2)}ms`;
+        } else if (absOffset < 1000) {
+            offsetEl.textContent = `${sign}${absOffset.toFixed(0)}ms`;
+        } else {
+            offsetEl.textContent = `${sign}${(absOffset / 1000).toFixed(2)}s`;
+        }
+
+        // Add source indicator
+        if (timeHealth.source && timeHealth.source !== 'unknown') {
+            offsetEl.textContent += ` (${timeHealth.source})`;
+        }
+    } else {
+        offsetEl.textContent = '-';
+    }
+
+    // Reinitialize tooltips
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
 }
 
 function formatElapsedTime(milliseconds) {
