@@ -179,12 +179,8 @@ async function loadConfiguration() {
         }
 
         // Load time sync settings (monitoring always enabled)
-        const timeCheckInterval = document.getElementById('time_check_interval_minutes');
         const timeOffsetPause = document.getElementById('time_offset_pause_ms');
 
-        if (timeCheckInterval) {
-            timeCheckInterval.value = config.time_check_interval_minutes || 5;
-        }
         if (timeOffsetPause) {
             timeOffsetPause.value = config.time_offset_pause_ms || 500;
         }
@@ -447,7 +443,6 @@ async function saveConfiguration(event) {
         scheduled_autofocus_enabled: document.getElementById('scheduled_autofocus_enabled')?.checked || false,
         autofocus_interval_minutes: parseInt(document.getElementById('autofocus_interval_minutes')?.value || 60, 10),
         // Time sync settings (monitoring always enabled)
-        time_check_interval_minutes: parseInt(document.getElementById('time_check_interval_minutes')?.value || 5, 10),
         time_offset_pause_ms: parseFloat(document.getElementById('time_offset_pause_ms')?.value || 500),
         // API settings from endpoint selector
         host: host,
