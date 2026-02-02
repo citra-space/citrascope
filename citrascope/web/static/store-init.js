@@ -39,6 +39,13 @@ import * as components from './components.js';
             versionCheckState: 'idle',
             versionCheckResult: null,
 
+            // Loading states for async operations
+            isSavingConfig: false,
+            isCapturing: false,
+            isAutofocusing: false,
+            captureResult: null,
+            exposureDuration: 0.1,
+
             // Spread all formatter functions from shared module
             ...formatters,
 
@@ -54,6 +61,143 @@ import * as components from './components.js';
                     grouped[g].push(f);
                 });
                 return Object.entries(grouped);
+            },
+
+            // Store methods
+            async captureImage() {
+                if (Number.isNaN(this.exposureDuration) || this.exposureDuration <= 0) {
+                    // Import createToast from config.js
+                    const { createToast } = await import('./config.js');
+                    createToast('Invalid exposure duration', 'danger', false);
+                    return;
+                }
+
+                this.isCapturing = true;
+                try {
+                    const response = await fetch('/api/camera/capture', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ duration: this.exposureDuration })
+                    });
+                    const data = await response.json();
+
+                    if (response.ok && data.success) {
+                        this.captureResult = data;
+                        const { createToast } = await import('./config.js');
+                        createToast('Image captured successfully', 'success', true);
+                    } else {
+                        const { createToast } = await import('./config.js');
+                        createToast(data.error || 'Failed to capture image', 'danger', false);
+                    }
+                } catch (error) {
+                    console.error('Capture error:', error);
+                    const { createToast } = await import('./config.js');
+                    createToast('Failed to capture image: ' + error.message, 'danger', false);
+                } finally {
+                    this.isCapturing = false;
+                }
+            },
+
+            async toggleProcessing(enabled) {
+                const endpoint = enabled ? '/api/tasks/resume' : '/api/tasks/pause';
+                try {
+                    const response = await fetch(endpoint, { method: 'POST' });
+                    const result = await response.json();
+                    if (!response.ok) {
+                        alert(result.error || 'Failed to toggle task processing');
+                        // Revert on error
+                        this.status.processing_active = !enabled;
+                    }
+                } catch (error) {
+                    console.error('Error toggling processing:', error);
+                    alert('Error toggling task processing');
+                    this.status.processing_active = !enabled;
+                }
+            },
+
+            async toggleAutomatedScheduling(enabled) {
+                try {
+                    const response = await fetch('/api/telescope/automated-scheduling', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ enabled: enabled })
+                    });
+                    const result = await response.json();
+                    if (!response.ok) {
+                        alert(result.error || 'Failed to toggle automated scheduling');
+                        // Revert on error
+                        this.status.automated_scheduling = !enabled;
+                    }
+                } catch (error) {
+                    console.error('Error toggling automated scheduling:', error);
+                    alert('Error toggling automated scheduling');
+                    this.status.automated_scheduling = !enabled;
+                }
+            },
+
+            showCameraControl() {
+                this.captureResult = null; // Reset capture result when opening modal
+                const modal = new bootstrap.Modal(document.getElementById('cameraControlModal'));
+                modal.show();
+            },
+
+            async showVersionModal() {
+                this.versionCheckState = 'loading';
+                this.versionCheckResult = null;
+
+                const modal = new bootstrap.Modal(document.getElementById('versionModal'));
+                modal.show();
+
+                // Check for updates (inline implementation)
+                try {
+                    const versionResponse = await fetch('/api/version');
+                    const versionData = await versionResponse.json();
+                    const currentVersion = versionData.version;
+
+                    const githubResponse = await fetch('https://api.github.com/repos/citra-space/citrascope/releases/latest');
+                    if (!githubResponse.ok) {
+                        this.versionCheckState = 'error';
+                        this.versionCheckResult = { status: 'error', currentVersion };
+                        return;
+                    }
+
+                    const releaseData = await githubResponse.json();
+                    const latestVersion = releaseData.tag_name.replace(/^v/, '');
+                    const releaseUrl = releaseData.html_url;
+
+                    if (currentVersion === 'development' || currentVersion === 'unknown') {
+                        this.updateIndicator = '';
+                        this.versionCheckState = 'up-to-date';
+                        this.versionCheckResult = { status: 'up-to-date', currentVersion };
+                        return;
+                    }
+
+                    // Compare versions
+                    const v1 = latestVersion.split('.').map(n => parseInt(n) || 0);
+                    const v2 = currentVersion.split('.').map(n => parseInt(n) || 0);
+                    const maxLen = Math.max(v1.length, v2.length);
+                    let comparison = 0;
+                    for (let i = 0; i < maxLen; i++) {
+                        const num1 = v1[i] || 0;
+                        const num2 = v2[i] || 0;
+                        if (num1 > num2) { comparison = 1; break; }
+                        if (num1 < num2) { comparison = -1; break; }
+                    }
+
+                    if (comparison > 0) {
+                        this.updateIndicator = `${latestVersion} Available!`;
+                        this.versionCheckState = 'update-available';
+                        this.versionCheckResult = { status: 'update-available', currentVersion, latestVersion, releaseUrl };
+                    } else {
+                        this.updateIndicator = '';
+                        this.versionCheckState = 'up-to-date';
+                        this.versionCheckResult = { status: 'up-to-date', currentVersion };
+                    }
+                } catch (error) {
+                    console.debug('Update check failed:', error);
+                    this.versionCheckState = 'error';
+                    this.versionCheckResult = { status: 'error', currentVersion: 'unknown' };
+                }
             }
         });
     });

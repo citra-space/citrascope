@@ -1,5 +1,5 @@
     <div class="container my-4" id="configSection" x-show="$store.citrascope.currentSection === 'config'" x-cloak>
-        <form id="configForm">
+        <form @submit.prevent="window.saveConfiguration($event)">
             <div class="row g-3 mb-3">
                 <!-- API Configuration Card -->
                 <div class="col-12" x-data="{ apiCardExpanded: $persist(true).as('apiCard') }">
@@ -157,9 +157,9 @@
             <!-- Save Button -->
             <div class="row">
                 <div class="col">
-                    <button type="submit" class="btn btn-primary" id="saveConfigButton">
-                        <span id="saveButtonText">Save Configuration</span>
-                        <span id="saveButtonSpinner" class="spinner-border spinner-border-sm ms-2" style="display: none;" role="status"></span>
+                    <button type="submit" class="btn btn-primary" :disabled="$store.citrascope.isSavingConfig">
+                        <span x-text="$store.citrascope.isSavingConfig ? 'Saving...' : 'Save Configuration'"></span>
+                        <span x-show="$store.citrascope.isSavingConfig" class="spinner-border spinner-border-sm ms-2" role="status"></span>
                     </button>
                                     <small class="text-muted ms-3">
                                         Config file: <span class="text-secondary" x-text="$store.citrascope.config.config_file_path || 'Loading...'">Loading...</span>

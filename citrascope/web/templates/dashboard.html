@@ -28,11 +28,11 @@
                     CitraScope
                     <small class="text-muted" style="font-size: 0.875rem;">
                         <span style="cursor: pointer; user-select: none;" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Click to check for updates"
-                            @click="window.showVersionModal()" x-text="$store.citrascope.version || 'v...'"></span>
+                            @click="$store.citrascope.showVersionModal()" x-text="$store.citrascope.version || 'v...'"></span>
                         <span class="badge bg-info text-dark ms-1" style="font-size: 0.7rem;"
                             x-show="$store.citrascope.updateIndicator"
                             x-text="$store.citrascope.updateIndicator"
-                            @click="window.showVersionModal()"></span>
+                            @click="$store.citrascope.showVersionModal()"></span>
                     </small>
                 </span>
             </span>
@@ -202,18 +202,18 @@
                     <div class="row g-3">
                         <div class="col-12">
                             <label for="exposureDuration" class="form-label">Exposure Duration (seconds)</label>
-                            <input type="number" id="exposureDuration" class="form-control" value="0.1" min="0.001" max="300" step="0.001">
+                            <input type="number" class="form-control" x-model.number="$store.citrascope.exposureDuration" min="0.001" max="300" step="0.001">
                             <small class="text-muted">Range: 0.001 to 300 seconds</small>
                         </div>
                     </div>
 
                     <!-- Capture Result Area -->
-                    <div id="captureResult" class="mt-3" style="display: none;">
+                    <div x-show="$store.citrascope.captureResult" class="mt-3">
                         <hr class="border-secondary">
                         <h6>Latest Capture</h6>
                         <div class="alert alert-success mb-2">
-                            <strong>Filename:</strong> <span id="captureFilename"></span><br>
-                            <strong>Format:</strong> <span id="captureFormat"></span>
+                            <strong>Filename:</strong> <span x-text="$store.citrascope.captureResult?.filename"></span><br>
+                            <strong>Format:</strong> <span x-text="$store.citrascope.captureResult?.format || 'Unknown'"></span>
                         </div>
                     </div>
 
@@ -222,14 +222,14 @@
                         <hr class="border-secondary">
                         <h6>Images Directory</h6>
                         <p class="text-muted small mb-1">All captured images are saved to:</p>
-                        <p><a href="#" id="imagesDirLink" class="text-break"></a></p>
+                        <p><a :href="'file://' + ($store.citrascope.config?.images_dir_path || '#')" x-text="$store.citrascope.config?.images_dir_path || 'Not set'" class="text-break"></a></p>
                     </div>
                 </div>
                 <div class="modal-footer border-secondary">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-primary" id="captureButton" onclick="captureImage()">
-                        <span id="captureButtonText">Capture</span>
-                        <span id="captureButtonSpinner" class="spinner-border spinner-border-sm ms-2" role="status" style="display: none;">
+                    <button type="button" class="btn btn-primary" :disabled="$store.citrascope.isCapturing" @click="$store.citrascope.captureImage()">
+                        <span x-text="$store.citrascope.isCapturing ? 'Capturing...' : 'Capture'"></span>
+                        <span x-show="$store.citrascope.isCapturing" class="spinner-border spinner-border-sm ms-2" role="status">
                             <span class="visually-hidden">Capturing...</span>
                         </span>
                     </button>

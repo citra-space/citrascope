@@ -133,21 +133,7 @@ async function checkForUpdates() {
     }
 }
 
-async function showVersionModal() {
-    const store = Alpine.store('citrascope');
-    store.versionCheckState = 'loading';
-    store.versionCheckResult = null;
-
-    const modal = new bootstrap.Modal(document.getElementById('versionModal'));
-    modal.show();
-
-    const result = await checkForUpdates();
-    store.versionCheckState = result.status;
-    store.versionCheckResult = result;
-}
-
-// Expose for Alpine @click
-window.showVersionModal = showVersionModal;
+// Version modal moved to Alpine store method
 
 // --- Navigation (Alpine-driven in Phase 3, keep hash sync for now) ---
 function navigateToSection(section) {
@@ -177,72 +163,11 @@ function initNavigation() {
     }
 }
 
-// --- Config section: update store and app URL links ---
-function updateAppUrlLinks() {
-    const store = Alpine.store('citrascope');
-    const appUrl = store.config?.app_url || '';
-    [document.getElementById('appUrlLink'), document.getElementById('setupAppUrlLink')].forEach(link => {
-        if (link && appUrl) {
-            link.href = appUrl;
-            link.textContent = appUrl.replace('https://', '');
-        }
-    });
-}
-
 // Config module will need to update store.config when loaded - we'll handle in config.js
 
-// --- Camera control (Bootstrap modal, keep for now) ---
-window.showCameraControl = () => {
-    const store = Alpine.store('citrascope');
-    const modal = new bootstrap.Modal(document.getElementById('cameraControlModal'));
-    const imagesDirLink = document.getElementById('imagesDirLink');
-    if (imagesDirLink && store.config?.images_dir_path) {
-        imagesDirLink.textContent = store.config.images_dir_path;
-        imagesDirLink.href = `file://${store.config.images_dir_path}`;
-    }
-    document.getElementById('captureResult').style.display = 'none';
-    modal.show();
-};
+// Camera control and version modal moved to Alpine store methods
 
-window.captureImage = async () => {
-    const exposureDuration = parseFloat(document.getElementById('exposureDuration').value);
-    if (Number.isNaN(exposureDuration) || exposureDuration <= 0) {
-        createToast('Invalid exposure duration', 'danger', false);
-        return;
-    }
-
-    const captureButton = document.getElementById('captureButton');
-    const buttonText = document.getElementById('captureButtonText');
-    const spinner = document.getElementById('captureButtonSpinner');
-    captureButton.disabled = true;
-    spinner.style.display = 'inline-block';
-    buttonText.textContent = 'Capturing...';
-
-    try {
-        const response = await fetch('/api/camera/capture', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ duration: exposureDuration })
-        });
-        const data = await response.json();
-
-        if (response.ok && data.success) {
-            document.getElementById('captureFilename').textContent = data.filename;
-            document.getElementById('captureFormat').textContent = data.format || 'Unknown';
-            document.getElementById('captureResult').style.display = 'block';
-            createToast('Image captured successfully', 'success', true);
-        } else {
-            createToast(data.error || 'Failed to capture image', 'danger', false);
-        }
-    } catch (error) {
-        console.error('Capture error:', error);
-        createToast('Failed to capture image: ' + error.message, 'danger', false);
-    } finally {
-        captureButton.disabled = false;
-        spinner.style.display = 'none';
-        buttonText.textContent = 'Capture';
-    }
-};
+// Camera capture moved to Alpine store method
 
 // --- Initialize ---
 document.addEventListener('DOMContentLoaded', async () => {
@@ -250,7 +175,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     await initConfig();
     await initFilterConfig();
     setupAutofocusButton();
-    updateAppUrlLinks();
     fetchVersion();
     checkForUpdates();
     setInterval(checkForUpdates, 3600000);
@@ -280,54 +204,5 @@ document.addEventListener('DOMContentLoaded', async () => {
         new bootstrap.Tooltip(el);
     }
 
-    const toggleSwitch = document.getElementById('toggleProcessingSwitch');
-    if (toggleSwitch) {
-        toggleSwitch.addEventListener('change', async (e) => {
-            const isChecked = e.target.checked;
-            const endpoint = isChecked ? '/api/tasks/resume' : '/api/tasks/pause';
-            try {
-                toggleSwitch.disabled = true;
-                const response = await fetch(endpoint, { method: 'POST' });
-                const result = await response.json();
-                if (!response.ok) {
-                    alert((result.error || 'Failed to toggle task processing') + (response.status === 409 ? '' : ' - Unknown error'));
-                    toggleSwitch.checked = !isChecked;
-                    Alpine.store('citrascope').status = { ...Alpine.store('citrascope').status, processing_active: !isChecked };
-                }
-            } catch (error) {
-                console.error('Error toggling processing:', error);
-                alert('Error toggling task processing');
-                toggleSwitch.checked = !isChecked;
-            } finally {
-                toggleSwitch.disabled = false;
-            }
-        });
-    }
-
-    const automatedSchedulingSwitch = document.getElementById('toggleAutomatedSchedulingSwitch');
-    if (automatedSchedulingSwitch) {
-        automatedSchedulingSwitch.addEventListener('change', async (e) => {
-            const isChecked = e.target.checked;
-            try {
-                automatedSchedulingSwitch.disabled = true;
-                const response = await fetch('/api/telescope/automated-scheduling', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ enabled: isChecked })
-                });
-                const result = await response.json();
-                if (!response.ok) {
-                    alert(result.error || 'Failed to toggle automated scheduling');
-                    automatedSchedulingSwitch.checked = !isChecked;
-                    Alpine.store('citrascope').status = { ...Alpine.store('citrascope').status, automated_scheduling: !isChecked };
-                }
-            } catch (error) {
-                console.error('Error toggling automated scheduling:', error);
-                alert('Error toggling automated scheduling');
-                automatedSchedulingSwitch.checked = !isChecked;
-            } finally {
-                automatedSchedulingSwitch.disabled = false;
-            }
-        });
-    }
+    // Toggle switches now use Alpine @change directives in templates
 });

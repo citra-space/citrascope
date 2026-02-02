@@ -47,11 +47,9 @@ export async function initConfig() {
     // Populate hardware adapter dropdown
     await loadAdapterOptions();
 
-    // Config form submission
-    const configForm = document.getElementById('configForm');
-    if (configForm) {
-        configForm.addEventListener('submit', saveConfiguration);
-    }
+    // Config form submission handled by Alpine @submit.prevent in template
+    // Expose saveConfiguration for template access
+    window.saveConfiguration = saveConfiguration;
 
     // Load initial config
     await loadConfiguration();
@@ -194,20 +192,12 @@ async function loadAdapterSchema(adapterName, currentSettings = {}) {
 async function saveConfiguration(event) {
     event.preventDefault();
 
-    const saveButton = document.getElementById('saveConfigButton');
-    const buttonText = document.getElementById('saveButtonText');
-    const spinner = document.getElementById('saveButtonSpinner');
-
-    // Show loading state
-    saveButton.disabled = true;
-    spinner.style.display = 'inline-block';
-    buttonText.textContent = 'Saving...';
-
     // Hide previous messages
     hideConfigMessages();
 
     // Get config from store (x-model keeps it up to date)
     const store = Alpine.store('citrascope');
+    store.isSavingConfig = true;
     const formConfig = store.config;
 
     // Determine API host settings based on endpoint selection
@@ -302,9 +292,7 @@ async function saveConfiguration(event) {
         showConfigError('Failed to save configuration: ' + error.message);
     } finally {
         // Reset button state
-        saveButton.disabled = false;
-        spinner.style.display = 'none';
-        buttonText.textContent = 'Save Configuration';
+        store.isSavingConfig = false;
     }
 }
 
@@ -539,14 +527,8 @@ async function saveModifiedFilters() {
  * Trigger or cancel autofocus routine
  */
 async function triggerAutofocus() {
-    const button = document.getElementById('runAutofocusButton');
-    const buttonText = document.getElementById('autofocusButtonText');
-    const buttonSpinner = document.getElementById('autofocusButtonSpinner');
-
-    if (!button || !buttonText || !buttonSpinner) return;
-
-    // Check if this is a cancel action
-    const isCancel = button.dataset.action === 'cancel';
+    const store = Alpine.store('citrascope');
+    const isCancel = store.status?.autofocus_requested;
 
     if (isCancel) {
         // Cancel autofocus
@@ -558,7 +540,6 @@ async function triggerAutofocus() {
 
             if (response.ok && data.success) {
                 showToast('Autofocus cancelled', 'info');
-                updateAutofocusButton(false);
             } else {
                 showToast('Nothing to cancel', 'warning');
             }
@@ -570,8 +551,7 @@ async function triggerAutofocus() {
     }
 
     // Request autofocus
-    button.disabled = true;
-    buttonSpinner.style.display = 'inline-block';
+    store.isAutofocusing = true;
 
     try {
         const response = await fetch('/api/adapter/autofocus', {
@@ -582,7 +562,6 @@ async function triggerAutofocus() {
 
         if (response.ok) {
             showToast('Autofocus queued', 'success');
-            updateAutofocusButton(true);
         } else {
             showToast(data.error || 'Autofocus request failed', 'error');
         }
@@ -590,30 +569,7 @@ async function triggerAutofocus() {
         console.error('Error triggering autofocus:', error);
         showToast('Failed to trigger autofocus', 'error');
     } finally {
-        button.disabled = false;
-        buttonSpinner.style.display = 'none';
-    }
-}
-
-/**
- * Update autofocus button state based on whether autofocus is queued
- */
-function updateAutofocusButton(isQueued) {
-    const button = document.getElementById('runAutofocusButton');
-    const buttonText = document.getElementById('autofocusButtonText');
-
-    if (!button || !buttonText) return;
-
-    if (isQueued) {
-        buttonText.textContent = 'Cancel Autofocus';
-        button.dataset.action = 'cancel';
-        button.classList.remove('btn-outline-primary');
-        button.classList.add('btn-outline-warning');
-    } else {
-        buttonText.textContent = 'Run Autofocus';
-        button.dataset.action = 'request';
-        button.classList.remove('btn-outline-warning');
-        button.classList.add('btn-outline-primary');
+        store.isAutofocusing = false;
     }
 }
 
@@ -664,11 +620,10 @@ export async function initFilterConfig() {
 /**
  * Setup autofocus button event listener (call once during init)
  */
+// Autofocus button now uses Alpine @click directive in template
+// Expose triggerAutofocus for template access
 export function setupAutofocusButton() {
-    const autofocusBtn = document.getElementById('runAutofocusButton');
-    if (autofocusBtn) {
-        autofocusBtn.addEventListener('click', triggerAutofocus);
-    }
+    window.triggerAutofocus = triggerAutofocus;
 }
 
 /**

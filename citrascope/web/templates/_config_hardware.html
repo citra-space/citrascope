@@ -169,11 +169,11 @@
                                     <div class="col-12 col-md-6">
                                         <h6 class="mb-2">Autofocus</h6>
                                         <div class="mb-3">
-                                            <button type="button" class="btn btn-sm w-100" id="runAutofocusButton"
+                                            <button type="button" class="btn btn-sm w-100"
                                                 :class="$store.citrascope.status?.autofocus_requested ? 'btn-outline-warning' : 'btn-outline-primary'"
-                                                :data-action="$store.citrascope.status?.autofocus_requested ? 'cancel' : 'request'">
+                                                @click="window.triggerAutofocus()">
                                                 <span x-text="$store.citrascope.status?.autofocus_requested ? 'Cancel Autofocus' : 'Run Autofocus'">Run Autofocus</span>
-                                                <span class="spinner-border spinner-border-sm ms-2" style="display: none;" role="status" id="autofocusButtonSpinner"></span>
+                                                <span x-show="$store.citrascope.isAutofocusing" class="spinner-border spinner-border-sm ms-2" role="status"></span>
                                             </button>
                                         </div>
                                         <div class="mb-3">

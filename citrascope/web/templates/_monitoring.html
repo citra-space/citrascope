@@ -30,7 +30,7 @@
                                     <span class="badge rounded-pill" :class="$store.citrascope.status?.camera_connected ? 'bg-success' : 'bg-danger'"
                                         x-text="$store.citrascope.status?.camera_connected ? 'Connected' : 'Disconnected'"></span>
                                     <button class="btn btn-sm btn-outline-light" x-show="$store.citrascope.status?.camera_connected"
-                                        @click="window.showCameraControl()">
+                                        @click="$store.citrascope.showCameraControl()">
                                         <i class="bi bi-camera"></i> Control
                                     </button>
                                 </div>
@@ -45,9 +45,10 @@
                                     <span><span class="badge rounded-pill" :class="$store.citrascope.status?.automated_scheduling ? 'bg-success' : 'bg-secondary'"
                                         x-text="$store.citrascope.status?.automated_scheduling ? 'Enabled' : 'Disabled'"></span></span>
                                     <div class="form-check form-switch">
-                                        <input class="form-check-input" type="checkbox" id="toggleAutomatedSchedulingSwitch" title="Toggle automated scheduling"
-                                            :checked="$store.citrascope.status?.automated_scheduling">
-                                        <label class="form-check-label visually-hidden" for="toggleAutomatedSchedulingSwitch">Automated Scheduling</label>
+                                        <input class="form-check-input" type="checkbox" title="Toggle automated scheduling"
+                                            :checked="$store.citrascope.status?.automated_scheduling"
+                                            @change="$store.citrascope.toggleAutomatedScheduling($event.target.checked)">
+                                        <label class="form-check-label visually-hidden">Automated Scheduling</label>
                                     </div>
                                 </div>
                             </div>
@@ -61,9 +62,10 @@
                                     <span><span class="badge rounded-pill" :class="$store.citrascope.status?.processing_active ? 'bg-success' : 'bg-secondary'"
                                         x-text="$store.citrascope.status?.processing_active ? 'Enabled' : 'Disabled'"></span></span>
                                     <div class="form-check form-switch">
-                                        <input class="form-check-input" type="checkbox" id="toggleProcessingSwitch" title="Toggle task processing"
-                                            :checked="$store.citrascope.status?.processing_active !== false">
-                                        <label class="form-check-label visually-hidden" for="toggleProcessingSwitch">Task Processing</label>
+                                        <input class="form-check-input" type="checkbox" title="Toggle task processing"
+                                            :checked="$store.citrascope.status?.processing_active !== false"
+                                            @change="$store.citrascope.toggleProcessing($event.target.checked)">
+                                        <label class="form-check-label visually-hidden">Task Processing</label>
                                     </div>
                                 </div>
                             </div>
