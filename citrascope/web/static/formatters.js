@@ -1,17 +1,26 @@
-// CitraScope Alpine store - registered in alpine:init
+/**
+ * CitraScope Formatter Utilities
+ *
+ * Shared formatting functions for the dashboard UI.
+ * These functions are exposed in the Alpine.js store for use in templates.
+ */
 
 /**
  * Strip ANSI color codes from text
+ * @param {string} text - Text containing ANSI codes
+ * @returns {string} Text with ANSI codes removed
  */
-function stripAnsiCodes(text) {
+export function stripAnsiCodes(text) {
     const esc = String.fromCharCode(27);
     return text.replace(new RegExp(esc + '\\[\\d+m', 'g'), '').replace(/\[\d+m/g, '');
 }
 
 /**
  * Format ISO date string to local time
+ * @param {string} isoString - ISO 8601 date string
+ * @returns {string} Formatted local time string
  */
-function formatLocalTime(isoString) {
+export function formatLocalTime(isoString) {
     const date = new Date(isoString);
     return date.toLocaleString(undefined, {
         month: 'short',
@@ -25,8 +34,10 @@ function formatLocalTime(isoString) {
 
 /**
  * Format milliseconds as countdown string
+ * @param {number} milliseconds - Time in milliseconds
+ * @returns {string} Formatted countdown string (e.g., "2h 30m 15s")
  */
-function formatCountdown(milliseconds) {
+export function formatCountdown(milliseconds) {
     const totalSeconds = Math.floor(milliseconds / 1000);
     if (totalSeconds < 0) return 'Starting soon...';
     const hours = Math.floor(totalSeconds / 3600);
@@ -39,8 +50,10 @@ function formatCountdown(milliseconds) {
 
 /**
  * Format elapsed time for "X ago" display
+ * @param {number} milliseconds - Elapsed time in milliseconds
+ * @returns {string} Human-readable elapsed time (e.g., "2 hours ago")
  */
-function formatElapsedTime(milliseconds) {
+export function formatElapsedTime(milliseconds) {
     const seconds = Math.floor(milliseconds / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
@@ -53,21 +66,33 @@ function formatElapsedTime(milliseconds) {
 
 /**
  * Format minutes as "Xh Ym" display
+ * @param {number} minutes - Time in minutes
+ * @returns {string} Formatted time string (e.g., "2h 30m")
  */
-function formatMinutes(minutes) {
+export function formatMinutes(minutes) {
     const hours = Math.floor(minutes / 60);
     const mins = Math.floor(minutes % 60);
     if (hours > 0) return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
     return `${mins}m`;
 }
 
-function formatLastAutofocus(status) {
-    if (!status?.last_autofocus_timestamp) return 'Never';
+/**
+ * Format last autofocus timestamp
+ * @param {Object} status - Status object containing last_autofocus_timestamp
+ * @returns {string} Formatted autofocus time or "Never"
+ */
+export function formatLastAutofocus(status) {
+    if (!status || !status.last_autofocus_timestamp) return 'Never';
     const elapsed = Date.now() - status.last_autofocus_timestamp * 1000;
     return formatElapsedTime(elapsed);
 }
 
-function formatTimeOffset(timeHealth) {
+/**
+ * Format time offset with source information
+ * @param {Object} timeHealth - Time health object with offset_ms and source
+ * @returns {string} Formatted time offset (e.g., "+50ms (ntp)")
+ */
+export function formatTimeOffset(timeHealth) {
     if (!timeHealth || timeHealth.offset_ms == null) return '-';
     const o = timeHealth.offset_ms;
     const abs = Math.abs(o);
@@ -78,46 +103,4 @@ function formatTimeOffset(timeHealth) {
     else result = `${s}${(abs / 1000).toFixed(2)}s`;
     if (timeHealth.source && timeHealth.source !== 'unknown') result += ` (${timeHealth.source})`;
     return result;
-}
-
-export function initCitrascopeStore() {
-    Alpine.store('citrascope', {
-        // Monitoring (WebSocket-driven)
-        status: {},
-        tasks: [],
-        logs: [],
-        latestLog: null,
-        wsConnected: false,
-        wsReconnecting: false,
-
-        // Derived from status
-        currentTaskId: null,
-        isTaskActive: false,
-        nextTaskStartTime: null,
-        countdown: '',
-
-        // Config (API-driven)
-        config: {},
-        apiEndpoint: 'production', // 'production' | 'development' | 'custom'
-        adapterSchema: [],
-        filters: {},
-        savedAdapter: null,
-        enabledFilters: [], // [{name, color}] for dashboard display
-
-        // UI state
-        currentSection: 'monitoring',
-        version: '',
-        updateIndicator: '',
-        versionCheckState: 'idle',
-        versionCheckResult: null,
-
-        // Helpers (exposed for templates)
-        stripAnsiCodes,
-        formatLocalTime,
-        formatCountdown,
-        formatElapsedTime,
-        formatMinutes,
-        formatTimeOffset,
-        formatLastAutofocus
-    });
 }
