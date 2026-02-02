@@ -56,7 +56,7 @@ export function adapterField(field) {
 
             // Reload schema if device type changed
             if (this.field.name && ['camera_type', 'mount_type', 'filter_wheel_type', 'focuser_type'].includes(this.field.name)) {
-                window.reloadAdapterSchema && window.reloadAdapterSchema();
+                this.$store.citrascope.reloadAdapterSchema?.();
             }
         }
     };

@@ -14,7 +14,7 @@
                                 <div class="col-12">
                                     <label for="hardwareAdapterSelect" class="form-label">Hardware Adapter <span class="text-danger">*</span></label>
                                     <select id="hardwareAdapterSelect" class="form-select" required x-model="$store.citrascope.config.hardware_adapter"
-                                        @change="window.handleAdapterChange && window.handleAdapterChange($event.target.value)">
+                                        @change="$store.citrascope.handleAdapterChange($event.target.value)">
                                         <option value="">-- Select Hardware Adapter --</option>
                                         <template x-for="adapter in $store.citrascope.hardwareAdapters" :key="adapter.value">
                                             <option :value="adapter.value" x-text="adapter.label"></option>

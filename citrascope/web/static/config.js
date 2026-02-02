@@ -17,8 +17,10 @@ const PROD_API_HOST = 'api.citra.space';
 const DEV_API_HOST = 'dev.api.citra.space';
 const DEFAULT_API_PORT = 443;
 
-// Handle adapter selection change (called from Alpine)
-window.handleAdapterChange = async (adapter) => {
+/**
+ * Handle adapter selection change (called from Alpine store)
+ */
+async function handleAdapterChange(adapter) {
     const store = Alpine.store('citrascope');
     if (adapter) {
         const allAdapterSettings = store.config.adapter_settings || {};
@@ -34,9 +36,14 @@ window.handleAdapterChange = async (adapter) => {
         store.adapterFields = [];
         store.filterConfigVisible = false;
     }
-};
+}
 
 export async function initConfig() {
+    // Attach config methods to Alpine store
+    const store = Alpine.store('citrascope');
+    store.handleAdapterChange = handleAdapterChange;
+    store.reloadAdapterSchema = reloadAdapterSchema;
+
     // Populate hardware adapter dropdown
     await loadAdapterOptions();
 
@@ -664,8 +671,10 @@ export function setupAutofocusButton() {
     }
 }
 
-// Expose reloadAdapterSchema for device type change handlers
-window.reloadAdapterSchema = async () => {
+/**
+ * Reload adapter schema (called from Alpine components when device type changes)
+ */
+async function reloadAdapterSchema() {
     const store = Alpine.store('citrascope');
     const adapter = store.config.hardware_adapter;
     if (!adapter) return;
@@ -677,7 +686,4 @@ window.reloadAdapterSchema = async () => {
     });
 
     await loadAdapterSchema(adapter, currentSettings);
-};
-
-// Make showConfigSection available globally for onclick handlers in HTML
-window.showConfigSection = showConfigSection;
+}
