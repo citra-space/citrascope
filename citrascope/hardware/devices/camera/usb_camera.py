@@ -118,20 +118,21 @@ class UsbCamera(AbstractCamera):
             try:
                 from cv2_enumerate_cameras import enumerate_cameras
 
-                for camera_info in enumerate_cameras():
-                    index = camera_info.index
-                    name = camera_info.name or f"Camera {index}"
-                    backend = camera_info.backend or ""
+                # Get fancy camera names from enumerate_cameras
+                # Assumption: enumerate_cameras() returns cameras in the same order as OpenCV detection
+                camera_infos = list(enumerate_cameras())
 
-                    # Get resolution
-                    cap = cv2.VideoCapture(index)
-                    if cap.isOpened():
-                        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                        cap.release()
+                logging.debug(f"cv2_enumerate_cameras found {len(camera_infos)} cameras")
 
-                        backend_str = f" ({backend})" if backend else ""
-                        cameras.append({"value": index, "label": f"{name} - {width}x{height}{backend_str}"})
+                # Map list position to OpenCV index (0, 1, 2...)
+                # Don't actually open cameras here - too wasteful
+                for opencv_index, camera_info in enumerate(camera_infos):
+                    name = camera_info.name or f"Camera {opencv_index}"
+
+                    # Note: We're NOT opening cameras to verify or get resolution
+                    # This assumes the library returns cameras in OpenCV's detection order
+                    cameras.append({"value": opencv_index, "label": name})
+                    logging.debug(f"Mapped device_id {camera_info.index} -> opencv_index {opencv_index}: {name}")
 
             except ImportError:
                 # cv2-enumerate-cameras not installed, use basic detection

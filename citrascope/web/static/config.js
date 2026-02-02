@@ -25,6 +25,11 @@ window.handleAdapterChange = async (adapter) => {
     if (adapter) {
         const allAdapterSettings = store.config.adapter_settings || currentConfig.adapter_settings || {};
         const newAdapterSettings = allAdapterSettings[adapter] || {};
+
+        console.log(`Switching to adapter: ${adapter}`);
+        console.log('All adapter settings:', allAdapterSettings);
+        console.log('Settings for this adapter:', newAdapterSettings);
+
         await loadAdapterSchema(adapter, newAdapterSettings);
         await loadFilterConfig();
     } else {
@@ -136,8 +141,12 @@ async function loadAdapterSchema(adapterName, currentSettings = {}) {
             ? `?current_settings=${encodeURIComponent(JSON.stringify(currentSettings))}`
             : '';
 
+        console.log(`Loading schema for ${adapterName} with settings:`, currentSettings);
+
         const response = await fetch(`/api/hardware-adapters/${adapterName}/schema${settingsParam}`);
         const data = await response.json();
+
+        console.log(`Schema API response:`, data);
 
         const schema = data.schema || [];
 
@@ -149,6 +158,8 @@ async function loadAdapterSchema(adapterName, currentSettings = {}) {
                 ...field,  // All schema properties (name, type, options, etc.)
                 value: currentSettings[field.name] ?? field.default ?? getDefaultForType(field.type)
             }));
+
+        console.log('Loaded adapter fields:', enrichedFields.map(f => `${f.name}=${f.value} (${f.type})`));
 
         // Update Alpine store with unified field objects
         if (typeof Alpine !== 'undefined' && Alpine.store) {
