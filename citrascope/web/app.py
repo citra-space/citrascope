@@ -8,10 +8,11 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from citrascope.constants import (
@@ -126,6 +127,10 @@ class CitraScopeWebApp:
         if static_dir.exists():
             self.app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
+        # Initialize Jinja2 templates
+        templates_dir = Path(__file__).parent / "templates"
+        self.templates = Jinja2Templates(directory=str(templates_dir))
+
         # Register routes
         self._setup_routes()
 
@@ -137,15 +142,9 @@ class CitraScopeWebApp:
         """Setup all API routes."""
 
         @self.app.get("/", response_class=HTMLResponse)
-        async def root():
+        async def root(request: Request):
             """Serve the main dashboard page."""
-            template_path = Path(__file__).parent / "templates" / "dashboard.html"
-            if template_path.exists():
-                return template_path.read_text()
-            else:
-                return HTMLResponse(
-                    content="<h1>CitraScope Dashboard</h1><p>Template file not found</p>", status_code=500
-                )
+            return self.templates.TemplateResponse("dashboard.html", {"request": request})
 
         @self.app.get("/api/status")
         async def get_status():
