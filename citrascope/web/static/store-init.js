@@ -82,10 +82,12 @@
             countdown: '',
             config: {},
             apiEndpoint: 'production',
-            adapterSchema: [],
+            hardwareAdapters: [], // [{value, label}]
             filters: {},
             savedAdapter: null,
             enabledFilters: [],
+            filterConfigVisible: false,
+            filterAdapterChangeMessageVisible: false,
             currentSection: 'monitoring',
             version: '',
             updateIndicator: '',
@@ -97,7 +99,10 @@
             formatElapsedTime,
             formatMinutes,
             formatTimeOffset,
-            formatLastAutofocus
+            formatLastAutofocus,
+
+            // Unified adapter fields (schema + values merged)
+            adapterFields: []
         });
     });
 })();
