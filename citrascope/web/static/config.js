@@ -17,13 +17,11 @@ const PROD_API_HOST = 'api.citra.space';
 const DEV_API_HOST = 'dev.api.citra.space';
 const DEFAULT_API_PORT = 443;
 
-export let currentConfig = {};
-
 // Handle adapter selection change (called from Alpine)
 window.handleAdapterChange = async (adapter) => {
     const store = Alpine.store('citrascope');
     if (adapter) {
-        const allAdapterSettings = store.config.adapter_settings || currentConfig.adapter_settings || {};
+        const allAdapterSettings = store.config.adapter_settings || {};
         const newAdapterSettings = allAdapterSettings[adapter] || {};
 
         console.log(`Switching to adapter: ${adapter}`);
@@ -99,7 +97,6 @@ async function loadAdapterOptions() {
 async function loadConfiguration() {
     try {
         const config = await getConfig();
-        currentConfig = config; // Save for reuse when saving
 
         // Sync to Alpine store - x-model handles form population
         if (typeof Alpine !== 'undefined' && Alpine.store) {
@@ -245,12 +242,12 @@ async function saveConfiguration(event) {
         host,
         port,
         use_ssl,
-        // Preserve other settings from loaded config
-        max_task_retries: currentConfig.max_task_retries || 3,
-        initial_retry_delay_seconds: currentConfig.initial_retry_delay_seconds || 30,
-        max_retry_delay_seconds: currentConfig.max_retry_delay_seconds || 300,
-        log_retention_days: currentConfig.log_retention_days || 30,
-        last_autofocus_timestamp: currentConfig.last_autofocus_timestamp,
+        // Preserve other settings from Alpine store (the single source of truth)
+        max_task_retries: store.config.max_task_retries || 3,
+        initial_retry_delay_seconds: store.config.initial_retry_delay_seconds || 30,
+        max_retry_delay_seconds: store.config.max_retry_delay_seconds || 300,
+        log_retention_days: store.config.log_retention_days || 30,
+        last_autofocus_timestamp: store.config.last_autofocus_timestamp,
     };
 
     try {
@@ -272,9 +269,6 @@ async function saveConfiguration(event) {
             if (typeof Alpine !== 'undefined' && Alpine.store) {
                 Alpine.store('citrascope').savedAdapter = config.hardware_adapter;
             }
-
-            // Update currentConfig with the saved values so they persist
-            currentConfig = { ...currentConfig, ...config };
 
             // After config saved successfully, save any modified filter focus positions
             const filterResults = await saveModifiedFilters();
