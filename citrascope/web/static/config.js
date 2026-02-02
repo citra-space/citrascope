@@ -1,7 +1,16 @@
 // Configuration management for CitraScope
 
-import { getConfig, saveConfig, getConfigStatus, getHardwareAdapters, getAdapterSchema } from './api.js';
+import { getConfig, saveConfig, getConfigStatus, getHardwareAdapters } from './api.js';
 import { getFilterColor } from './filters.js';
+
+function updateStoreEnabledFilters(filters) {
+    if (typeof Alpine !== 'undefined' && Alpine.store) {
+        const enabled = Object.values(filters || {})
+            .filter(f => f.enabled !== false)
+            .map(f => ({ name: f.name, color: getFilterColor(f.name) }));
+        Alpine.store('citrascope').enabledFilters = enabled;
+    }
+}
 
 // API Host constants - must match backend constants in app.py
 const PROD_API_HOST = 'api.citra.space';
@@ -36,18 +45,7 @@ export async function initConfig() {
         });
     }
 
-    // API endpoint selection change
-    const apiEndpointSelect = document.getElementById('apiEndpoint');
-    if (apiEndpointSelect) {
-        apiEndpointSelect.addEventListener('change', (e) => {
-            const customContainer = document.getElementById('customHostContainer');
-            if (e.target.value === 'custom') {
-                customContainer.style.display = 'block';
-            } else {
-                customContainer.style.display = 'none';
-            }
-        });
-    }
+    // API endpoint selection change - Alpine x-model handles customHostContainer visibility
 
     // Config form submission
     const configForm = document.getElementById('configForm');
@@ -117,6 +115,15 @@ async function loadConfiguration() {
         currentConfig = config; // Save for reuse when saving
         savedAdapter = config.hardware_adapter; // Track saved adapter
 
+        // Sync to Alpine store for dashboard bindings
+        if (typeof Alpine !== 'undefined' && Alpine.store) {
+            const store = Alpine.store('citrascope');
+            store.config = config;
+            store.apiEndpoint =
+                config.host === PROD_API_HOST ? 'production' :
+                config.host === DEV_API_HOST ? 'development' : 'custom';
+        }
+
         // Display config file path
         const configPathElement = document.getElementById('configFilePath');
         if (configPathElement && config.config_file_path) {
@@ -139,22 +146,17 @@ async function loadConfiguration() {
             imagesDirElement.textContent = config.images_dir_path;
         }
 
-        // API endpoint selector
-        const apiEndpointSelect = document.getElementById('apiEndpoint');
-        const customHostContainer = document.getElementById('customHostContainer');
+        // API endpoint selector - store.apiEndpoint drives Alpine x-model
         const customHost = document.getElementById('customHost');
         const customPort = document.getElementById('customPort');
         const customUseSsl = document.getElementById('customUseSsl');
 
         if (config.host === PROD_API_HOST) {
-            apiEndpointSelect.value = 'production';
-            customHostContainer.style.display = 'none';
+            // store.apiEndpoint set above
         } else if (config.host === DEV_API_HOST) {
-            apiEndpointSelect.value = 'development';
-            customHostContainer.style.display = 'none';
+            // store.apiEndpoint set above
         } else {
-            apiEndpointSelect.value = 'custom';
-            customHostContainer.style.display = 'block';
+            // store.apiEndpoint = 'custom' set above
             customHost.value = config.host || '';
             customPort.value = config.port || DEFAULT_API_PORT;
             customUseSsl.checked = config.use_ssl !== undefined ? config.use_ssl : true;
@@ -639,8 +641,8 @@ async function loadFilterConfig() {
             // Show the filter section
             if (filterSection) filterSection.style.display = 'block';
 
-            // Update enabled filters display on dashboard
-            updateEnabledFiltersDisplay(data.filters);
+            // Update enabled filters display on dashboard (Alpine store)
+            updateStoreEnabledFilters(data.filters);
 
             // Populate filter table
             const tbody = document.getElementById('filterTableBody');
@@ -903,28 +905,6 @@ function showToast(message, type = 'info') {
 export async function initFilterConfig() {
     // Load filter config when config section is visible
     await loadFilterConfig();
-}
-
-/**
- * Update the enabled filters display on the dashboard.
- * @param {Object} filters - Filter configuration object
- */
-function updateEnabledFiltersDisplay(filters) {
-    const filtersEl = document.getElementById('enabledFilters');
-    if (!filtersEl) return;
-
-    const enabledFilters = Object.values(filters)
-        .filter(filter => filter.enabled !== false)
-        .map(filter => filter.name);
-
-    if (enabledFilters.length > 0) {
-        filtersEl.innerHTML = enabledFilters.map(filterName => {
-            const color = getFilterColor(filterName);
-            return `<span class="badge me-1" style="background-color: ${color}; color: white;">${filterName}</span>`;
-        }).join('');
-    } else {
-        filtersEl.textContent = '-';
-    }
 }
 
 /**

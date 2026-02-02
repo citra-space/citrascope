@@ -11,11 +11,12 @@
     <link href="/static/style.css" rel="stylesheet">
 </head>
 
-<body data-bs-theme="dark">
+<body data-bs-theme="dark" x-data>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
         integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI"
         crossorigin="anonymous"></script>
-
+    <script src="/static/store-init.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js"></script>
 
     <div class="container">
         <header class="d-flex flex-wrap justify-content-center py-3 mb-4 border-bottom align-items-center">
@@ -24,31 +25,35 @@
                     <img src="/static/img/citra.png" alt="CitraScope Logo" class="logo-img" />
                     CitraScope
                     <small class="text-muted" style="font-size: 0.875rem;">
-                        <span id="headerVersion" style="cursor: pointer; user-select: none;" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Click to check for updates">v...</span>
-                        <span id="updateIndicator" class="badge bg-info text-dark ms-1" style="display: none; font-size: 0.7rem;"></span>
+                        <span style="cursor: pointer; user-select: none;" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Click to check for updates"
+                            @click="window.showVersionModal()" x-text="$store.citrascope.version || 'v...'"></span>
+                        <span class="badge bg-info text-dark ms-1" style="font-size: 0.7rem;"
+                            x-show="$store.citrascope.updateIndicator"
+                            x-text="$store.citrascope.updateIndicator"
+                            @click="window.showVersionModal()"></span>
                     </small>
                 </span>
             </span>
 
             <ul class="nav" id="mainNav">
-                <li class="nav-item"><a href="#" class="nav-link px-2 text-white" data-section="monitoring"
-                        aria-current="page">Monitoring</a></li>
-                <li class="nav-item"><a href="#" class="nav-link px-2" data-section="config">Config</a></li>
+                <li class="nav-item"><a href="#monitoring" class="nav-link px-2" :class="$store.citrascope.currentSection === 'monitoring' ? 'text-white' : ''"
+                        :aria-current="$store.citrascope.currentSection === 'monitoring' ? 'page' : null"
+                        data-section="monitoring" @click.prevent="$store.citrascope.currentSection = 'monitoring'; window.location.hash = 'monitoring'">Monitoring</a></li>
+                <li class="nav-item"><a href="#config" class="nav-link px-2" :class="$store.citrascope.currentSection === 'config' ? 'text-white' : ''"
+                        :aria-current="$store.citrascope.currentSection === 'config' ? 'page' : null"
+                        data-section="config" @click.prevent="$store.citrascope.currentSection = 'config'; window.location.hash = 'config'">Config</a></li>
                 <li class="nav-item"><a href="https://docs.citra.space/citrascope/" class="nav-link px-2" target="_blank">Docs</a></li>
-                <li class="nav-item"><a href="#" class="nav-link bg-success text-white btn" style="display: none;"
-                        id="taskScopeButton" target="_blank">Task my Scope</a></li>
+                <li class="nav-item"><a href="#" class="nav-link bg-success text-white btn"
+                        id="taskScopeButton" target="_blank"
+                        x-show="$store.citrascope.status?.ground_station_url"
+                        :href="$store.citrascope.status?.ground_station_url || '#'">Task my Scope</a></li>
             </ul>
         </header>
 
-        <!-- Template for connection status badge -->
-        <template id="connectionStatusTemplate">
-            <span class="badge rounded-pill connection-status-badge" data-bs-toggle="tooltip" data-bs-placement="bottom">
-                <span class="status-text"></span>
-            </span>
-        </template>
     </div>
 
-    <div id="monitoringSection">
+    <div id="monitoringSection" x-show="$store.citrascope.currentSection === 'monitoring'"
+        x-effect="$store.citrascope.status && $nextTick(() => { document.querySelectorAll('[data-bs-toggle=tooltip]').forEach(el => { try { bootstrap.Tooltip.getOrCreateInstance(el); } catch (_) {} }); })">
         <div class="container">
             <div class="row g-3 mb-3">
                 <div class="col-12 col-md-6">
@@ -59,15 +64,30 @@
                         <div class="card-body">
                             <div class="row mb-2">
                                 <div class="col-6 fw-semibold">Daemon</div>
-                                <div class="col-6" id="wsStatus"><span class="badge rounded-pill bg-secondary" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Dashboard connection status">Connecting...</span></div>
+                                <div class="col-6">
+                                    <span class="badge rounded-pill" data-bs-toggle="tooltip" data-bs-placement="bottom"
+                                        :class="$store.citrascope.wsConnected ? 'bg-success' : ($store.citrascope.wsReconnecting ? 'bg-warning text-dark' : 'bg-secondary')"
+                                        :title="$store.citrascope.wsConnected ? 'Dashboard connected - receiving live updates' : ($store.citrascope.wsReconnecting ? 'Dashboard reconnecting' : 'Dashboard disconnected')"
+                                        x-text="$store.citrascope.wsConnected ? 'Connected' : ($store.citrascope.wsReconnecting ? 'Reconnecting' : 'Connecting...')"></span>
+                                </div>
                             </div>
                             <div class="row mb-2">
                                 <div class="col-6 fw-semibold">Telescope</div>
-                                <div class="col-6" id="telescopeConnected"><span class="badge rounded-pill bg-secondary">Unknown</span></div>
+                                <div class="col-6">
+                                    <span class="badge rounded-pill" :class="$store.citrascope.status?.telescope_connected ? 'bg-success' : 'bg-danger'"
+                                        x-text="$store.citrascope.status?.telescope_connected ? 'Connected' : 'Disconnected'"></span>
+                                </div>
                             </div>
                             <div class="row mb-2">
                                 <div class="col-6 fw-semibold">Camera</div>
-                                <div class="col-6 d-flex align-items-center gap-2" id="cameraConnected"><span class="badge rounded-pill bg-secondary">Unknown</span></div>
+                                <div class="col-6 d-flex align-items-center gap-2">
+                                    <span class="badge rounded-pill" :class="$store.citrascope.status?.camera_connected ? 'bg-success' : 'bg-danger'"
+                                        x-text="$store.citrascope.status?.camera_connected ? 'Connected' : 'Disconnected'"></span>
+                                    <button class="btn btn-sm btn-outline-light" x-show="$store.citrascope.status?.camera_connected"
+                                        @click="window.showCameraControl()">
+                                        <i class="bi bi-camera"></i> Control
+                                    </button>
+                                </div>
                             </div>
                             <div class="row mb-2">
                                 <div class="col-6 fw-semibold">
@@ -76,9 +96,11 @@
                                     </span>
                                 </div>
                                 <div class="col-6 d-flex align-items-center gap-2">
-                                    <span id="automatedSchedulingStatus"><span class="badge rounded-pill bg-secondary">Unknown</span></span>
+                                    <span><span class="badge rounded-pill" :class="$store.citrascope.status?.automated_scheduling ? 'bg-success' : 'bg-secondary'"
+                                        x-text="$store.citrascope.status?.automated_scheduling ? 'Enabled' : 'Disabled'"></span></span>
                                     <div class="form-check form-switch">
-                                        <input class="form-check-input" type="checkbox" id="toggleAutomatedSchedulingSwitch" title="Toggle automated scheduling">
+                                        <input class="form-check-input" type="checkbox" id="toggleAutomatedSchedulingSwitch" title="Toggle automated scheduling"
+                                            :checked="$store.citrascope.status?.automated_scheduling">
                                         <label class="form-check-label visually-hidden" for="toggleAutomatedSchedulingSwitch">Automated Scheduling</label>
                                     </div>
                                 </div>
@@ -90,9 +112,11 @@
                                     </span>
                                 </div>
                                 <div class="col-6 d-flex align-items-center gap-2">
-                                    <span id="processingStatus"><span class="badge rounded-pill bg-success">Active</span></span>
+                                    <span><span class="badge rounded-pill" :class="$store.citrascope.status?.processing_active ? 'bg-success' : 'bg-secondary'"
+                                        x-text="$store.citrascope.status?.processing_active ? 'Enabled' : 'Disabled'"></span></span>
                                     <div class="form-check form-switch">
-                                        <input class="form-check-input" type="checkbox" id="toggleProcessingSwitch" checked title="Toggle task processing">
+                                        <input class="form-check-input" type="checkbox" id="toggleProcessingSwitch" title="Toggle task processing"
+                                            :checked="$store.citrascope.status?.processing_active !== false">
                                         <label class="form-check-label visually-hidden" for="toggleProcessingSwitch">Task Processing</label>
                                     </div>
                                 </div>
@@ -104,13 +128,31 @@
                                     </span>
                                 </div>
                                 <div class="col-6 d-flex align-items-center gap-2">
-                                    <span id="timeSyncStatus"><span class="badge rounded-pill bg-secondary">Unknown</span></span>
-                                    <small class="text-muted" id="timeOffsetDisplay">-</small>
+                                    <span>
+                                        <span class="badge rounded-pill" data-bs-toggle="tooltip"
+                                            :class="$store.citrascope.status?.time_health?.status === 'ok' ? 'bg-success' : ($store.citrascope.status?.time_health?.status === 'critical' ? 'bg-danger' : 'bg-secondary')"
+                                            :title="$store.citrascope.status?.time_health?.status === 'ok' ? 'Time sync within threshold' : ($store.citrascope.status?.time_health?.status === 'critical' ? 'Time drift exceeded' : 'Unknown')"
+                                            x-text="$store.citrascope.status?.time_health?.status === 'ok' ? 'OK' : ($store.citrascope.status?.time_health?.status === 'critical' ? 'Paused' : 'Unknown')"></span>
+                                    </span>
+                                    <small class="text-muted" x-text="$store.citrascope.formatTimeOffset($store.citrascope.status?.time_health)">-</small>
                                 </div>
                             </div>
                             <!-- Missing Dependencies Alert -->
-                            <div id="missingDependenciesAlert" class="alert alert-warning mt-3 mb-0" role="alert" style="display: none;">
-                                <!-- Populated by JavaScript -->
+                            <div class="alert alert-warning mt-3 mb-0" role="alert"
+                                x-show="$store.citrascope.status?.missing_dependencies?.length > 0">
+                                <template x-if="$store.citrascope.status?.missing_dependencies?.length > 0">
+                                    <div>
+                                        <strong><i class="bi bi-exclamation-triangle-fill me-2"></i>Missing Dependencies:</strong>
+                                        <ul class="mb-0 mt-2">
+                                            <template x-for="dep in $store.citrascope.status.missing_dependencies" :key="dep.device_name">
+                                                <li>
+                                                    <strong x-text="dep.device_name"></strong>: Missing <span x-text="dep.missing_packages"></span><br>
+                                                    <code class="small" x-text="dep.install_cmd"></code>
+                                                </li>
+                                            </template>
+                                        </ul>
+                                    </div>
+                                </template>
                             </div>
                         </div>
                     </div>
@@ -123,19 +165,36 @@
                         <div class="card-body">
                             <div class="row mb-2">
                                 <div class="col-6 fw-semibold">Adapter</div>
-                                <div class="col-6" id="hardwareAdapter">-</div>
+                                <div class="col-6" x-text="$store.citrascope.status?.hardware_adapter || '-'"></div>
                             </div>
                             <div class="row mb-2">
                                 <div class="col-6 fw-semibold">RA / DEC</div>
-                                <div class="col-6" id="telescopeCoords">-</div>
+                                <div class="col-6" x-text="($store.citrascope.status?.telescope_ra != null && $store.citrascope.status?.telescope_dec != null) ? ($store.citrascope.status.telescope_ra.toFixed(3) + '° / ' + $store.citrascope.status.telescope_dec.toFixed(3) + '°') : '-'"></div>
                             </div>
                             <div class="row mb-2">
                                 <div class="col-6 fw-semibold">Enabled Filters</div>
-                                <div class="col-6" id="enabledFilters">-</div>
+                                <div class="col-6 d-flex flex-wrap gap-1">
+                                    <template x-if="$store.citrascope.enabledFilters.length === 0">
+                                        <span>-</span>
+                                    </template>
+                                    <template x-for="f in $store.citrascope.enabledFilters" :key="f.name">
+                                        <span class="badge me-1" :style="'background-color: ' + f.color + '; color: white;'" x-text="f.name"></span>
+                                    </template>
+                                </div>
                             </div>
                             <div class="row">
                                 <div class="col-6 fw-semibold">Ground Station</div>
-                                <div class="col-6" id="groundStationName">-</div>
+                                <div class="col-6">
+                                    <template x-if="$store.citrascope.status?.ground_station_name && $store.citrascope.status?.ground_station_url">
+                                        <a :href="$store.citrascope.status.ground_station_url" target="_blank" class="ground-station-link" x-text="$store.citrascope.status.ground_station_name + ' ↗'"></a>
+                                    </template>
+                                    <template x-if="$store.citrascope.status?.ground_station_name && !$store.citrascope.status?.ground_station_url">
+                                        <span x-text="$store.citrascope.status.ground_station_name"></span>
+                                    </template>
+                                    <template x-if="!$store.citrascope.status?.ground_station_name">
+                                        <span>-</span>
+                                    </template>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -151,24 +210,46 @@
                             Current Task
                         </div>
                         <div class="card-body">
-                            <div id="currentTaskDisplay">
-                                <p class="text-muted-dark">No active task</p>
+                            <div>
+                                <template x-if="$store.citrascope.currentTaskId">
+                                    <div>
+                                        <template x-for="task in $store.citrascope.tasks.filter(t => t.id === $store.citrascope.currentTaskId)" :key="task.id">
+                                            <div>
+                                                <div class="d-flex align-items-center gap-2 mb-2">
+                                                    <div class="spinner-border spinner-border-sm text-success" role="status">
+                                                        <span class="visually-hidden">Loading...</span>
+                                                    </div>
+                                                    <div class="fw-bold" style="font-size: 1.3em;" x-text="task.target"></div>
+                                                </div>
+                                                <div class="text-secondary small">
+                                                    <span x-text="'Task ID: ' + task.id"></span>
+                                                </div>
+                                            </div>
+                                        </template>
+                                        <template x-if="!$store.citrascope.tasks.find(t => t.id === $store.citrascope.currentTaskId)">
+                                            <div>
+                                                <div class="d-flex align-items-center gap-2 mb-2">
+                                                    <div class="spinner-border spinner-border-sm text-success" role="status">
+                                                        <span class="visually-hidden">Loading...</span>
+                                                    </div>
+                                                    <div class="fw-bold" style="font-size: 1.3em;" x-text="$store.citrascope.currentTaskId"></div>
+                                                </div>
+                                                <div class="text-secondary small">
+                                                    <span x-text="'Task ID: ' + $store.citrascope.currentTaskId"></span>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
+                                <template x-if="!$store.citrascope.currentTaskId && !$store.citrascope.countdown">
+                                    <p class="no-task-message text-muted-dark">No active task</p>
+                                </template>
+                                <template x-if="!$store.citrascope.currentTaskId && $store.citrascope.countdown">
+                                    <p class="no-task-message">No active task - next task in <span x-text="$store.citrascope.countdown"></span></p>
+                                </template>
                             </div>
                         </div>
                     </div>
-
-                    <!-- Template for active task display -->
-                    <template id="activeTaskTemplate">
-                        <div class="d-flex align-items-center gap-2 mb-2">
-                            <div class="spinner-border spinner-border-sm text-success" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <div class="fw-bold task-target-name" style="font-size: 1.3em;"></div>
-                        </div>
-                        <div class="text-secondary small">
-                            <span class="task-id-text"></span>
-                        </div>
-                    </template>
                 </div>
             </div>
             <div class="row g-3 mb-3">
@@ -176,30 +257,43 @@
                     <div class="card bg-dark text-light border-secondary">
                         <div class="card-header d-flex align-items-center justify-content-between">
                             <span>Task Queue</span>
-                            <span class="small text-secondary"><span id="tasksPending">0</span> pending</span>
+                            <span class="small text-secondary"><span x-text="$store.citrascope.status?.tasks_pending ?? $store.citrascope.tasks?.length ?? 0">0</span> pending</span>
                         </div>
                         <div class="card-body p-0">
-                            <div id="taskList" class="table-responsive">
-                                <p class="p-3 text-muted-dark">Loading tasks...</p>
+                            <div class="table-responsive">
+                                <p class="p-3 text-muted-dark" x-show="$store.citrascope.tasks.length === 0">No pending tasks</p>
+                                <table class="table table-dark table-hover mb-0" x-show="$store.citrascope.tasks.length > 0">
+                                    <thead>
+                                        <tr>
+                                            <th>Target</th>
+                                            <th>Start Time</th>
+                                            <th>End Time</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <template x-for="task in $store.citrascope.tasks" :key="task.id">
+                                            <tr class="task-row" :class="task.id === $store.citrascope.currentTaskId ? 'table-active' : ''">
+                                                <td class="fw-semibold" x-text="task.target"></td>
+                                                <td class="text-secondary small" x-text="$store.citrascope.formatLocalTime(task.start_time)"></td>
+                                                <td class="text-secondary small" x-text="task.stop_time ? $store.citrascope.formatLocalTime(task.stop_time) : '-'"></td>
+                                                <td>
+                                                    <span class="badge rounded-pill" :class="task.id === $store.citrascope.currentTaskId ? 'bg-success' : 'bg-info'"
+                                                        x-text="task.id === $store.citrascope.currentTaskId ? 'Active' : task.status"></span>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </div>
-
-                    <!-- Template for task queue rows -->
-                    <template id="taskRowTemplate">
-                        <tr class="task-row">
-                            <td class="fw-semibold task-target"></td>
-                            <td class="text-secondary small task-start"></td>
-                            <td class="text-secondary small task-end"></td>
-                            <td><span class="badge rounded-pill task-status"></span></td>
-                        </tr>
-                    </template>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="container my-4" id="configSection" style="display: none;">
+    <div class="container my-4" id="configSection" x-show="$store.citrascope.currentSection === 'config'" x-cloak>
         <form id="configForm">
             <div class="row g-3 mb-3">
                 <!-- API Configuration Card -->
@@ -212,13 +306,13 @@
                             <div class="row g-3">
                                 <div class="col-12">
                                     <label for="apiEndpoint" class="form-label">API Endpoint</label>
-                                    <select id="apiEndpoint" class="form-select">
+                                    <select id="apiEndpoint" class="form-select" x-model="$store.citrascope.apiEndpoint">
                                         <option value="production">Production (api.citra.space)</option>
                                         <option value="development">Development (dev.api.citra.space)</option>
                                         <option value="custom">Custom</option>
                                     </select>
                                 </div>
-                                <div class="col-12" id="customHostContainer" style="display: none;">
+                                <div class="col-12" id="customHostContainer" x-show="$store.citrascope.apiEndpoint === 'custom'">
                                     <label for="customHost" class="form-label">Custom API Host</label>
                                     <input type="text" id="customHost" class="form-control" placeholder="api.example.com">
                                     <div class="row g-2 mt-2">
@@ -271,8 +365,21 @@
                             <div id="adapter-settings-container"></div>
 
                             <!-- Missing Dependencies Alert (Config Page) -->
-                            <div id="configMissingDependenciesAlert" class="alert alert-warning mt-3" role="alert" style="display: none;">
-                                <!-- Populated by JavaScript -->
+                            <div class="alert alert-warning mt-3" role="alert"
+                                x-show="$store.citrascope.status?.missing_dependencies?.length > 0">
+                                <template x-if="$store.citrascope.status?.missing_dependencies?.length > 0">
+                                    <div>
+                                        <strong><i class="bi bi-exclamation-triangle-fill me-2"></i>Missing Dependencies:</strong>
+                                        <ul class="mb-0 mt-2">
+                                            <template x-for="dep in $store.citrascope.status.missing_dependencies" :key="dep.device_name">
+                                                <li>
+                                                    <strong x-text="dep.device_name"></strong>: Missing <span x-text="dep.missing_packages"></span><br>
+                                                    <code class="small" x-text="dep.install_cmd"></code>
+                                                </li>
+                                            </template>
+                                        </ul>
+                                    </div>
+                                </template>
                             </div>
 
                             <!-- Filter Configuration Section (shown when adapter supports filters) -->
@@ -309,14 +416,16 @@
                                     <div class="col-12 col-md-6">
                                         <h6 class="mb-2">Autofocus</h6>
                                         <div class="mb-3">
-                                            <button type="button" class="btn btn-sm btn-outline-primary w-100" id="runAutofocusButton">
-                                                <span id="autofocusButtonText">Run Autofocus</span>
-                                                <span id="autofocusButtonSpinner" class="spinner-border spinner-border-sm ms-2" style="display: none;" role="status"></span>
+                                            <button type="button" class="btn btn-sm w-100" id="runAutofocusButton"
+                                                :class="$store.citrascope.status?.autofocus_requested ? 'btn-outline-warning' : 'btn-outline-primary'"
+                                                :data-action="$store.citrascope.status?.autofocus_requested ? 'cancel' : 'request'">
+                                                <span x-text="$store.citrascope.status?.autofocus_requested ? 'Cancel Autofocus' : 'Run Autofocus'">Run Autofocus</span>
+                                                <span class="spinner-border spinner-border-sm ms-2" style="display: none;" role="status" id="autofocusButtonSpinner"></span>
                                             </button>
                                         </div>
                                         <div class="mb-3">
                                             <label class="form-label small text-muted">Last Autofocus</label>
-                                            <div id="lastAutofocusDisplay" class="text-light">Never</div>
+                                            <div class="text-light" x-text="$store.citrascope.formatLastAutofocus($store.citrascope.status)">Never</div>
                                         </div>
                                         <div class="mb-3">
                                             <div class="form-check">
@@ -335,8 +444,8 @@
                                                 <option value="180">180 minutes (3 hours)</option>
                                             </select>
                                         </div>
-                                        <div id="nextAutofocusDisplay" class="small text-muted" style="display: none;">
-                                            Next autofocus in: <span id="nextAutofocusTime">--</span>
+                                        <div class="small text-muted" x-show="$store.citrascope.status?.next_autofocus_minutes != null">
+                                            Next autofocus in: <span x-text="$store.citrascope.status?.next_autofocus_minutes === 0 ? 'now (overdue)' : $store.citrascope.formatMinutes($store.citrascope.status?.next_autofocus_minutes || 0)">--</span>
                                         </div>
                                     </div>
                                 </div>
@@ -475,7 +584,18 @@
                     <button class="accordion-button collapsed bg-secondary text-light log-accordion-button" type="button"
                         data-bs-toggle="collapse" data-bs-target="#logAccordionCollapse" aria-expanded="false"
                         aria-controls="logAccordionCollapse">
-                        <span id="latestLogLine" class="log-latest-line">Log Terminal</span>
+                        <span class="log-latest-line">
+                            <template x-if="!$store.citrascope.latestLog">
+                                <span>Log Terminal</span>
+                            </template>
+                            <template x-if="$store.citrascope.latestLog">
+                                <span>
+                                    <span class="log-timestamp" x-text="new Date($store.citrascope.latestLog.timestamp).toLocaleTimeString()"></span>
+                                    <span class="log-level" :class="'log-level-' + $store.citrascope.latestLog.level" x-text="$store.citrascope.latestLog.level"></span>
+                                    <span x-text="($store.citrascope.stripAnsiCodes($store.citrascope.latestLog.message) || '').substring(0, 150) + (($store.citrascope.latestLog.message || '').length > 150 ? '...' : '')"></span>
+                                </span>
+                            </template>
+                        </span>
                         <div class="accordion-social-links">
                             <a href="https://github.com/citra-space/citrascope/issues/new" target="_blank" class="social-link" title="Report an Issue" onclick="event.stopPropagation();">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
@@ -498,28 +618,20 @@
                 <div id="logAccordionCollapse" class="accordion-collapse collapse" aria-labelledby="logAccordionHeader"
                     data-bs-parent="#logAccordion">
                     <div class="accordion-body p-0 log-accordion-body">
-                        <div class="log-container p-3" id="logContainer">
-                            <p class="text-muted-dark">Loading logs...</p>
+                        <div class="log-container p-3" id="logContainer" x-ref="logContainer">
+                            <p class="text-muted-dark" x-show="$store.citrascope.logs.length === 0">No logs available</p>
+                            <template x-for="(log, index) in $store.citrascope.logs" :key="index">
+                                <div class="log-entry">
+                                    <span class="log-timestamp" x-text="new Date(log.timestamp).toLocaleTimeString()"></span>
+                                    <span class="log-level" :class="'log-level-' + log.level" x-text="log.level"></span>
+                                    <span class="log-message" x-text="$store.citrascope.stripAnsiCodes(log.message)"></span>
+                                </div>
+                            </template>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-
-        <!-- Templates for log display -->
-        <template id="logEntryTemplate">
-            <div class="log-entry">
-                <span class="log-timestamp"></span>
-                <span class="log-level"></span>
-                <span class="log-message"></span>
-            </div>
-        </template>
-
-        <template id="latestLogLineTemplate">
-            <span class="log-timestamp"></span>
-            <span class="log-level"></span>
-            <span class="log-message"></span>
-        </template>
 
     </div>
 
@@ -533,34 +645,34 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div id="versionCheckLoading" style="text-align: center;">
+                    <div x-show="$store.citrascope.versionCheckState === 'loading'" style="text-align: center;">
                         <div class="spinner-border text-primary" role="status">
                             <span class="visually-hidden">Checking...</span>
                         </div>
                         <p class="mt-2">Checking for updates...</p>
                     </div>
-                    <div id="versionCheckUpToDate" style="display: none;">
+                    <div x-show="$store.citrascope.versionCheckState === 'up-to-date'">
                         <p class="text-success">✓ You're up to date!</p>
                         <p>
-                            <strong>Current version:</strong> <span id="modalCurrentVersionUpToDate">-</span>
+                            <strong>Current version:</strong> <span x-text="$store.citrascope.versionCheckResult?.currentVersion === 'development' ? 'development' : 'v' + ($store.citrascope.versionCheckResult?.currentVersion || '-')"></span>
                         </p>
                     </div>
-                    <div id="versionCheckUpdateAvailable" style="display: none;">
+                    <div x-show="$store.citrascope.versionCheckState === 'update-available'">
                         <p class="text-warning">A new version of CitraScope is available!</p>
                         <p class="mb-3">
-                            <strong>Current:</strong> <span id="modalCurrentVersion">-</span><br>
-                            <strong>Latest:</strong> <span id="modalLatestVersion">-</span>
+                            <strong>Current:</strong> <span x-text="'v' + ($store.citrascope.versionCheckResult?.currentVersion || '-')"></span><br>
+                            <strong>Latest:</strong> <span x-text="$store.citrascope.versionCheckResult?.latestVersion || '-'"></span>
                         </p>
                         <p class="mb-2">To upgrade, run:</p>
                         <pre class="bg-secondary p-2 rounded"><code>pip install -U citrascope</code></pre>
                         <p class="mb-0">
-                            <a href="#" id="releaseNotesLink" target="_blank" class="text-info">View release notes on GitHub →</a>
+                            <a :href="$store.citrascope.versionCheckResult?.releaseUrl || '#'" target="_blank" class="text-info">View release notes on GitHub →</a>
                         </p>
                     </div>
-                    <div id="versionCheckError" style="display: none;">
+                    <div x-show="$store.citrascope.versionCheckState === 'error'">
                         <p class="text-muted">Unable to check for updates. You may be offline or GitHub is unreachable.</p>
                         <p>
-                            <strong>Current version:</strong> <span id="modalCurrentVersionError">-</span>
+                            <strong>Current version:</strong> <span x-text="$store.citrascope.versionCheckResult?.currentVersion === 'development' ? 'development' : ($store.citrascope.versionCheckResult?.currentVersion || '-')"></span>
                         </p>
                     </div>
                 </div>
