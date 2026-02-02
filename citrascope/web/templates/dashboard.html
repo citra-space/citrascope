@@ -8,6 +8,7 @@
     <link rel="icon" type="image/png" href="/static/img/favicon.png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet"
         integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link href="/static/style.css" rel="stylesheet">
 </head>
 
@@ -16,6 +17,7 @@
         integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI"
         crossorigin="anonymous"></script>
     <script type="module" src="/static/store-init.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/persist@3.x.x/dist/cdn.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js"></script>
 
     <div class="container">
@@ -297,12 +299,17 @@
         <form id="configForm">
             <div class="row g-3 mb-3">
                 <!-- API Configuration Card -->
-                <div class="col-12">
+                <div class="col-12" x-data="{ apiCardExpanded: $persist(true).as('apiCard') }">
                     <div class="card bg-dark text-light border-secondary">
-                        <div class="card-header">
-                            <h5 class="mb-0">API Configuration</h5>
+                        <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" @click="apiCardExpanded = !apiCardExpanded">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-cloud-arrow-up"></i>
+                                <h5 class="mb-0">API Configuration</h5>
+                                <small class="text-muted" x-show="!apiCardExpanded" x-text="$store.citrascope.apiEndpoint === 'production' ? 'Production' : ($store.citrascope.apiEndpoint === 'development' ? 'Development' : 'Custom')"></small>
+                            </div>
+                            <i class="bi" :class="apiCardExpanded ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
                         </div>
-                        <div class="card-body">
+                        <div class="card-body" x-show="apiCardExpanded" x-collapse>
                             <div class="row g-3">
                                 <div class="col-12">
                                     <label for="apiEndpoint" class="form-label">API Endpoint</label>
@@ -345,12 +352,17 @@
                 </div>
 
                 <!-- Hardware Configuration Card -->
-                <div class="col-12">
+                <div class="col-12" x-data="{ hardwareCardExpanded: $persist(true).as('hardwareCard') }">
                     <div class="card bg-dark text-light border-secondary">
-                        <div class="card-header">
-                            <h5 class="mb-0">Hardware Configuration</h5>
+                        <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" @click="hardwareCardExpanded = !hardwareCardExpanded">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-hdd-network"></i>
+                                <h5 class="mb-0">Hardware Configuration</h5>
+                                <small class="text-muted" x-show="!hardwareCardExpanded" x-text="($store.citrascope.hardwareAdapters.find(a => a.value === $store.citrascope.config.hardware_adapter)?.label || $store.citrascope.config.hardware_adapter || 'Not configured')"></small>
+                            </div>
+                            <i class="bi" :class="hardwareCardExpanded ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
                         </div>
-                        <div class="card-body">
+                        <div class="card-body" x-show="hardwareCardExpanded" x-collapse>
                             <div class="row g-3 mb-3">
                                 <div class="col-12">
                                     <label for="hardwareAdapterSelect" class="form-label">Hardware Adapter <span class="text-danger">*</span></label>
@@ -547,12 +559,17 @@
                 </div>
 
                 <!-- Time Synchronization Settings Card -->
-                <div class="col-12">
+                <div class="col-12" x-data="{ timeCardExpanded: $persist(true).as('timeCard') }">
                     <div class="card bg-dark text-light border-secondary">
-                        <div class="card-header">
-                            <h5 class="mb-0">Time Synchronization</h5>
+                        <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" @click="timeCardExpanded = !timeCardExpanded">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-clock-history"></i>
+                                <h5 class="mb-0">Time Synchronization</h5>
+                                <small class="text-muted" x-show="!timeCardExpanded" x-text="($store.citrascope.config.time_offset_pause_ms || 500) + 'ms pause threshold'"></small>
+                            </div>
+                            <i class="bi" :class="timeCardExpanded ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
                         </div>
-                        <div class="card-body">
+                        <div class="card-body" x-show="timeCardExpanded" x-collapse>
                             <div class="row g-3">
                                 <div class="col-12 col-md-6">
                                     <label for="time_offset_pause_ms" class="form-label">Pause Threshold (ms)</label>
@@ -565,12 +582,17 @@
                 </div>
 
                 <!-- Logging Settings Card -->
-                <div class="col-12">
+                <div class="col-12" x-data="{ loggingCardExpanded: $persist(true).as('loggingCard') }">
                     <div class="card bg-dark text-light border-secondary">
-                        <div class="card-header">
-                            <h5 class="mb-0">Logging Settings</h5>
+                        <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" @click="loggingCardExpanded = !loggingCardExpanded">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-file-earmark-text"></i>
+                                <h5 class="mb-0">Logging Settings</h5>
+                                <small class="text-muted" x-show="!loggingCardExpanded" x-text="($store.citrascope.config.log_level || 'INFO') + ($store.citrascope.config.file_logging_enabled !== false ? ' • File logging' : ' • Console only')"></small>
+                            </div>
+                            <i class="bi" :class="loggingCardExpanded ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
                         </div>
-                        <div class="card-body">
+                        <div class="card-body" x-show="loggingCardExpanded" x-collapse>
                             <div class="row g-3">
                                 <div class="col-12 col-md-6">
                                     <label for="logLevel" class="form-label">Log Level</label>
@@ -600,12 +622,17 @@
                 </div>
 
                 <!-- Task Settings Card -->
-                <div class="col-12">
+                <div class="col-12" x-data="{ taskCardExpanded: $persist(true).as('taskCard') }">
                     <div class="card bg-dark text-light border-secondary">
-                        <div class="card-header">
-                            <h5 class="mb-0">Task Settings</h5>
+                        <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" @click="taskCardExpanded = !taskCardExpanded">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-gear"></i>
+                                <h5 class="mb-0">Task Settings</h5>
+                                <small class="text-muted" x-show="!taskCardExpanded" x-text="$store.citrascope.config.keep_images ? 'Keep images' : 'Delete after upload'"></small>
+                            </div>
+                            <i class="bi" :class="taskCardExpanded ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
                         </div>
-                        <div class="card-body">
+                        <div class="card-body" x-show="taskCardExpanded" x-collapse>
                             <div class="row g-3">
                                 <div class="col-12 col-md-6">
                                     <div class="form-check mt-2">
