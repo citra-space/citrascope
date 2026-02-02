@@ -127,6 +127,12 @@ class CitraScopeWebApp:
         if static_dir.exists():
             self.app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
+        # Mount images directory for camera captures (read-only access)
+        if daemon and hasattr(daemon, "settings"):
+            images_dir = daemon.settings.get_images_dir()
+            if images_dir.exists():
+                self.app.mount("/images", StaticFiles(directory=str(images_dir)), name="images")
+
         # Initialize Jinja2 templates
         templates_dir = Path(__file__).parent / "templates"
         self.templates = Jinja2Templates(directory=str(templates_dir))

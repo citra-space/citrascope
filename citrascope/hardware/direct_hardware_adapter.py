@@ -444,6 +444,31 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             return (0.0, 0.0)
         return self.mount.get_radec()
 
+    def _get_camera_file_extension(self) -> str:
+        """Determine appropriate file extension for camera output.
+
+        Returns:
+            File extension string (e.g., 'fits', 'png', 'jpg')
+        """
+        if not self.camera:
+            return "fits"
+
+        camera_type = type(self.camera).__name__
+
+        # Ximea hyperspectral always uses FITS (output_format means data structure, not file format)
+        if "Ximea" in camera_type or "Hyperspectral" in camera_type:
+            return "fits"
+
+        # For USB and RPI cameras, output_format represents file format
+        output_format = getattr(self.camera, "output_format", "fits")
+
+        # Map known formats to extensions
+        if output_format in ["fits", "png", "jpg", "jpeg", "raw"]:
+            return output_format
+
+        # Default to FITS for unknown formats
+        return "fits"
+
     def expose_camera(
         self,
         exposure_time: float,
@@ -473,9 +498,12 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             if count > 1:
                 self.logger.info(f"Exposure {i+1}/{count}")
 
-            # Generate save path
+            # Generate save path with camera's preferred output format
             timestamp = time.strftime("%Y%m%d_%H%M%S")
-            save_path = self.images_dir / f"direct_capture_{timestamp}_{i:03d}.fits"
+            # Use camera's output_format if it represents a file format, default to FITS
+            # Note: Some cameras (e.g., Ximea) use output_format for data structure, not file format
+            output_ext = self._get_camera_file_extension()
+            save_path = self.images_dir / f"direct_capture_{timestamp}_{i:03d}.{output_ext}"
 
             # Take exposure
             image_path = self.camera.take_exposure(
@@ -720,7 +748,9 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
 
         # Generate save path with task ID
         timestamp = time.strftime("%Y%m%d_%H%M%S")
-        save_path = self.images_dir / f"task_{task_id}_{timestamp}.fits"
+        # Use camera's preferred file extension
+        output_ext = self._get_camera_file_extension()
+        save_path = self.images_dir / f"task_{task_id}_{timestamp}.{output_ext}"
 
         return str(
             self.camera.take_exposure(

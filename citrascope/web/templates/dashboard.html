@@ -215,6 +215,14 @@
                             <strong>Filename:</strong> <span x-text="$store.citrascope.captureResult?.filename"></span><br>
                             <strong>Format:</strong> <span x-text="$store.citrascope.captureResult?.format || 'Unknown'"></span>
                         </div>
+
+                        <!-- Image Preview (only for PNG/JPG) -->
+                        <div x-show="$store.citrascope.captureResult && ['PNG', 'JPG', 'JPEG'].includes($store.citrascope.captureResult.format)" class="mt-3">
+                            <img :src="'/images/' + $store.citrascope.captureResult?.filename"
+                                 alt="Captured image"
+                                 class="img-fluid rounded border border-secondary"
+                                 style="max-height: 400px; width: auto; display: block; margin: 0 auto;">
+                        </div>
                     </div>
 
                     <!-- Images Directory -->

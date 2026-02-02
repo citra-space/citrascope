@@ -8,10 +8,10 @@ import * as components from './components.js';
 (() => {
     document.addEventListener('alpine:init', () => {
         // Register Alpine components FIRST (before Alpine starts processing the DOM)
-        Alpine.data('adapterField', components.adapterField);
-        Alpine.data('taskRow', components.taskRow);
-        Alpine.data('filterRow', components.filterRow);
-        Alpine.data('logEntry', components.logEntry);
+        window.Alpine.data('adapterField', components.adapterField);
+        window.Alpine.data('taskRow', components.taskRow);
+        window.Alpine.data('filterRow', components.filterRow);
+        window.Alpine.data('logEntry', components.logEntry);
 
         // Register store
         window.Alpine.store('citrascope', {
