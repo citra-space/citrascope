@@ -3,7 +3,7 @@ import { connectWebSocket } from './websocket.js';
 import { initConfig, initFilterConfig, setupAutofocusButton, createToast } from './config.js';
 import { getTasks, getLogs } from './api.js';
 
-// Store is registered in store-init.js (loaded before Alpine)
+// Store and components are registered in store-init.js (loaded before Alpine)
 
 // --- Store update handlers (replace DOM manipulation) ---
 function updateStoreFromStatus(status) {

@@ -104,6 +104,18 @@ async function loadConfiguration() {
         // Sync to Alpine store - x-model handles form population
         if (typeof Alpine !== 'undefined' && Alpine.store) {
             const store = Alpine.store('citrascope');
+
+            // Normalize boolean fields that may come as null from backend
+            if (config.file_logging_enabled === null || config.file_logging_enabled === undefined) {
+                config.file_logging_enabled = true; // Default to true
+            }
+            if (config.keep_images === null || config.keep_images === undefined) {
+                config.keep_images = false; // Default to false
+            }
+            if (config.scheduled_autofocus_enabled === null || config.scheduled_autofocus_enabled === undefined) {
+                config.scheduled_autofocus_enabled = false; // Default to false
+            }
+
             store.config = config;
             store.savedAdapter = config.hardware_adapter; // Sync savedAdapter to store
             store.apiEndpoint =
@@ -260,6 +272,9 @@ async function saveConfiguration(event) {
             if (typeof Alpine !== 'undefined' && Alpine.store) {
                 Alpine.store('citrascope').savedAdapter = config.hardware_adapter;
             }
+
+            // Update currentConfig with the saved values so they persist
+            currentConfig = { ...currentConfig, ...config };
 
             // After config saved successfully, save any modified filter focus positions
             const filterResults = await saveModifiedFilters();
