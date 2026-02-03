@@ -20,9 +20,11 @@ class XimeaHyperspectralCamera(AbstractCamera):
         default_gain (float): Default gain in dB
         default_exposure_ms (float): Default exposure time in milliseconds
         spectral_bands (int): Number of spectral bands (e.g., 16 for SM4X4, 25 for SM5X5)
-        output_format (str): Output format - 'raw' (2D mosaic) or 'datacube' (3D bands)
+        data_mode (str): Data structure - 'raw' (2D mosaic) or 'datacube' (3D separated bands)
         vertical_flip (bool): Flip image vertically
         horizontal_flip (bool): Flip image horizontally
+
+    Note: Always outputs FITS format files regardless of data_mode.
     """
 
     @classmethod
@@ -98,11 +100,11 @@ class XimeaHyperspectralCamera(AbstractCamera):
                 "group": "Camera",
             },
             {
-                "name": "output_format",
-                "friendly_name": "Output Format",
+                "name": "data_mode",
+                "friendly_name": "Data Mode",
                 "type": "str",
                 "default": "raw",
-                "description": "Output format: raw (2D mosaic) or datacube (3D separated bands)",
+                "description": "Data structure: raw (2D mosaic) or datacube (3D separated bands)",
                 "required": False,
                 "options": ["raw", "datacube"],
                 "group": "Camera",
@@ -151,7 +153,7 @@ class XimeaHyperspectralCamera(AbstractCamera):
         self.default_gain: float = kwargs.get("default_gain", 0.0)
         self.default_exposure_ms: float = kwargs.get("default_exposure_ms", 100.0)
         self.spectral_bands: int = kwargs.get("spectral_bands", 25)
-        self.output_format: str = kwargs.get("output_format", "raw")
+        self.data_mode: str = kwargs.get("data_mode", "raw")  # raw mosaic or datacube
         self.vertical_flip: bool = kwargs.get("vertical_flip", False)
         self.horizontal_flip: bool = kwargs.get("horizontal_flip", False)
 
@@ -375,7 +377,7 @@ class XimeaHyperspectralCamera(AbstractCamera):
                 timestamp = time.strftime("%Y%m%d_%H%M%S")
                 save_path = Path(f"ximea_hyperspectral_{timestamp}.tiff")
 
-            # Save image (format depends on output_format setting)
+            # Save image (data structure depends on data_mode setting)
             self.logger.debug(f"Saving image to: {save_path}")
             self._save_hyperspectral_image(img, save_path)
 
@@ -457,6 +459,16 @@ class XimeaHyperspectralCamera(AbstractCamera):
             bool: True (Ximea MQ cameras are hyperspectral)
         """
         return True
+
+    def get_preferred_file_extension(self) -> str:
+        """Get the preferred file extension for saved images.
+
+        Ximea hyperspectral cameras always output FITS format.
+
+        Returns:
+            'fits' - FITS format with hyperspectral metadata
+        """
+        return "fits"
 
     def get_camera_info(self) -> dict:
         """Get camera capabilities and information.
@@ -552,8 +564,8 @@ class XimeaHyperspectralCamera(AbstractCamera):
         # Get image data as numpy array
         data = img.get_image_data_numpy()
 
-        # Process based on output_format setting
-        if self.output_format == "datacube":
+        # Process based on data_mode setting
+        if self.data_mode == "datacube":
             # Create 3D datacube by demosaicing the spectral mosaic
             datacube = self._demosaic_to_datacube(data)
 
@@ -568,7 +580,7 @@ class XimeaHyperspectralCamera(AbstractCamera):
                 # Hyperspectral metadata
                 primary_hdu.header["HIERARCH SPECTRAL_TYPE"] = "hyperspectral"
                 primary_hdu.header["HIERARCH SPECTRAL_BANDS"] = self.spectral_bands
-                primary_hdu.header["HIERARCH OUTPUT_FORMAT"] = "datacube"
+                primary_hdu.header["HIERARCH DATA_MODE"] = "datacube"
                 primary_hdu.header["HIERARCH SENSOR_TYPE"] = "snapshot_mosaic"
 
                 # Capture metadata
@@ -636,7 +648,7 @@ class XimeaHyperspectralCamera(AbstractCamera):
                 # Hyperspectral metadata
                 hdu.header["HIERARCH SPECTRAL_TYPE"] = "hyperspectral"
                 hdu.header["HIERARCH SPECTRAL_BANDS"] = self.spectral_bands
-                hdu.header["HIERARCH OUTPUT_FORMAT"] = "raw"
+                hdu.header["HIERARCH DATA_MODE"] = "raw"
                 hdu.header["HIERARCH SENSOR_TYPE"] = "snapshot_mosaic"
 
                 # Capture metadata

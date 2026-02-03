@@ -445,7 +445,10 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         return self.mount.get_radec()
 
     def _get_camera_file_extension(self) -> str:
-        """Determine appropriate file extension for camera output.
+        """Get the preferred file extension from the camera.
+
+        Delegates to the camera's get_preferred_file_extension() method,
+        which allows each camera type to define its own file format logic.
 
         Returns:
             File extension string (e.g., 'fits', 'png', 'jpg')
@@ -453,21 +456,8 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         if not self.camera:
             return "fits"
 
-        camera_type = type(self.camera).__name__
-
-        # Ximea hyperspectral always uses FITS (output_format means data structure, not file format)
-        if "Ximea" in camera_type or "Hyperspectral" in camera_type:
-            return "fits"
-
-        # For USB and RPI cameras, output_format represents file format
-        output_format = getattr(self.camera, "output_format", "fits")
-
-        # Map known formats to extensions
-        if output_format in ["fits", "png", "jpg", "jpeg", "raw"]:
-            return output_format
-
-        # Default to FITS for unknown formats
-        return "fits"
+        # Let the camera decide its preferred file extension
+        return self.camera.get_preferred_file_extension()
 
     def expose_camera(
         self,
@@ -498,10 +488,8 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             if count > 1:
                 self.logger.info(f"Exposure {i+1}/{count}")
 
-            # Generate save path with camera's preferred output format
+            # Generate save path with camera's preferred file extension
             timestamp = time.strftime("%Y%m%d_%H%M%S")
-            # Use camera's output_format if it represents a file format, default to FITS
-            # Note: Some cameras (e.g., Ximea) use output_format for data structure, not file format
             output_ext = self._get_camera_file_extension()
             save_path = self.images_dir / f"direct_capture_{timestamp}_{i:03d}.{output_ext}"
 

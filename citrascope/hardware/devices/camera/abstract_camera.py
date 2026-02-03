@@ -100,3 +100,15 @@ class AbstractCamera(AbstractHardwareDevice):
             bool: True if hyperspectral camera, False otherwise (default)
         """
         return False
+
+    def get_preferred_file_extension(self) -> str:
+        """Get the preferred file extension for saved images.
+
+        This method allows each camera to define what file format it wants
+        to use, without the hardware adapter needing to know camera internals.
+
+        Returns:
+            File extension string without the dot (e.g., 'fits', 'png', 'jpg')
+        """
+        # Default implementation: use output_format if available, otherwise FITS
+        return getattr(self, "output_format", "fits")
