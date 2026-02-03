@@ -29,6 +29,7 @@ class SystemStatus(BaseModel):
 
     telescope_connected: bool = False
     camera_connected: bool = False
+    supports_direct_camera_control: bool = False
     current_task: Optional[str] = None
     tasks_pending: int = 0
     processing_active: bool = True
@@ -640,6 +641,12 @@ class CitraScopeWebApp:
             if not self.daemon.hardware_adapter:
                 return JSONResponse({"error": "Hardware adapter not available"}, status_code=503)
 
+            # Check if adapter supports direct camera control
+            if not self.daemon.hardware_adapter.supports_direct_camera_control():
+                return JSONResponse(
+                    {"error": "Hardware adapter does not support direct camera control"}, status_code=400
+                )
+
             try:
                 duration = request.get("duration", 0.1)
 
@@ -719,6 +726,14 @@ class CitraScopeWebApp:
                     self.status.camera_connected = self.daemon.hardware_adapter.is_camera_connected()
                 except Exception:
                     self.status.camera_connected = False
+
+                # Check adapter capabilities
+                try:
+                    self.status.supports_direct_camera_control = (
+                        self.daemon.hardware_adapter.supports_direct_camera_control()
+                    )
+                except Exception:
+                    self.status.supports_direct_camera_control = False
 
             if hasattr(self.daemon, "task_manager") and self.daemon.task_manager:
                 task_manager = self.daemon.task_manager

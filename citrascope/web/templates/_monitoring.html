@@ -29,7 +29,8 @@
                                 <div class="col-6 d-flex align-items-center gap-2">
                                     <span class="badge rounded-pill" :class="$store.citrascope.status?.camera_connected ? 'bg-success' : 'bg-danger'"
                                         x-text="$store.citrascope.status?.camera_connected ? 'Connected' : 'Disconnected'"></span>
-                                    <button class="btn btn-sm btn-outline-light" x-show="$store.citrascope.status?.camera_connected"
+                                    <button class="btn btn-sm btn-outline-light"
+                                        x-show="$store.citrascope.status?.camera_connected && $store.citrascope.status?.supports_direct_camera_control"
                                         @click="$store.citrascope.showCameraControl()">
                                         <i class="bi bi-camera"></i> Control
                                     </button>
