@@ -24,10 +24,13 @@ class TimeHealth:
     """Current time sync status level."""
 
     source: str
-    """Time source used (ntp, unknown)."""
+    """Time source used (ntp, gps, chrony, unknown)."""
 
     message: Optional[str] = None
     """Optional status message or error description."""
+
+    metadata: Optional[dict] = None
+    """Optional metadata (e.g., GPS satellite count, fix mode)."""
 
     @staticmethod
     def calculate_status(
@@ -61,6 +64,7 @@ class TimeHealth:
         source: str,
         pause_threshold: float,
         message: Optional[str] = None,
+        metadata: Optional[dict] = None,
     ) -> "TimeHealth":
         """
         Create TimeHealth from offset and pause threshold.
@@ -70,6 +74,7 @@ class TimeHealth:
             source: Time source identifier
             pause_threshold: Threshold that triggers task pause
             message: Optional status message
+            metadata: Optional metadata dict
 
         Returns:
             TimeHealth instance
@@ -80,6 +85,7 @@ class TimeHealth:
             status=status,
             source=source,
             message=message,
+            metadata=metadata,
         )
 
     def should_pause_observations(self) -> bool:
@@ -93,4 +99,5 @@ class TimeHealth:
             "status": self.status.value,
             "source": self.source,
             "message": self.message,
+            "metadata": self.metadata,
         }

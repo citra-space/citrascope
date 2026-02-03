@@ -89,8 +89,8 @@ export function formatLastAutofocus(status) {
 
 /**
  * Format time offset with source information
- * @param {Object} timeHealth - Time health object with offset_ms and source
- * @returns {string} Formatted time offset (e.g., "+50ms (ntp)")
+ * @param {Object} timeHealth - Time health object with offset_ms, source, and optional metadata
+ * @returns {string} Formatted time offset (e.g., "+50ms (ntp)" or "+2.3ms (GPS Time Lock) - 12 sats, 3D fix")
  */
 export function formatTimeOffset(timeHealth) {
     if (!timeHealth || timeHealth.offset_ms == null) return '-';
@@ -101,6 +101,20 @@ export function formatTimeOffset(timeHealth) {
     if (abs < 1) result = `${s}${abs.toFixed(2)}ms`;
     else if (abs < 1000) result = `${s}${abs.toFixed(0)}ms`;
     else result = `${s}${(abs / 1000).toFixed(2)}s`;
-    if (timeHealth.source && timeHealth.source !== 'unknown') result += ` (${timeHealth.source})`;
+
+    // Add source - make GPS lock prominent
+    if (timeHealth.source === 'gps') {
+        result += ' (GPS Time Lock)';
+    } else if (timeHealth.source && timeHealth.source !== 'unknown') {
+        result += ` (${timeHealth.source})`;
+    }
+
+    // Add GPS metadata if available
+    if (timeHealth.metadata?.satellites != null) {
+        const fixLabels = ['Invalid', 'No Fix', '2D', '3D'];
+        const fixMode = timeHealth.metadata.fix_mode || 0;
+        result += ` - ${timeHealth.metadata.satellites} sats, ${fixLabels[fixMode]} fix`;
+    }
+
     return result;
 }
