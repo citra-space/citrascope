@@ -1,59 +1,55 @@
 // Configuration management for CitraScope
 
-import { getConfig, saveConfig, getConfigStatus, getHardwareAdapters, getAdapterSchema } from './api.js';
+import { getConfig, saveConfig, getConfigStatus, getHardwareAdapters } from './api.js';
 import { getFilterColor } from './filters.js';
+
+function updateStoreEnabledFilters(filters) {
+    if (typeof Alpine !== 'undefined' && Alpine.store) {
+        const enabled = Object.values(filters || {})
+            .filter(f => f.enabled !== false)
+            .map(f => ({ name: f.name, color: getFilterColor(f.name) }));
+        Alpine.store('citrascope').enabledFilters = enabled;
+    }
+}
 
 // API Host constants - must match backend constants in app.py
 const PROD_API_HOST = 'api.citra.space';
 const DEV_API_HOST = 'dev.api.citra.space';
 const DEFAULT_API_PORT = 443;
 
-let currentAdapterSchema = [];
-export let currentConfig = {};
-let savedAdapter = null; // Track the currently saved adapter
+/**
+ * Handle adapter selection change (called from Alpine store)
+ */
+async function handleAdapterChange(adapter) {
+    const store = Alpine.store('citrascope');
+    if (adapter) {
+        const allAdapterSettings = store.config.adapter_settings || {};
+        const newAdapterSettings = allAdapterSettings[adapter] || {};
+
+        console.log(`Switching to adapter: ${adapter}`);
+        console.log('All adapter settings:', allAdapterSettings);
+        console.log('Settings for this adapter:', newAdapterSettings);
+
+        await loadAdapterSchema(adapter, newAdapterSettings);
+        await loadFilterConfig();
+    } else {
+        store.adapterFields = [];
+        store.filterConfigVisible = false;
+    }
+}
 
 export async function initConfig() {
+    // Attach config methods to Alpine store
+    const store = Alpine.store('citrascope');
+    store.handleAdapterChange = handleAdapterChange;
+    store.reloadAdapterSchema = reloadAdapterSchema;
+
     // Populate hardware adapter dropdown
     await loadAdapterOptions();
 
-    // Hardware adapter selection change
-    const adapterSelect = document.getElementById('hardwareAdapterSelect');
-    if (adapterSelect) {
-        adapterSelect.addEventListener('change', async (e) => {
-            const adapter = e.target.value;
-            if (adapter) {
-                // Extract the NEW adapter's saved settings from the nested structure
-                const allAdapterSettings = currentConfig.adapter_settings || {};
-                const newAdapterSettings = allAdapterSettings[adapter] || {};
-                await loadAdapterSchema(adapter, newAdapterSettings);
-                populateAdapterSettings(newAdapterSettings);
-                await loadFilterConfig();
-            } else {
-                document.getElementById('adapter-settings-container').innerHTML = '';
-                const filterSection = document.getElementById('filterConfigSection');
-                if (filterSection) filterSection.style.display = 'none';
-            }
-        });
-    }
-
-    // API endpoint selection change
-    const apiEndpointSelect = document.getElementById('apiEndpoint');
-    if (apiEndpointSelect) {
-        apiEndpointSelect.addEventListener('change', (e) => {
-            const customContainer = document.getElementById('customHostContainer');
-            if (e.target.value === 'custom') {
-                customContainer.style.display = 'block';
-            } else {
-                customContainer.style.display = 'none';
-            }
-        });
-    }
-
-    // Config form submission
-    const configForm = document.getElementById('configForm');
-    if (configForm) {
-        configForm.addEventListener('submit', saveConfiguration);
-    }
+    // Config form submission handled by Alpine @submit.prevent in template
+    // Expose saveConfiguration for template access
+    window.saveConfiguration = saveConfiguration;
 
     // Load initial config
     await loadConfiguration();
@@ -87,21 +83,13 @@ async function checkConfigStatus() {
 async function loadAdapterOptions() {
     try {
         const data = await getHardwareAdapters();
-        const adapterSelect = document.getElementById('hardwareAdapterSelect');
 
-        if (adapterSelect && data.adapters) {
-            // Clear existing options except the first placeholder
-            while (adapterSelect.options.length > 1) {
-                adapterSelect.remove(1);
-            }
-
-            // Add options from API
-            data.adapters.forEach(adapterName => {
-                const option = document.createElement('option');
-                option.value = adapterName;
-                option.textContent = data.descriptions[adapterName] || adapterName;
-                adapterSelect.appendChild(option);
-            });
+        if (data.adapters && typeof Alpine !== 'undefined' && Alpine.store) {
+            const options = data.adapters.map(adapterName => ({
+                value: adapterName,
+                label: data.descriptions[adapterName] || adapterName
+            }));
+            Alpine.store('citrascope').hardwareAdapters = options;
         }
     } catch (error) {
         console.error('Failed to load hardware adapters:', error);
@@ -114,85 +102,34 @@ async function loadAdapterOptions() {
 async function loadConfiguration() {
     try {
         const config = await getConfig();
-        currentConfig = config; // Save for reuse when saving
-        savedAdapter = config.hardware_adapter; // Track saved adapter
 
-        // Display config file path
-        const configPathElement = document.getElementById('configFilePath');
-        if (configPathElement && config.config_file_path) {
-            configPathElement.textContent = config.config_file_path;
-        }
+        // Sync to Alpine store - x-model handles form population
+        if (typeof Alpine !== 'undefined' && Alpine.store) {
+            const store = Alpine.store('citrascope');
 
-        // Display log file path
-        const logPathElement = document.getElementById('logFilePath');
-        if (logPathElement) {
-            if (config.log_file_path) {
-                logPathElement.textContent = config.log_file_path;
-            } else {
-                logPathElement.textContent = 'Disabled';
+            // Normalize boolean fields that may come as null from backend
+            if (config.file_logging_enabled === null || config.file_logging_enabled === undefined) {
+                config.file_logging_enabled = true; // Default to true
             }
-        }
+            if (config.keep_images === null || config.keep_images === undefined) {
+                config.keep_images = false; // Default to false
+            }
+            if (config.scheduled_autofocus_enabled === null || config.scheduled_autofocus_enabled === undefined) {
+                config.scheduled_autofocus_enabled = false; // Default to false
+            }
 
-        // Display images directory path
-        const imagesDirElement = document.getElementById('imagesDirPath');
-        if (imagesDirElement && config.images_dir_path) {
-            imagesDirElement.textContent = config.images_dir_path;
-        }
+            store.config = config;
+            store.savedAdapter = config.hardware_adapter; // Sync savedAdapter to store
+            store.apiEndpoint =
+                config.host === PROD_API_HOST ? 'production' :
+                config.host === DEV_API_HOST ? 'development' : 'custom';
 
-        // API endpoint selector
-        const apiEndpointSelect = document.getElementById('apiEndpoint');
-        const customHostContainer = document.getElementById('customHostContainer');
-        const customHost = document.getElementById('customHost');
-        const customPort = document.getElementById('customPort');
-        const customUseSsl = document.getElementById('customUseSsl');
-
-        if (config.host === PROD_API_HOST) {
-            apiEndpointSelect.value = 'production';
-            customHostContainer.style.display = 'none';
-        } else if (config.host === DEV_API_HOST) {
-            apiEndpointSelect.value = 'development';
-            customHostContainer.style.display = 'none';
-        } else {
-            apiEndpointSelect.value = 'custom';
-            customHostContainer.style.display = 'block';
-            customHost.value = config.host || '';
-            customPort.value = config.port || DEFAULT_API_PORT;
-            customUseSsl.checked = config.use_ssl !== undefined ? config.use_ssl : true;
-        }
-
-        // Core fields
-        document.getElementById('personal_access_token').value = config.personal_access_token || '';
-        document.getElementById('telescopeId').value = config.telescope_id || '';
-        document.getElementById('hardwareAdapterSelect').value = config.hardware_adapter || '';
-        document.getElementById('logLevel').value = config.log_level || 'INFO';
-        document.getElementById('keep_images').checked = config.keep_images || false;
-        document.getElementById('file_logging_enabled').checked = config.file_logging_enabled !== undefined ? config.file_logging_enabled : true;
-
-        // Load autofocus settings (top-level)
-        const scheduledAutofocusEnabled = document.getElementById('scheduled_autofocus_enabled');
-        const autofocusInterval = document.getElementById('autofocus_interval_minutes');
-        if (scheduledAutofocusEnabled) {
-            scheduledAutofocusEnabled.checked = config.scheduled_autofocus_enabled || false;
-        }
-        if (autofocusInterval) {
-            autofocusInterval.value = config.autofocus_interval_minutes || 60;
-        }
-
-        // Load time sync settings (monitoring always enabled)
-        const timeOffsetPause = document.getElementById('time_offset_pause_ms');
-
-        if (timeOffsetPause) {
-            timeOffsetPause.value = config.time_offset_pause_ms || 500;
-        }
-
-        // Load adapter-specific settings if adapter is selected
-        if (config.hardware_adapter) {
-            // adapter_settings is nested: {"nina": {...}, "kstars": {...}, "direct": {...}}
-            // Extract the current adapter's settings
-            const allAdapterSettings = config.adapter_settings || {};
-            const currentAdapterSettings = allAdapterSettings[config.hardware_adapter] || {};
-            await loadAdapterSchema(config.hardware_adapter, currentAdapterSettings);
-            populateAdapterSettings(currentAdapterSettings);
+            // Load adapter-specific settings if adapter is selected
+            if (config.hardware_adapter) {
+                const allAdapterSettings = config.adapter_settings || {};
+                const currentAdapterSettings = allAdapterSettings[config.hardware_adapter] || {};
+                await loadAdapterSchema(config.hardware_adapter, currentAdapterSettings);
+            }
         }
     } catch (error) {
         console.error('Failed to load config:', error);
@@ -200,7 +137,16 @@ async function loadConfiguration() {
 }
 
 /**
- * Load adapter schema and render settings form
+ * Get default value for a field type
+ */
+function getDefaultForType(type) {
+    if (type === 'bool') return false;
+    if (type === 'int' || type === 'float') return 0;
+    return '';
+}
+
+/**
+ * Load adapter schema and merge with current values
  */
 async function loadAdapterSchema(adapterName, currentSettings = {}) {
     try {
@@ -209,190 +155,35 @@ async function loadAdapterSchema(adapterName, currentSettings = {}) {
             ? `?current_settings=${encodeURIComponent(JSON.stringify(currentSettings))}`
             : '';
 
+        console.log(`Loading schema for ${adapterName} with settings:`, currentSettings);
+
         const response = await fetch(`/api/hardware-adapters/${adapterName}/schema${settingsParam}`);
         const data = await response.json();
 
-        currentAdapterSchema = data.schema || [];
-        renderAdapterSettings(currentAdapterSchema);
+        console.log(`Schema API response:`, data);
+
+        const schema = data.schema || [];
+
+        // Merge schema with values into enriched field objects
+        // Use Alpine.reactive to ensure nested properties are reactive
+        const enrichedFields = schema
+            .filter(field => !field.readonly) // Skip readonly fields
+            .map(field => Alpine.reactive({
+                ...field,  // All schema properties (name, type, options, etc.)
+                value: currentSettings[field.name] ?? field.default ?? getDefaultForType(field.type)
+            }));
+
+        console.log('Loaded adapter fields:', enrichedFields.map(f => `${f.name}=${f.value} (${f.type})`));
+
+        // Update Alpine store with unified field objects
+        if (typeof Alpine !== 'undefined' && Alpine.store) {
+            const store = Alpine.store('citrascope');
+            store.adapterFields = enrichedFields;
+        }
     } catch (error) {
         console.error('Failed to load adapter schema:', error);
         showConfigError(`Failed to load settings for ${adapterName}`);
     }
-}
-
-/**
- * Render adapter-specific settings form
- */
-function renderAdapterSettings(schema) {
-    const container = document.getElementById('adapter-settings-container');
-
-    if (!schema || schema.length === 0) {
-        container.innerHTML = '';
-        return;
-    }
-
-    // Group fields by their 'group' property
-    const grouped = schema.reduce((acc, field) => {
-        if (field.readonly) return acc; // Skip readonly fields
-        const group = field.group || 'General';
-        if (!acc[group]) acc[group] = [];
-        acc[group].push(field);
-        return acc;
-    }, {});
-
-    let html = '<h5 class="mb-3">Adapter Settings</h5>';
-
-    // Render each group as a card
-    Object.entries(grouped).forEach(([groupName, fields]) => {
-        html += `<div class="card bg-dark border-secondary mb-3">`;
-        html += `<div class="card-header">`;
-        html += `<h6 class="mb-0"><i class="bi bi-${getGroupIcon(groupName)} me-2"></i>${groupName}</h6>`;
-        html += `</div>`;
-        html += `<div class="card-body">`;
-        html += `<div class="row g-3">`;
-
-        fields.forEach(field => {
-            const isRequired = field.required ? '<span class="text-danger">*</span>' : '';
-            const placeholder = field.placeholder || '';
-            const description = field.description || '';
-            const displayName = field.friendly_name || field.name;
-
-            html += '<div class="col-12 col-md-4">';
-            html += `<label for="adapter_${field.name}" class="form-label">${displayName} ${isRequired}</label>`;
-
-            if (field.type === 'bool') {
-                html += `<div class="form-check mt-2">`;
-                html += `<input class="form-check-input adapter-setting" type="checkbox" id="adapter_${field.name}" data-field="${field.name}" data-type="${field.type}">`;
-                html += `<label class="form-check-label" for="adapter_${field.name}">${description}</label>`;
-                html += `</div>`;
-            } else if (field.options && field.options.length > 0) {
-                html += `<select id="adapter_${field.name}" class="form-select adapter-setting" data-field="${field.name}" data-type="${field.type}" ${field.required ? 'required' : ''}>`;
-                html += `<option value="">-- Select ${displayName} --</option>`;
-                field.options.forEach(opt => {
-                    // Handle both object format {value, label} and plain string options
-                    const optValue = typeof opt === 'object' ? opt.value : opt;
-                    const optLabel = typeof opt === 'object' ? opt.label : opt;
-                    html += `<option value="${optValue}">${optLabel}</option>`;
-                });
-                html += `</select>`;
-            } else if (field.type === 'int' || field.type === 'float') {
-                const min = field.min !== undefined ? `min="${field.min}"` : '';
-                const max = field.max !== undefined ? `max="${field.max}"` : '';
-                const step = field.type === 'float' ? 'step="any"' : '';
-                html += `<input type="number" id="adapter_${field.name}" class="form-control adapter-setting" `;
-                html += `data-field="${field.name}" data-type="${field.type}" `;
-                html += `placeholder="${placeholder}" ${min} ${max} ${step} ${field.required ? 'required' : ''}>`;
-            } else {
-                // Default to text input
-                const pattern = field.pattern ? `pattern="${field.pattern}"` : '';
-                html += `<input type="text" id="adapter_${field.name}" class="form-control adapter-setting" `;
-                html += `data-field="${field.name}" data-type="${field.type}" `;
-                html += `placeholder="${placeholder}" ${pattern} ${field.required ? 'required' : ''}>`;
-            }
-
-            if (description && field.type !== 'bool') {
-                html += `<small class="text-muted">${description}</small>`;
-            }
-            html += '</div>';
-        });
-
-        html += `</div></div></div>`; // Close row, card-body, card
-    });
-
-    container.innerHTML = html;
-
-    // Add change listeners to device type fields to reload schema dynamically
-    const deviceTypeFields = ['camera_type', 'mount_type', 'filter_wheel_type', 'focuser_type'];
-    deviceTypeFields.forEach(fieldName => {
-        const select = document.getElementById(`adapter_${fieldName}`);
-        if (select) {
-            select.addEventListener('change', async () => {
-                // Get current adapter name
-                const adapterSelect = document.getElementById('hardwareAdapterSelect');
-                if (!adapterSelect || !adapterSelect.value) return;
-
-                // Collect current settings
-                const currentSettings = collectAdapterSettings();
-
-                // Reload schema with new device type selection
-                await loadAdapterSchema(adapterSelect.value, currentSettings);
-
-                // Repopulate settings (preserves user's selections)
-                populateAdapterSettings(currentSettings);
-            });
-        }
-    });
-}
-
-/**
- * Get Bootstrap icon name for a group
- */
-function getGroupIcon(groupName) {
-    const icons = {
-        'Camera': 'camera',
-        'Mount': 'compass',
-        'Filter Wheel': 'circle',
-        'Focuser': 'eyeglasses',
-        'Connection': 'ethernet',
-        'Devices': 'hdd-network',
-        'Imaging': 'image',
-        'General': 'gear',
-        'Advanced': 'sliders'
-    };
-    return icons[groupName] || 'gear';
-}
-
-/**
- * Populate adapter settings with values
- */
-function populateAdapterSettings(adapterSettings) {
-    Object.entries(adapterSettings).forEach(([key, value]) => {
-        const input = document.getElementById(`adapter_${key}`);
-        if (input) {
-            if (input.type === 'checkbox') {
-                input.checked = value;
-            } else {
-                input.value = value;
-            }
-        }
-    });
-}
-
-/**
- * Collect adapter settings from form
- */
-function collectAdapterSettings() {
-    const settings = {};
-    const inputs = document.querySelectorAll('.adapter-setting');
-
-    inputs.forEach(input => {
-        const fieldName = input.dataset.field;
-        const fieldType = input.dataset.type;
-        let value;
-
-        if (input.type === 'checkbox') {
-            value = input.checked;
-        } else {
-            value = input.value;
-        }
-
-        // Skip empty values for non-checkbox fields (will use backend defaults)
-        if (input.type !== 'checkbox' && (value === '' || value === null || value === undefined)) {
-            return;
-        }
-
-        // Type conversion
-        if (fieldType === 'int') {
-            value = parseInt(value, 10);
-        } else if (fieldType === 'float') {
-            value = parseFloat(value);
-        }
-        // bool type already handled above
-
-        settings[fieldName] = value;
-    });
-
-    return settings;
 }
 
 /**
@@ -401,70 +192,70 @@ function collectAdapterSettings() {
 async function saveConfiguration(event) {
     event.preventDefault();
 
-    const saveButton = document.getElementById('saveConfigButton');
-    const buttonText = document.getElementById('saveButtonText');
-    const spinner = document.getElementById('saveButtonSpinner');
-
-    // Show loading state
-    saveButton.disabled = true;
-    spinner.style.display = 'inline-block';
-    buttonText.textContent = 'Saving...';
-
     // Hide previous messages
     hideConfigMessages();
 
-    // Determine API host settings based on endpoint selection
-    const apiEndpoint = document.getElementById('apiEndpoint').value;
-    let host, port, use_ssl;
+    // Get config from store (x-model keeps it up to date)
+    const store = Alpine.store('citrascope');
+    store.isSavingConfig = true;
+    const formConfig = store.config;
 
-    if (apiEndpoint === 'production') {
+    // Determine API host settings based on endpoint selection
+    let host, port, use_ssl;
+    if (store.apiEndpoint === 'production') {
         host = PROD_API_HOST;
         port = DEFAULT_API_PORT;
         use_ssl = true;
-    } else if (apiEndpoint === 'development') {
+    } else if (store.apiEndpoint === 'development') {
         host = DEV_API_HOST;
         port = DEFAULT_API_PORT;
         use_ssl = true;
-    } else { // custom
-        host = document.getElementById('customHost').value;
-        port = parseInt(document.getElementById('customPort').value, 10);
-        use_ssl = document.getElementById('customUseSsl').checked;
+    } else {
+        host = formConfig.host || '';
+        port = formConfig.port || DEFAULT_API_PORT;
+        use_ssl = formConfig.use_ssl !== undefined ? formConfig.use_ssl : true;
     }
 
+    // Convert adapterFields back to flat settings object (for current adapter only)
+    const adapterSettings = {};
+    (store.adapterFields || []).forEach(field => {
+        // Include all fields with defined values (including 0, false, empty string)
+        if (field.value !== undefined && field.value !== null) {
+            adapterSettings[field.name] = field.value;
+        }
+    });
+
     const config = {
-        personal_access_token: document.getElementById('personal_access_token').value,
-        telescope_id: document.getElementById('telescopeId').value,
-        hardware_adapter: document.getElementById('hardwareAdapterSelect').value,
-        adapter_settings: collectAdapterSettings(),
-        log_level: document.getElementById('logLevel').value,
-        keep_images: document.getElementById('keep_images').checked,
-        file_logging_enabled: document.getElementById('file_logging_enabled').checked,
-        // Autofocus settings (top-level)
-        scheduled_autofocus_enabled: document.getElementById('scheduled_autofocus_enabled')?.checked || false,
-        autofocus_interval_minutes: parseInt(document.getElementById('autofocus_interval_minutes')?.value || 60, 10),
-        // Time sync settings (monitoring always enabled)
-        time_offset_pause_ms: parseFloat(document.getElementById('time_offset_pause_ms')?.value || 500),
-        // API settings from endpoint selector
-        host: host,
-        port: port,
-        use_ssl: use_ssl,
-        // Preserve other settings from loaded config
-        max_task_retries: currentConfig.max_task_retries || 3,
-        initial_retry_delay_seconds: currentConfig.initial_retry_delay_seconds || 30,
-        max_retry_delay_seconds: currentConfig.max_retry_delay_seconds || 300,
-        log_retention_days: currentConfig.log_retention_days || 30,
-        last_autofocus_timestamp: currentConfig.last_autofocus_timestamp, // Preserve timestamp
+        personal_access_token: formConfig.personal_access_token || '',
+        telescope_id: formConfig.telescope_id || '',
+        hardware_adapter: formConfig.hardware_adapter || '',
+        adapter_settings: adapterSettings, // Send flat settings for current adapter
+        log_level: formConfig.log_level || 'INFO',
+        keep_images: formConfig.keep_images || false,
+        file_logging_enabled: formConfig.file_logging_enabled !== undefined ? formConfig.file_logging_enabled : true,
+        scheduled_autofocus_enabled: formConfig.scheduled_autofocus_enabled || false,
+        autofocus_interval_minutes: parseInt(formConfig.autofocus_interval_minutes || 60, 10),
+        time_offset_pause_ms: parseFloat(formConfig.time_offset_pause_ms || 500),
+        host,
+        port,
+        use_ssl,
+        // Preserve other settings from Alpine store (the single source of truth)
+        max_task_retries: store.config.max_task_retries || 3,
+        initial_retry_delay_seconds: store.config.initial_retry_delay_seconds || 30,
+        max_retry_delay_seconds: store.config.max_retry_delay_seconds || 300,
+        log_retention_days: store.config.log_retention_days || 30,
+        last_autofocus_timestamp: store.config.last_autofocus_timestamp,
     };
 
     try {
-        // Validate filters BEFORE saving main config (belt and suspenders)
-        const inputs = document.querySelectorAll('.filter-focus-input');
-        if (inputs.length > 0) {
-            const checkboxes = document.querySelectorAll('.filter-enabled-checkbox');
-            const enabledCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+        // Validate filters BEFORE saving main config
+        const filters = store.filters || {};
+        const filterCount = Object.keys(filters).length;
+        if (filterCount > 0) {
+            const enabledCount = Object.values(filters).filter(f => f.enabled).length;
             if (enabledCount === 0) {
                 showConfigMessage('At least one filter must be enabled', 'danger');
-                return; // Exit early without saving anything
+                return;
             }
         }
 
@@ -472,7 +263,9 @@ async function saveConfiguration(event) {
 
         if (result.ok) {
             // Update saved adapter to match newly saved config
-            savedAdapter = config.hardware_adapter;
+            if (typeof Alpine !== 'undefined' && Alpine.store) {
+                Alpine.store('citrascope').savedAdapter = config.hardware_adapter;
+            }
 
             // After config saved successfully, save any modified filter focus positions
             const filterResults = await saveModifiedFilters();
@@ -499,9 +292,7 @@ async function saveConfiguration(event) {
         showConfigError('Failed to save configuration: ' + error.message);
     } finally {
         // Reset button state
-        saveButton.disabled = false;
-        spinner.style.display = 'none';
-        buttonText.textContent = 'Save Configuration';
+        store.isSavingConfig = false;
     }
 }
 
@@ -604,92 +395,53 @@ export function showConfigSection() {
  * Load and display filter configuration
  */
 async function loadFilterConfig() {
-    const filterSection = document.getElementById('filterConfigSection');
-    const changeMessage = document.getElementById('filterAdapterChangeMessage');
-    const tableContainer = document.getElementById('filterTableContainer');
+    const store = Alpine.store('citrascope');
 
     // Check if selected adapter matches saved adapter
-    const adapterSelect = document.getElementById('hardwareAdapterSelect');
-    const selectedAdapter = adapterSelect ? adapterSelect.value : null;
+    const selectedAdapter = store.config.hardware_adapter;
 
-    if (selectedAdapter && savedAdapter && selectedAdapter !== savedAdapter) {
+    if (selectedAdapter && store.savedAdapter && selectedAdapter !== store.savedAdapter) {
         // Adapter has changed but not saved yet - show message and hide table
-        if (filterSection) filterSection.style.display = 'block';
-        if (changeMessage) changeMessage.style.display = 'block';
-        if (tableContainer) tableContainer.style.display = 'none';
+        store.filterConfigVisible = true;
+        store.filterAdapterChangeMessageVisible = true;
         return;
     }
 
     // Hide message and show table when adapters match
-    if (changeMessage) changeMessage.style.display = 'none';
-    if (tableContainer) tableContainer.style.display = 'block';
+    store.filterAdapterChangeMessageVisible = false;
 
     try {
         const response = await fetch('/api/adapter/filters');
 
         if (response.status === 404 || response.status === 503) {
-            // Adapter doesn't support filters or isn't available
-            if (filterSection) filterSection.style.display = 'none';
+            store.filterConfigVisible = false;
             return;
         }
 
         const data = await response.json();
 
         if (response.ok && data.filters) {
-            // Show the filter section
-            if (filterSection) filterSection.style.display = 'block';
+            store.filterConfigVisible = true;
 
-            // Update enabled filters display on dashboard
-            updateEnabledFiltersDisplay(data.filters);
+            // Update enabled filters display on dashboard (Alpine store)
+            updateStoreEnabledFilters(data.filters);
 
-            // Populate filter table
-            const tbody = document.getElementById('filterTableBody');
-            const noFiltersMsg = document.getElementById('noFiltersMessage');
-
-            if (tbody) {
-                tbody.innerHTML = '';
-                const filters = data.filters;
-                const filterIds = Object.keys(filters).sort();
-
-                if (filterIds.length === 0) {
-                    if (noFiltersMsg) noFiltersMsg.style.display = 'block';
-                } else {
-                    if (noFiltersMsg) noFiltersMsg.style.display = 'none';
-
-                    filterIds.forEach(filterId => {
-                        const filter = filters[filterId];
-                        const isEnabled = filter.enabled !== undefined ? filter.enabled : true;
-                        const filterColor = getFilterColor(filter.name);
-                        const row = document.createElement('tr');
-                        row.innerHTML = `
-                            <td>
-                                <input type="checkbox"
-                                       class="form-check-input filter-enabled-checkbox"
-                                       data-filter-id="${filterId}"
-                                       ${isEnabled ? 'checked' : ''}>
-                            </td>
-                            <td>
-                                <span class="badge" style="background-color: ${filterColor}; color: white;">${filter.name}</span>
-                            </td>
-                            <td>
-                                <input type="number"
-                                       class="form-control form-control-sm filter-focus-input"
-                                       data-filter-id="${filterId}"
-                                       value="${filter.focus_position}"
-                                       min="0"
-                                       step="1">
-                            </td>
-                        `;
-                        tbody.appendChild(row);
-                    });
-                }
-            }
+            // Add color to each filter and update store
+            const filtersWithColor = {};
+            Object.entries(data.filters).forEach(([id, filter]) => {
+                filtersWithColor[id] = {
+                    ...filter,
+                    color: getFilterColor(filter.name),
+                    enabled: filter.enabled !== undefined ? filter.enabled : true
+                };
+            });
+            store.filters = filtersWithColor;
         } else {
-            if (filterSection) filterSection.style.display = 'none';
+            store.filterConfigVisible = false;
         }
     } catch (error) {
         console.error('Error loading filter config:', error);
-        if (filterSection) filterSection.style.display = 'none';
+        store.filterConfigVisible = false;
     }
 }
 
@@ -698,41 +450,33 @@ async function loadFilterConfig() {
  * Returns: Object with { success: number, failed: number }
  */
 async function saveModifiedFilters() {
-    const inputs = document.querySelectorAll('.filter-focus-input');
-    if (inputs.length === 0) return { success: 0, failed: 0 }; // No filters to save
+    const store = Alpine.store('citrascope');
+    const filters = store.filters || {};
+    const filterIds = Object.keys(filters);
 
-    // Belt and suspenders: Validate at least one filter is enabled before saving
-    const checkboxes = document.querySelectorAll('.filter-enabled-checkbox');
-    const enabledCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+    if (filterIds.length === 0) return { success: 0, failed: 0 };
+
+    // Validate at least one filter is enabled
+    const enabledCount = Object.values(filters).filter(f => f.enabled).length;
     if (enabledCount === 0) {
         showConfigMessage('At least one filter must be enabled', 'danger');
-        return { success: 0, failed: inputs.length };
+        return { success: 0, failed: filterIds.length };
     }
 
-    // Collect all filter updates into array
+    // Collect all filter updates from store
     const filterUpdates = [];
-    for (const input of inputs) {
-        const filterId = input.dataset.filterId;
-        const focusPosition = parseInt(input.value);
-
-        if (Number.isNaN(focusPosition) || focusPosition < 0) {
-            continue; // Skip invalid entries
-        }
-
-        // Get enabled state from corresponding checkbox
-        const checkbox = document.querySelector(`.filter-enabled-checkbox[data-filter-id="${filterId}"]`);
-        const enabled = checkbox ? checkbox.checked : true;
+    for (const [filterId, filter] of Object.entries(filters)) {
+        const focusPosition = parseInt(filter.focus_position);
+        if (Number.isNaN(focusPosition) || focusPosition < 0) continue;
 
         filterUpdates.push({
             filter_id: filterId,
             focus_position: focusPosition,
-            enabled: enabled
+            enabled: filter.enabled !== undefined ? filter.enabled : true
         });
     }
 
-    if (filterUpdates.length === 0) {
-        return { success: 0, failed: 0 };
-    }
+    if (filterUpdates.length === 0) return { success: 0, failed: 0 };
 
     // Send single batch update
     try {
@@ -783,14 +527,8 @@ async function saveModifiedFilters() {
  * Trigger or cancel autofocus routine
  */
 async function triggerAutofocus() {
-    const button = document.getElementById('runAutofocusButton');
-    const buttonText = document.getElementById('autofocusButtonText');
-    const buttonSpinner = document.getElementById('autofocusButtonSpinner');
-
-    if (!button || !buttonText || !buttonSpinner) return;
-
-    // Check if this is a cancel action
-    const isCancel = button.dataset.action === 'cancel';
+    const store = Alpine.store('citrascope');
+    const isCancel = store.status?.autofocus_requested;
 
     if (isCancel) {
         // Cancel autofocus
@@ -802,7 +540,6 @@ async function triggerAutofocus() {
 
             if (response.ok && data.success) {
                 showToast('Autofocus cancelled', 'info');
-                updateAutofocusButton(false);
             } else {
                 showToast('Nothing to cancel', 'warning');
             }
@@ -814,8 +551,7 @@ async function triggerAutofocus() {
     }
 
     // Request autofocus
-    button.disabled = true;
-    buttonSpinner.style.display = 'inline-block';
+    store.isAutofocusing = true;
 
     try {
         const response = await fetch('/api/adapter/autofocus', {
@@ -826,7 +562,6 @@ async function triggerAutofocus() {
 
         if (response.ok) {
             showToast('Autofocus queued', 'success');
-            updateAutofocusButton(true);
         } else {
             showToast(data.error || 'Autofocus request failed', 'error');
         }
@@ -834,30 +569,7 @@ async function triggerAutofocus() {
         console.error('Error triggering autofocus:', error);
         showToast('Failed to trigger autofocus', 'error');
     } finally {
-        button.disabled = false;
-        buttonSpinner.style.display = 'none';
-    }
-}
-
-/**
- * Update autofocus button state based on whether autofocus is queued
- */
-function updateAutofocusButton(isQueued) {
-    const button = document.getElementById('runAutofocusButton');
-    const buttonText = document.getElementById('autofocusButtonText');
-
-    if (!button || !buttonText) return;
-
-    if (isQueued) {
-        buttonText.textContent = 'Cancel Autofocus';
-        button.dataset.action = 'cancel';
-        button.classList.remove('btn-outline-primary');
-        button.classList.add('btn-outline-warning');
-    } else {
-        buttonText.textContent = 'Run Autofocus';
-        button.dataset.action = 'request';
-        button.classList.remove('btn-outline-warning');
-        button.classList.add('btn-outline-primary');
+        store.isAutofocusing = false;
     }
 }
 
@@ -906,36 +618,27 @@ export async function initFilterConfig() {
 }
 
 /**
- * Update the enabled filters display on the dashboard.
- * @param {Object} filters - Filter configuration object
+ * Setup autofocus button event listener (call once during init)
  */
-function updateEnabledFiltersDisplay(filters) {
-    const filtersEl = document.getElementById('enabledFilters');
-    if (!filtersEl) return;
-
-    const enabledFilters = Object.values(filters)
-        .filter(filter => filter.enabled !== false)
-        .map(filter => filter.name);
-
-    if (enabledFilters.length > 0) {
-        filtersEl.innerHTML = enabledFilters.map(filterName => {
-            const color = getFilterColor(filterName);
-            return `<span class="badge me-1" style="background-color: ${color}; color: white;">${filterName}</span>`;
-        }).join('');
-    } else {
-        filtersEl.textContent = '-';
-    }
+// Autofocus button now uses Alpine @click directive in template
+// Expose triggerAutofocus for template access
+export function setupAutofocusButton() {
+    window.triggerAutofocus = triggerAutofocus;
 }
 
 /**
- * Setup autofocus button event listener (call once during init)
+ * Reload adapter schema (called from Alpine components when device type changes)
  */
-export function setupAutofocusButton() {
-    const autofocusBtn = document.getElementById('runAutofocusButton');
-    if (autofocusBtn) {
-        autofocusBtn.addEventListener('click', triggerAutofocus);
-    }
-}
+async function reloadAdapterSchema() {
+    const store = Alpine.store('citrascope');
+    const adapter = store.config.hardware_adapter;
+    if (!adapter) return;
 
-// Make showConfigSection available globally for onclick handlers in HTML
-window.showConfigSection = showConfigSection;
+    // Convert current adapterFields back to flat settings object
+    const currentSettings = {};
+    (store.adapterFields || []).forEach(field => {
+        currentSettings[field.name] = field.value;
+    });
+
+    await loadAdapterSchema(adapter, currentSettings);
+}

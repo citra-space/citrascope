@@ -1,0 +1,243 @@
+    <div id="monitoringSection" x-show="$store.citrascope.currentSection === 'monitoring'"
+        x-effect="$store.citrascope.status && $nextTick(() => { document.querySelectorAll('[data-bs-toggle=tooltip]').forEach(el => { try { bootstrap.Tooltip.getOrCreateInstance(el); } catch (_) {} }); })">
+        <div class="container">
+            <div class="row g-3 mb-3">
+                <div class="col-12 col-md-6">
+                    <div class="card bg-dark text-light border-secondary h-100">
+                        <div class="card-header">
+                            System Status
+                        </div>
+                        <div class="card-body">
+                            <div class="row mb-2">
+                                <div class="col-6 fw-semibold">Daemon</div>
+                                <div class="col-6">
+                                    <span class="badge rounded-pill" data-bs-toggle="tooltip" data-bs-placement="bottom"
+                                        :class="$store.citrascope.wsConnected ? 'bg-success' : ($store.citrascope.wsReconnecting ? 'bg-warning text-dark' : 'bg-secondary')"
+                                        :title="$store.citrascope.wsConnected ? 'Dashboard connected - receiving live updates' : ($store.citrascope.wsReconnecting ? 'Dashboard reconnecting' : 'Dashboard disconnected')"
+                                        x-text="$store.citrascope.wsConnected ? 'Connected' : ($store.citrascope.wsReconnecting ? 'Reconnecting' : 'Connecting...')"></span>
+                                </div>
+                            </div>
+                            <div class="row mb-2">
+                                <div class="col-6 fw-semibold">Telescope</div>
+                                <div class="col-6">
+                                    <span class="badge rounded-pill" :class="$store.citrascope.status?.telescope_connected ? 'bg-success' : 'bg-danger'"
+                                        x-text="$store.citrascope.status?.telescope_connected ? 'Connected' : 'Disconnected'"></span>
+                                </div>
+                            </div>
+                            <div class="row mb-2">
+                                <div class="col-6 fw-semibold">Camera</div>
+                                <div class="col-6 d-flex align-items-center gap-2">
+                                    <span class="badge rounded-pill" :class="$store.citrascope.status?.camera_connected ? 'bg-success' : 'bg-danger'"
+                                        x-text="$store.citrascope.status?.camera_connected ? 'Connected' : 'Disconnected'"></span>
+                                    <button class="btn btn-sm btn-outline-light"
+                                        x-show="$store.citrascope.status?.camera_connected && $store.citrascope.status?.supports_direct_camera_control"
+                                        @click="$store.citrascope.showCameraControl()">
+                                        <i class="bi bi-camera"></i> Control
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="row mb-2">
+                                <div class="col-6 fw-semibold">
+                                    <span data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="top" title="Controls whether the Citra.space server will automatically assign new observation tasks to this telescope">
+                                        Automated Scheduling
+                                    </span>
+                                </div>
+                                <div class="col-6 d-flex align-items-center gap-2">
+                                    <span><span class="badge rounded-pill" :class="$store.citrascope.status?.automated_scheduling ? 'bg-success' : 'bg-secondary'"
+                                        x-text="$store.citrascope.status?.automated_scheduling ? 'Enabled' : 'Disabled'"></span></span>
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" title="Toggle automated scheduling"
+                                            :checked="$store.citrascope.status?.automated_scheduling"
+                                            @change="$store.citrascope.toggleAutomatedScheduling($event.target.checked)">
+                                        <label class="form-check-label visually-hidden">Automated Scheduling</label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-6 fw-semibold">
+                                    <span data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="top" title="Controls whether this local daemon will execute tasks from its queue. Pause to safely stop observations without canceling scheduled tasks">
+                                        Task Processing
+                                    </span>
+                                </div>
+                                <div class="col-6 d-flex align-items-center gap-2">
+                                    <span><span class="badge rounded-pill" :class="$store.citrascope.status?.processing_active ? 'bg-success' : 'bg-secondary'"
+                                        x-text="$store.citrascope.status?.processing_active ? 'Enabled' : 'Disabled'"></span></span>
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" title="Toggle task processing"
+                                            :checked="$store.citrascope.status?.processing_active !== false"
+                                            @change="$store.citrascope.toggleProcessing($event.target.checked)">
+                                        <label class="form-check-label visually-hidden">Task Processing</label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-6 fw-semibold">
+                                    <span data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="top" title="System clock synchronization status. Accurate time is critical for astronomical observations">
+                                        Time Sync
+                                    </span>
+                                </div>
+                                <div class="col-6 d-flex align-items-center gap-2">
+                                    <span>
+                                        <span class="badge rounded-pill" data-bs-toggle="tooltip"
+                                            :class="$store.citrascope.status?.time_health?.status === 'ok' ? 'bg-success' : ($store.citrascope.status?.time_health?.status === 'critical' ? 'bg-danger' : 'bg-secondary')"
+                                            :title="$store.citrascope.status?.time_health?.status === 'ok' ? 'Time sync within threshold' : ($store.citrascope.status?.time_health?.status === 'critical' ? 'Time drift exceeded' : 'Unknown')"
+                                            x-text="$store.citrascope.status?.time_health?.status === 'ok' ? 'OK' : ($store.citrascope.status?.time_health?.status === 'critical' ? 'Paused' : 'Unknown')"></span>
+                                    </span>
+                                    <small class="text-muted" x-text="$store.citrascope.formatTimeOffset($store.citrascope.status?.time_health)">-</small>
+                                </div>
+                            </div>
+                            <!-- Missing Dependencies Alert -->
+                            <div class="alert alert-warning mt-3 mb-0" role="alert"
+                                x-show="$store.citrascope.status?.missing_dependencies?.length > 0">
+                                <template x-if="$store.citrascope.status?.missing_dependencies?.length > 0">
+                                    <div>
+                                        <strong><i class="bi bi-exclamation-triangle-fill me-2"></i>Missing Dependencies:</strong>
+                                        <ul class="mb-0 mt-2">
+                                            <template x-for="dep in $store.citrascope.status.missing_dependencies" :key="dep.device_name">
+                                                <li>
+                                                    <strong x-text="dep.device_name"></strong>: Missing <span x-text="dep.missing_packages"></span><br>
+                                                    <code class="small" x-text="dep.install_cmd"></code>
+                                                </li>
+                                            </template>
+                                        </ul>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12 col-md-6">
+                    <div class="card bg-dark text-light border-secondary h-100">
+                        <div class="card-header">
+                            Telescope
+                        </div>
+                        <div class="card-body">
+                            <div class="row mb-2">
+                                <div class="col-6 fw-semibold">Adapter</div>
+                                <div class="col-6" x-text="$store.citrascope.status?.hardware_adapter || '-'"></div>
+                            </div>
+                            <div class="row mb-2">
+                                <div class="col-6 fw-semibold">RA / DEC</div>
+                                <div class="col-6" x-text="($store.citrascope.status?.telescope_ra != null && $store.citrascope.status?.telescope_dec != null) ? ($store.citrascope.status.telescope_ra.toFixed(3) + '° / ' + $store.citrascope.status.telescope_dec.toFixed(3) + '°') : '-'"></div>
+                            </div>
+                            <div class="row mb-2">
+                                <div class="col-6 fw-semibold">Enabled Filters</div>
+                                <div class="col-6 d-flex flex-wrap gap-1">
+                                    <template x-if="$store.citrascope.enabledFilters.length === 0">
+                                        <span>-</span>
+                                    </template>
+                                    <template x-for="f in $store.citrascope.enabledFilters" :key="f.name">
+                                        <span class="badge me-1" :style="'background-color: ' + f.color + '; color: white;'" x-text="f.name"></span>
+                                    </template>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-6 fw-semibold">Ground Station</div>
+                                <div class="col-6">
+                                    <template x-if="$store.citrascope.status?.ground_station_name && $store.citrascope.status?.ground_station_url">
+                                        <a :href="$store.citrascope.status.ground_station_url" target="_blank" class="ground-station-link" x-text="$store.citrascope.status.ground_station_name + ' ↗'"></a>
+                                    </template>
+                                    <template x-if="$store.citrascope.status?.ground_station_name && !$store.citrascope.status?.ground_station_url">
+                                        <span x-text="$store.citrascope.status.ground_station_name"></span>
+                                    </template>
+                                    <template x-if="!$store.citrascope.status?.ground_station_name">
+                                        <span>-</span>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+        <div class="container">
+            <div class="row g-3 mb-3">
+                <div class="col-12">
+                    <div class="card bg-dark text-light border-secondary">
+                        <div class="card-header">
+                            Current Task
+                        </div>
+                        <div class="card-body">
+                            <div>
+                                <template x-if="$store.citrascope.currentTaskId">
+                                    <div>
+                                        <template x-for="task in $store.citrascope.tasks.filter(t => t.id === $store.citrascope.currentTaskId)" :key="task.id">
+                                            <div>
+                                                <div class="d-flex align-items-center gap-2 mb-2">
+                                                    <div class="spinner-border spinner-border-sm text-success" role="status">
+                                                        <span class="visually-hidden">Loading...</span>
+                                                    </div>
+                                                    <div class="fw-bold" style="font-size: 1.3em;" x-text="task.target"></div>
+                                                </div>
+                                                <div class="text-secondary small">
+                                                    <span x-text="'Task ID: ' + task.id"></span>
+                                                </div>
+                                            </div>
+                                        </template>
+                                        <template x-if="!$store.citrascope.tasks.find(t => t.id === $store.citrascope.currentTaskId)">
+                                            <div>
+                                                <div class="d-flex align-items-center gap-2 mb-2">
+                                                    <div class="spinner-border spinner-border-sm text-success" role="status">
+                                                        <span class="visually-hidden">Loading...</span>
+                                                    </div>
+                                                    <div class="fw-bold" style="font-size: 1.3em;" x-text="$store.citrascope.currentTaskId"></div>
+                                                </div>
+                                                <div class="text-secondary small">
+                                                    <span x-text="'Task ID: ' + $store.citrascope.currentTaskId"></span>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
+                                <template x-if="!$store.citrascope.currentTaskId && !$store.citrascope.countdown">
+                                    <p class="no-task-message text-muted-dark">No active task</p>
+                                </template>
+                                <template x-if="!$store.citrascope.currentTaskId && $store.citrascope.countdown">
+                                    <p class="no-task-message">No active task - next task in <span x-text="$store.citrascope.countdown"></span></p>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row g-3 mb-3">
+                <div class="col-12">
+                    <div class="card bg-dark text-light border-secondary">
+                        <div class="card-header d-flex align-items-center justify-content-between">
+                            <span>Task Queue</span>
+                            <span class="small text-secondary"><span x-text="$store.citrascope.status?.tasks_pending ?? $store.citrascope.tasks?.length ?? 0">0</span> pending</span>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <p class="p-3 text-muted-dark" x-show="$store.citrascope.tasks.length === 0">No pending tasks</p>
+                                <table class="table table-dark table-hover mb-0" x-show="$store.citrascope.tasks.length > 0">
+                                    <thead>
+                                        <tr>
+                                            <th>Target</th>
+                                            <th>Start Time</th>
+                                            <th>End Time</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <template x-for="task in $store.citrascope.tasks" :key="task.id">
+                                            <tr x-data="taskRow(task)"
+                                                class="task-row" :class="rowClass">
+                                                <td class="fw-semibold" x-text="task.target"></td>
+                                                <td class="text-secondary small" x-text="$store.citrascope.formatLocalTime(task.start_time)"></td>
+                                                <td class="text-secondary small" x-text="task.stop_time ? $store.citrascope.formatLocalTime(task.stop_time) : '-'"></td>
+                                                <td>
+                                                    <span class="badge rounded-pill" :class="statusBadgeClass" x-text="statusText"></span>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>

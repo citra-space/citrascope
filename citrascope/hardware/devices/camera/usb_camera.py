@@ -118,20 +118,21 @@ class UsbCamera(AbstractCamera):
             try:
                 from cv2_enumerate_cameras import enumerate_cameras
 
+                # Get fancy camera names from enumerate_cameras
+                # Assumption: enumerate_cameras() returns cameras in the same order as OpenCV detection
+                camera_infos = list(enumerate_cameras())
+
+                logging.debug(f"cv2_enumerate_cameras found {len(camera_infos)} cameras")
+
+                # Use the actual device index from camera_info for OpenCV compatibility
+                # Don't actually open cameras here - too wasteful
                 for camera_info in enumerate_cameras():
-                    index = camera_info.index
-                    name = camera_info.name or f"Camera {index}"
-                    backend = camera_info.backend or ""
+                    name = camera_info.name or f"Camera {camera_info.index}"
 
-                    # Get resolution
-                    cap = cv2.VideoCapture(index)
-                    if cap.isOpened():
-                        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                        cap.release()
-
-                        backend_str = f" ({backend})" if backend else ""
-                        cameras.append({"value": index, "label": f"{name} - {width}x{height}{backend_str}"})
+                    # Note: We're NOT opening cameras to verify or get resolution
+                    # Use camera_info.index (the actual OpenCV device index) not enumerate position
+                    cameras.append({"value": camera_info.index, "label": name})
+                    logging.debug(f"Found camera with device_id {camera_info.index}: {name}")
 
             except ImportError:
                 # cv2-enumerate-cameras not installed, use basic detection
@@ -297,12 +298,16 @@ class UsbCamera(AbstractCamera):
                 new_size = (width // binning, height // binning)
                 frame = self._cv2_module.resize(frame, new_size, interpolation=self._cv2_module.INTER_AREA)
 
+            # Determine format from file extension (if save_path provided) or configured output_format
+            file_extension = save_path.suffix.lower().lstrip(".")
+            format_to_use = file_extension if file_extension in ["fits", "png", "jpg", "jpeg"] else self.output_format
+
             # Save based on format
-            if self.output_format == "fits":
+            if format_to_use == "fits":
                 self._save_as_fits(frame, save_path)
-            elif self.output_format == "png":
+            elif format_to_use == "png":
                 self._cv2_module.imwrite(str(save_path), frame)
-            elif self.output_format == "jpg":
+            elif format_to_use in ["jpg", "jpeg"]:
                 self._cv2_module.imwrite(str(save_path), frame, [self._cv2_module.IMWRITE_JPEG_QUALITY, 95])
 
             self.logger.info(f"Image saved to {save_path}")

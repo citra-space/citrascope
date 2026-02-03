@@ -1,0 +1,170 @@
+    <div class="container my-4" id="configSection" x-show="$store.citrascope.currentSection === 'config'" x-cloak>
+        <form @submit.prevent="window.saveConfiguration($event)">
+            <div class="row g-3 mb-3">
+                <!-- API Configuration Card -->
+                <div class="col-12" x-data="{ apiCardExpanded: $persist(true).as('apiCard') }">
+                    <div class="card bg-dark text-light border-secondary">
+                        <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" @click="apiCardExpanded = !apiCardExpanded">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-cloud-arrow-up"></i>
+                                <h5 class="mb-0">API Configuration</h5>
+                                <small class="text-muted" x-show="!apiCardExpanded" x-text="$store.citrascope.apiEndpoint === 'production' ? 'Production' : ($store.citrascope.apiEndpoint === 'development' ? 'Development' : 'Custom')"></small>
+                            </div>
+                            <i class="bi" :class="apiCardExpanded ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+                        </div>
+                        <div class="card-body" x-show="apiCardExpanded">
+                            <div class="row g-3">
+                                <div class="col-12">
+                                    <label for="apiEndpoint" class="form-label">API Endpoint</label>
+                                    <select id="apiEndpoint" class="form-select" x-model="$store.citrascope.apiEndpoint">
+                                        <option value="production">Production (api.citra.space)</option>
+                                        <option value="development">Development (dev.api.citra.space)</option>
+                                        <option value="custom">Custom</option>
+                                    </select>
+                                </div>
+                                <div class="col-12" id="customHostContainer" x-show="$store.citrascope.apiEndpoint === 'custom'">
+                                    <label for="customHost" class="form-label">Custom API Host</label>
+                                    <input type="text" id="customHost" class="form-control" placeholder="api.example.com" x-model="$store.citrascope.config.host">
+                                    <div class="row g-2 mt-2">
+                                        <div class="col-6">
+                                            <label for="customPort" class="form-label small">Port</label>
+                                            <input type="number" id="customPort" class="form-control" placeholder="443" x-model.number="$store.citrascope.config.port">
+                                        </div>
+                                        <div class="col-6 d-flex align-items-end">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" id="customUseSsl" x-model="$store.citrascope.config.use_ssl">
+                                                <label class="form-check-label" for="customUseSsl">
+                                                    Use SSL
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-12 col-md-6">
+                                    <label for="personal_access_token" class="form-label">Personal Access Token <span class="text-danger">*</span></label>
+                                    <input type="password" id="personal_access_token" class="form-control" placeholder="Enter your Citra API token" required x-model="$store.citrascope.config.personal_access_token">
+                                    <small class="text-muted">Get your token and telescope ID from <a :href="$store.citrascope.config.app_url || ''" target="_blank" x-text="($store.citrascope.config.app_url || '').replace('https://', '')"></a></small>
+                                </div>
+                                <div class="col-12 col-md-6">
+                                    <label for="telescopeId" class="form-label">Telescope ID <span class="text-danger">*</span></label>
+                                    <input type="text" id="telescopeId" class="form-control" placeholder="Enter telescope ID" required x-model="$store.citrascope.config.telescope_id">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+
+                {% include '_config_hardware.html' %}
+
+
+                <!-- Time Synchronization Settings Card -->
+                <div class="col-12" x-data="{ timeCardExpanded: $persist(true).as('timeCard') }">
+                    <div class="card bg-dark text-light border-secondary">
+                        <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" @click="timeCardExpanded = !timeCardExpanded">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-clock-history"></i>
+                                <h5 class="mb-0">Time Synchronization</h5>
+                                <small class="text-muted" x-show="!timeCardExpanded" x-text="($store.citrascope.config.time_offset_pause_ms || 500) + 'ms pause threshold'"></small>
+                            </div>
+                            <i class="bi" :class="timeCardExpanded ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+                        </div>
+                        <div class="card-body" x-show="timeCardExpanded">
+                            <div class="row g-3">
+                                <div class="col-12 col-md-6">
+                                    <label for="time_offset_pause_ms" class="form-label">Pause Threshold (ms)</label>
+                                    <input type="number" class="form-control form-control-sm" id="time_offset_pause_ms" min="1" max="10000" step="1" x-model.number="$store.citrascope.config.time_offset_pause_ms">
+                                    <small class="text-muted">Clock drift that triggers task pause (NTP-based monitoring)</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Logging Settings Card -->
+                <div class="col-12" x-data="{ loggingCardExpanded: $persist(true).as('loggingCard') }">
+                    <div class="card bg-dark text-light border-secondary">
+                        <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" @click="loggingCardExpanded = !loggingCardExpanded">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-file-earmark-text"></i>
+                                <h5 class="mb-0">Logging Settings</h5>
+                                <small class="text-muted" x-show="!loggingCardExpanded" x-text="($store.citrascope.config.log_level || 'INFO') + ($store.citrascope.config.file_logging_enabled !== false ? ' • File logging' : ' • Console only')"></small>
+                            </div>
+                            <i class="bi" :class="loggingCardExpanded ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+                        </div>
+                        <div class="card-body" x-show="loggingCardExpanded">
+                            <div class="row g-3">
+                                <div class="col-12 col-md-6">
+                                    <label for="logLevel" class="form-label">Log Level</label>
+                                    <select id="logLevel" class="form-select" x-model="$store.citrascope.config.log_level">
+                                        <option value="DEBUG">DEBUG</option>
+                                        <option value="INFO">INFO</option>
+                                        <option value="WARNING">WARNING</option>
+                                        <option value="ERROR">ERROR</option>
+                                    </select>
+                                </div>
+                                <div class="col-12 col-md-6">
+                                    <div class="form-check mt-4">
+                                        <input class="form-check-input" type="checkbox" id="file_logging_enabled" x-model="$store.citrascope.config.file_logging_enabled">
+                                        <label class="form-check-label" for="file_logging_enabled">
+                                            Enable file logging
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <small class="text-muted">
+                                        Log file: <span class="text-secondary" x-text="$store.citrascope.config.log_file_path || 'Disabled'">Loading...</span>
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Task Settings Card -->
+                <div class="col-12" x-data="{ taskCardExpanded: $persist(true).as('taskCard') }">
+                    <div class="card bg-dark text-light border-secondary">
+                        <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" @click="taskCardExpanded = !taskCardExpanded">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-gear"></i>
+                                <h5 class="mb-0">Task Settings</h5>
+                                <small class="text-muted" x-show="!taskCardExpanded" x-text="$store.citrascope.config.keep_images ? 'Keep images' : 'Delete images after upload'"></small>
+                            </div>
+                            <i class="bi" :class="taskCardExpanded ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+                        </div>
+                        <div class="card-body" x-show="taskCardExpanded">
+                            <div class="row g-3">
+                                <div class="col-12 col-md-6">
+                                    <div class="form-check mt-2">
+                                        <input class="form-check-input" type="checkbox" id="keep_images" x-model="$store.citrascope.config.keep_images">
+                                        <label class="form-check-label" for="keep_images">
+                                            Keep captured images
+                                        </label>
+                                    </div>
+                                    <small class="text-muted ms-4">By default, images are deleted after upload unless this is enabled</small>
+                                </div>
+                                <div class="col-12">
+                                    <small class="text-muted">
+                                        Images directory: <span class="text-secondary" x-text="$store.citrascope.config.images_dir_path || 'Loading...'">Loading...</span>
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Save Button -->
+            <div class="row">
+                <div class="col">
+                    <button type="submit" class="btn btn-primary" :disabled="$store.citrascope.isSavingConfig">
+                        <span x-text="$store.citrascope.isSavingConfig ? 'Saving...' : 'Save Configuration'"></span>
+                        <span x-show="$store.citrascope.isSavingConfig" class="spinner-border spinner-border-sm ms-2" role="status"></span>
+                    </button>
+                                    <small class="text-muted ms-3">
+                                        Config file: <span class="text-secondary" x-text="$store.citrascope.config.config_file_path || 'Loading...'">Loading...</span>
+                                    </small>
+                </div>
+            </div>
+        </form>
+    </div>

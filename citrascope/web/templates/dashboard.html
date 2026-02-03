@@ -8,14 +8,17 @@
     <link rel="icon" type="image/png" href="/static/img/favicon.png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet"
         integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link href="/static/style.css" rel="stylesheet">
 </head>
 
-<body data-bs-theme="dark">
+<body data-bs-theme="dark" x-data>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
         integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI"
         crossorigin="anonymous"></script>
-
+    <script type="module" src="/static/store-init.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/persist@3.x.x/dist/cdn.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js"></script>
 
     <div class="container">
         <header class="d-flex flex-wrap justify-content-center py-3 mb-4 border-bottom align-items-center">
@@ -24,422 +27,38 @@
                     <img src="/static/img/citra.png" alt="CitraScope Logo" class="logo-img" />
                     CitraScope
                     <small class="text-muted" style="font-size: 0.875rem;">
-                        <span id="headerVersion" style="cursor: pointer; user-select: none;" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Click to check for updates">v...</span>
-                        <span id="updateIndicator" class="badge bg-info text-dark ms-1" style="display: none; font-size: 0.7rem;"></span>
+                        <span style="cursor: pointer; user-select: none;" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Click to check for updates"
+                            @click="$store.citrascope.showVersionModal()" x-text="$store.citrascope.version || 'v...'"></span>
+                        <span class="badge bg-info text-dark ms-1" style="font-size: 0.7rem;"
+                            x-show="$store.citrascope.updateIndicator"
+                            x-text="$store.citrascope.updateIndicator"
+                            @click="$store.citrascope.showVersionModal()"></span>
                     </small>
                 </span>
             </span>
 
             <ul class="nav" id="mainNav">
-                <li class="nav-item"><a href="#" class="nav-link px-2 text-white" data-section="monitoring"
-                        aria-current="page">Monitoring</a></li>
-                <li class="nav-item"><a href="#" class="nav-link px-2" data-section="config">Config</a></li>
+                <li class="nav-item"><a href="#monitoring" class="nav-link px-2" :class="$store.citrascope.currentSection === 'monitoring' ? 'text-white' : ''"
+                        :aria-current="$store.citrascope.currentSection === 'monitoring' ? 'page' : null"
+                        data-section="monitoring" @click.prevent="$store.citrascope.currentSection = 'monitoring'; window.location.hash = 'monitoring'">Monitoring</a></li>
+                <li class="nav-item"><a href="#config" class="nav-link px-2" :class="$store.citrascope.currentSection === 'config' ? 'text-white' : ''"
+                        :aria-current="$store.citrascope.currentSection === 'config' ? 'page' : null"
+                        data-section="config" @click.prevent="$store.citrascope.currentSection = 'config'; window.location.hash = 'config'">Config</a></li>
                 <li class="nav-item"><a href="https://docs.citra.space/citrascope/" class="nav-link px-2" target="_blank">Docs</a></li>
-                <li class="nav-item"><a href="#" class="nav-link bg-success text-white btn" style="display: none;"
-                        id="taskScopeButton" target="_blank">Task my Scope</a></li>
+                <li class="nav-item"><a href="#" class="nav-link bg-success text-white btn"
+                        id="taskScopeButton" target="_blank"
+                        x-show="$store.citrascope.status?.ground_station_url"
+                        :href="$store.citrascope.status?.ground_station_url || '#'">Task my Scope</a></li>
             </ul>
         </header>
 
-        <!-- Template for connection status badge -->
-        <template id="connectionStatusTemplate">
-            <span class="badge rounded-pill connection-status-badge" data-bs-toggle="tooltip" data-bs-placement="bottom">
-                <span class="status-text"></span>
-            </span>
-        </template>
     </div>
 
-    <div id="monitoringSection">
-        <div class="container">
-            <div class="row g-3 mb-3">
-                <div class="col-12 col-md-6">
-                    <div class="card bg-dark text-light border-secondary h-100">
-                        <div class="card-header">
-                            System Status
-                        </div>
-                        <div class="card-body">
-                            <div class="row mb-2">
-                                <div class="col-6 fw-semibold">Daemon</div>
-                                <div class="col-6" id="wsStatus"><span class="badge rounded-pill bg-secondary" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Dashboard connection status">Connecting...</span></div>
-                            </div>
-                            <div class="row mb-2">
-                                <div class="col-6 fw-semibold">Telescope</div>
-                                <div class="col-6" id="telescopeConnected"><span class="badge rounded-pill bg-secondary">Unknown</span></div>
-                            </div>
-                            <div class="row mb-2">
-                                <div class="col-6 fw-semibold">Camera</div>
-                                <div class="col-6 d-flex align-items-center gap-2" id="cameraConnected"><span class="badge rounded-pill bg-secondary">Unknown</span></div>
-                            </div>
-                            <div class="row mb-2">
-                                <div class="col-6 fw-semibold">
-                                    <span data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="top" title="Controls whether the Citra.space server will automatically assign new observation tasks to this telescope">
-                                        Automated Scheduling
-                                    </span>
-                                </div>
-                                <div class="col-6 d-flex align-items-center gap-2">
-                                    <span id="automatedSchedulingStatus"><span class="badge rounded-pill bg-secondary">Unknown</span></span>
-                                    <div class="form-check form-switch">
-                                        <input class="form-check-input" type="checkbox" id="toggleAutomatedSchedulingSwitch" title="Toggle automated scheduling">
-                                        <label class="form-check-label visually-hidden" for="toggleAutomatedSchedulingSwitch">Automated Scheduling</label>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="row">
-                                <div class="col-6 fw-semibold">
-                                    <span data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="top" title="Controls whether this local daemon will execute tasks from its queue. Pause to safely stop observations without canceling scheduled tasks">
-                                        Task Processing
-                                    </span>
-                                </div>
-                                <div class="col-6 d-flex align-items-center gap-2">
-                                    <span id="processingStatus"><span class="badge rounded-pill bg-success">Active</span></span>
-                                    <div class="form-check form-switch">
-                                        <input class="form-check-input" type="checkbox" id="toggleProcessingSwitch" checked title="Toggle task processing">
-                                        <label class="form-check-label visually-hidden" for="toggleProcessingSwitch">Task Processing</label>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="row">
-                                <div class="col-6 fw-semibold">
-                                    <span data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="top" title="System clock synchronization status. Accurate time is critical for astronomical observations">
-                                        Time Sync
-                                    </span>
-                                </div>
-                                <div class="col-6 d-flex align-items-center gap-2">
-                                    <span id="timeSyncStatus"><span class="badge rounded-pill bg-secondary">Unknown</span></span>
-                                    <small class="text-muted" id="timeOffsetDisplay">-</small>
-                                </div>
-                            </div>
-                            <!-- Missing Dependencies Alert -->
-                            <div id="missingDependenciesAlert" class="alert alert-warning mt-3 mb-0" role="alert" style="display: none;">
-                                <!-- Populated by JavaScript -->
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-12 col-md-6">
-                    <div class="card bg-dark text-light border-secondary h-100">
-                        <div class="card-header">
-                            Telescope
-                        </div>
-                        <div class="card-body">
-                            <div class="row mb-2">
-                                <div class="col-6 fw-semibold">Adapter</div>
-                                <div class="col-6" id="hardwareAdapter">-</div>
-                            </div>
-                            <div class="row mb-2">
-                                <div class="col-6 fw-semibold">RA / DEC</div>
-                                <div class="col-6" id="telescopeCoords">-</div>
-                            </div>
-                            <div class="row mb-2">
-                                <div class="col-6 fw-semibold">Enabled Filters</div>
-                                <div class="col-6" id="enabledFilters">-</div>
-                            </div>
-                            <div class="row">
-                                <div class="col-6 fw-semibold">Ground Station</div>
-                                <div class="col-6" id="groundStationName">-</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
 
-            </div>
-        </div>
-        <div class="container">
-            <div class="row g-3 mb-3">
-                <div class="col-12">
-                    <div class="card bg-dark text-light border-secondary">
-                        <div class="card-header">
-                            Current Task
-                        </div>
-                        <div class="card-body">
-                            <div id="currentTaskDisplay">
-                                <p class="text-muted-dark">No active task</p>
-                            </div>
-                        </div>
-                    </div>
+    {% include '_monitoring.html' %}
 
-                    <!-- Template for active task display -->
-                    <template id="activeTaskTemplate">
-                        <div class="d-flex align-items-center gap-2 mb-2">
-                            <div class="spinner-border spinner-border-sm text-success" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <div class="fw-bold task-target-name" style="font-size: 1.3em;"></div>
-                        </div>
-                        <div class="text-secondary small">
-                            <span class="task-id-text"></span>
-                        </div>
-                    </template>
-                </div>
-            </div>
-            <div class="row g-3 mb-3">
-                <div class="col-12">
-                    <div class="card bg-dark text-light border-secondary">
-                        <div class="card-header d-flex align-items-center justify-content-between">
-                            <span>Task Queue</span>
-                            <span class="small text-secondary"><span id="tasksPending">0</span> pending</span>
-                        </div>
-                        <div class="card-body p-0">
-                            <div id="taskList" class="table-responsive">
-                                <p class="p-3 text-muted-dark">Loading tasks...</p>
-                            </div>
-                        </div>
-                    </div>
+    {% include '_config.html' %}
 
-                    <!-- Template for task queue rows -->
-                    <template id="taskRowTemplate">
-                        <tr class="task-row">
-                            <td class="fw-semibold task-target"></td>
-                            <td class="text-secondary small task-start"></td>
-                            <td class="text-secondary small task-end"></td>
-                            <td><span class="badge rounded-pill task-status"></span></td>
-                        </tr>
-                    </template>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="container my-4" id="configSection" style="display: none;">
-        <form id="configForm">
-            <div class="row g-3 mb-3">
-                <!-- API Configuration Card -->
-                <div class="col-12">
-                    <div class="card bg-dark text-light border-secondary">
-                        <div class="card-header">
-                            <h5 class="mb-0">API Configuration</h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="row g-3">
-                                <div class="col-12">
-                                    <label for="apiEndpoint" class="form-label">API Endpoint</label>
-                                    <select id="apiEndpoint" class="form-select">
-                                        <option value="production">Production (api.citra.space)</option>
-                                        <option value="development">Development (dev.api.citra.space)</option>
-                                        <option value="custom">Custom</option>
-                                    </select>
-                                </div>
-                                <div class="col-12" id="customHostContainer" style="display: none;">
-                                    <label for="customHost" class="form-label">Custom API Host</label>
-                                    <input type="text" id="customHost" class="form-control" placeholder="api.example.com">
-                                    <div class="row g-2 mt-2">
-                                        <div class="col-6">
-                                            <label for="customPort" class="form-label small">Port</label>
-                                            <input type="number" id="customPort" class="form-control" value="443" placeholder="443">
-                                        </div>
-                                        <div class="col-6 d-flex align-items-end">
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" id="customUseSsl" checked>
-                                                <label class="form-check-label" for="customUseSsl">
-                                                    Use SSL
-                                                </label>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-12 col-md-6">
-                                    <label for="personal_access_token" class="form-label">Personal Access Token <span class="text-danger">*</span></label>
-                                    <input type="password" id="personal_access_token" class="form-control" placeholder="Enter your Citra API token" required>
-                                    <small class="text-muted">Get your token and telescope ID from <a href="" id="appUrlLink" target="_blank"></a></small>
-                                </div>
-                                <div class="col-12 col-md-6">
-                                    <label for="telescopeId" class="form-label">Telescope ID <span class="text-danger">*</span></label>
-                                    <input type="text" id="telescopeId" class="form-control" placeholder="Enter telescope ID" required>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Hardware Configuration Card -->
-                <div class="col-12">
-                    <div class="card bg-dark text-light border-secondary">
-                        <div class="card-header">
-                            <h5 class="mb-0">Hardware Configuration</h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="row g-3 mb-3">
-                                <div class="col-12">
-                                    <label for="hardwareAdapterSelect" class="form-label">Hardware Adapter <span class="text-danger">*</span></label>
-                                    <select id="hardwareAdapterSelect" class="form-select" required>
-                                        <option value="">-- Select Hardware Adapter --</option>
-                                        <!-- Options populated dynamically from API -->
-                                    </select>
-                                </div>
-                            </div>
-
-                            <!-- Dynamic Adapter Settings Container -->
-                            <div id="adapter-settings-container"></div>
-
-                            <!-- Missing Dependencies Alert (Config Page) -->
-                            <div id="configMissingDependenciesAlert" class="alert alert-warning mt-3" role="alert" style="display: none;">
-                                <!-- Populated by JavaScript -->
-                            </div>
-
-                            <!-- Filter Configuration Section (shown when adapter supports filters) -->
-                            <div id="filterConfigSection" style="display: none; margin-top: 1.5rem;">
-                                <hr class="border-secondary">
-                                <h5 class="mb-3">Filter Configuration</h5>
-                                <p id="filterAdapterChangeMessage" class="text-muted mb-3" style="display: none;">
-                                    Save configuration to edit filter settings for this adapter
-                                </p>
-                                <div class="row">
-                                    <!-- Filter List Column -->
-                                    <div class="col-12 col-md-6">
-                                        <h6 class="mb-2">Filters</h6>
-                                        <div id="filterTableContainer">
-                                            <table class="table table-dark table-sm">
-                                                <thead>
-                                                    <tr>
-                                                        <th>Enabled</th>
-                                                        <th>Name</th>
-                                                        <th>Focus Position</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody id="filterTableBody">
-                                                    <!-- Filter rows will be populated by JavaScript -->
-                                                </tbody>
-                                            </table>
-                                            <div id="noFiltersMessage" class="text-muted small" style="display: none;">
-                                                No filters configured. Connect to hardware to discover filters.
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <!-- Autofocus Column -->
-                                    <div class="col-12 col-md-6">
-                                        <h6 class="mb-2">Autofocus</h6>
-                                        <div class="mb-3">
-                                            <button type="button" class="btn btn-sm btn-outline-primary w-100" id="runAutofocusButton">
-                                                <span id="autofocusButtonText">Run Autofocus</span>
-                                                <span id="autofocusButtonSpinner" class="spinner-border spinner-border-sm ms-2" style="display: none;" role="status"></span>
-                                            </button>
-                                        </div>
-                                        <div class="mb-3">
-                                            <label class="form-label small text-muted">Last Autofocus</label>
-                                            <div id="lastAutofocusDisplay" class="text-light">Never</div>
-                                        </div>
-                                        <div class="mb-3">
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" id="scheduled_autofocus_enabled">
-                                                <label class="form-check-label" for="scheduled_autofocus_enabled">
-                                                    Enable Scheduled Autofocus
-                                                </label>
-                                            </div>
-                                        </div>
-                                        <div class="mb-3">
-                                            <label for="autofocus_interval_minutes" class="form-label small">Autofocus Interval</label>
-                                            <select id="autofocus_interval_minutes" class="form-select form-select-sm">
-                                                <option value="30">30 minutes</option>
-                                                <option value="60" selected>60 minutes</option>
-                                                <option value="120">120 minutes (2 hours)</option>
-                                                <option value="180">180 minutes (3 hours)</option>
-                                            </select>
-                                        </div>
-                                        <div id="nextAutofocusDisplay" class="small text-muted" style="display: none;">
-                                            Next autofocus in: <span id="nextAutofocusTime">--</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Time Synchronization Settings Card -->
-                <div class="col-12">
-                    <div class="card bg-dark text-light border-secondary">
-                        <div class="card-header">
-                            <h5 class="mb-0">Time Synchronization</h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="row g-3">
-                                <div class="col-12 col-md-6">
-                                    <label for="time_offset_pause_ms" class="form-label">Pause Threshold (ms)</label>
-                                    <input type="number" class="form-control form-control-sm" id="time_offset_pause_ms" min="1" max="10000" step="1" value="500">
-                                    <small class="text-muted">Clock drift that triggers task pause (NTP-based monitoring)</small>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Logging Settings Card -->
-                <div class="col-12">
-                    <div class="card bg-dark text-light border-secondary">
-                        <div class="card-header">
-                            <h5 class="mb-0">Logging Settings</h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="row g-3">
-                                <div class="col-12 col-md-6">
-                                    <label for="logLevel" class="form-label">Log Level</label>
-                                    <select id="logLevel" class="form-select">
-                                        <option value="DEBUG">DEBUG</option>
-                                        <option value="INFO">INFO</option>
-                                        <option value="WARNING">WARNING</option>
-                                        <option value="ERROR">ERROR</option>
-                                    </select>
-                                </div>
-                                <div class="col-12 col-md-6">
-                                    <div class="form-check mt-4">
-                                        <input class="form-check-input" type="checkbox" id="file_logging_enabled">
-                                        <label class="form-check-label" for="file_logging_enabled">
-                                            Enable file logging
-                                        </label>
-                                    </div>
-                                </div>
-                                <div class="col-12">
-                                    <small class="text-muted">
-                                        Log file: <span id="logFilePath" class="text-secondary">Loading...</span>
-                                    </small>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Task Settings Card -->
-                <div class="col-12">
-                    <div class="card bg-dark text-light border-secondary">
-                        <div class="card-header">
-                            <h5 class="mb-0">Task Settings</h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="row g-3">
-                                <div class="col-12 col-md-6">
-                                    <div class="form-check mt-2">
-                                        <input class="form-check-input" type="checkbox" id="keep_images">
-                                        <label class="form-check-label" for="keep_images">
-                                            Keep captured images
-                                        </label>
-                                    </div>
-                                    <small class="text-muted ms-4">By default, images are deleted after upload unless this is enabled</small>
-                                </div>
-                                <div class="col-12">
-                                    <small class="text-muted">
-                                        Images directory: <span id="imagesDirPath" class="text-secondary">Loading...</span>
-                                    </small>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Save Button -->
-            <div class="row">
-                <div class="col">
-                    <button type="submit" class="btn btn-primary" id="saveConfigButton">
-                        <span id="saveButtonText">Save Configuration</span>
-                        <span id="saveButtonSpinner" class="spinner-border spinner-border-sm ms-2" style="display: none;" role="status"></span>
-                    </button>
-                    <small class="text-muted ms-3">
-                        Config file: <span id="configFilePath" class="text-secondary">Loading...</span>
-                    </small>
-                </div>
-            </div>
-        </form>
-    </div>
 
     <!-- Setup Wizard Modal -->
     <div class="modal fade" id="setupWizard" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-hidden="true">
@@ -456,9 +75,6 @@
                         <li>Your telescope ID</li>
                         <li>Information about your hardware adapter (INDI, N.I.N.A., or KStars)</li>
                     </ul>
-                    <div class="alert alert-info">
-                        <strong>Note:</strong> The configuration screen is available in the "Config" tab at the top of the page.
-                    </div>
                 </div>
                 <div class="modal-footer border-secondary">
                     <button type="button" class="btn btn-primary" onclick="showConfigSection()">Configure Now</button>
@@ -475,7 +91,18 @@
                     <button class="accordion-button collapsed bg-secondary text-light log-accordion-button" type="button"
                         data-bs-toggle="collapse" data-bs-target="#logAccordionCollapse" aria-expanded="false"
                         aria-controls="logAccordionCollapse">
-                        <span id="latestLogLine" class="log-latest-line">Log Terminal</span>
+                        <span class="log-latest-line">
+                            <template x-if="!$store.citrascope.latestLog">
+                                <span>Log Terminal</span>
+                            </template>
+                            <template x-if="$store.citrascope.latestLog">
+                                <span>
+                                    <span class="log-timestamp" x-text="new Date($store.citrascope.latestLog.timestamp).toLocaleTimeString()"></span>
+                                    <span class="log-level" :class="'log-level-' + $store.citrascope.latestLog.level" x-text="$store.citrascope.latestLog.level"></span>
+                                    <span x-text="($store.citrascope.stripAnsiCodes($store.citrascope.latestLog.message) || '').substring(0, 150) + (($store.citrascope.latestLog.message || '').length > 150 ? '...' : '')"></span>
+                                </span>
+                            </template>
+                        </span>
                         <div class="accordion-social-links">
                             <a href="https://github.com/citra-space/citrascope/issues/new" target="_blank" class="social-link" title="Report an Issue" onclick="event.stopPropagation();">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
@@ -498,28 +125,20 @@
                 <div id="logAccordionCollapse" class="accordion-collapse collapse" aria-labelledby="logAccordionHeader"
                     data-bs-parent="#logAccordion">
                     <div class="accordion-body p-0 log-accordion-body">
-                        <div class="log-container p-3" id="logContainer">
-                            <p class="text-muted-dark">Loading logs...</p>
+                        <div class="log-container p-3" id="logContainer" x-ref="logContainer">
+                            <p class="text-muted-dark" x-show="$store.citrascope.logs.length === 0">No logs available</p>
+                            <template x-for="(log, index) in $store.citrascope.logs" :key="index">
+                                <div x-data="logEntry(log)" class="log-entry">
+                                    <span class="log-timestamp" x-text="timestamp"></span>
+                                    <span class="log-level" :class="levelClass" x-text="log.level"></span>
+                                    <span class="log-message" x-text="strippedMessage"></span>
+                                </div>
+                            </template>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-
-        <!-- Templates for log display -->
-        <template id="logEntryTemplate">
-            <div class="log-entry">
-                <span class="log-timestamp"></span>
-                <span class="log-level"></span>
-                <span class="log-message"></span>
-            </div>
-        </template>
-
-        <template id="latestLogLineTemplate">
-            <span class="log-timestamp"></span>
-            <span class="log-level"></span>
-            <span class="log-message"></span>
-        </template>
 
     </div>
 
@@ -533,34 +152,34 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div id="versionCheckLoading" style="text-align: center;">
+                    <div x-show="$store.citrascope.versionCheckState === 'loading'" style="text-align: center;">
                         <div class="spinner-border text-primary" role="status">
                             <span class="visually-hidden">Checking...</span>
                         </div>
                         <p class="mt-2">Checking for updates...</p>
                     </div>
-                    <div id="versionCheckUpToDate" style="display: none;">
+                    <div x-show="$store.citrascope.versionCheckState === 'up-to-date'">
                         <p class="text-success">✓ You're up to date!</p>
                         <p>
-                            <strong>Current version:</strong> <span id="modalCurrentVersionUpToDate">-</span>
+                            <strong>Current version:</strong> <span x-text="$store.citrascope.versionCheckResult?.currentVersion === 'development' ? 'development' : 'v' + ($store.citrascope.versionCheckResult?.currentVersion || '-')"></span>
                         </p>
                     </div>
-                    <div id="versionCheckUpdateAvailable" style="display: none;">
+                    <div x-show="$store.citrascope.versionCheckState === 'update-available'">
                         <p class="text-warning">A new version of CitraScope is available!</p>
                         <p class="mb-3">
-                            <strong>Current:</strong> <span id="modalCurrentVersion">-</span><br>
-                            <strong>Latest:</strong> <span id="modalLatestVersion">-</span>
+                            <strong>Current:</strong> <span x-text="'v' + ($store.citrascope.versionCheckResult?.currentVersion || '-')"></span><br>
+                            <strong>Latest:</strong> <span x-text="$store.citrascope.versionCheckResult?.latestVersion || '-'"></span>
                         </p>
                         <p class="mb-2">To upgrade, run:</p>
                         <pre class="bg-secondary p-2 rounded"><code>pip install -U citrascope</code></pre>
                         <p class="mb-0">
-                            <a href="#" id="releaseNotesLink" target="_blank" class="text-info">View release notes on GitHub →</a>
+                            <a :href="$store.citrascope.versionCheckResult?.releaseUrl || '#'" target="_blank" class="text-info">View release notes on GitHub →</a>
                         </p>
                     </div>
-                    <div id="versionCheckError" style="display: none;">
+                    <div x-show="$store.citrascope.versionCheckState === 'error'">
                         <p class="text-muted">Unable to check for updates. You may be offline or GitHub is unreachable.</p>
                         <p>
-                            <strong>Current version:</strong> <span id="modalCurrentVersionError">-</span>
+                            <strong>Current version:</strong> <span x-text="$store.citrascope.versionCheckResult?.currentVersion === 'development' ? 'development' : ($store.citrascope.versionCheckResult?.currentVersion || '-')"></span>
                         </p>
                     </div>
                 </div>
@@ -583,18 +202,26 @@
                     <div class="row g-3">
                         <div class="col-12">
                             <label for="exposureDuration" class="form-label">Exposure Duration (seconds)</label>
-                            <input type="number" id="exposureDuration" class="form-control" value="0.1" min="0.001" max="300" step="0.001">
+                            <input type="number" class="form-control" x-model.number="$store.citrascope.exposureDuration" min="0.001" max="300" step="0.001">
                             <small class="text-muted">Range: 0.001 to 300 seconds</small>
                         </div>
                     </div>
 
                     <!-- Capture Result Area -->
-                    <div id="captureResult" class="mt-3" style="display: none;">
+                    <div x-show="$store.citrascope.captureResult" class="mt-3">
                         <hr class="border-secondary">
                         <h6>Latest Capture</h6>
                         <div class="alert alert-success mb-2">
-                            <strong>Filename:</strong> <span id="captureFilename"></span><br>
-                            <strong>Format:</strong> <span id="captureFormat"></span>
+                            <strong>Filename:</strong> <span x-text="$store.citrascope.captureResult?.filename"></span><br>
+                            <strong>Format:</strong> <span x-text="$store.citrascope.captureResult?.format || 'Unknown'"></span>
+                        </div>
+
+                        <!-- Image Preview (only for PNG/JPG) -->
+                        <div x-show="$store.citrascope.captureResult && ['PNG', 'JPG', 'JPEG'].includes($store.citrascope.captureResult.format)" class="mt-3">
+                            <img :src="'/images/' + $store.citrascope.captureResult?.filename"
+                                 alt="Captured image"
+                                 class="img-fluid rounded border border-secondary"
+                                 style="max-height: 400px; width: auto; display: block; margin: 0 auto;">
                         </div>
                     </div>
 
@@ -603,14 +230,14 @@
                         <hr class="border-secondary">
                         <h6>Images Directory</h6>
                         <p class="text-muted small mb-1">All captured images are saved to:</p>
-                        <p><a href="#" id="imagesDirLink" class="text-break"></a></p>
+                        <p><a :href="'file://' + ($store.citrascope.config?.images_dir_path || '#')" x-text="$store.citrascope.config?.images_dir_path || 'Not set'" class="text-break"></a></p>
                     </div>
                 </div>
                 <div class="modal-footer border-secondary">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-primary" id="captureButton" onclick="captureImage()">
-                        <span id="captureButtonText">Capture</span>
-                        <span id="captureButtonSpinner" class="spinner-border spinner-border-sm ms-2" role="status" style="display: none;">
+                    <button type="button" class="btn btn-primary" :disabled="$store.citrascope.isCapturing" @click="$store.citrascope.captureImage()">
+                        <span x-text="$store.citrascope.isCapturing ? 'Capturing...' : 'Capture'"></span>
+                        <span x-show="$store.citrascope.isCapturing" class="spinner-border spinner-border-sm ms-2" role="status">
                             <span class="visually-hidden">Capturing...</span>
                         </span>
                     </button>

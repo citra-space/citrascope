@@ -444,6 +444,21 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             return (0.0, 0.0)
         return self.mount.get_radec()
 
+    def _get_camera_file_extension(self) -> str:
+        """Get the preferred file extension from the camera.
+
+        Delegates to the camera's get_preferred_file_extension() method,
+        which allows each camera type to define its own file format logic.
+
+        Returns:
+            File extension string (e.g., 'fits', 'png', 'jpg')
+        """
+        if not self.camera:
+            return "fits"
+
+        # Let the camera decide its preferred file extension
+        return self.camera.get_preferred_file_extension()
+
     def expose_camera(
         self,
         exposure_time: float,
@@ -473,9 +488,10 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             if count > 1:
                 self.logger.info(f"Exposure {i+1}/{count}")
 
-            # Generate save path
+            # Generate save path with camera's preferred file extension
             timestamp = time.strftime("%Y%m%d_%H%M%S")
-            save_path = self.images_dir / f"direct_capture_{timestamp}_{i:03d}.fits"
+            output_ext = self._get_camera_file_extension()
+            save_path = self.images_dir / f"direct_capture_{timestamp}_{i:03d}.{output_ext}"
 
             # Take exposure
             image_path = self.camera.take_exposure(
@@ -720,7 +736,9 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
 
         # Generate save path with task ID
         timestamp = time.strftime("%Y%m%d_%H%M%S")
-        save_path = self.images_dir / f"task_{task_id}_{timestamp}.fits"
+        # Use camera's preferred file extension
+        output_ext = self._get_camera_file_extension()
+        save_path = self.images_dir / f"task_{task_id}_{timestamp}.{output_ext}"
 
         return str(
             self.camera.take_exposure(

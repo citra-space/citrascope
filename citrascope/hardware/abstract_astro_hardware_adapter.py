@@ -234,6 +234,23 @@ class AbstractAstroHardwareAdapter(ABC):
         """
         return False
 
+    def supports_direct_camera_control(self) -> bool:
+        """Indicates whether this adapter supports direct camera control.
+
+        Direct camera control allows manual test captures and camera operations
+        from the UI. Remote scheduler adapters (NINA, KStars) typically do not
+        support this, as camera control is managed by the external software.
+
+        Returns:
+            bool: True if the adapter supports expose_camera() and manual captures
+        """
+        # Remote schedulers never support direct control
+        if self.get_observation_strategy() == ObservationStrategy.SEQUENCE_TO_CONTROLLER:
+            return False
+
+        # MANUAL adapters might - check for the method
+        return hasattr(self, "expose_camera") and callable(getattr(self, "expose_camera"))
+
     def is_hyperspectral(self) -> bool:
         """Indicates whether this adapter uses a hyperspectral camera.
 

@@ -2,6 +2,11 @@
  * Bootstrap 5 handles most styling; these are overrides and additions only
  */
 
+/* Alpine.js: hide elements until Alpine has processed them */
+[x-cloak] {
+    display: none !important;
+}
+
 /* Log terminal container - custom scrollbar and background watermark */
 .log-container {
     background: #0d1117 url('/static/img/citra.png') no-repeat 85% center;

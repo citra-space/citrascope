@@ -8,10 +8,11 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from citrascope.constants import (
@@ -28,6 +29,7 @@ class SystemStatus(BaseModel):
 
     telescope_connected: bool = False
     camera_connected: bool = False
+    supports_direct_camera_control: bool = False
     current_task: Optional[str] = None
     tasks_pending: int = 0
     processing_active: bool = True
@@ -126,6 +128,16 @@ class CitraScopeWebApp:
         if static_dir.exists():
             self.app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
+        # Mount images directory for camera captures (read-only access)
+        if daemon and hasattr(daemon, "settings"):
+            images_dir = daemon.settings.get_images_dir()
+            if images_dir.exists():
+                self.app.mount("/images", StaticFiles(directory=str(images_dir)), name="images")
+
+        # Initialize Jinja2 templates
+        templates_dir = Path(__file__).parent / "templates"
+        self.templates = Jinja2Templates(directory=str(templates_dir))
+
         # Register routes
         self._setup_routes()
 
@@ -137,15 +149,9 @@ class CitraScopeWebApp:
         """Setup all API routes."""
 
         @self.app.get("/", response_class=HTMLResponse)
-        async def root():
+        async def root(request: Request):
             """Serve the main dashboard page."""
-            template_path = Path(__file__).parent / "templates" / "dashboard.html"
-            if template_path.exists():
-                return template_path.read_text()
-            else:
-                return HTMLResponse(
-                    content="<h1>CitraScope Dashboard</h1><p>Template file not found</p>", status_code=500
-                )
+            return self.templates.TemplateResponse("dashboard.html", {"request": request})
 
         @self.app.get("/api/status")
         async def get_status():
@@ -185,6 +191,8 @@ class CitraScopeWebApp:
                 "adapter_settings": settings._all_adapter_settings,
                 "log_level": settings.log_level,
                 "keep_images": settings.keep_images,
+                "file_logging_enabled": settings.file_logging_enabled,
+                "log_retention_days": settings.log_retention_days,
                 "max_task_retries": settings.max_task_retries,
                 "initial_retry_delay_seconds": settings.initial_retry_delay_seconds,
                 "max_retry_delay_seconds": settings.max_retry_delay_seconds,
@@ -633,6 +641,12 @@ class CitraScopeWebApp:
             if not self.daemon.hardware_adapter:
                 return JSONResponse({"error": "Hardware adapter not available"}, status_code=503)
 
+            # Check if adapter supports direct camera control
+            if not self.daemon.hardware_adapter.supports_direct_camera_control():
+                return JSONResponse(
+                    {"error": "Hardware adapter does not support direct camera control"}, status_code=400
+                )
+
             try:
                 duration = request.get("duration", 0.1)
 
@@ -712,6 +726,14 @@ class CitraScopeWebApp:
                     self.status.camera_connected = self.daemon.hardware_adapter.is_camera_connected()
                 except Exception:
                     self.status.camera_connected = False
+
+                # Check adapter capabilities
+                try:
+                    self.status.supports_direct_camera_control = (
+                        self.daemon.hardware_adapter.supports_direct_camera_control()
+                    )
+                except Exception:
+                    self.status.supports_direct_camera_control = False
 
             if hasattr(self.daemon, "task_manager") and self.daemon.task_manager:
                 task_manager = self.daemon.task_manager
