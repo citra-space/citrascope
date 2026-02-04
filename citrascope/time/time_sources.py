@@ -76,58 +76,61 @@ class NTPTimeSource(AbstractTimeSource):
 
 def _get_gpsd_metadata() -> Optional[dict]:
     """
-    Query gpsd for satellite count and fix quality.
+    Query gpsd for satellite count and fix quality using gpspipe command.
 
     Returns:
         Dictionary with 'satellites' and 'fix_mode' keys, or None if unavailable.
     """
     try:
-        import socket
         import json
 
-        # Connect directly to gpsd and send POLL command
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect(("localhost", 2947))
-        sock.settimeout(5.0)
-        stream = sock.makefile(mode="rw")
+        # Use gpspipe to get JSON output from gpsd (cleaner than sockets)
+        # Request 10 messages to ensure we get both TPV (fix mode) and SKY (satellite count)
+        result = subprocess.run(
+            ["gpspipe", "-w", "-n", "10"],
+            capture_output=True,
+            timeout=3,
+            text=True,
+        )
 
-        # Read welcome message
-        stream.readline()
+        if result.returncode != 0:
+            return None
 
-        # Enable watch
-        stream.write('?WATCH={"enable":true}\n')
-        stream.flush()
-
-        # Read watch responses
-        for _ in range(2):
-            stream.readline()
-
-        # Poll for current data
-        stream.write("?POLL;\n")
-        stream.flush()
-        response = json.loads(stream.readline())
-
-        sock.close()
-
-        # Extract fix mode from TPV data
+        # Parse JSON lines to extract TPV (fix mode) and SKY (satellite count)
         fix_mode = 0
-        if "tpv" in response and response["tpv"]:
-            fix_mode = response["tpv"][-1].get("mode", 0)
-
-        # Extract satellite count from SKY data
         satellites = 0
-        if "sky" in response and response["sky"]:
-            last_sky = response["sky"][-1]
-            # Try satellites array first (most detailed)
-            if "satellites" in last_sky:
-                sats_list = last_sky["satellites"]
-                satellites = len([s for s in sats_list if s.get("used", False)])
-            # Fall back to uSat field (used satellites count)
-            elif "uSat" in last_sky:
-                satellites = last_sky["uSat"]
+
+        for line in result.stdout.strip().split("\n"):
+            if not line:
+                continue
+
+            try:
+                data = json.loads(line)
+                msg_class = data.get("class")
+
+                # Extract fix mode from TPV message
+                if msg_class == "TPV" and "mode" in data:
+                    fix_mode = data["mode"]
+
+                # Extract satellite count from SKY message
+                if msg_class == "SKY":
+                    # Prefer uSat (used satellites) if available
+                    if "uSat" in data:
+                        satellites = data["uSat"]
+                    # Fall back to counting satellites array
+                    elif "satellites" in data:
+                        satellites = len([s for s in data["satellites"] if s.get("used", False)])
+
+            except json.JSONDecodeError:
+                continue
 
         return {"satellites": satellites, "fix_mode": fix_mode}
-    except Exception:
+
+    except (FileNotFoundError, OSError):
+        # gpspipe not available or gpsd not running
+        return None
+    except Exception as e:
+        CITRASCOPE_LOGGER.debug(f"Could not query gpsd: {e}")
         return None
 
 
