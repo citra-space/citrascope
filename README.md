@@ -120,7 +120,7 @@ This ensures code style and quality checks are enforced for all contributors.
 
 ### Releasing a New Version
 
-To bump the version and create a release:
+To bump the version and create a release from in the venv:
 
 ```sh
 bump-my-version bump patch  # 0.1.3 → 0.1.4
