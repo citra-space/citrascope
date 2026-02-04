@@ -235,7 +235,7 @@ class ChronyTimeSource(AbstractTimeSource):
                 else:
                     CITRASCOPE_LOGGER.warning(
                         "GPS reference active in chrony but gpsd metadata unavailable "
-                        "(gpsd may not be running or GPS library not installed)"
+                        "(gpsd/gpspipe may not be available)"
                     )
             else:
                 self._source_name = "chrony"
