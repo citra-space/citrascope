@@ -38,6 +38,11 @@ REGISTERED_ADAPTERS: Dict[str, Dict[str, str]] = {
         "class_name": "DirectHardwareAdapter",
         "description": "Direct Hardware Control - Composable device adapters for cameras, mounts, etc.",
     },
+    "dummy": {
+        "module": "citrascope.hardware.dummy_adapter",
+        "class_name": "DummyAdapter",
+        "description": "Dummy Adapter - Fake hardware for testing without real devices",
+    },
 }
 
 

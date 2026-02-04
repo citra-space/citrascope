@@ -6,7 +6,7 @@ from typing import Callable, Optional
 
 from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.time.time_health import TimeHealth, TimeStatus
-from citrascope.time.time_sources import AbstractTimeSource, NTPTimeSource
+from citrascope.time.time_sources import AbstractTimeSource, ChronyTimeSource, NTPTimeSource
 
 
 class TimeMonitor:
@@ -36,9 +36,8 @@ class TimeMonitor:
         self.pause_threshold_ms = pause_threshold_ms
         self.pause_callback = pause_callback
 
-        # Initialize NTP time source
-        self.time_source: AbstractTimeSource = NTPTimeSource()
-        CITRASCOPE_LOGGER.info("Time monitor initialized with NTP source")
+        # Detect and initialize best available time source
+        self.time_source: AbstractTimeSource = self._detect_best_source()
 
         # Thread control
         self._stop_event = threading.Event()
@@ -76,6 +75,25 @@ class TimeMonitor:
         with self._lock:
             return self._current_health
 
+    def _detect_best_source(self) -> AbstractTimeSource:
+        """
+        Detect and return the best available time source.
+
+        Priority order: Chrony > NTP
+
+        Returns:
+            The best available time source instance.
+        """
+        # Try ChronyTimeSource
+        chrony_source = ChronyTimeSource()
+        if chrony_source.is_available():
+            CITRASCOPE_LOGGER.info("Time monitor initialized with Chrony source")
+            return chrony_source
+
+        # Fall back to NTP
+        CITRASCOPE_LOGGER.info("Time monitor initialized with NTP source")
+        return NTPTimeSource()
+
     def _monitor_loop(self) -> None:
         """Main monitoring loop (runs in background thread)."""
         # Perform initial check immediately
@@ -94,14 +112,18 @@ class TimeMonitor:
     def _check_time_sync(self) -> None:
         """Perform a single time synchronization check."""
         try:
-            # Query NTP for offset
+            # Query time source for offset
             offset_ms = self.time_source.get_offset_ms()
+
+            # Get metadata if available (e.g., GPS satellite info)
+            metadata = self.time_source.get_metadata()
 
             # Calculate health status
             health = TimeHealth.from_offset(
                 offset_ms=offset_ms,
                 source=self.time_source.get_source_name(),
                 pause_threshold=self.pause_threshold_ms,
+                metadata=metadata,
             )
 
             # Store current health (thread-safe)

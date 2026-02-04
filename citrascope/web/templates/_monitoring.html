@@ -53,7 +53,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="row">
+                            <div class="row mb-2">
                                 <div class="col-6 fw-semibold">
                                     <span data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="top" title="Controls whether this local daemon will execute tasks from its queue. Pause to safely stop observations without canceling scheduled tasks">
                                         Task Processing
@@ -70,7 +70,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="row">
+                            <div class="row mb-2">
                                 <div class="col-6 fw-semibold">
                                     <span data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="top" title="System clock synchronization status. Accurate time is critical for astronomical observations">
                                         Time Sync
@@ -81,9 +81,8 @@
                                         <span class="badge rounded-pill" data-bs-toggle="tooltip"
                                             :class="$store.citrascope.status?.time_health?.status === 'ok' ? 'bg-success' : ($store.citrascope.status?.time_health?.status === 'critical' ? 'bg-danger' : 'bg-secondary')"
                                             :title="$store.citrascope.status?.time_health?.status === 'ok' ? 'Time sync within threshold' : ($store.citrascope.status?.time_health?.status === 'critical' ? 'Time drift exceeded' : 'Unknown')"
-                                            x-text="$store.citrascope.status?.time_health?.status === 'ok' ? 'OK' : ($store.citrascope.status?.time_health?.status === 'critical' ? 'Paused' : 'Unknown')"></span>
+                                            x-text="$store.citrascope.formatTimeOffset($store.citrascope.status?.time_health)"></span>
                                     </span>
-                                    <small class="text-muted" x-text="$store.citrascope.formatTimeOffset($store.citrascope.status?.time_health)">-</small>
                                 </div>
                             </div>
                             <!-- Missing Dependencies Alert -->
