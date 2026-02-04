@@ -235,6 +235,7 @@ async function saveConfiguration(event) {
         file_logging_enabled: formConfig.file_logging_enabled !== undefined ? formConfig.file_logging_enabled : true,
         scheduled_autofocus_enabled: formConfig.scheduled_autofocus_enabled || false,
         autofocus_interval_minutes: parseInt(formConfig.autofocus_interval_minutes || 60, 10),
+        time_check_interval_minutes: parseInt(formConfig.time_check_interval_minutes || 5, 10),
         time_offset_pause_ms: parseFloat(formConfig.time_offset_pause_ms || 500),
         host,
         port,

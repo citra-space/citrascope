@@ -82,22 +82,50 @@ def _get_gpsd_metadata() -> Optional[dict]:
         Dictionary with 'satellites' and 'fix_mode' keys, or None if unavailable.
     """
     try:
-        import gps
+        import socket
+        import json
 
-        session = gps.gps(mode=gps.WATCH_ENABLE, host="localhost", port=2947)
+        # Connect directly to gpsd and send POLL command
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect(("localhost", 2947))
+        sock.settimeout(5.0)
+        stream = sock.makefile(mode="rw")
 
-        satellites = 0
+        # Read welcome message
+        stream.readline()
+
+        # Enable watch
+        stream.write('?WATCH={"enable":true}\n')
+        stream.flush()
+
+        # Read watch responses
+        for _ in range(2):
+            stream.readline()
+
+        # Poll for current data
+        stream.write("?POLL;\n")
+        stream.flush()
+        response = json.loads(stream.readline())
+
+        sock.close()
+
+        # Extract fix mode from TPV data
         fix_mode = 0
+        if "tpv" in response and response["tpv"]:
+            fix_mode = response["tpv"][-1].get("mode", 0)
 
-        # Read a few messages to get both TPV and SKY
-        for _ in range(10):
-            if session.read():
-                if session.data.get("class") == "SKY":
-                    satellites = len(session.data.get("satellites", []))
-                if hasattr(session, "fix"):
-                    fix_mode = session.fix.mode
+        # Extract satellite count from SKY data
+        satellites = 0
+        if "sky" in response and response["sky"]:
+            last_sky = response["sky"][-1]
+            # Try satellites array first (most detailed)
+            if "satellites" in last_sky:
+                sats_list = last_sky["satellites"]
+                satellites = len([s for s in sats_list if s.get("used", False)])
+            # Fall back to uSat field (used satellites count)
+            elif "uSat" in last_sky:
+                satellites = last_sky["uSat"]
 
-        session.close()
         return {"satellites": satellites, "fix_mode": fix_mode}
     except Exception:
         return None
@@ -126,7 +154,7 @@ class ChronyTimeSource(AbstractTimeSource):
         """
         try:
             result = subprocess.run(
-                ["chronyc", "tracking"],
+                ["chronyc", "-c", "tracking"],
                 capture_output=True,
                 timeout=self.timeout,
                 text=True,
@@ -145,24 +173,24 @@ class ChronyTimeSource(AbstractTimeSource):
         try:
             # Get tracking info for offset
             tracking_result = subprocess.run(
-                ["chronyc", "tracking", "-c"],
+                ["chronyc", "-c", "tracking"],
                 capture_output=True,
                 timeout=self.timeout,
                 text=True,
                 check=True,
             )
 
-            # Parse CSV output: field index 3 is "System time" in seconds
+            # Parse CSV output: field index 4 is "System time" in seconds
             tracking_fields = tracking_result.stdout.strip().split(",")
-            if len(tracking_fields) > 3:
-                offset_seconds = float(tracking_fields[3])
+            if len(tracking_fields) > 4:
+                offset_seconds = float(tracking_fields[4])
                 offset_ms = offset_seconds * 1000.0
             else:
                 return None
 
             # Get sources to detect GPS reference
             sources_result = subprocess.run(
-                ["chronyc", "sources", "-c"],
+                ["chronyc", "-c", "sources"],
                 capture_output=True,
                 timeout=self.timeout,
                 text=True,

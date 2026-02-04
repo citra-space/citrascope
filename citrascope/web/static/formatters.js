@@ -88,33 +88,42 @@ export function formatLastAutofocus(status) {
 }
 
 /**
- * Format time offset with source information
+ * Format time offset with source information - compact format for status pill
  * @param {Object} timeHealth - Time health object with offset_ms, source, and optional metadata
- * @returns {string} Formatted time offset (e.g., "+50ms (ntp)" or "+2.3ms (GPS Time Lock) - 12 sats, 3D fix")
+ * @returns {string} Formatted time offset (e.g., "17ns, 10 sats" or "+2ms, ntp")
  */
 export function formatTimeOffset(timeHealth) {
-    if (!timeHealth || timeHealth.offset_ms == null) return '-';
+    if (!timeHealth || timeHealth.offset_ms == null) return 'Unknown';
+    
     const o = timeHealth.offset_ms;
     const abs = Math.abs(o);
-    const s = o >= 0 ? '+' : '-';
-    let result;
-    if (abs < 1) result = `${s}${abs.toFixed(2)}ms`;
-    else if (abs < 1000) result = `${s}${abs.toFixed(0)}ms`;
-    else result = `${s}${(abs / 1000).toFixed(2)}s`;
+    const s = o >= 0 ? '+' : '';
+    
+    // Format offset with appropriate units
+    let offsetStr;
+    if (abs < 0.001) {
+        // Sub-microsecond: show as nanoseconds
+        offsetStr = `${s}${Math.round(abs * 1000000)}ns`;
+    } else if (abs < 1) {
+        // Sub-millisecond: show as microseconds
+        offsetStr = `${s}${Math.round(abs * 1000)}µs`;
+    } else if (abs < 1000) {
+        // Milliseconds
+        offsetStr = `${s}${abs.toFixed(0)}ms`;
+    } else {
+        // Seconds
+        offsetStr = `${s}${(abs / 1000).toFixed(1)}s`;
+    }
 
-    // Add source - make GPS lock prominent
-    if (timeHealth.source === 'gps') {
-        result += ' (GPS Time Lock)';
+    // Add source/satellite info
+    if (timeHealth.source === 'gps' && timeHealth.metadata?.satellites != null) {
+        // GPS with satellite count
+        return `${offsetStr}, ${timeHealth.metadata.satellites} sats`;
     } else if (timeHealth.source && timeHealth.source !== 'unknown') {
-        result += ` (${timeHealth.source})`;
+        // Other sources (ntp, chrony)
+        return `${offsetStr}, ${timeHealth.source}`;
+    } else {
+        // No source info
+        return offsetStr;
     }
-
-    // Add GPS metadata if available
-    if (timeHealth.metadata?.satellites != null) {
-        const fixLabels = ['Invalid', 'No Fix', '2D', '3D'];
-        const fixMode = timeHealth.metadata.fix_mode || 0;
-        result += ` - ${timeHealth.metadata.satellites} sats, ${fixLabels[fixMode]} fix`;
-    }
-
-    return result;
 }

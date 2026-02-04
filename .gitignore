@@ -137,3 +137,5 @@ citra_image.fits
 hip_main.dat
 nina_sequence_*.json
 nina_focus_positions.json
+
+citrascope-env/

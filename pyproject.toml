@@ -70,6 +70,9 @@ rpi = [
 ximea = [
   "ximea-api>=1.0.0",
 ]
+gps = [
+  "gpsd-py3>=0.3.0",
+]
 all-hardware = [
   "pyindi-client",
   "pixelemon",
@@ -83,7 +86,7 @@ kstars = [
   "dbus-python",
 ]
 all = [
-  "citrascope[indi,kstars]",
+  "citrascope[indi,kstars,gps]",
 ]
 dev = [
   "black",
