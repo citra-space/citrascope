@@ -198,6 +198,18 @@ import * as components from './components.js';
                     this.versionCheckState = 'error';
                     this.versionCheckResult = { status: 'error', currentVersion: 'unknown' };
                 }
+            },
+
+            showConfigSection() {
+                // Close setup wizard modal
+                const wizardModal = bootstrap.Modal.getInstance(document.getElementById('setupWizard'));
+                if (wizardModal) {
+                    wizardModal.hide();
+                }
+
+                // Navigate to config section
+                this.currentSection = 'config';
+                window.location.hash = 'config';
             }
         });
     });

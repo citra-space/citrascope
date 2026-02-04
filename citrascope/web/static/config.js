@@ -67,9 +67,9 @@ async function checkConfigStatus() {
             // Show setup wizard if not configured
             const wizardModal = new bootstrap.Modal(document.getElementById('setupWizard'));
             wizardModal.show();
-        }
-
-        if (status.error) {
+        } else if (status.error) {
+            // Only show error toast if configured but there's an error (e.g., connection issue)
+            // Don't show toast for "not configured" since modal already handles that
             showConfigError(status.error);
         }
     } catch (error) {
