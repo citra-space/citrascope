@@ -36,18 +36,31 @@ def mock_logger():
 
 
 @pytest.fixture
-def task_manager(mock_api_client, mock_hardware_adapter, mock_logger):
-    """Create a TaskManager instance for testing."""
-    telescope_record = {"id": "test-telescope-123", "maxSlewRate": 5.0}
-    ground_station_record = {"id": "test-gs-456", "latitude": 40.0, "longitude": -74.0}
+def mock_daemon(mock_api_client, mock_hardware_adapter, mock_logger):
+    """Create a mock daemon instance for testing."""
+    daemon = MagicMock()
+    daemon.api_client = mock_api_client
+    daemon.hardware_adapter = mock_hardware_adapter
+    daemon.logger = mock_logger
+    daemon.telescope_record = {"id": "test-telescope-123", "maxSlewRate": 5.0, "automatedScheduling": False}
+    daemon.ground_station = {"id": "test-gs-456", "latitude": 40.0, "longitude": -74.0, "altitude": 100}
+    daemon.settings = MagicMock()
+    daemon.settings.keep_images = False
+    daemon.settings.max_task_retries = 3
+    daemon.settings.initial_retry_delay_seconds = 30
+    daemon.settings.max_retry_delay_seconds = 300
+    daemon.location_service = MagicMock()
+    return daemon
 
+
+@pytest.fixture
+def task_manager(mock_api_client, mock_hardware_adapter, mock_logger, mock_daemon):
+    """Create a TaskManager instance for testing."""
     tm = TaskManager(
         api_client=mock_api_client,
-        telescope_record=telescope_record,
-        ground_station_record=ground_station_record,
         logger=mock_logger,
         hardware_adapter=mock_hardware_adapter,
-        keep_images=False,
+        daemon=mock_daemon,
     )
     return tm
 
@@ -93,7 +106,7 @@ def test_poll_tasks_adds_new_tasks(task_manager, mock_api_client):
     with task_manager.heap_lock:
         # Simulate one iteration of poll_tasks
         task_manager._report_online()
-        tasks = mock_api_client.get_telescope_tasks(task_manager.telescope_record["id"])
+        tasks = mock_api_client.get_telescope_tasks(task_manager.daemon.telescope_record["id"])
 
         # The actual logic from poll_tasks
         api_task_map = {}
@@ -157,7 +170,7 @@ def test_poll_tasks_removes_cancelled_tasks(task_manager, mock_api_client):
 
     # Run the removal logic from poll_tasks
     with task_manager.heap_lock:
-        tasks = mock_api_client.get_telescope_tasks(task_manager.telescope_record["id"])
+        tasks = mock_api_client.get_telescope_tasks(task_manager.daemon.telescope_record["id"])
 
         # Build api_task_map
         api_task_map = {}
@@ -216,7 +229,7 @@ def test_poll_tasks_removes_tasks_with_changed_status(task_manager, mock_api_cli
 
     # Run the removal logic
     with task_manager.heap_lock:
-        tasks = mock_api_client.get_telescope_tasks(task_manager.telescope_record["id"])
+        tasks = mock_api_client.get_telescope_tasks(task_manager.daemon.telescope_record["id"])
 
         # Build api_task_map (Cancelled tasks won't be included)
         api_task_map = {}
@@ -270,7 +283,7 @@ def test_poll_tasks_does_not_remove_current_task(task_manager, mock_api_client):
 
     # Run the removal logic
     with task_manager.heap_lock:
-        tasks = mock_api_client.get_telescope_tasks(task_manager.telescope_record["id"])
+        tasks = mock_api_client.get_telescope_tasks(task_manager.daemon.telescope_record["id"])
 
         api_task_map = {}
         for task_dict in tasks:
