@@ -192,20 +192,17 @@ class CitraApiClient(AbstractCitraApiClient):
             altitude: Altitude in meters
 
         Returns:
-            Response from PATCH request, or None on error
+            Response from PUT request, or None on error
         """
         try:
-            body = [
-                {
-                    "id": ground_station_id,
-                    "latitude": latitude,
-                    "longitude": longitude,
-                    "altitude": altitude,
-                }
-            ]
-            response = self._request("PATCH", "/ground-stations", json=body)
+            body = {
+                "latitude": latitude,
+                "longitude": longitude,
+                "altitude": altitude,
+            }
+            response = self._request("PUT", f"/ground-stations/{ground_station_id}", json=body)
             if self.logger:
-                self.logger.debug(f"PATCH /ground-stations location: {response}")
+                self.logger.debug(f"PUT /ground-stations/{ground_station_id} location: {response}")
             return response
         except Exception as e:
             if self.logger:
