@@ -123,23 +123,32 @@ class GPSMonitor:
         self._thread = None
         CITRASCOPE_LOGGER.info("GPS monitor stopped")
 
-    def get_current_fix(self) -> Optional[GPSFix]:
+    def get_current_fix(self, allow_blocking: bool = True) -> Optional[GPSFix]:
         """
-        Get current GPS fix with 30-second cache.
+        Get current GPS fix with smart caching.
 
-        Returns cached fix if less than 30 seconds old, otherwise queries gpsd.
-        This prevents expensive subprocess calls during burst captures.
+        Returns cached fix if less than 30 seconds old, otherwise:
+        - If allow_blocking=True: Queries gpsd for fresh data (may block up to 5 seconds)
+        - If allow_blocking=False: Returns last known fix from background thread (may be up to 5 min old)
+
+        Args:
+            allow_blocking: If False, returns last known fix instead of blocking on subprocess.
+                           Use False when calling from async contexts to avoid blocking event loop.
 
         Returns:
             Current GPS fix, or None if unavailable
         """
         with self._lock:
-            # Check if cached fix is still fresh
             now = time.time()
+            # Return fresh cache if available (recent query within 30s)
             if self._cached_fix and (now - self._cache_timestamp) < self.CACHE_TTL_SECONDS:
                 return self._cached_fix
 
-        # Cache is stale or empty, query fresh data
+            # Cache is stale - if non-blocking, return last known fix from background thread
+            if not allow_blocking:
+                return self._current_fix
+
+        # Cache stale and blocking allowed - query fresh data (may block up to 5 seconds)
         fix = self._query_gpsd()
 
         # Update cache if we got valid data
@@ -170,9 +179,13 @@ class GPSMonitor:
         try:
             fix = self._query_gpsd()
 
-            # Store current fix (thread-safe)
+            # Store current fix and update cache (thread-safe)
+            # This ensures non-blocking callers (web app) always get recent data
             with self._lock:
                 self._current_fix = fix
+                if fix:
+                    self._cached_fix = fix
+                    self._cache_timestamp = time.time()
 
             # Log based on fix quality
             if fix:

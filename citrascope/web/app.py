@@ -775,12 +775,13 @@ class CitraScopeWebApp:
                 self.status.time_health = None
 
             # Get GPS location status from location service
+            # Use allow_blocking=False to prevent blocking the async event loop
             if (
                 hasattr(self.daemon, "location_service")
                 and self.daemon.location_service
                 and self.daemon.location_service.gps_monitor
             ):
-                gps_fix = self.daemon.location_service.gps_monitor.get_current_fix()
+                gps_fix = self.daemon.location_service.gps_monitor.get_current_fix(allow_blocking=False)
                 if gps_fix:
                     self.status.gps_location = {
                         "latitude": gps_fix.latitude,
