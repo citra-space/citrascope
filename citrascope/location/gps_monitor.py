@@ -151,9 +151,12 @@ class GPSMonitor:
             if fix:
                 self._log_fix_status(fix)
 
-                # Notify callback if fix quality changed
-                if self.fix_callback and fix.fix_mode != self._last_fix_mode:
+                # Track fix mode for logging changes
+                if fix.fix_mode != self._last_fix_mode:
                     self._last_fix_mode = fix.fix_mode
+
+                # Always notify callback (rate limiting happens in callback)
+                if self.fix_callback:
                     try:
                         self.fix_callback(fix)
                     except Exception as e:
