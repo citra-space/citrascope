@@ -116,6 +116,10 @@ class AbstractBaseTelescopeTask(ABC):
             raise ValueError("No valid elset available for satellite.")
 
         # Get current location from location service (GPS preferred, ground station fallback)
+        # Defensive check against race condition during component reinitialization
+        if not self.daemon.location_service:
+            raise ValueError("Location service not available (system may be reinitializing)")
+
         location = self.daemon.location_service.get_current_location()
         if not location:
             raise ValueError("No location available from location service")

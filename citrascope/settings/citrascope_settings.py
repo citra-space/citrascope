@@ -135,6 +135,7 @@ class CitraScopeSettings:
             "last_autofocus_timestamp": self.last_autofocus_timestamp,
             "time_check_interval_minutes": self.time_check_interval_minutes,
             "time_offset_pause_ms": self.time_offset_pause_ms,
+            "gps_location_updates_enabled": self.gps_location_updates_enabled,
         }
 
     def save(self) -> None:
