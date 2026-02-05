@@ -29,6 +29,9 @@ class LocationService:
     handling all GPS lifecycle operations.
     """
 
+    # GPS polling interval - how often to check GPS for fresh coordinates
+    GPS_CHECK_INTERVAL_SECONDS = 10
+
     # Maximum age for GPS fix before falling back to ground station (5 minutes)
     GPS_MAX_AGE_SECONDS = 300
 
@@ -48,10 +51,12 @@ class LocationService:
         self.settings = settings
         self._ground_station_ref: Optional[dict] = None
         self._lock = threading.Lock()  # Protect _ground_station_ref access
+        self._last_server_update = 0.0  # Track last server update for rate limiting
 
-        # Initialize GPS monitor if available
+        # Initialize GPS monitor with frequent polling (for UI freshness)
+        # Server updates are rate-limited in the callback to gps_update_interval_minutes
         self.gps_monitor = GPSMonitor(
-            check_interval_minutes=settings.gps_update_interval_minutes if settings else 5,
+            check_interval_minutes=self.GPS_CHECK_INTERVAL_SECONDS / 60,
             fix_callback=self.on_gps_fix_changed,
         )
 
@@ -80,10 +85,10 @@ class LocationService:
 
     def on_gps_fix_changed(self, fix: "GPSFix") -> None:
         """
-        Callback invoked when GPS fix is checked by background thread.
+        Callback invoked when GPS fix is checked by background thread (every 10 seconds).
 
-        Updates ground station location on Citra API when strong fix is available.
-        Update frequency is controlled by gps_update_interval_minutes (background thread interval).
+        Updates ground station location on Citra API when strong fix is available,
+        but rate-limited to gps_update_interval_minutes to avoid API spam.
 
         Args:
             fix: Current GPS fix information
@@ -102,6 +107,13 @@ class LocationService:
             CITRASCOPE_LOGGER.warning("GPS fix missing coordinate data despite strong fix status")
             return
 
+        # Rate limit server updates (GPS polled every 10s, but only update server every N minutes)
+        current_time = time.time()
+        update_interval_seconds = self.settings.gps_update_interval_minutes * 60
+        if current_time - self._last_server_update < update_interval_seconds:
+            # Too soon - skip this update
+            return
+
         # Thread-safe access to ground station reference
         with self._lock:
             if self.api_client and self._ground_station_ref:
@@ -117,6 +129,9 @@ class LocationService:
                     self._ground_station_ref["latitude"] = fix.latitude
                     self._ground_station_ref["longitude"] = fix.longitude
                     self._ground_station_ref["altitude"] = fix.altitude
+
+                    # Update timestamp after successful server update
+                    self._last_server_update = current_time
 
                     CITRASCOPE_LOGGER.info(
                         f"Updated ground station location from GPS: "

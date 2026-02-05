@@ -23,6 +23,8 @@ class GPSFix:
     fix_mode: int = 0  # 0=no fix, 2=2D, 3=3D
     satellites: int = 0  # number of satellites used
     timestamp: float = 0.0  # time.time() when fix was obtained
+    eph: Optional[float] = None  # estimated horizontal position error (meters)
+    sep: Optional[float] = None  # spherical error probable (meters)
 
     @property
     def is_strong_fix(self) -> bool:
@@ -110,7 +112,13 @@ class GPSMonitor:
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._monitor_loop, daemon=True)
         self._thread.start()
-        CITRASCOPE_LOGGER.info(f"GPS monitor started (check interval: {self.check_interval_minutes} minutes)")
+
+        # Log interval in human-readable format
+        if self.check_interval_minutes < 1:
+            interval_seconds = int(self.check_interval_minutes * 60)
+            CITRASCOPE_LOGGER.info(f"GPS monitor started (check interval: {interval_seconds} seconds)")
+        else:
+            CITRASCOPE_LOGGER.info(f"GPS monitor started (check interval: {self.check_interval_minutes} minutes)")
 
     def stop(self) -> None:
         """Stop the GPS monitoring thread."""
@@ -253,6 +261,10 @@ class GPSMonitor:
                             fix.longitude = data["lon"]
                         if "alt" in data:
                             fix.altitude = data["alt"]
+                        if "eph" in data:
+                            fix.eph = data["eph"]
+                        if "sep" in data:
+                            fix.sep = data["sep"]
 
                     # Extract satellite count from SKY message
                     if msg_class == "SKY":

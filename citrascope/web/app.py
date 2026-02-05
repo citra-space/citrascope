@@ -790,6 +790,8 @@ class CitraScopeWebApp:
                         "fix_mode": gps_fix.fix_mode,
                         "satellites": gps_fix.satellites,
                         "is_strong": gps_fix.is_strong_fix,
+                        "eph": gps_fix.eph,
+                        "sep": gps_fix.sep,
                         "source": "gps",
                     }
                 else:
