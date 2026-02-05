@@ -6,6 +6,7 @@ from dateutil import parser as dtparser
 from skyfield.api import Angle, EarthSatellite, load, wgs84
 
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
+from citrascope.tasks.fits_enrichment import enrich_fits_metadata
 
 
 class AbstractBaseTelescopeTask(ABC):
@@ -14,18 +15,14 @@ class AbstractBaseTelescopeTask(ABC):
         api_client,
         hardware_adapter: AbstractAstroHardwareAdapter,
         logger,
-        telescope_record,
-        ground_station_record,
         task,
-        keep_images: bool = False,
+        daemon,
     ):
         self.api_client = api_client
         self.hardware_adapter: AbstractAstroHardwareAdapter = hardware_adapter
         self.logger = logger
-        self.telescope_record = telescope_record
-        self.ground_station_record = ground_station_record
         self.task = task
-        self.keep_images = keep_images
+        self.daemon = daemon
 
     def fetch_satellite(self) -> dict | None:
         satellite_data = self.api_client.get_satellite(self.task.satelliteId)
@@ -65,14 +62,25 @@ class AbstractBaseTelescopeTask(ABC):
             filepaths = filepath
 
         for filepath in filepaths:
-            upload_result = self.api_client.upload_image(self.task.id, self.telescope_record["id"], filepath)
+            # Enrich FITS metadata with observation context before upload
+            try:
+                enrich_fits_metadata(
+                    filepath,
+                    task=self.task,
+                    daemon=self.daemon,
+                )
+            except Exception as e:
+                # Log but don't fail upload on enrichment errors
+                self.logger.warning(f"Failed to enrich FITS metadata for {filepath}: {e}")
+
+            upload_result = self.api_client.upload_image(self.task.id, self.daemon.telescope_record["id"], filepath)
             if upload_result:
                 self.logger.info(f"Successfully uploaded image {filepath}")
             else:
                 self.logger.error(f"Failed to upload image {filepath}")
                 return False
 
-            if not self.keep_images:
+            if not self.daemon.settings.keep_images:
                 try:
                     os.remove(filepath)
                     self.logger.debug(f"Deleted local image file {filepath} after upload.")
@@ -83,7 +91,7 @@ class AbstractBaseTelescopeTask(ABC):
 
         marked_complete = self.api_client.mark_task_complete(self.task.id)
         if not marked_complete:
-            task_check = self.api_client.get_telescope_tasks(self.telescope_record["id"])
+            task_check = self.api_client.get_telescope_tasks(self.daemon.telescope_record["id"])
             for t in task_check:
                 if t["id"] == self.task.id and t.get("status") == "Succeeded":
                     self.logger.info(f"Task {self.task.id} is already marked complete.")
@@ -107,9 +115,9 @@ class AbstractBaseTelescopeTask(ABC):
             raise ValueError("No valid elset available for satellite.")
 
         ground_station = wgs84.latlon(
-            self.ground_station_record["latitude"],
-            self.ground_station_record["longitude"],
-            elevation_m=self.ground_station_record["altitude"],
+            self.daemon.ground_station["latitude"],
+            self.daemon.ground_station["longitude"],
+            elevation_m=self.daemon.ground_station["altitude"],
         )
         satellite = EarthSatellite(most_recent_elset["tle"][0], most_recent_elset["tle"][1], satellite_data["name"], ts)
         return ground_station, satellite, ts

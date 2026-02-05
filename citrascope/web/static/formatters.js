@@ -94,11 +94,11 @@ export function formatLastAutofocus(status) {
  */
 export function formatTimeOffset(timeHealth) {
     if (!timeHealth || timeHealth.offset_ms == null) return 'Unknown';
-    
+
     const o = timeHealth.offset_ms;
     const abs = Math.abs(o);
     const s = o >= 0 ? '+' : '';
-    
+
     // Format offset with appropriate units
     let offsetStr;
     if (abs < 0.001) {
@@ -126,4 +126,25 @@ export function formatTimeOffset(timeHealth) {
         // No source info
         return offsetStr;
     }
+}
+
+/**
+ * Format GPS location information
+ * @param {Object} gpsLocation - GPS location object with latitude, longitude, altitude, satellites, fix_mode
+ * @returns {string} Formatted GPS location (e.g., "37.774930°, -122.419420°, 10m (8 sats, 3D fix)")
+ */
+export function formatGPSLocation(gpsLocation) {
+    if (!gpsLocation || gpsLocation.latitude == null) {
+        return 'GPS unavailable';
+    }
+
+    const lat = gpsLocation.latitude.toFixed(6);
+    const lon = gpsLocation.longitude.toFixed(6);
+    const alt = Math.round(gpsLocation.altitude);
+    const sats = gpsLocation.satellites || 0;
+    const fixMode = gpsLocation.fix_mode || 0;
+    const fixTypes = ['No fix', 'No fix', '2D fix', '3D fix'];
+    const fixType = fixTypes[Math.min(fixMode, 3)];
+
+    return `${lat}°, ${lon}°, ${alt}m (${sats} sats, ${fixType})`;
 }

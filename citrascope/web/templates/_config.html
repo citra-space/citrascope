@@ -86,6 +86,36 @@
                     </div>
                 </div>
 
+                <!-- GPS Location Settings Card -->
+                <div class="col-12" x-data="{ gpsCardExpanded: $persist(true).as('gpsCard') }">
+                    <div class="card bg-dark text-light border-secondary">
+                        <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" @click="gpsCardExpanded = !gpsCardExpanded">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-geo-alt"></i>
+                                <h5 class="mb-0">GPS Location</h5>
+                                <small class="text-muted" x-show="!gpsCardExpanded" x-text="$store.citrascope.config.gps_location_updates_enabled !== false ? 'Updates enabled' : 'Updates disabled'"></small>
+                            </div>
+                            <i class="bi" :class="gpsCardExpanded ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+                        </div>
+                        <div class="card-body" x-show="gpsCardExpanded">
+                            <div class="row g-3">
+                                <div class="col-12">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="gps_location_updates_enabled" x-model="$store.citrascope.config.gps_location_updates_enabled">
+                                        <label class="form-check-label" for="gps_location_updates_enabled">
+                                            Use GPS for ground station location
+                                        </label>
+                                    </div>
+                                    <small class="text-muted d-block mt-2">
+                                        When enabled, ground station location will be updated from GPS (if available).
+                                        When disabled, server-provided location will be used for all operations.
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Logging Settings Card -->
                 <div class="col-12" x-data="{ loggingCardExpanded: $persist(true).as('loggingCard') }">
                     <div class="card bg-dark text-light border-secondary">

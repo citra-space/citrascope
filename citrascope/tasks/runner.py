@@ -19,25 +19,19 @@ class TaskManager:
     def __init__(
         self,
         api_client,
-        telescope_record,
-        ground_station_record,
         logger,
         hardware_adapter: AbstractAstroHardwareAdapter,
-        keep_images: bool = False,
-        settings=None,
+        daemon,
     ):
         self.api_client = api_client
-        self.telescope_record = telescope_record
-        self.ground_station_record = ground_station_record
         self.logger = logger
-        self.settings = settings
+        self.hardware_adapter = hardware_adapter
+        self.daemon = daemon
         self.task_heap = []  # min-heap by start time
         self.task_ids = set()
-        self.hardware_adapter = hardware_adapter
         self.heap_lock = threading.RLock()
         self._stop_event = threading.Event()
         self.current_task_id = None  # Track currently executing task
-        self.keep_images = keep_images
         self.task_retry_counts = {}  # Track retry attempts per task ID
         self.task_last_failure = {}  # Track last failure timestamp per task ID
         # Task processing control (always starts active)
@@ -47,13 +41,15 @@ class TaskManager:
         self._autofocus_requested = False
         self._autofocus_lock = threading.Lock()
         # Automated scheduling state (initialized from server on startup)
-        self._automated_scheduling = telescope_record.get("automatedScheduling", False) if telescope_record else False
+        self._automated_scheduling = (
+            daemon.telescope_record.get("automatedScheduling", False) if daemon.telescope_record else False
+        )
 
     def poll_tasks(self):
         while not self._stop_event.is_set():
             try:
                 self._report_online()
-                tasks = self.api_client.get_telescope_tasks(self.telescope_record["id"])
+                tasks = self.api_client.get_telescope_tasks(self.daemon.telescope_record["id"])
 
                 # If API call failed (timeout, network error, etc.), wait before retrying
                 if tasks is None:
@@ -131,7 +127,7 @@ class TaskManager:
         """
         PUT to /telescopes to report this telescope as online.
         """
-        telescope_id = self.telescope_record["id"]
+        telescope_id = self.daemon.telescope_record["id"]
         iso_timestamp = datetime.now(timezone.utc).isoformat()
         self.api_client.put_telescope_status([{"id": telescope_id, "last_connection_epoch": iso_timestamp}])
         self.logger.debug(f"Reported online status for telescope {telescope_id} at {iso_timestamp}")
@@ -182,7 +178,7 @@ class TaskManager:
                         else:
                             # Task failed - implement retry logic with exponential backoff
                             retry_count = self.task_retry_counts.get(tid, 0)
-                            max_retries = self.settings.max_task_retries if self.settings else 3
+                            max_retries = self.daemon.settings.max_task_retries if self.daemon.settings else 3
 
                             if retry_count >= max_retries:
                                 # Max retries exceeded - permanently fail the task
@@ -205,8 +201,12 @@ class TaskManager:
                                 self.task_last_failure[tid] = now
 
                                 # Calculate backoff delay: initial_delay * 2^retry_count, capped at max_delay
-                                initial_delay = self.settings.initial_retry_delay_seconds if self.settings else 30
-                                max_delay = self.settings.max_retry_delay_seconds if self.settings else 300
+                                initial_delay = (
+                                    self.daemon.settings.initial_retry_delay_seconds if self.daemon.settings else 30
+                                )
+                                max_delay = (
+                                    self.daemon.settings.max_retry_delay_seconds if self.daemon.settings else 300
+                                )
                                 backoff_delay = min(initial_delay * (2**retry_count), max_delay)
 
                                 # Update task start time in heap to retry after backoff delay
@@ -247,16 +247,14 @@ class TaskManager:
             self.api_client,
             self.hardware_adapter,
             self.logger,
-            self.telescope_record,
-            self.ground_station_record,
             task,
-            self.keep_images,
+            self.daemon,
         )
         return static_task.execute()
 
         # track the sat for a while with longer exposure
         # tracking_task = TrackingTelescopeTask(
-        #     self.api_client, self.hardware_adapter, self.logger, self.telescope_record, self.ground_station_record, task
+        #     self.api_client, self.hardware_adapter, self.logger, task, self.daemon
         # )
         # return tracking_task.execute()
 
@@ -336,19 +334,19 @@ class TaskManager:
         Returns:
             bool: True if autofocus is enabled and interval has elapsed.
         """
-        if not self.settings:
+        if not self.daemon.settings:
             return False
 
         # Check if scheduled autofocus is enabled (top-level setting)
-        if not self.settings.scheduled_autofocus_enabled:
+        if not self.daemon.settings.scheduled_autofocus_enabled:
             return False
 
         # Check if adapter supports autofocus
         if not self.hardware_adapter.supports_autofocus():
             return False
 
-        interval_minutes = self.settings.autofocus_interval_minutes
-        last_timestamp = self.settings.last_autofocus_timestamp
+        interval_minutes = self.daemon.settings.autofocus_interval_minutes
+        last_timestamp = self.daemon.settings.last_autofocus_timestamp
 
         # If never run (None), treat as overdue and run immediately
         if last_timestamp is None:
@@ -368,8 +366,8 @@ class TaskManager:
             if self.hardware_adapter.supports_filter_management():
                 try:
                     filter_config = self.hardware_adapter.get_filter_config()
-                    if filter_config and self.settings:
-                        self.settings.adapter_settings["filters"] = filter_config
+                    if filter_config and self.daemon.settings:
+                        self.daemon.settings.adapter_settings["filters"] = filter_config
                         self.logger.info(f"Saved filter configuration with {len(filter_config)} filters")
                 except Exception as e:
                     self.logger.warning(f"Failed to save filter configuration after autofocus: {e}")
@@ -379,9 +377,9 @@ class TaskManager:
             self.logger.error(f"Autofocus failed: {str(e)}", exc_info=True)
         finally:
             # Always update timestamp to prevent retry spam
-            if self.settings:
-                self.settings.last_autofocus_timestamp = int(time.time())
-                self.settings.save()
+            if self.daemon.settings:
+                self.daemon.settings.last_autofocus_timestamp = int(time.time())
+                self.daemon.settings.save()
 
     def start(self):
         self._stop_event.clear()

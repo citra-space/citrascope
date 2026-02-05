@@ -85,6 +85,9 @@ class CitraScopeSettings:
         self.time_check_interval_minutes: int = config.get("time_check_interval_minutes", 5)
         self.time_offset_pause_ms: float = config.get("time_offset_pause_ms", 500.0)
 
+        # GPS location updates configuration
+        self.gps_location_updates_enabled: bool = config.get("gps_location_updates_enabled", True)
+
     def get_images_dir(self) -> Path:
         """Get the path to the images directory.
 

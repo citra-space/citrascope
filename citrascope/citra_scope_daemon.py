@@ -5,6 +5,7 @@ from citrascope.api.citra_api_client import AbstractCitraApiClient, CitraApiClie
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
 from citrascope.hardware.adapter_registry import get_adapter_class
 from citrascope.hardware.filter_sync import sync_filters_to_backend
+from citrascope.location import LocationService
 from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.logging._citrascope_logger import setup_file_logging
 from citrascope.settings.citrascope_settings import CitraScopeSettings
@@ -36,6 +37,7 @@ class CitraScopeDaemon:
         self.web_server = None
         self.task_manager = None
         self.time_monitor = None
+        self.location_service = None
         self.ground_station = None
         self.telescope_record = None
         self.configuration_error: Optional[str] = None
@@ -97,6 +99,10 @@ class CitraScopeDaemon:
                 self.time_monitor.stop()
                 self.time_monitor = None
 
+            if self.location_service:
+                self.location_service.stop()
+                self.location_service = None
+
             if self.hardware_adapter:
                 try:
                     self.hardware_adapter.disconnect()
@@ -132,11 +138,18 @@ class CitraScopeDaemon:
                             f"Install with: {dep['install_cmd']}"
                         )
 
-            # Initialize and start time monitor (independent of API/telescope connection)
+            # Initialize location service (manages GPS internally)
+            self.location_service = LocationService(
+                api_client=self.api_client,
+                settings=self.settings,
+            )
+
+            # Initialize time monitor with GPS reference from location service
             self.time_monitor = TimeMonitor(
                 check_interval_minutes=self.settings.time_check_interval_minutes,
                 pause_threshold_ms=self.settings.time_offset_pause_ms,
                 pause_callback=self._on_time_drift_pause,
+                gps_monitor=self.location_service.gps_monitor if self.location_service else None,
             )
             self.time_monitor.start()
             CITRASCOPE_LOGGER.info("Time synchronization monitoring started")
@@ -192,6 +205,10 @@ class CitraScopeDaemon:
                 return False, error_msg
             self.ground_station = ground_station
 
+            # Update location service with ground station reference
+            if self.location_service:
+                self.location_service.set_ground_station(self.ground_station)
+
             # connect to hardware server
             CITRASCOPE_LOGGER.info(f"Connecting to hardware with {type(self.hardware_adapter).__name__}...")
             if not self.hardware_adapter.connect():
@@ -211,12 +228,9 @@ class CitraScopeDaemon:
 
             self.task_manager = TaskManager(
                 self.api_client,
-                citra_telescope_record,
-                ground_station,
                 CITRASCOPE_LOGGER,
                 self.hardware_adapter,
-                self.settings.keep_images,
-                self.settings,
+                self,
             )
             self.task_manager.start()
 
