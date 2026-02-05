@@ -131,7 +131,7 @@ export function formatTimeOffset(timeHealth) {
 /**
  * Format GPS location information
  * @param {Object} gpsLocation - GPS location object with satellites, fix_mode, sep
- * @returns {string} Formatted GPS location (e.g., "6 sats, 3D fix, ±102ft")
+ * @returns {string} Formatted GPS location (e.g., "±102ft, 6 sats, 3D fix")
  */
 export function formatGPSLocation(gpsLocation) {
     if (!gpsLocation || gpsLocation.latitude == null) {
@@ -147,11 +147,11 @@ export function formatGPSLocation(gpsLocation) {
     let accuracy = '';
     if (gpsLocation.sep != null) {
         const accuracyFt = Math.round(gpsLocation.sep * 3.28084); // meters to feet
-        accuracy = `, ±${accuracyFt}ft`;
+        accuracy = `±${accuracyFt}ft, `;
     } else if (gpsLocation.eph != null) {
         const accuracyFt = Math.round(gpsLocation.eph * 3.28084); // meters to feet
-        accuracy = `, ±${accuracyFt}ft`;
+        accuracy = `±${accuracyFt}ft, `;
     }
 
-    return `${sats} sats, ${fixType}${accuracy}`;
+    return `${accuracy}${sats} sats, ${fixType}`;
 }
