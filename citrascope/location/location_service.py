@@ -94,7 +94,14 @@ class LocationService:
         if not self.settings or not self.settings.gps_location_updates_enabled:
             return
 
+        # Validate fix quality and coordinate data
         if not fix.is_strong_fix:
+            return
+
+        # Additional validation: is_strong_fix now guarantees these are not None,
+        # but be explicit for type checker and future-proofing
+        if fix.latitude is None or fix.longitude is None or fix.altitude is None:
+            CITRASCOPE_LOGGER.warning("GPS fix missing coordinate data despite strong fix status")
             return
 
         # Rate limit: only update if >15 min since last update

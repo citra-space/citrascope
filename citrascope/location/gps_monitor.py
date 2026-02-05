@@ -26,8 +26,14 @@ class GPSFix:
 
     @property
     def is_strong_fix(self) -> bool:
-        """Check if this is a strong GPS fix (3D with 4+ satellites)."""
-        return self.fix_mode >= 3 and self.satellites >= 4
+        """Check if this is a strong GPS fix (3D with 4+ satellites and valid coordinates)."""
+        return (
+            self.fix_mode >= 3
+            and self.satellites >= 4
+            and self.latitude is not None
+            and self.longitude is not None
+            and self.altitude is not None
+        )
 
 
 class GPSMonitor:
