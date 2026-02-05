@@ -85,7 +85,7 @@
                                     </span>
                                 </div>
                             </div>
-                            <div class="row mb-2">
+                            <div class="row mb-2" x-show="$store.citrascope.config?.gps_location_updates_enabled !== false">
                                 <div class="col-6 fw-semibold">
                                     <span data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="top" title="GPS location from satellite fix. Used for telescope positioning and FITS metadata">
                                         GPS Location
