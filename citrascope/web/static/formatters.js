@@ -94,11 +94,11 @@ export function formatLastAutofocus(status) {
  */
 export function formatTimeOffset(timeHealth) {
     if (!timeHealth || timeHealth.offset_ms == null) return 'Unknown';
-    
+
     const o = timeHealth.offset_ms;
     const abs = Math.abs(o);
     const s = o >= 0 ? '+' : '';
-    
+
     // Format offset with appropriate units
     let offsetStr;
     if (abs < 0.001) {
@@ -126,4 +126,32 @@ export function formatTimeOffset(timeHealth) {
         // No source info
         return offsetStr;
     }
+}
+
+/**
+ * Format GPS location information
+ * @param {Object} gpsLocation - GPS location object with satellites, fix_mode, sep
+ * @returns {string} Formatted GPS location (e.g., "±102ft, 6 sats, 3D fix")
+ */
+export function formatGPSLocation(gpsLocation) {
+    if (!gpsLocation || gpsLocation.latitude == null) {
+        return 'GPS unavailable';
+    }
+
+    const sats = gpsLocation.satellites || 0;
+    const fixMode = gpsLocation.fix_mode || 0;
+    const fixTypes = ['No fix', 'No fix', '2D fix', '3D fix'];
+    const fixType = fixTypes[Math.min(fixMode, 3)];
+
+    // Add accuracy if available (prefer SEP - spherical error probable)
+    let accuracy = '';
+    if (gpsLocation.sep != null) {
+        const accuracyFt = Math.round(gpsLocation.sep * 3.28084); // meters to feet
+        accuracy = `±${accuracyFt}ft, `;
+    } else if (gpsLocation.eph != null) {
+        const accuracyFt = Math.round(gpsLocation.eph * 3.28084); // meters to feet
+        accuracy = `±${accuracyFt}ft, `;
+    }
+
+    return `${accuracy}${sats} sats, ${fixType}`;
 }

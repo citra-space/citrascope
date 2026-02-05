@@ -181,3 +181,30 @@ class CitraApiClient(AbstractCitraApiClient):
             if self.logger:
                 self.logger.error(f"Failed to update telescope spectral config: {e}")
             return None
+
+    def update_ground_station_location(self, ground_station_id, latitude, longitude, altitude):
+        """Update ground station's GPS location (for mobile stations).
+
+        Args:
+            ground_station_id: Ground station UUID string
+            latitude: Latitude in degrees
+            longitude: Longitude in degrees
+            altitude: Altitude in meters
+
+        Returns:
+            Response from PUT request, or None on error
+        """
+        try:
+            body = {
+                "latitude": latitude,
+                "longitude": longitude,
+                "altitude": altitude,
+            }
+            response = self._request("PUT", f"/ground-stations/{ground_station_id}", json=body)
+            if self.logger:
+                self.logger.debug(f"PUT /ground-stations/{ground_station_id} location: {response}")
+            return response
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Failed to update ground station location: {e}")
+            return None

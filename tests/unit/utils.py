@@ -78,3 +78,13 @@ class MockCitraApiClient(AbstractCitraApiClient):
     def update_telescope_spectral_config(self, telescope_id, spectral_config):
         """Simulate updating telescope spectral configuration."""
         return {"status": "ok", "telescope_id": telescope_id, "spectral_config": spectral_config}
+
+    def update_ground_station_location(self, ground_station_id, latitude, longitude, altitude):
+        """Simulate updating ground station GPS location."""
+        return {
+            "status": "ok",
+            "ground_station_id": ground_station_id,
+            "latitude": latitude,
+            "longitude": longitude,
+            "altitude": altitude,
+        }

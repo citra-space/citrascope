@@ -85,6 +85,21 @@
                                     </span>
                                 </div>
                             </div>
+                            <div class="row mb-2">
+                                <div class="col-6 fw-semibold">
+                                    <span data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="top" title="GPS location from satellite fix. Used for telescope positioning and FITS metadata">
+                                        GPS Location
+                                    </span>
+                                </div>
+                                <div class="col-6">
+                                    <span>
+                                        <span class="badge rounded-pill" data-bs-toggle="tooltip"
+                                            :class="$store.citrascope.status?.gps_location?.is_strong ? 'bg-success' : 'bg-secondary'"
+                                            :title="$store.citrascope.status?.gps_location ? 'GPS fix available' : 'GPS unavailable or no fix'"
+                                            x-text="$store.citrascope.formatGPSLocation($store.citrascope.status?.gps_location)"></span>
+                                    </span>
+                                </div>
+                            </div>
                             <!-- Missing Dependencies Alert -->
                             <div class="alert alert-warning mt-3 mb-0" role="alert"
                                 x-show="$store.citrascope.status?.missing_dependencies?.length > 0">

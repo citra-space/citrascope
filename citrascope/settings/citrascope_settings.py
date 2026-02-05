@@ -85,6 +85,10 @@ class CitraScopeSettings:
         self.time_check_interval_minutes: int = config.get("time_check_interval_minutes", 5)
         self.time_offset_pause_ms: float = config.get("time_offset_pause_ms", 500.0)
 
+        # GPS location updates configuration
+        self.gps_location_updates_enabled: bool = config.get("gps_location_updates_enabled", True)
+        self.gps_update_interval_minutes: int = config.get("gps_update_interval_minutes", 5)
+
     def get_images_dir(self) -> Path:
         """Get the path to the images directory.
 
@@ -132,6 +136,8 @@ class CitraScopeSettings:
             "last_autofocus_timestamp": self.last_autofocus_timestamp,
             "time_check_interval_minutes": self.time_check_interval_minutes,
             "time_offset_pause_ms": self.time_offset_pause_ms,
+            "gps_location_updates_enabled": self.gps_location_updates_enabled,
+            "gps_update_interval_minutes": self.gps_update_interval_minutes,
         }
 
     def save(self) -> None:

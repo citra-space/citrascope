@@ -44,6 +44,7 @@ class SystemStatus(BaseModel):
     last_autofocus_timestamp: Optional[int] = None
     next_autofocus_minutes: Optional[int] = None
     time_health: Optional[Dict[str, Any]] = None
+    gps_location: Optional[Dict[str, Any]] = None
     last_update: str = ""
     missing_dependencies: List[Dict[str, str]] = []  # List of {device, packages, install_cmd}
 
@@ -201,6 +202,8 @@ class CitraScopeWebApp:
                 "last_autofocus_timestamp": settings.last_autofocus_timestamp,
                 "time_check_interval_minutes": settings.time_check_interval_minutes,
                 "time_offset_pause_ms": settings.time_offset_pause_ms,
+                "gps_location_updates_enabled": settings.gps_location_updates_enabled,
+                "gps_update_interval_minutes": settings.gps_update_interval_minutes,
                 "app_url": app_url,
                 "config_file_path": config_path,
                 "log_file_path": log_file_path,
@@ -770,6 +773,31 @@ class CitraScopeWebApp:
             else:
                 # Time monitoring not initialized yet
                 self.status.time_health = None
+
+            # Get GPS location status from location service
+            # Use allow_blocking=False to prevent blocking the async event loop
+            if (
+                hasattr(self.daemon, "location_service")
+                and self.daemon.location_service
+                and self.daemon.location_service.gps_monitor
+            ):
+                gps_fix = self.daemon.location_service.gps_monitor.get_current_fix(allow_blocking=False)
+                if gps_fix:
+                    self.status.gps_location = {
+                        "latitude": gps_fix.latitude,
+                        "longitude": gps_fix.longitude,
+                        "altitude": gps_fix.altitude,
+                        "fix_mode": gps_fix.fix_mode,
+                        "satellites": gps_fix.satellites,
+                        "is_strong": gps_fix.is_strong_fix,
+                        "eph": gps_fix.eph,
+                        "sep": gps_fix.sep,
+                        "source": "gps",
+                    }
+                else:
+                    self.status.gps_location = None
+            else:
+                self.status.gps_location = None
 
             # Get ground station information from daemon (available after API validation)
             if hasattr(self.daemon, "ground_station") and self.daemon.ground_station:

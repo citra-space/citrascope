@@ -2,11 +2,14 @@
 
 import threading
 import time
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.time.time_health import TimeHealth, TimeStatus
 from citrascope.time.time_sources import AbstractTimeSource, ChronyTimeSource, NTPTimeSource
+
+if TYPE_CHECKING:
+    from citrascope.location.gps_monitor import GPSMonitor
 
 
 class TimeMonitor:
@@ -23,6 +26,7 @@ class TimeMonitor:
         check_interval_minutes: int = 5,
         pause_threshold_ms: float = 500.0,
         pause_callback: Optional[Callable[[TimeHealth], None]] = None,
+        gps_monitor: Optional["GPSMonitor"] = None,
     ):
         """
         Initialize time monitor.
@@ -31,10 +35,12 @@ class TimeMonitor:
             check_interval_minutes: Minutes between time sync checks
             pause_threshold_ms: Threshold in ms that triggers task pause
             pause_callback: Callback function when threshold exceeded
+            gps_monitor: Optional GPS monitor to get GPS metadata from
         """
         self.check_interval_minutes = check_interval_minutes
         self.pause_threshold_ms = pause_threshold_ms
         self.pause_callback = pause_callback
+        self.gps_monitor = gps_monitor
 
         # Detect and initialize best available time source
         self.time_source: AbstractTimeSource = self._detect_best_source()
@@ -115,13 +121,26 @@ class TimeMonitor:
             # Query time source for offset
             offset_ms = self.time_source.get_offset_ms()
 
-            # Get metadata if available (e.g., GPS satellite info)
-            metadata = self.time_source.get_metadata()
+            # Get metadata from GPS monitor if available
+            metadata = None
+            if self.gps_monitor:
+                fix = self.gps_monitor.get_current_fix()
+                if fix and fix.fix_mode > 0:
+                    metadata = {
+                        "satellites": fix.satellites,
+                        "fix_mode": fix.fix_mode,
+                    }
+
+            # Determine source name (GPS if available, otherwise time source name)
+            source_name = self.time_source.get_source_name()
+            if metadata and self.time_source.get_source_name() == "chrony":
+                # If we have GPS metadata and using chrony, report as GPS
+                source_name = "gps"
 
             # Calculate health status
             health = TimeHealth.from_offset(
                 offset_ms=offset_ms,
-                source=self.time_source.get_source_name(),
+                source=source_name,
                 pause_threshold=self.pause_threshold_ms,
                 metadata=metadata,
             )

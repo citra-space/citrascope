@@ -42,3 +42,10 @@ class AbstractCitraApiClient(ABC):
         PATCH to /telescopes to update telescope's spectral configuration.
         """
         pass
+
+    @abstractmethod
+    def update_ground_station_location(self, ground_station_id, latitude, longitude, altitude):
+        """
+        PATCH to /ground-stations to update ground station's GPS location.
+        """
+        pass
