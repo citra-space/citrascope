@@ -46,13 +46,12 @@ class LocationService:
         """
         self.api_client = api_client
         self.settings = settings
-        self._last_gps_update = 0.0
         self._ground_station_ref: Optional[dict] = None
         self._lock = threading.Lock()  # Protect _ground_station_ref access
 
         # Initialize GPS monitor if available
         self.gps_monitor = GPSMonitor(
-            check_interval_minutes=settings.time_check_interval_minutes if settings else 5,
+            check_interval_minutes=settings.gps_update_interval_minutes if settings else 5,
             fix_callback=self.on_gps_fix_changed,
         )
 
@@ -81,11 +80,10 @@ class LocationService:
 
     def on_gps_fix_changed(self, fix: "GPSFix") -> None:
         """
-        Callback invoked when GPS fix quality changes.
+        Callback invoked when GPS fix is checked by background thread.
 
         Updates ground station location on Citra API when strong fix is available.
-        For mobile ground stations, GPS updates their recorded location.
-        Rate-limited by gps_update_interval_minutes setting.
+        Update frequency is controlled by gps_update_interval_minutes (background thread interval).
 
         Args:
             fix: Current GPS fix information
@@ -102,12 +100,6 @@ class LocationService:
         # but be explicit for type checker and future-proofing
         if fix.latitude is None or fix.longitude is None or fix.altitude is None:
             CITRASCOPE_LOGGER.warning("GPS fix missing coordinate data despite strong fix status")
-            return
-
-        # Rate limit: only update if enough time has elapsed since last update
-        current_time = time.time()
-        update_interval_seconds = self.settings.gps_update_interval_minutes * 60 if self.settings else 300
-        if current_time - self._last_gps_update < update_interval_seconds:
             return
 
         # Thread-safe access to ground station reference
@@ -130,7 +122,6 @@ class LocationService:
                         f"Updated ground station location from GPS: "
                         f"lat={fix.latitude:.6f}, lon={fix.longitude:.6f}, alt={fix.altitude:.1f}m"
                     )
-                    self._last_gps_update = current_time
 
     def get_current_location(self) -> Optional[dict]:
         """
