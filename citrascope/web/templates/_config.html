@@ -99,7 +99,7 @@
                         </div>
                         <div class="card-body" x-show="gpsCardExpanded">
                             <div class="row g-3">
-                                <div class="col-12">
+                                <div class="col-md-6">
                                     <div class="form-check">
                                         <input class="form-check-input" type="checkbox" id="gps_location_updates_enabled" x-model="$store.citrascope.config.gps_location_updates_enabled">
                                         <label class="form-check-label" for="gps_location_updates_enabled">
@@ -109,6 +109,16 @@
                                     <small class="text-muted d-block mt-2">
                                         When enabled, ground station location will be updated from GPS (if available).
                                         When disabled, server-provided location will be used for all operations.
+                                    </small>
+                                </div>
+                                <div class="col-md-6" x-show="$store.citrascope.config.gps_location_updates_enabled !== false">
+                                    <label for="gps_update_interval_minutes" class="form-label">GPS Update Interval (minutes)</label>
+                                    <input type="number" class="form-control" id="gps_update_interval_minutes"
+                                        x-model.number="$store.citrascope.config.gps_update_interval_minutes"
+                                        min="1" max="1440" step="1">
+                                    <small class="text-muted d-block mt-2">
+                                        How often to push location updates to the server (default: 5 minutes).
+                                        Local operations always use current GPS. This only controls server sync frequency.
                                     </small>
                                 </div>
                             </div>

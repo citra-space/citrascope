@@ -38,11 +38,14 @@ class GPSFix:
 
 class GPSMonitor:
     """
-    Background thread that monitors GPS receiver via gpsd.
+    GPS monitoring with on-demand queries.
 
-    Periodically queries gpsd using gpspipe to get location and fix quality.
-    Provides thread-safe access to latest GPS fix and optional callback
-    when fix quality changes.
+    Architecture:
+    - get_current_fix(): Queries gpsd directly for always-fresh GPS data
+    - Background thread: Monitors fix quality changes for server update callbacks
+
+    Since gpsd caches GPS data in shared memory, queries are fast (~200ms).
+    No application-level caching needed - simplicity over micro-optimization.
     """
 
     def __init__(
@@ -109,9 +112,16 @@ class GPSMonitor:
         CITRASCOPE_LOGGER.info("GPS monitor stopped")
 
     def get_current_fix(self) -> Optional[GPSFix]:
-        """Get the current GPS fix (thread-safe)."""
-        with self._lock:
-            return self._current_fix
+        """
+        Get current GPS fix by querying gpsd.
+
+        Always returns fresh data from gpsd (no caching).
+        Fast enough for all operations (~200ms) since gpsd caches in shared memory.
+
+        Returns:
+            Current GPS fix, or None if unavailable
+        """
+        return self._query_gpsd()
 
     def _monitor_loop(self) -> None:
         """Main monitoring loop (runs in background thread)."""

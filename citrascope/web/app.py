@@ -203,6 +203,7 @@ class CitraScopeWebApp:
                 "time_check_interval_minutes": settings.time_check_interval_minutes,
                 "time_offset_pause_ms": settings.time_offset_pause_ms,
                 "gps_location_updates_enabled": settings.gps_location_updates_enabled,
+                "gps_update_interval_minutes": settings.gps_update_interval_minutes,
                 "app_url": app_url,
                 "config_file_path": config_path,
                 "log_file_path": log_file_path,

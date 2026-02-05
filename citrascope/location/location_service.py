@@ -58,12 +58,6 @@ class LocationService:
             CITRASCOPE_LOGGER.info("GPS not available - location service using API-only mode")
             self.gps_monitor = None
 
-    def start(self) -> None:
-        """Start GPS monitoring if available."""
-        if self.gps_monitor and not self.gps_monitor._thread:
-            self.gps_monitor.start()
-            CITRASCOPE_LOGGER.info("GPS monitoring started")
-
     def stop(self) -> None:
         """Stop GPS monitoring."""
         if self.gps_monitor:
@@ -85,7 +79,7 @@ class LocationService:
 
         Updates ground station location on Citra API when strong fix is available.
         For mobile ground stations, GPS updates their recorded location.
-        Rate-limited to once per 15 minutes.
+        Rate-limited by gps_update_interval_minutes setting.
 
         Args:
             fix: Current GPS fix information
@@ -104,9 +98,10 @@ class LocationService:
             CITRASCOPE_LOGGER.warning("GPS fix missing coordinate data despite strong fix status")
             return
 
-        # Rate limit: only update if >15 min since last update
+        # Rate limit: only update if enough time has elapsed since last update
         current_time = time.time()
-        if current_time - self._last_gps_update < 900:  # 15 minutes
+        update_interval_seconds = self.settings.gps_update_interval_minutes * 60 if self.settings else 300
+        if current_time - self._last_gps_update < update_interval_seconds:
             return
 
         if self.api_client and self._ground_station_ref:
