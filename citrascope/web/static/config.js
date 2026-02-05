@@ -237,6 +237,8 @@ async function saveConfiguration(event) {
         autofocus_interval_minutes: parseInt(formConfig.autofocus_interval_minutes || 60, 10),
         time_check_interval_minutes: parseInt(formConfig.time_check_interval_minutes || 5, 10),
         time_offset_pause_ms: parseFloat(formConfig.time_offset_pause_ms || 500),
+        gps_location_updates_enabled: formConfig.gps_location_updates_enabled !== undefined ? formConfig.gps_location_updates_enabled : true,
+        gps_update_interval_minutes: parseInt(formConfig.gps_update_interval_minutes || 5, 10),
         host,
         port,
         use_ssl,
