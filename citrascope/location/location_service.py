@@ -3,6 +3,7 @@
 Manages ground station location from GPS or API sources with intelligent fallback.
 """
 
+import threading
 import time
 from typing import TYPE_CHECKING, Optional
 
@@ -28,6 +29,9 @@ class LocationService:
     handling all GPS lifecycle operations.
     """
 
+    # Maximum age for GPS fix before falling back to ground station (5 minutes)
+    GPS_MAX_AGE_SECONDS = 300
+
     def __init__(
         self,
         api_client: Optional["AbstractCitraApiClient"] = None,
@@ -44,6 +48,7 @@ class LocationService:
         self.settings = settings
         self._last_gps_update = 0.0
         self._ground_station_ref: Optional[dict] = None
+        self._lock = threading.Lock()  # Protect _ground_station_ref access
 
         # Initialize GPS monitor if available
         self.gps_monitor = GPSMonitor(
@@ -71,7 +76,8 @@ class LocationService:
         Args:
             ground_station: Ground station record from API (will be kept as reference)
         """
-        self._ground_station_ref = ground_station
+        with self._lock:
+            self._ground_station_ref = ground_station
 
     def on_gps_fix_changed(self, fix: "GPSFix") -> None:
         """
@@ -104,32 +110,34 @@ class LocationService:
         if current_time - self._last_gps_update < update_interval_seconds:
             return
 
-        if self.api_client and self._ground_station_ref:
-            ground_station_id = self._ground_station_ref["id"]
-            result = self.api_client.update_ground_station_location(
-                ground_station_id,
-                fix.latitude,
-                fix.longitude,
-                fix.altitude,
-            )
-            if result:
-                # Keep local cache in sync with server
-                self._ground_station_ref["latitude"] = fix.latitude
-                self._ground_station_ref["longitude"] = fix.longitude
-                self._ground_station_ref["altitude"] = fix.altitude
-
-                CITRASCOPE_LOGGER.info(
-                    f"Updated ground station location from GPS: "
-                    f"lat={fix.latitude:.6f}, lon={fix.longitude:.6f}, alt={fix.altitude:.1f}m"
+        # Thread-safe access to ground station reference
+        with self._lock:
+            if self.api_client and self._ground_station_ref:
+                ground_station_id = self._ground_station_ref["id"]
+                result = self.api_client.update_ground_station_location(
+                    ground_station_id,
+                    fix.latitude,
+                    fix.longitude,
+                    fix.altitude,
                 )
-                self._last_gps_update = current_time
+                if result:
+                    # Keep local cache in sync with server (atomic update within lock)
+                    self._ground_station_ref["latitude"] = fix.latitude
+                    self._ground_station_ref["longitude"] = fix.longitude
+                    self._ground_station_ref["altitude"] = fix.altitude
+
+                    CITRASCOPE_LOGGER.info(
+                        f"Updated ground station location from GPS: "
+                        f"lat={fix.latitude:.6f}, lon={fix.longitude:.6f}, alt={fix.altitude:.1f}m"
+                    )
+                    self._last_gps_update = current_time
 
     def get_current_location(self) -> Optional[dict]:
         """
         Location service - returns best available location.
 
         Priority:
-        1. GPS (if enabled and strong fix) - live, accurate location for mobile stations
+        1. GPS (if enabled, strong fix, and fresh data) - live location for mobile stations
         2. Ground station (from API) - configured fallback for fixed stations
 
         Returns:
@@ -139,20 +147,28 @@ class LocationService:
         if self.gps_monitor and self.settings and self.settings.gps_location_updates_enabled:
             fix = self.gps_monitor.get_current_fix()
             if fix and fix.is_strong_fix:
-                return {
-                    "latitude": fix.latitude,
-                    "longitude": fix.longitude,
-                    "altitude": fix.altitude,
-                    "source": "gps",
-                }
+                # Check if GPS data is fresh (not stale)
+                age_seconds = time.time() - fix.timestamp
+                if age_seconds < self.GPS_MAX_AGE_SECONDS:
+                    return {
+                        "latitude": fix.latitude,
+                        "longitude": fix.longitude,
+                        "altitude": fix.altitude,
+                        "source": "gps",
+                    }
+                else:
+                    CITRASCOPE_LOGGER.warning(
+                        f"GPS fix is stale ({age_seconds:.0f}s old), falling back to ground station location"
+                    )
 
-        # Fall back to ground station location
-        if self._ground_station_ref:
-            return {
-                "latitude": self._ground_station_ref["latitude"],
-                "longitude": self._ground_station_ref["longitude"],
-                "altitude": self._ground_station_ref["altitude"],
-                "source": "ground_station",
-            }
+        # Fall back to ground station location (thread-safe read)
+        with self._lock:
+            if self._ground_station_ref:
+                return {
+                    "latitude": self._ground_station_ref["latitude"],
+                    "longitude": self._ground_station_ref["longitude"],
+                    "altitude": self._ground_station_ref["altitude"],
+                    "source": "ground_station",
+                }
 
         return None

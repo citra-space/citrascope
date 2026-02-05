@@ -38,15 +38,18 @@ class GPSFix:
 
 class GPSMonitor:
     """
-    GPS monitoring with on-demand queries.
+    GPS monitoring with on-demand queries and caching.
 
     Architecture:
-    - get_current_fix(): Queries gpsd directly for always-fresh GPS data
+    - get_current_fix(): Returns cached GPS data (30s TTL) or queries gpsd if stale
     - Background thread: Monitors fix quality changes for server update callbacks
 
-    Since gpsd caches GPS data in shared memory, queries are fast (~200ms).
-    No application-level caching needed - simplicity over micro-optimization.
+    Caching prevents repeated expensive subprocess calls during burst captures.
+    GPS coordinates change slowly enough that 30-second caching is safe.
     """
+
+    # Cache TTL for GPS fixes (coordinates don't change rapidly)
+    CACHE_TTL_SECONDS = 30
 
     def __init__(
         self,
@@ -71,6 +74,10 @@ class GPSMonitor:
         # Current fix status
         self._current_fix: Optional[GPSFix] = None
         self._last_fix_mode = 0
+
+        # Cache for get_current_fix() to avoid repeated subprocess calls
+        self._cached_fix: Optional[GPSFix] = None
+        self._cache_timestamp: float = 0.0
 
     def is_available(self) -> bool:
         """
@@ -113,15 +120,30 @@ class GPSMonitor:
 
     def get_current_fix(self) -> Optional[GPSFix]:
         """
-        Get current GPS fix by querying gpsd.
+        Get current GPS fix with 30-second cache.
 
-        Always returns fresh data from gpsd (no caching).
-        Fast enough for all operations (~200ms) since gpsd caches in shared memory.
+        Returns cached fix if less than 30 seconds old, otherwise queries gpsd.
+        This prevents expensive subprocess calls during burst captures.
 
         Returns:
             Current GPS fix, or None if unavailable
         """
-        return self._query_gpsd()
+        with self._lock:
+            # Check if cached fix is still fresh
+            now = time.time()
+            if self._cached_fix and (now - self._cache_timestamp) < self.CACHE_TTL_SECONDS:
+                return self._cached_fix
+
+        # Cache is stale or empty, query fresh data
+        fix = self._query_gpsd()
+
+        # Update cache if we got valid data
+        if fix:
+            with self._lock:
+                self._cached_fix = fix
+                self._cache_timestamp = time.time()
+
+        return fix
 
     def _monitor_loop(self) -> None:
         """Main monitoring loop (runs in background thread)."""
@@ -149,10 +171,12 @@ class GPSMonitor:
 
             # Log based on fix quality
             if fix:
-                self._log_fix_status(fix)
+                # Check if fix mode changed for logging purposes
+                fix_mode_changed = fix.fix_mode != self._last_fix_mode
+                self._log_fix_status(fix, fix_mode_changed)
 
                 # Track fix mode for logging changes
-                if fix.fix_mode != self._last_fix_mode:
+                if fix_mode_changed:
                     self._last_fix_mode = fix.fix_mode
 
                 # Always notify callback (rate limiting happens in callback)
@@ -237,8 +261,13 @@ class GPSMonitor:
             CITRASCOPE_LOGGER.debug(f"Could not query gpsd: {e}")
             return None
 
-    def _log_fix_status(self, fix: GPSFix) -> None:
-        """Log GPS fix status at appropriate level."""
+    def _log_fix_status(self, fix: GPSFix, fix_mode_changed: bool = False) -> None:
+        """Log GPS fix status at appropriate level.
+
+        Args:
+            fix: GPS fix information
+            fix_mode_changed: True if fix mode changed since last check (logs at INFO)
+        """
         if fix.latitude is None or fix.longitude is None:
             CITRASCOPE_LOGGER.warning("GPS position unavailable")
             return
@@ -249,8 +278,17 @@ class GPSMonitor:
             location_str += f", alt={fix.altitude:.1f}m"
 
         if fix.is_strong_fix:
-            CITRASCOPE_LOGGER.info(f"GPS strong fix: {location_str} ({fix.satellites} sats, {fix_type})")
+            # Log at INFO only when fix mode changes, otherwise DEBUG for routine checks
+            if fix_mode_changed:
+                CITRASCOPE_LOGGER.info(f"GPS strong fix: {location_str} ({fix.satellites} sats, {fix_type})")
+            else:
+                CITRASCOPE_LOGGER.debug(f"GPS strong fix: {location_str} ({fix.satellites} sats, {fix_type})")
         elif fix.fix_mode >= 2:
-            CITRASCOPE_LOGGER.info(f"GPS weak fix: {location_str} ({fix.satellites} sats, {fix_type})")
+            # Weak fix: log at INFO only when fix mode changes
+            if fix_mode_changed:
+                CITRASCOPE_LOGGER.info(f"GPS weak fix: {location_str} ({fix.satellites} sats, {fix_type})")
+            else:
+                CITRASCOPE_LOGGER.debug(f"GPS weak fix: {location_str} ({fix.satellites} sats, {fix_type})")
         else:
+            # No fix is always a problem - keep at WARNING level
             CITRASCOPE_LOGGER.warning(f"GPS no fix: {fix.satellites} sats")
