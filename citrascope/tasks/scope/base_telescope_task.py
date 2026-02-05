@@ -108,16 +108,22 @@ class AbstractBaseTelescopeTask(ABC):
     def _get_skyfield_ground_station_and_satellite(self, satellite_data):
         """
         Returns (ground_station, satellite, ts) Skyfield objects for the given satellite and elset.
+        Uses GPS-enhanced location if available, otherwise falls back to ground station record.
         """
         ts = load.timescale()
         most_recent_elset = self._get_most_recent_elset(satellite_data)
         if most_recent_elset is None:
             raise ValueError("No valid elset available for satellite.")
 
+        # Get current location from location service (GPS preferred, ground station fallback)
+        location = self.daemon.location_service.get_current_location()
+        if not location:
+            raise ValueError("No location available from location service")
+
         ground_station = wgs84.latlon(
-            self.daemon.ground_station["latitude"],
-            self.daemon.ground_station["longitude"],
-            elevation_m=self.daemon.ground_station["altitude"],
+            location["latitude"],
+            location["longitude"],
+            elevation_m=location["altitude"],
         )
         satellite = EarthSatellite(most_recent_elset["tle"][0], most_recent_elset["tle"][1], satellite_data["name"], ts)
         return ground_station, satellite, ts
