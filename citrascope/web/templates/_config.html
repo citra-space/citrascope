@@ -122,6 +122,38 @@
                                     </small>
                                 </div>
                             </div>
+
+                            <!-- GPS Status Details -->
+                            <div class="row g-3 mt-2 pt-3 border-top border-secondary" x-show="$store.citrascope.status?.gps_location">
+                                <div class="col-12">
+                                    <h6 class="text-muted mb-3">Current GPS Status</h6>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label text-muted small">Position</label>
+                                    <div class="font-monospace small" x-text="$store.citrascope.status?.gps_location ?
+                                        `${$store.citrascope.status.gps_location.latitude.toFixed(6)}°, ${$store.citrascope.status.gps_location.longitude.toFixed(6)}°` :
+                                        'Unavailable'"></div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label text-muted small">Altitude</label>
+                                    <div class="font-monospace small" x-text="$store.citrascope.status?.gps_location?.altitude != null ?
+                                        `${Math.round($store.citrascope.status.gps_location.altitude)}m (${Math.round($store.citrascope.status.gps_location.altitude * 3.28084)}ft)` :
+                                        'Unavailable'"></div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label text-muted small">Fix Quality</label>
+                                    <div class="font-monospace small">
+                                        <span x-text="$store.citrascope.formatGPSLocation($store.citrascope.status?.gps_location)"></span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row g-3 mt-1" x-show="!$store.citrascope.status?.gps_location">
+                                <div class="col-12">
+                                    <div class="alert alert-secondary mb-0 small">
+                                        <i class="bi bi-info-circle me-2"></i>GPS unavailable or no fix yet
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
