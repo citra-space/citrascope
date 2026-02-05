@@ -132,6 +132,15 @@ class CitraScopeDaemon:
                             f"Install with: {dep['install_cmd']}"
                         )
 
+            # Initialize and start time monitor (independent of API/telescope connection)
+            self.time_monitor = TimeMonitor(
+                check_interval_minutes=self.settings.time_check_interval_minutes,
+                pause_threshold_ms=self.settings.time_offset_pause_ms,
+                pause_callback=self._on_time_drift_pause,
+            )
+            self.time_monitor.start()
+            CITRASCOPE_LOGGER.info("Time synchronization monitoring started")
+
             # Initialize telescope
             success, error = self._initialize_telescope()
 
@@ -210,15 +219,6 @@ class CitraScopeDaemon:
                 self.settings,
             )
             self.task_manager.start()
-
-            # Initialize and start time monitor (always enabled)
-            self.time_monitor = TimeMonitor(
-                check_interval_minutes=self.settings.time_check_interval_minutes,
-                pause_threshold_ms=self.settings.time_offset_pause_ms,
-                pause_callback=self._on_time_drift_pause,
-            )
-            self.time_monitor.start()
-            CITRASCOPE_LOGGER.info("Time synchronization monitoring started")
 
             CITRASCOPE_LOGGER.info("Telescope initialized successfully!")
             return True, None
