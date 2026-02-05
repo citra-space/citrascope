@@ -81,18 +81,23 @@ class GPSMonitor:
 
     def is_available(self) -> bool:
         """
-        Check if GPS is available (gpspipe command exists).
+        Check if GPS is available (gpsd running and responsive).
 
         Returns:
-            True if gpspipe command is available, False otherwise.
+            True if gpsd is running and responsive, False otherwise.
         """
         try:
+            # Try to actually query gpsd with minimal request
             result = subprocess.run(
-                ["which", "gpspipe"],
+                ["gpspipe", "-w", "-n", "1"],
                 capture_output=True,
                 timeout=2,
+                text=True,
             )
-            return result.returncode == 0
+            # Success if command runs and produces output (even if no fix yet)
+            return result.returncode == 0 and bool(result.stdout.strip())
+        except (FileNotFoundError, OSError):
+            return False
         except Exception:
             return False
 

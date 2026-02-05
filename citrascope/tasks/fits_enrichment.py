@@ -68,6 +68,12 @@ def enrich_fits_metadata(
             # Get primary header (works for both single HDU and multi-HDU files)
             header = hdul[0].header
 
+            # Check if already enriched (idempotency)
+            if task and hasattr(task, "id") and task.id:
+                if "TASKID" in header:
+                    CITRASCOPE_LOGGER.debug(f"FITS file already enriched (TASKID present): {filepath}")
+                    return
+
             # Add location metadata (GPS preferred, ground station fallback)
             _add_location_metadata(header, daemon, ground_station)
 
