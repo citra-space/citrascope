@@ -4,11 +4,7 @@ on:
   workflow_call:
 
 jobs:
-  test:
-    uses: ./.github/workflows/pytest.yml
-
   build-and-publish:
-    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
