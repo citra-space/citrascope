@@ -1,0 +1,33 @@
+# git-cliff configuration for release notes generation
+[changelog]
+header = ""
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+    ### {{ group | striptags | trim | upper_first }}
+    {% for commit in commits %}
+        - {{ commit.message | upper_first }} ({{ commit.id | truncate(length=7, end="") }})
+    {%- endfor %}
+{% endfor %}
+"""
+trim = true
+
+[git]
+conventional_commits = false
+filter_unconventional = false
+split_commits = false
+commit_parsers = [
+    { message = "^[Bb]ump version", skip = true },
+    { message = "^[Ff]eat", group = "Features" },
+    { message = "^[Ff]ix", group = "Bug Fixes" },
+    { message = "^[Dd]oc", group = "Documentation" },
+    { message = "^[Rr]efactor", group = "Refactoring" },
+    { message = "^[Tt]est", group = "Testing" },
+    { message = "^[Cc]hore", group = "Miscellaneous" },
+    { message = ".*", group = "Changes" },
+]
+protect_breaking_commits = false
+filter_commits = false
+tag_pattern = "v[0-9]*"
+ignore_tags = ""
+topo_order = false
+sort_commits = "oldest"
