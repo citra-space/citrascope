@@ -129,7 +129,7 @@ bump-my-version bump major  # 0.1.3 → 1.0.0
 git push && git push --tags
 ```
 
-Then create a release in the GitHub UI from the new tag. This triggers automatic PyPI publishing.
+`create-release.yml` will automatically create a release on GitHub, which in turn triggers PyPI publishing with `pypi-publish.yml`.
 
 ### Running and Debugging with VS Code
 
