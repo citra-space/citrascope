@@ -9,6 +9,11 @@ body = """
     {%- endfor %}
 {% endfor %}
 """
+footer = """
+---
+**Install:** `pip install citrascope`
+**PyPI:** https://pypi.org/project/citrascope/
+"""
 trim = true
 
 [git]
