@@ -90,14 +90,16 @@ class GPSMonitor:
         """
         try:
             # Try to actually query gpsd with minimal request
+            # We just check if gpsd responds, not if it has a fix yet
             result = subprocess.run(
                 ["gpspipe", "-w", "-n", "1"],
                 capture_output=True,
                 timeout=2,
                 text=True,
             )
-            # Success if command runs and produces output (even if no fix yet)
-            return result.returncode == 0 and bool(result.stdout.strip())
+            # Success if command runs (gpsd is responding)
+            # Don't require output - GPS might not have a fix yet at boot
+            return result.returncode == 0
         except (FileNotFoundError, OSError):
             return False
         except Exception:
