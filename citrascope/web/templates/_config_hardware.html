@@ -146,14 +146,14 @@
                                                         <tr x-data="filterRow(filter, filterId)">
                                                             <td>
                                                                 <input type="checkbox" class="form-check-input filter-enabled-checkbox"
-                                                                    :data-filter-id="filterId" x-model="filter.enabled">
+                                                                    :data-filter-id="filterId" x-model="$store.citrascope.filters[filterId].enabled">
                                                             </td>
                                                             <td>
                                                                 <span class="badge" :style="badgeStyle" x-text="filter.name"></span>
                                                             </td>
                                                             <td>
                                                                 <input type="number" class="form-control form-control-sm filter-focus-input"
-                                                                    :data-filter-id="filterId" x-model.number="filter.focus_position" min="0" step="1">
+                                                                    :data-filter-id="filterId" x-model.number="$store.citrascope.filters[filterId].focus_position" min="0" step="1">
                                                             </td>
                                                         </tr>
                                                     </template>
