@@ -1,0 +1,335 @@
+"""Unit tests for image processor framework."""
+
+import time
+from pathlib import Path
+from unittest.mock import Mock, patch
+
+import numpy as np
+import pytest
+
+from citrascope.processors.abstract_processor import AbstractImageProcessor
+from citrascope.processors.processor_registry import ProcessorRegistry
+from citrascope.processors.processor_result import AggregatedResult, ProcessingContext, ProcessorResult
+from citrascope.tasks.task import Task
+
+
+class MockPassProcessor(AbstractImageProcessor):
+    """Mock processor that always passes."""
+
+    name = "mock_pass"
+
+    def process(self, context: ProcessingContext) -> ProcessorResult:
+        return ProcessorResult(
+            should_upload=True,
+            extracted_data={"test_value": 42},
+            confidence=0.9,
+            reason="Test pass",
+            processing_time_seconds=0.001,
+            processor_name=self.name,
+        )
+
+
+class MockRejectProcessor(AbstractImageProcessor):
+    """Mock processor that always rejects."""
+
+    name = "mock_reject"
+
+    def process(self, context: ProcessingContext) -> ProcessorResult:
+        return ProcessorResult(
+            should_upload=False,
+            extracted_data={"test_value": 0},
+            confidence=0.1,
+            reason="Test rejection",
+            processing_time_seconds=0.001,
+            processor_name=self.name,
+        )
+
+
+class MockErrorProcessor(AbstractImageProcessor):
+    """Mock processor that raises an error."""
+
+    name = "mock_error"
+
+    def process(self, context: ProcessingContext) -> ProcessorResult:
+        raise RuntimeError("Test error")
+
+
+@pytest.fixture
+def mock_logger():
+    """Mock logger for testing."""
+    return Mock()
+
+
+@pytest.fixture
+def mock_settings():
+    """Mock settings for testing."""
+    settings = Mock()
+    settings.processors_enabled = True
+    return settings
+
+
+@pytest.fixture
+def mock_task():
+    """Mock task for testing."""
+    return Task(
+        id="test-task-123",
+        type="observation",
+        status="Scheduled",
+        creationEpoch="2024-01-01T00:00:00Z",
+        updateEpoch="2024-01-01T00:00:00Z",
+        taskStart="2024-01-01T01:00:00Z",
+        taskStop="2024-01-01T01:05:00Z",
+        userId="user-123",
+        username="testuser",
+        satelliteId="sat-123",
+        satelliteName="Test Satellite",
+        telescopeId="tel-123",
+        telescopeName="Test Telescope",
+        groundStationId="gs-123",
+        groundStationName="Test Ground Station",
+        assigned_filter_name="Red",
+    )
+
+
+@pytest.fixture
+def processing_context(tmp_path, mock_task):
+    """Create a processing context with mock data."""
+    # Create a dummy FITS file path (doesn't need to exist for most tests)
+    image_path = tmp_path / "test_image.fits"
+
+    # Create mock image data
+    image_data = np.random.randint(0, 1000, size=(100, 100), dtype=np.uint16)
+
+    return ProcessingContext(
+        image_path=image_path,
+        image_data=image_data,
+        task=mock_task,
+        telescope_record={"id": "tel-123", "name": "Test Telescope"},
+        ground_station_record={"id": "gs-123", "name": "Test Station"},
+        settings=Mock(),
+    )
+
+
+class TestProcessorResult:
+    """Tests for ProcessorResult data class."""
+
+    def test_processor_result_creation(self):
+        """Test creating a ProcessorResult."""
+        result = ProcessorResult(
+            should_upload=True,
+            extracted_data={"key": "value"},
+            confidence=0.9,
+            reason="Test reason",
+            processing_time_seconds=0.5,
+            processor_name="test_processor",
+        )
+
+        assert result.should_upload is True
+        assert result.extracted_data == {"key": "value"}
+        assert result.confidence == 0.9
+        assert result.reason == "Test reason"
+        assert result.processing_time_seconds == 0.5
+        assert result.processor_name == "test_processor"
+
+
+class TestProcessingContext:
+    """Tests for ProcessingContext data class."""
+
+    def test_context_with_task(self, processing_context):
+        """Test context with task data."""
+        assert processing_context.task is not None
+        assert processing_context.task.id == "test-task-123"
+        assert processing_context.task.satelliteName == "Test Satellite"
+
+    def test_context_without_task(self, tmp_path):
+        """Test context without task (manual capture)."""
+        context = ProcessingContext(
+            image_path=tmp_path / "test.fits",
+            image_data=None,
+            task=None,
+            telescope_record=None,
+            ground_station_record=None,
+            settings=None,
+        )
+
+        assert context.task is None
+
+
+class TestProcessorRegistry:
+    """Tests for ProcessorRegistry."""
+
+    def test_registry_initialization(self, mock_settings, mock_logger):
+        """Test registry initialization."""
+        # Import is done inside __init__, so we need to patch it there
+        with patch("citrascope.processors.builtin.example_quality_checker.QualityCheckProcessor"):
+            registry = ProcessorRegistry(mock_settings, mock_logger)
+            assert registry.settings == mock_settings
+            assert registry.logger == mock_logger
+            assert isinstance(registry.processors, list)
+
+    def test_process_all_with_pass_processor(self, mock_settings, mock_logger, processing_context):
+        """Test processing with a processor that passes."""
+        registry = ProcessorRegistry(mock_settings, mock_logger)
+        registry.processors = [MockPassProcessor()]
+
+        result = registry.process_all(processing_context)
+
+        assert isinstance(result, AggregatedResult)
+        assert result.should_upload is True
+        assert "mock_pass.test_value" in result.extracted_data
+        assert result.extracted_data["mock_pass.test_value"] == 42
+        assert len(result.all_results) == 1
+
+    def test_process_all_with_reject_processor(self, mock_settings, mock_logger, processing_context):
+        """Test processing with a processor that rejects."""
+        registry = ProcessorRegistry(mock_settings, mock_logger)
+        registry.processors = [MockRejectProcessor()]
+
+        result = registry.process_all(processing_context)
+
+        assert isinstance(result, AggregatedResult)
+        assert result.should_upload is False
+        assert result.skip_reason == "mock_reject: Test rejection"
+
+    def test_process_all_with_multiple_processors(self, mock_settings, mock_logger, processing_context):
+        """Test processing with multiple processors."""
+        registry = ProcessorRegistry(mock_settings, mock_logger)
+        registry.processors = [MockPassProcessor(), MockPassProcessor()]
+
+        result = registry.process_all(processing_context)
+
+        assert result.should_upload is True
+        assert len(result.all_results) == 2
+
+    def test_process_all_reject_wins(self, mock_settings, mock_logger, processing_context):
+        """Test that any rejection causes upload to be skipped."""
+        registry = ProcessorRegistry(mock_settings, mock_logger)
+        registry.processors = [MockPassProcessor(), MockRejectProcessor(), MockPassProcessor()]
+
+        result = registry.process_all(processing_context)
+
+        assert result.should_upload is False
+        assert result.skip_reason is not None
+
+    def test_process_all_error_handling(self, mock_settings, mock_logger, processing_context):
+        """Test that processor errors are caught and don't block upload."""
+        registry = ProcessorRegistry(mock_settings, mock_logger)
+        registry.processors = [MockErrorProcessor(), MockPassProcessor()]
+
+        result = registry.process_all(processing_context)
+
+        # Error processor should be caught, pass processor should succeed
+        assert result.should_upload is True
+        assert len(result.all_results) == 1  # Only the pass processor succeeded
+        mock_logger.error.assert_called_once()  # Error was logged
+
+    def test_aggregated_result_name_prefixing(self, mock_settings, mock_logger, processing_context):
+        """Test that extracted data keys are prefixed with processor name."""
+        registry = ProcessorRegistry(mock_settings, mock_logger)
+
+        # Create two processors with same key name
+        class Processor1(MockPassProcessor):
+            name = "proc1"
+
+            def process(self, context):
+                return ProcessorResult(
+                    should_upload=True,
+                    extracted_data={"value": 1},
+                    confidence=0.9,
+                    reason="Test",
+                    processing_time_seconds=0.001,
+                    processor_name=self.name,
+                )
+
+        class Processor2(MockPassProcessor):
+            name = "proc2"
+
+            def process(self, context):
+                return ProcessorResult(
+                    should_upload=True,
+                    extracted_data={"value": 2},
+                    confidence=0.9,
+                    reason="Test",
+                    processing_time_seconds=0.001,
+                    processor_name=self.name,
+                )
+
+        registry.processors = [Processor1(), Processor2()]
+        result = registry.process_all(processing_context)
+
+        # Both values should be present with different prefixed keys
+        assert result.extracted_data["proc1.value"] == 1
+        assert result.extracted_data["proc2.value"] == 2
+
+    def test_timing_measurement(self, mock_settings, mock_logger, processing_context):
+        """Test that total processing time is measured."""
+        registry = ProcessorRegistry(mock_settings, mock_logger)
+        registry.processors = [MockPassProcessor()]
+
+        start = time.time()
+        result = registry.process_all(processing_context)
+        end = time.time()
+
+        assert result.total_time > 0
+        assert result.total_time < (end - start) + 0.1  # Allow small margin
+
+
+class TestQualityCheckProcessor:
+    """Tests for the example quality check processor."""
+
+    @pytest.fixture
+    def quality_processor(self):
+        """Create a quality check processor instance."""
+        from citrascope.processors.builtin.example_quality_checker import QualityCheckProcessor
+
+        return QualityCheckProcessor()
+
+    def test_processor_name(self, quality_processor):
+        """Test processor has correct name."""
+        assert quality_processor.name == "quality_checker"
+
+    def test_quality_check_acceptable_image(self, quality_processor, processing_context):
+        """Test quality check with acceptable image."""
+        # Create image with good values
+        processing_context.image_data = np.random.randint(1000, 30000, size=(100, 100), dtype=np.uint16)
+
+        result = quality_processor.process(processing_context)
+
+        assert result.should_upload is True
+        assert result.confidence > 0.5
+        assert "acceptable" in result.reason.lower()
+
+    def test_quality_check_saturated_image(self, quality_processor, processing_context):
+        """Test quality check rejects saturated image."""
+        # Create saturated image
+        processing_context.image_data = np.full((100, 100), 65000, dtype=np.uint16)
+
+        result = quality_processor.process(processing_context)
+
+        assert result.should_upload is False
+        assert "saturated" in result.reason.lower()
+
+    def test_quality_check_dark_image(self, quality_processor, processing_context):
+        """Test quality check rejects dark image."""
+        # Create very dark image
+        processing_context.image_data = np.random.randint(0, 50, size=(100, 100), dtype=np.uint16)
+
+        result = quality_processor.process(processing_context)
+
+        assert result.should_upload is False
+        assert "dark" in result.reason.lower()
+
+    def test_quality_check_extracts_stats(self, quality_processor, processing_context):
+        """Test that quality checker extracts image statistics."""
+        result = quality_processor.process(processing_context)
+
+        assert "max_pixel_value" in result.extracted_data
+        assert "mean_pixel_value" in result.extracted_data
+        assert "std_pixel_value" in result.extracted_data
+
+    def test_quality_check_includes_task_context(self, quality_processor, processing_context):
+        """Test that quality checker includes task context in extracted data."""
+        result = quality_processor.process(processing_context)
+
+        assert result.extracted_data["satellite_name"] == "Test Satellite"
+        assert result.extracted_data["task_id"] == "test-task-123"

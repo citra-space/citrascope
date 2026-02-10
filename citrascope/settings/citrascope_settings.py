@@ -53,6 +53,9 @@ class CitraScopeSettings:
         self.log_level: str = config.get("log_level", "INFO")
         self.keep_images: bool = config.get("keep_images", False)
 
+        # Processor configuration (minimal - just on/off)
+        self.processors_enabled: bool = config.get("processors_enabled", True)
+
         # Web port: CLI-only, never loaded from or saved to config file
         self.web_port: int = web_port
 
@@ -138,6 +141,7 @@ class CitraScopeSettings:
             "time_offset_pause_ms": self.time_offset_pause_ms,
             "gps_location_updates_enabled": self.gps_location_updates_enabled,
             "gps_update_interval_minutes": self.gps_update_interval_minutes,
+            "processors_enabled": self.processors_enabled,
         }
 
     def save(self) -> None:

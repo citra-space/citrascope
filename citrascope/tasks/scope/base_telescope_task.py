@@ -73,12 +73,58 @@ class AbstractBaseTelescopeTask(ABC):
                 # Log but don't fail upload on enrichment errors
                 self.logger.warning(f"Failed to enrich FITS metadata for {filepath}: {e}")
 
+            # Run processors if enabled
+            processor_result = None
+            if self.daemon.settings.processors_enabled:
+                try:
+                    # Build processing context with full task and observatory data
+                    from pathlib import Path
+
+                    from citrascope.processors.processor_result import ProcessingContext
+
+                    context = ProcessingContext(
+                        image_path=Path(filepath),
+                        image_data=None,  # Will be loaded by registry
+                        task=self.task,
+                        telescope_record=self.daemon.telescope_record,
+                        ground_station_record=self.daemon.ground_station,
+                        settings=self.daemon.settings,
+                    )
+
+                    processor_result = self.daemon.processor_registry.process_all(context)
+
+                    # Log timing (watch for slow processing)
+                    self.logger.info(f"Image processing completed in {processor_result.total_time:.2f}s")
+                    if processor_result.total_time > 5.0:
+                        self.logger.warning(
+                            f"Processing took {processor_result.total_time:.2f}s - "
+                            "consider async processing in future"
+                        )
+
+                    # Check if we should skip upload
+                    if not processor_result.should_upload:
+                        self.logger.info(f"Skipping upload: {processor_result.skip_reason}")
+                        # Mark task as complete but image rejected
+                        # Note: This uses the existing mark_task_complete endpoint
+                        # Server may not support custom status yet, so we just mark it complete
+                        marked_complete = self.api_client.mark_task_complete(self.task.id)
+                        if marked_complete:
+                            self.logger.info(f"Task {self.task.id} marked complete (image rejected by processor)")
+                        return True  # Task "succeeded" but no upload
+                except Exception as e:
+                    self.logger.error(f"Processor failed: {e}", exc_info=True)
+                    # Fail-open: continue to upload
+
             upload_result = self.api_client.upload_image(self.task.id, self.daemon.telescope_record["id"], filepath)
             if upload_result:
                 self.logger.info(f"Successfully uploaded image {filepath}")
             else:
                 self.logger.error(f"Failed to upload image {filepath}")
                 return False
+
+            # Log extracted data for now (API integration later)
+            if processor_result and processor_result.extracted_data:
+                self.logger.info(f"Extracted data: {processor_result.extracted_data}")
 
             if not self.daemon.settings.keep_images:
                 try:

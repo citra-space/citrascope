@@ -42,6 +42,11 @@ class CitraScopeDaemon:
         self.telescope_record = None
         self.configuration_error: Optional[str] = None
 
+        # Initialize processor registry
+        from citrascope.processors.processor_registry import ProcessorRegistry
+
+        self.processor_registry = ProcessorRegistry(settings=self.settings, logger=CITRASCOPE_LOGGER)
+
         # Create web server instance (always enabled)
         self.web_server = CitraScopeWebServer(daemon=self, host="0.0.0.0", port=self.settings.web_port)
 
