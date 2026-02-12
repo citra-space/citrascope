@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Test data files (large FITS files)
+test_data/
+
 # C extensions
 *.so
 
@@ -138,4 +141,5 @@ hip_main.dat
 nina_sequence_*.json
 nina_focus_positions.json
 
-citrascope-env/
+citrascope-env/test_data/
+test_data/
