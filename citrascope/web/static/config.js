@@ -117,6 +117,9 @@ async function loadConfiguration() {
             if (config.scheduled_autofocus_enabled === null || config.scheduled_autofocus_enabled === undefined) {
                 config.scheduled_autofocus_enabled = false; // Default to false
             }
+            if (config.processors_enabled === null || config.processors_enabled === undefined) {
+                config.processors_enabled = true; // Default to true
+            }
 
             store.config = config;
             store.savedAdapter = config.hardware_adapter; // Sync savedAdapter to store

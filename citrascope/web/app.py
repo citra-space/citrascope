@@ -47,6 +47,7 @@ class SystemStatus(BaseModel):
     gps_location: Optional[Dict[str, Any]] = None
     last_update: str = ""
     missing_dependencies: List[Dict[str, str]] = []  # List of {device, packages, install_cmd}
+    active_processors: List[str] = []  # Names of enabled image processors
 
 
 class HardwareConfig(BaseModel):
@@ -826,6 +827,12 @@ class CitraScopeWebApp:
                         self.status.missing_dependencies = self.daemon.hardware_adapter.get_missing_dependencies()
                     except Exception as e:
                         CITRASCOPE_LOGGER.debug(f"Could not check missing dependencies: {e}")
+
+            # Get list of active processors
+            if hasattr(self.daemon, "processor_registry") and self.daemon.processor_registry:
+                self.status.active_processors = [p.name for p in self.daemon.processor_registry.processors]
+            else:
+                self.status.active_processors = []
 
             self.status.last_update = datetime.now().isoformat()
 
