@@ -11,7 +11,7 @@ class ImagingQueue(BaseWorkQueue):
     Allows telescope operations to be queued and retried with exponential backoff.
     """
 
-    def __init__(self, num_workers: int, settings, logger, api_client, daemon):
+    def __init__(self, num_workers: int, settings, logger, api_client, task_manager):
         """
         Initialize imaging queue.
 
@@ -20,11 +20,11 @@ class ImagingQueue(BaseWorkQueue):
             settings: Settings instance
             logger: Logger instance
             api_client: API client for marking tasks failed
-            daemon: Daemon instance for stage tracking
+            task_manager: TaskManager instance for stage tracking
         """
         super().__init__(num_workers, settings, logger)
         self.api_client = api_client
-        self.daemon = daemon
+        self.task_manager = task_manager
 
     def submit(self, task_id: str, task, telescope_task_instance, on_complete: Callable):
         """
@@ -55,7 +55,7 @@ class ImagingQueue(BaseWorkQueue):
         self.logger.info(f"[ImagingWorker] Imaging task {task_id}")
 
         # Ensure task is in imaging stage (important for retries)
-        self.daemon.update_task_stage(task_id, "imaging")
+        self.task_manager.update_task_stage(task_id, "imaging")
 
         # Clear any stale status messages from previous attempts
         if task:
@@ -97,7 +97,7 @@ class ImagingQueue(BaseWorkQueue):
             self.logger.error(f"Failed to mark task {task_id} as failed in API: {e}")
 
         # Remove from stage tracking
-        self.daemon.remove_task_from_stages(task_id)
+        self.task_manager.remove_task_from_all_stages(task_id)
 
         # Notify callback
         on_complete(task_id, success=False)

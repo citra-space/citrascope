@@ -69,7 +69,7 @@ class AbstractBaseTelescopeTask(ABC):
         # Update status message and stage ONCE before processing loop
         if self.daemon.settings.processors_enabled:
             self.task.set_status_msg("Queued for processing...")
-            self.daemon.update_task_stage(self.task.id, "processing")
+            self.daemon.task_manager.update_task_stage(self.task.id, "processing")
 
         for image_path in filepaths:
             # 1. Enrich FITS metadata (quick, keep synchronous)
@@ -84,7 +84,7 @@ class AbstractBaseTelescopeTask(ABC):
 
             # 2. Queue for background processing
             if self.daemon.settings.processors_enabled:
-                self.daemon.processing_queue.submit(
+                self.daemon.task_manager.processing_queue.submit(
                     task_id=self.task.id,
                     image_path=Path(image_path),
                     context={
@@ -111,7 +111,7 @@ class AbstractBaseTelescopeTask(ABC):
         if result and not result.should_upload:
             self.logger.info(f"Skipping upload per processor: {result.skip_reason}")
             self.api_client.mark_task_complete(task_id)
-            self.daemon.remove_task_from_stages(task_id)
+            self.daemon.task_manager.remove_task_from_all_stages(task_id)
             return
 
         # Log extracted data
@@ -125,8 +125,8 @@ class AbstractBaseTelescopeTask(ABC):
         """Queue image for background upload."""
         # Clear previous status message and set upload message
         self.task.set_status_msg("Queued for upload...")
-        self.daemon.update_task_stage(self.task.id, "uploading")
-        self.daemon.upload_queue.submit(
+        self.daemon.task_manager.update_task_stage(self.task.id, "uploading")
+        self.daemon.task_manager.upload_queue.submit(
             task_id=self.task.id,
             task=self.task,
             image_path=filepath,
@@ -139,7 +139,7 @@ class AbstractBaseTelescopeTask(ABC):
 
     def _on_upload_complete(self, task_id: str, success: bool):
         """Called by background worker when upload finishes."""
-        self.daemon.remove_task_from_stages(task_id)
+        self.daemon.task_manager.remove_task_from_all_stages(task_id)
         if success:
             self.logger.info(f"Task {task_id} fully complete (uploaded)")
         else:

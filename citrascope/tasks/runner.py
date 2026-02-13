@@ -22,17 +22,49 @@ class TaskManager:
         logger,
         hardware_adapter: AbstractAstroHardwareAdapter,
         daemon,
-        imaging_queue,
+        settings,
+        processor_registry,
     ):
         self.api_client = api_client
         self.logger = logger
         self.hardware_adapter = hardware_adapter
         self.daemon = daemon
-        self.imaging_queue = imaging_queue
+        self.settings = settings
+        self.processor_registry = processor_registry
+
+        # Initialize work queues (TaskManager now owns these)
+        from citrascope.tasks.imaging_queue import ImagingQueue
+        from citrascope.tasks.processing_queue import ProcessingQueue
+        from citrascope.tasks.upload_queue import UploadQueue
+
+        self.imaging_queue = ImagingQueue(
+            num_workers=1,
+            settings=settings,
+            logger=logger,
+            api_client=api_client,
+            task_manager=self,
+        )
+        self.processing_queue = ProcessingQueue(
+            num_workers=1,
+            settings=settings,
+            logger=logger,
+        )
+        self.upload_queue = UploadQueue(
+            num_workers=1,
+            settings=settings,
+            logger=logger,
+            task_manager=self,
+        )
+
+        # Stage tracking (TaskManager now owns this)
+        self._stage_lock = threading.Lock()
+        self.imaging_tasks = {}  # task_id -> start_time (float)
+        self.processing_tasks = {}  # task_id -> start_time (float)
+        self.uploading_tasks = {}  # task_id -> start_time (float)
+
         self.task_heap = []  # min-heap by start time (scheduled future work only)
         self.task_ids = set()
         self.task_dict = {}  # task_id -> Task object for quick lookup
-        self.active_tasks = {}  # task_id -> {task, stage, start_time, stop_time} for in-flight work
         self.heap_lock = threading.RLock()
         self._stop_event = threading.Event()
         self.current_task_id = None  # Track currently executing task
@@ -46,6 +78,83 @@ class TaskManager:
         self._automated_scheduling = (
             daemon.telescope_record.get("automatedScheduling", False) if daemon.telescope_record else False
         )
+
+    def update_task_stage(self, task_id: str, stage: str):
+        """Move task to specified stage. Stage is 'imaging', 'processing', or 'uploading'."""
+        with self._stage_lock:
+            # Remove from all stages first
+            self.imaging_tasks.pop(task_id, None)
+            self.processing_tasks.pop(task_id, None)
+            self.uploading_tasks.pop(task_id, None)
+
+            # Add to new stage
+            if stage == "imaging":
+                self.imaging_tasks[task_id] = time.time()
+            elif stage == "processing":
+                self.processing_tasks[task_id] = time.time()
+            elif stage == "uploading":
+                self.uploading_tasks[task_id] = time.time()
+
+    def remove_task_from_all_stages(self, task_id: str):
+        """Remove task from all stages and active tracking (when complete)."""
+        with self._stage_lock:
+            self.imaging_tasks.pop(task_id, None)
+            self.processing_tasks.pop(task_id, None)
+            self.uploading_tasks.pop(task_id, None)
+
+        # Also remove from task_dict
+        with self.heap_lock:
+            self.task_dict.pop(task_id, None)
+
+    def get_tasks_by_stage(self) -> dict:
+        """Get current tasks in each stage, enriched with task details."""
+        with self._stage_lock:
+            now = time.time()
+
+            def enrich_task(task_id: str, start_time: float) -> dict:
+                """Look up task details and create enriched dict."""
+                result = {"task_id": task_id, "elapsed": now - start_time}
+                # Look up task from task manager
+                task = self.get_task_by_id(task_id)
+                if task:
+                    result["target_name"] = task.satelliteName
+                    # Use thread-safe getters for status fields
+                    status_msg, retry_time, is_executing = task.get_status_info()
+                    result["status_msg"] = status_msg
+                    result["retry_scheduled_time"] = retry_time
+                    result["is_being_executed"] = is_executing
+                return result
+
+            def sort_tasks(tasks):
+                """Sort tasks: active work first, queued next, retry-waiting last."""
+
+                def sort_key(task):
+                    retry_time = task.get("retry_scheduled_time")
+                    is_executing = task.get("is_being_executed", False)
+
+                    # Three-tier priority:
+                    # Priority 0: Currently executing (highest priority)
+                    # Priority 1: Queued and ready to execute
+                    # Priority 2: Waiting for retry (lowest priority)
+                    if retry_time is not None:
+                        priority = 2
+                        sort_value = retry_time  # Soonest retry first
+                    elif is_executing:
+                        priority = 0
+                        sort_value = -task.get("elapsed", 0)  # Longest running first
+                    else:
+                        priority = 1
+                        sort_value = -task.get("elapsed", 0)  # Longest waiting first
+
+                    return (priority, sort_value)
+
+                return sorted(tasks, key=sort_key)
+
+            return {
+                "imaging": sort_tasks([enrich_task(tid, start) for tid, start in self.imaging_tasks.items()]),
+                "processing": sort_tasks([enrich_task(tid, start) for tid, start in self.processing_tasks.items()]),
+                "uploading": sort_tasks([enrich_task(tid, start) for tid, start in self.uploading_tasks.items()]),
+            }
 
     def poll_tasks(self):
         while not self._stop_event.is_set():
@@ -159,19 +268,11 @@ class TaskManager:
                         start_time, stop_time, tid, task = heapq.heappop(self.task_heap)
                         self.task_ids.discard(tid)
 
-                        # Move to active tracking
-                        self.active_tasks[tid] = {
-                            "task": task,
-                            "stage": "imaging",
-                            "start_time": time.time(),
-                            "stop_time": stop_time,
-                        }
-
                         self.logger.info(f"Starting task {tid} at {datetime.now().isoformat()}: {task}")
                         self.current_task_id = tid  # Mark as in-flight
 
-                    # Mark task as entering imaging stage
-                    self.daemon.update_task_stage(tid, "imaging")
+                    # Mark task as entering imaging stage (uses stage tracking)
+                    self.update_task_stage(tid, "imaging")
 
                     # Set initial status message
                     task.set_status_msg("Queued for imaging...")
@@ -186,14 +287,13 @@ class TaskManager:
                             with self.heap_lock:
                                 self.current_task_id = None  # Clear after done
                             self.logger.info(f"Completed imaging task {task_id} successfully.")
-                            # Task stays in active_tasks and task_dict for processing/upload stages
+                            # Task stays in stage tracking and task_dict for processing/upload stages
                         else:
                             # Permanent failure - remove from tracking
                             self.logger.error(f"Imaging task {task_id} permanently failed.")
                             with self.heap_lock:
                                 self.current_task_id = None  # Clear after done
-                                self.active_tasks.pop(task_id, None)
-                                self.task_dict.pop(task_id, None)
+                            self.remove_task_from_all_stages(task_id)
 
                     self.imaging_queue.submit(tid, task, telescope_task, on_imaging_complete)
                     completed += 1
@@ -379,6 +479,14 @@ class TaskManager:
 
     def start(self):
         self._stop_event.clear()
+
+        # Start work queues
+        self.logger.info("Starting work queues...")
+        self.imaging_queue.start()
+        self.processing_queue.start()
+        self.upload_queue.start()
+
+        # Start task management threads
         self.poll_thread = threading.Thread(target=self.poll_tasks, daemon=True)
         self.runner_thread = threading.Thread(target=self.task_runner, daemon=True)
         self.poll_thread.start()
@@ -386,5 +494,13 @@ class TaskManager:
 
     def stop(self):
         self._stop_event.set()
+
+        # Stop work queues
+        self.logger.info("Stopping work queues...")
+        self.imaging_queue.stop()
+        self.processing_queue.stop()
+        self.upload_queue.stop()
+
+        # Stop task management threads
         self.poll_thread.join()
         self.runner_thread.join()

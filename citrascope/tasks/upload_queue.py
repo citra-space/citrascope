@@ -12,7 +12,7 @@ class UploadQueue(BaseWorkQueue):
     Uploads can be slow (network), so run in background.
     """
 
-    def __init__(self, num_workers: int = 1, settings=None, logger=None, daemon=None):
+    def __init__(self, num_workers: int = 1, settings=None, logger=None, task_manager=None):
         """
         Initialize upload queue.
 
@@ -20,10 +20,10 @@ class UploadQueue(BaseWorkQueue):
             num_workers: Number of concurrent upload threads (default: 1, network is bottleneck)
             settings: Settings instance with retry configuration
             logger: Logger instance
-            daemon: Daemon instance for stage tracking
+            task_manager: TaskManager instance for stage tracking
         """
         super().__init__(num_workers, settings, logger)
-        self.daemon = daemon
+        self.task_manager = task_manager
 
     def submit(
         self,
@@ -121,8 +121,8 @@ class UploadQueue(BaseWorkQueue):
             task_obj.set_status_msg("Upload permanently failed")
 
         # Remove from stage tracking
-        if self.daemon:
-            self.daemon.remove_task_from_stages(task_id)
+        if self.task_manager:
+            self.task_manager.remove_task_from_all_stages(task_id)
 
         on_complete(task_id, success=False)
 

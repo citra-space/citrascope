@@ -38,7 +38,25 @@ def mock_logger():
 
 
 @pytest.fixture
-def mock_daemon(mock_api_client, mock_hardware_adapter, mock_logger):
+def mock_settings():
+    """Create a mock settings instance."""
+    settings = MagicMock()
+    settings.keep_images = False
+    settings.max_task_retries = 3
+    settings.initial_retry_delay_seconds = 30
+    settings.max_retry_delay_seconds = 300
+    return settings
+
+
+@pytest.fixture
+def mock_processor_registry():
+    """Create a mock processor registry."""
+    registry = MagicMock()
+    return registry
+
+
+@pytest.fixture
+def mock_daemon(mock_api_client, mock_hardware_adapter, mock_logger, mock_settings):
     """Create a mock daemon instance for testing."""
     daemon = MagicMock()
     daemon.api_client = mock_api_client
@@ -46,31 +64,23 @@ def mock_daemon(mock_api_client, mock_hardware_adapter, mock_logger):
     daemon.logger = mock_logger
     daemon.telescope_record = {"id": "test-telescope-123", "maxSlewRate": 5.0, "automatedScheduling": False}
     daemon.ground_station = {"id": "test-gs-456", "latitude": 40.0, "longitude": -74.0, "altitude": 100}
-    daemon.settings = MagicMock()
-    daemon.settings.keep_images = False
-    daemon.settings.max_task_retries = 3
-    daemon.settings.initial_retry_delay_seconds = 30
-    daemon.settings.max_retry_delay_seconds = 300
+    daemon.settings = mock_settings
     daemon.location_service = MagicMock()
     return daemon
 
 
 @pytest.fixture
-def mock_imaging_queue():
-    """Create a mock imaging queue."""
-    queue = MagicMock()
-    return queue
-
-
-@pytest.fixture
-def task_manager(mock_api_client, mock_hardware_adapter, mock_logger, mock_daemon, mock_imaging_queue):
+def task_manager(
+    mock_api_client, mock_hardware_adapter, mock_logger, mock_daemon, mock_settings, mock_processor_registry
+):
     """Create a TaskManager instance for testing."""
     tm = TaskManager(
         api_client=mock_api_client,
         logger=mock_logger,
         hardware_adapter=mock_hardware_adapter,
         daemon=mock_daemon,
-        imaging_queue=mock_imaging_queue,
+        settings=mock_settings,
+        processor_registry=mock_processor_registry,
     )
     return tm
 

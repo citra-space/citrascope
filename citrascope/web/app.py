@@ -395,10 +395,17 @@ class CitraScopeWebApp:
             task_manager = self.daemon.task_manager
             tasks = []
 
+            # Get IDs of tasks that are actively in a stage
+            with task_manager._stage_lock:
+                active_ids = set()
+                active_ids.update(task_manager.imaging_tasks.keys())
+                active_ids.update(task_manager.processing_tasks.keys())
+                active_ids.update(task_manager.uploading_tasks.keys())
+
             with task_manager.heap_lock:
                 for start_time, stop_time, task_id, task in task_manager.task_heap:
-                    # Only include tasks not currently active (executing)
-                    if task_id not in task_manager.active_tasks:
+                    # Only include tasks not currently in a stage (scheduled future work)
+                    if task_id not in active_ids:
                         tasks.append(
                             {
                                 "id": task_id,
@@ -421,24 +428,22 @@ class CitraScopeWebApp:
             if not self.daemon or not hasattr(self.daemon, "task_manager") or self.daemon.task_manager is None:
                 return []
 
-            task_manager = self.daemon.task_manager
-            active = []
+            # Use get_tasks_by_stage which returns enriched task info
+            tasks_by_stage = self.daemon.task_manager.get_tasks_by_stage()
 
-            with task_manager.heap_lock:
-                now = time.time()
-                for task_id, info in task_manager.active_tasks.items():
+            # Flatten into single list with stage information
+            active = []
+            for stage, tasks in tasks_by_stage.items():
+                for task_info in tasks:
                     active.append(
                         {
-                            "id": task_id,
-                            "target": info["task"].satelliteName,
-                            "stage": info["stage"],
-                            "elapsed": now - info["start_time"],
-                            "start_time": datetime.fromtimestamp(info["start_time"], tz=timezone.utc).isoformat(),
-                            "stop_time": (
-                                datetime.fromtimestamp(info["stop_time"], tz=timezone.utc).isoformat()
-                                if info.get("stop_time")
-                                else None
-                            ),
+                            "id": task_info["task_id"],
+                            "target": task_info.get("target_name", "unknown"),
+                            "stage": stage,
+                            "elapsed": task_info["elapsed"],
+                            "status_msg": task_info.get("status_msg"),
+                            "retry_scheduled_time": task_info.get("retry_scheduled_time"),
+                            "is_being_executed": task_info.get("is_being_executed", False),
                         }
                     )
 
@@ -879,8 +884,8 @@ class CitraScopeWebApp:
                 self.status.active_processors = []
 
             # Get tasks by pipeline stage
-            if hasattr(self.daemon, "get_tasks_by_stage"):
-                self.status.tasks_by_stage = self.daemon.get_tasks_by_stage()
+            if hasattr(self.daemon, "task_manager") and self.daemon.task_manager:
+                self.status.tasks_by_stage = self.daemon.task_manager.get_tasks_by_stage()
             else:
                 self.status.tasks_by_stage = None
 

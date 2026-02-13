@@ -12,10 +12,7 @@ from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.logging._citrascope_logger import setup_file_logging
 from citrascope.processors.processor_registry import ProcessorRegistry
 from citrascope.settings.citrascope_settings import CitraScopeSettings
-from citrascope.tasks.imaging_queue import ImagingQueue
-from citrascope.tasks.processing_queue import ProcessingQueue
 from citrascope.tasks.runner import TaskManager
-from citrascope.tasks.upload_queue import UploadQueue
 from citrascope.time.time_health import TimeHealth
 from citrascope.time.time_monitor import TimeMonitor
 from citrascope.web.server import CitraScopeWebServer
@@ -51,26 +48,7 @@ class CitraScopeDaemon:
         # Initialize processor registry
         self.processor_registry = ProcessorRegistry(settings=self.settings, logger=CITRASCOPE_LOGGER)
 
-        # Initialize background queues for pipeline
-        # Note: imaging_queue will be created after api_client is initialized
-        self.imaging_queue = None
-        self.processing_queue = ProcessingQueue(
-            num_workers=1, settings=self.settings, logger=CITRASCOPE_LOGGER  # One processing task at a time
-        )
-        self.upload_queue = UploadQueue(
-            num_workers=1, settings=self.settings, logger=CITRASCOPE_LOGGER, daemon=self  # One upload at a time
-        )
-
-        # Start background workers (imaging_queue started later in start())
-        CITRASCOPE_LOGGER.info("Starting background processing workers...")
-        self.processing_queue.start()
-        self.upload_queue.start()
-
-        # Simple stage tracking (thread-safe)
-        self._stage_lock = threading.Lock()
-        self.imaging_tasks = {}  # task_id -> start_time (float)
-        self.processing_tasks = {}  # task_id -> start_time (float)
-        self.uploading_tasks = {}  # task_id -> start_time (float)
+        # Note: Work queues and stage tracking now managed by TaskManager
 
         # Create web server instance (always enabled)
         self.web_server = CitraScopeWebServer(daemon=self, host="0.0.0.0", port=self.settings.web_port)
@@ -119,9 +97,20 @@ class CitraScopeDaemon:
                     log_path = self.settings.config_manager.get_current_log_path()
                     setup_file_logging(log_path, backup_count=self.settings.log_retention_days)
 
+            # Preserve task metadata across reload
+            old_task_dict = {}
+            old_imaging_tasks = {}
+            old_processing_tasks = {}
+            old_uploading_tasks = {}
+
             # Cleanup existing resources
             if self.task_manager:
                 CITRASCOPE_LOGGER.info("Stopping existing task manager...")
+                # Capture task metadata before destruction
+                old_task_dict = dict(self.task_manager.task_dict)
+                old_imaging_tasks = dict(self.task_manager.imaging_tasks)
+                old_processing_tasks = dict(self.task_manager.processing_tasks)
+                old_uploading_tasks = dict(self.task_manager.uploading_tasks)
                 self.task_manager.stop()
                 self.task_manager = None
 
@@ -189,7 +178,12 @@ class CitraScopeDaemon:
             CITRASCOPE_LOGGER.info("Time synchronization monitoring started")
 
             # Initialize telescope
-            success, error = self._initialize_telescope()
+            success, error = self._initialize_telescope(
+                old_task_dict=old_task_dict,
+                old_imaging_tasks=old_imaging_tasks,
+                old_processing_tasks=old_processing_tasks,
+                old_uploading_tasks=old_uploading_tasks,
+            )
 
             if success:
                 self.configuration_error = None
@@ -209,12 +203,28 @@ class CitraScopeDaemon:
         """Reload configuration from file and reinitialize all components."""
         return self._initialize_components(reload_settings=True)
 
-    def _initialize_telescope(self) -> tuple[bool, Optional[str]]:
+    def _initialize_telescope(
+        self,
+        old_task_dict: dict | None = None,
+        old_imaging_tasks: dict | None = None,
+        old_processing_tasks: dict | None = None,
+        old_uploading_tasks: dict | None = None,
+    ) -> tuple[bool, Optional[str]]:
         """Initialize telescope connection and task manager.
+
+        Args:
+            old_task_dict: Preserved task_dict from previous TaskManager (for config reload)
+            old_imaging_tasks: Preserved imaging_tasks from previous TaskManager (for config reload)
+            old_processing_tasks: Preserved processing_tasks from previous TaskManager (for config reload)
+            old_uploading_tasks: Preserved uploading_tasks from previous TaskManager (for config reload)
 
         Returns:
             Tuple of (success, error_message)
         """
+        old_task_dict = old_task_dict or {}
+        old_imaging_tasks = old_imaging_tasks or {}
+        old_processing_tasks = old_processing_tasks or {}
+        old_uploading_tasks = old_uploading_tasks or {}
         try:
             CITRASCOPE_LOGGER.info(f"CitraAPISettings host is {self.settings.host}")
             CITRASCOPE_LOGGER.info(f"CitraAPISettings telescope_id is {self.settings.telescope_id}")
@@ -260,19 +270,30 @@ class CitraScopeDaemon:
             # Sync discovered filters to backend on startup
             self._sync_filters_to_backend()
 
-            # Create imaging queue now that api_client is available
-            self.imaging_queue = ImagingQueue(
-                num_workers=1, settings=self.settings, logger=CITRASCOPE_LOGGER, api_client=self.api_client, daemon=self
-            )
-            self.imaging_queue.start()
-
+            # Create TaskManager (now owns all queues and stage tracking)
             self.task_manager = TaskManager(
                 self.api_client,
                 CITRASCOPE_LOGGER,
                 self.hardware_adapter,
                 self,
-                self.imaging_queue,
+                self.settings,
+                self.processor_registry,
             )
+
+            # Restore preserved task metadata
+            if old_task_dict:
+                CITRASCOPE_LOGGER.info(f"Restoring {len(old_task_dict)} task(s) from previous TaskManager")
+                self.task_manager.task_dict.update(old_task_dict)
+            if old_imaging_tasks:
+                CITRASCOPE_LOGGER.info(f"Restoring {len(old_imaging_tasks)} imaging task(s)")
+                self.task_manager.imaging_tasks.update(old_imaging_tasks)
+            if old_processing_tasks:
+                CITRASCOPE_LOGGER.info(f"Restoring {len(old_processing_tasks)} processing task(s)")
+                self.task_manager.processing_tasks.update(old_processing_tasks)
+            if old_uploading_tasks:
+                CITRASCOPE_LOGGER.info(f"Restoring {len(old_uploading_tasks)} uploading task(s)")
+                self.task_manager.uploading_tasks.update(old_uploading_tasks)
+
             self.task_manager.start()
 
             CITRASCOPE_LOGGER.info("Telescope initialized successfully!")
@@ -417,96 +438,9 @@ class CitraScopeDaemon:
         except KeyboardInterrupt:
             CITRASCOPE_LOGGER.info("Shutting down daemon.")
 
-    def update_task_stage(self, task_id: str, stage: str):
-        """Move task to specified stage. Stage is 'imaging', 'processing', or 'uploading'."""
-        with self._stage_lock:
-            # Remove from all stages first
-            self.imaging_tasks.pop(task_id, None)
-            self.processing_tasks.pop(task_id, None)
-            self.uploading_tasks.pop(task_id, None)
-
-            # Add to new stage
-            if stage == "imaging":
-                self.imaging_tasks[task_id] = time.time()
-            elif stage == "processing":
-                self.processing_tasks[task_id] = time.time()
-            elif stage == "uploading":
-                self.uploading_tasks[task_id] = time.time()
-
-    def remove_task_from_stages(self, task_id: str):
-        """Remove task from all stages and active tracking (when complete)."""
-        with self._stage_lock:
-            self.imaging_tasks.pop(task_id, None)
-            self.processing_tasks.pop(task_id, None)
-            self.uploading_tasks.pop(task_id, None)
-
-        # Also remove from task manager's active tasks and task_dict
-        if self.task_manager:
-            with self.task_manager.heap_lock:
-                self.task_manager.active_tasks.pop(task_id, None)
-                self.task_manager.task_dict.pop(task_id, None)
-
-    def get_tasks_by_stage(self) -> dict:
-        """Get current tasks in each stage, enriched with task details from task manager."""
-        with self._stage_lock:
-            now = time.time()
-
-            def enrich_task(task_id: str, start_time: float) -> dict:
-                """Look up task details and create enriched dict."""
-                result = {"task_id": task_id, "elapsed": now - start_time}
-                # Look up task from task manager if available
-                if self.task_manager:
-                    task = self.task_manager.get_task_by_id(task_id)
-                    if task:
-                        result["target_name"] = task.satelliteName
-                        # Use thread-safe getters for status fields
-                        status_msg, retry_time, is_executing = task.get_status_info()
-                        result["status_msg"] = status_msg
-                        result["retry_scheduled_time"] = retry_time
-                        result["is_being_executed"] = is_executing
-                return result
-
-            def sort_tasks(tasks):
-                """Sort tasks: active work first, queued next, retry-waiting last."""
-
-                def sort_key(task):
-                    retry_time = task.get("retry_scheduled_time")
-                    is_executing = task.get("is_being_executed", False)
-
-                    # Three-tier priority:
-                    # Priority 0: Currently executing (highest priority)
-                    # Priority 1: Queued and ready to execute
-                    # Priority 2: Waiting for retry (lowest priority)
-                    if retry_time is not None:
-                        priority = 2
-                        sort_value = retry_time  # Soonest retry first
-                    elif is_executing:
-                        priority = 0
-                        sort_value = -task.get("elapsed", 0)  # Longest running first
-                    else:
-                        priority = 1
-                        sort_value = -task.get("elapsed", 0)  # Longest waiting first
-
-                    return (priority, sort_value)
-
-                return sorted(tasks, key=sort_key)
-
-            return {
-                "imaging": sort_tasks([enrich_task(tid, start) for tid, start in self.imaging_tasks.items()]),
-                "processing": sort_tasks([enrich_task(tid, start) for tid, start in self.processing_tasks.items()]),
-                "uploading": sort_tasks([enrich_task(tid, start) for tid, start in self.uploading_tasks.items()]),
-            }
-
     def _shutdown(self):
         """Clean up resources on shutdown."""
-        # Stop background workers
-        if hasattr(self, "imaging_queue") and self.imaging_queue:
-            self.imaging_queue.stop()
-        if hasattr(self, "processing_queue"):
-            self.processing_queue.stop()
-        if hasattr(self, "upload_queue"):
-            self.upload_queue.stop()
-
+        # TaskManager now handles stopping all work queues
         if self.task_manager:
             self.task_manager.stop()
         if self.time_monitor:
