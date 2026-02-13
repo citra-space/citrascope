@@ -75,10 +75,10 @@ class ProcessorRegistry:
             if context.task:
                 context.task.set_status_msg(f"Running {processor.friendly_name}...")
 
+            # Let exceptions propagate - they will trigger retries in ProcessingQueue
+            # After max retries, ProcessingQueue will fail-open and upload raw image
             result = processor.process(context)
             results.append(result)
-            # Don't catch exceptions - let them propagate to trigger retries
-            # After max retries, ProcessingQueue will fail-open and upload raw image
 
         total_time = time.time() - start_time
         return self._aggregate_results(results, total_time)

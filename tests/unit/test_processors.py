@@ -17,6 +17,8 @@ class MockPassProcessor(AbstractImageProcessor):
     """Mock processor that always passes."""
 
     name = "mock_pass"
+    friendly_name = "Mock Pass Processor"
+    description = "Test processor that always passes"
 
     def process(self, context: ProcessingContext) -> ProcessorResult:
         return ProcessorResult(
@@ -33,6 +35,8 @@ class MockRejectProcessor(AbstractImageProcessor):
     """Mock processor that always rejects."""
 
     name = "mock_reject"
+    friendly_name = "Mock Reject Processor"
+    description = "Test processor that always rejects"
 
     def process(self, context: ProcessingContext) -> ProcessorResult:
         return ProcessorResult(
@@ -49,6 +53,8 @@ class MockErrorProcessor(AbstractImageProcessor):
     """Mock processor that raises an error."""
 
     name = "mock_error"
+    friendly_name = "Mock Error Processor"
+    description = "Test processor that raises an error"
 
     def process(self, context: ProcessingContext) -> ProcessorResult:
         raise RuntimeError("Test error")
@@ -212,16 +218,13 @@ class TestProcessorRegistry:
         assert result.skip_reason is not None
 
     def test_process_all_error_handling(self, mock_settings, mock_logger, processing_context):
-        """Test that processor errors are caught and don't block upload."""
+        """Test that processor errors propagate (triggering retry logic in ProcessingQueue)."""
         registry = ProcessorRegistry(mock_settings, mock_logger)
         registry.processors = [MockErrorProcessor(), MockPassProcessor()]
 
-        result = registry.process_all(processing_context)
-
-        # Error processor should be caught, pass processor should succeed
-        assert result.should_upload is True
-        assert len(result.all_results) == 1  # Only the pass processor succeeded
-        mock_logger.error.assert_called_once()  # Error was logged
+        # Error should propagate and not be caught
+        with pytest.raises(RuntimeError, match="Test error"):
+            registry.process_all(processing_context)
 
     def test_aggregated_result_name_prefixing(self, mock_settings, mock_logger, processing_context):
         """Test that extracted data keys are prefixed with processor name."""
@@ -230,6 +233,8 @@ class TestProcessorRegistry:
         # Create two processors with same key name
         class Processor1(MockPassProcessor):
             name = "proc1"
+            friendly_name = "Processor 1"
+            description = "Test processor 1"
 
             def process(self, context):
                 return ProcessorResult(
@@ -243,6 +248,8 @@ class TestProcessorRegistry:
 
         class Processor2(MockPassProcessor):
             name = "proc2"
+            friendly_name = "Processor 2"
+            description = "Test processor 2"
 
             def process(self, context):
                 return ProcessorResult(
