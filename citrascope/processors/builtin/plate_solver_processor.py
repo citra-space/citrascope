@@ -5,8 +5,12 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from astropy.io import fits
+
 from citrascope.processors.abstract_processor import AbstractImageProcessor
 from citrascope.processors.processor_result import ProcessingContext, ProcessorResult
+
+from .processor_dependencies import check_astrometry
 
 
 class PlateSolverProcessor(AbstractImageProcessor):
@@ -80,8 +84,6 @@ class PlateSolverProcessor(AbstractImageProcessor):
         start_time = time.time()
 
         # Check dependencies
-        from .processor_dependencies import check_astrometry
-
         if not check_astrometry():
             return ProcessorResult(
                 should_upload=True,  # Fail-open
@@ -104,8 +106,6 @@ class PlateSolverProcessor(AbstractImageProcessor):
             context.working_image_path = wcs_image_path
 
             # Extract WCS info from solved image
-            from astropy.io import fits
-
             with fits.open(wcs_image_path) as hdul:
                 header = hdul[0].header
                 ra_center = header.get("CRVAL1")

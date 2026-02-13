@@ -14,6 +14,8 @@ from skyfield.sgp4lib import EarthSatellite
 from citrascope.processors.abstract_processor import AbstractImageProcessor
 from citrascope.processors.processor_result import ProcessingContext, ProcessorResult
 
+from .processor_dependencies import check_ephemeris
+
 
 class SatelliteMatcherProcessor(AbstractImageProcessor):
     """
@@ -185,8 +187,6 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
             )
 
         # Check for ephemeris
-        from .processor_dependencies import check_ephemeris
-
         if not check_ephemeris():
             return ProcessorResult(
                 should_upload=True,

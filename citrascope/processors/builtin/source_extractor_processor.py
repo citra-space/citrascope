@@ -7,9 +7,12 @@ import time
 from pathlib import Path
 
 import pandas as pd
+from astropy.io import fits
 
 from citrascope.processors.abstract_processor import AbstractImageProcessor
 from citrascope.processors.processor_result import ProcessingContext, ProcessorResult
+
+from .processor_dependencies import check_sextractor
 
 
 class SourceExtractorProcessor(AbstractImageProcessor):
@@ -165,8 +168,6 @@ class SourceExtractorProcessor(AbstractImageProcessor):
         start_time = time.time()
 
         # Check if image has WCS (requires plate solver to have run)
-        from astropy.io import fits
-
         try:
             with fits.open(context.working_image_path) as hdul:
                 if "CRVAL1" not in hdul[0].header:
@@ -189,8 +190,6 @@ class SourceExtractorProcessor(AbstractImageProcessor):
             )
 
         # Check dependencies
-        from .processor_dependencies import check_sextractor
-
         if not check_sextractor():
             return ProcessorResult(
                 should_upload=True,
