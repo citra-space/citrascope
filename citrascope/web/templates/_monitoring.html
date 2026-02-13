@@ -1,3 +1,25 @@
+    <!-- Macro for task list display -->
+    {% macro task_list(stage_name) %}
+        <template x-if="!$store.citrascope.status?.tasks_by_stage?.{{ stage_name }}?.length">
+            <div class="text-muted text-center py-2">
+                <small>Idle</small>
+            </div>
+        </template>
+        <template x-if="$store.citrascope.status?.tasks_by_stage?.{{ stage_name }}?.length > 0">
+            <div>
+                <template x-for="task in $store.citrascope.status.tasks_by_stage.{{ stage_name }}" :key="task.task_id">
+                    <div class="mb-2 pb-2 border-bottom border-secondary">
+                        <div>
+                            <span class="fw-semibold" x-text="task.target_name || task.task_id"></span>
+                            <span class="text-muted small" x-text="Math.floor(task.elapsed) + 's'"></span>
+                        </div>
+                        <div class="text-muted small" x-show="task.status_msg" x-text="task.status_msg"></div>
+                    </div>
+                </template>
+            </div>
+        </template>
+    {% endmacro %}
+
     <div id="monitoringSection" x-show="$store.citrascope.currentSection === 'monitoring'"
         x-effect="$store.citrascope.status && $nextTick(() => { document.querySelectorAll('[data-bs-toggle=tooltip]').forEach(el => { try { bootstrap.Tooltip.getOrCreateInstance(el); } catch (_) {} }); })">
         <div class="container">
@@ -185,21 +207,7 @@
                                                   x-show="$store.citrascope.status?.tasks_by_stage?.shooting?.length > 0"
                                                   x-text="$store.citrascope.status.tasks_by_stage.shooting.length"></span>
                                         </div>
-                                        <template x-if="!$store.citrascope.status?.tasks_by_stage?.shooting?.length">
-                                            <div class="text-muted text-center py-2">
-                                                <small>Idle</small>
-                                            </div>
-                                        </template>
-                                        <template x-if="$store.citrascope.status?.tasks_by_stage?.shooting?.length > 0">
-                                            <div>
-                                                <template x-for="task in $store.citrascope.status.tasks_by_stage.shooting" :key="task.task_id">
-                                                    <div class="mb-2 pb-2 border-bottom border-secondary">
-                                                        <div class="fw-semibold" x-text="task.target_name || task.task_id"></div>
-                                                        <div class="text-muted small" x-text="'Elapsed: ' + Math.floor(task.elapsed) + 's'"></div>
-                                                    </div>
-                                                </template>
-                                            </div>
-                                        </template>
+                                        {{ task_list('shooting') }}
                                     </div>
                                 </div>
 
@@ -218,21 +226,7 @@
                                                   x-show="$store.citrascope.status?.tasks_by_stage?.processing?.length > 0"
                                                   x-text="$store.citrascope.status.tasks_by_stage.processing.length"></span>
                                         </div>
-                                        <template x-if="!$store.citrascope.status?.tasks_by_stage?.processing?.length">
-                                            <div class="text-muted text-center py-2">
-                                                <small>Idle</small>
-                                            </div>
-                                        </template>
-                                        <template x-if="$store.citrascope.status?.tasks_by_stage?.processing?.length > 0">
-                                            <div>
-                                                <template x-for="task in $store.citrascope.status.tasks_by_stage.processing" :key="task.task_id">
-                                                    <div class="mb-2 pb-2 border-bottom border-secondary">
-                                                        <div class="fw-semibold" x-text="task.target_name || task.task_id"></div>
-                                                        <div class="text-muted small" x-text="'Elapsed: ' + Math.floor(task.elapsed) + 's'"></div>
-                                                    </div>
-                                                </template>
-                                            </div>
-                                        </template>
+                                        {{ task_list('processing') }}
                                     </div>
                                 </div>
 
@@ -251,21 +245,7 @@
                                                   x-show="$store.citrascope.status?.tasks_by_stage?.uploading?.length > 0"
                                                   x-text="$store.citrascope.status.tasks_by_stage.uploading.length"></span>
                                         </div>
-                                        <template x-if="!$store.citrascope.status?.tasks_by_stage?.uploading?.length">
-                                            <div class="text-muted text-center py-2">
-                                                <small>Idle</small>
-                                            </div>
-                                        </template>
-                                        <template x-if="$store.citrascope.status?.tasks_by_stage?.uploading?.length > 0">
-                                            <div>
-                                                <template x-for="task in $store.citrascope.status.tasks_by_stage.uploading" :key="task.task_id">
-                                                    <div class="mb-2 pb-2 border-bottom border-secondary">
-                                                        <div class="fw-semibold" x-text="task.target_name || task.task_id"></div>
-                                                        <div class="text-muted small" x-text="'Elapsed: ' + Math.floor(task.elapsed) + 's'"></div>
-                                                    </div>
-                                                </template>
-                                            </div>
-                                        </template>
+                                        {{ task_list('uploading') }}
                                     </div>
                                 </div>
                             </div>

@@ -21,6 +21,9 @@ class Task:
     groundStationName: str
     assigned_filter_name: Optional[str] = None
 
+    # Local execution state (not from API, never sent to server)
+    local_status_msg: Optional[str] = None
+
     @classmethod
     def from_dict(cls, data: dict) -> "Task":
         return cls(

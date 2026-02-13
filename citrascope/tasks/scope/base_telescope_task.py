@@ -123,6 +123,7 @@ class AbstractBaseTelescopeTask(ABC):
         self.daemon.update_task_stage(self.task.id, "uploading")
         self.daemon.upload_queue.submit(
             task_id=self.task.id,
+            task=self.task,
             image_path=filepath,
             processing_result=processing_result,
             api_client=self.api_client,

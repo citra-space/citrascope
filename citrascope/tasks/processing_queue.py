@@ -80,10 +80,13 @@ class ProcessingQueue:
                     # Build processing context
                     from citrascope.processors.processor_result import ProcessingContext
 
+                    task_obj = item["context"].get("task")
+                    # Note: Status message will be updated by ProcessorRegistry for each processor
+
                     context = ProcessingContext(
                         image_path=item["image_path"],
                         image_data=None,  # Loaded by processors
-                        task=item["context"].get("task"),
+                        task=task_obj,
                         telescope_record=item["context"].get("telescope_record"),
                         ground_station_record=item["context"].get("ground_station_record"),
                         settings=item["context"].get("settings"),
@@ -96,6 +99,8 @@ class ProcessingQueue:
 
                     # Notify callback with result
                     self.logger.info(f"[ProcessingWorker] Task {task_id} processed in {result.total_time:.2f}s")
+                    if task_obj:
+                        task_obj.local_status_msg = "Processing complete"
                     item["on_complete"](task_id, result)
 
                 except Exception as e:

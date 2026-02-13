@@ -450,6 +450,7 @@ class CitraScopeDaemon:
                     task = self.task_manager.get_task_by_id(task_id)
                     if task:
                         result["target_name"] = task.satelliteName
+                        result["status_msg"] = task.local_status_msg
                 return result
 
             return {

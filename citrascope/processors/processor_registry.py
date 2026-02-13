@@ -72,6 +72,10 @@ class ProcessorRegistry:
         results = []
         for processor in enabled_processors:
             try:
+                # Update status message to show which processor is running
+                if context.task:
+                    context.task.local_status_msg = f"Running {processor.friendly_name}..."
+
                 result = processor.process(context)
                 results.append(result)
             except Exception as e:

@@ -53,6 +53,7 @@ class UploadQueue:
     def submit(
         self,
         task_id: str,
+        task,
         image_path: str,
         processing_result: Optional[dict],
         api_client,
@@ -65,6 +66,7 @@ class UploadQueue:
 
         Args:
             task_id: Task identifier
+            task: Task object (for status updates)
             image_path: Path to image file
             processing_result: Result from processors (or None if skipped)
             api_client: API client instance
@@ -76,6 +78,7 @@ class UploadQueue:
         self.upload_queue.put(
             {
                 "task_id": task_id,
+                "task": task,
                 "image_path": image_path,
                 "processing_result": processing_result,
                 "api_client": api_client,
@@ -94,14 +97,19 @@ class UploadQueue:
                     break
 
                 task_id = item["task_id"]
+                task_obj = item.get("task")
                 self.logger.info(f"[UploadWorker] Uploading task {task_id}")
 
                 try:
                     # Upload image (can be slow due to network)
+                    if task_obj:
+                        task_obj.local_status_msg = "Uploading image..."
                     upload_result = item["api_client"].upload_image(task_id, item["telescope_id"], item["image_path"])
 
                     if upload_result:
                         # Mark task complete on server
+                        if task_obj:
+                            task_obj.local_status_msg = "Marking complete..."
                         marked_complete = item["api_client"].mark_task_complete(task_id)
 
                         if marked_complete:
@@ -109,6 +117,8 @@ class UploadQueue:
 
                             # Cleanup local files if configured
                             if not item["settings"].keep_images:
+                                if task_obj:
+                                    task_obj.local_status_msg = "Cleaning up..."
                                 self._cleanup_files(item["image_path"])
 
                             item["on_complete"](task_id, success=True)
