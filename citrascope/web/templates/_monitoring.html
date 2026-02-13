@@ -7,11 +7,11 @@
         </template>
         <template x-if="$store.citrascope.status?.tasks_by_stage?.{{ stage_name }}?.length > 0">
             <div>
-                <template x-for="task in $store.citrascope.status.tasks_by_stage.{{ stage_name }}" :key="task.task_id">
-                    <div class="mb-2 pb-2 border-bottom border-secondary">
+                <template x-for="(task, index) in $store.citrascope.status.tasks_by_stage.{{ stage_name }}" :key="task.task_id">
+                    <div class="mb-2" :class="index < $store.citrascope.status.tasks_by_stage.{{ stage_name }}.length - 1 ? 'pb-2 border-bottom border-secondary' : ''">
                         <div>
                             <span class="fw-semibold" x-text="task.target_name || task.task_id"></span>
-                            <span class="text-muted small" x-text="Math.floor(task.elapsed) + 's'"></span>
+                            <span class="text-muted small ms-2" x-text="'(' + Math.floor(task.elapsed) + 's)'"></span>
                         </div>
                         <div class="text-muted small" x-show="task.status_msg" x-text="task.status_msg"></div>
                     </div>
