@@ -34,7 +34,7 @@ class PhotometryProcessor(AbstractImageProcessor):
         start_time = time.time()
 
         # Check if sources were extracted
-        catalog_path = context.working_dir / f"{context.working_image_path.stem}.cat"
+        catalog_path = context.working_dir / "output.cat"
         if not catalog_path.exists():
             return ProcessorResult(
                 should_upload=True,

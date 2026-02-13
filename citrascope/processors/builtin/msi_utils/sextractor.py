@@ -25,44 +25,69 @@ def extract_sources(image_path: Path, config_dir: Path, working_dir: Path) -> pd
     config_dir = config_dir.resolve()
     working_dir = working_dir.resolve()
 
-    # Catalog will be written to working directory with relative name
-    catalog_name = f"{image_path.stem}.cat"
+    # Create a symlink in working_dir with a simple name (no spaces in path)
+    image_symlink = working_dir / "input.fits"
+    catalog_name = "output.cat"
     catalog_path = working_dir / catalog_name
 
-    # Build SExtractor command (will run from working_dir)
-    cmd = [
-        "sex",  # Standard command name from Homebrew/most installations
-        str(image_path),  # Absolute path to image
-        "-c",
-        str(config_dir / "default.sex"),  # Absolute path to config
-        "-PARAMETERS_NAME",
-        str(config_dir / "default.param"),  # Absolute path
-        "-FILTER_NAME",
-        str(config_dir / "default.conv"),  # Absolute path
-        "-STARNNW_NAME",
-        str(config_dir / "default.nnw"),  # Absolute path
-        "-CATALOG_NAME",
-        catalog_name,  # Relative to cwd (working_dir)
-    ]
-
-    # Try 'sex' command first (most common)
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False, cwd=str(working_dir))
+        # Create symlink to avoid passing image path with spaces to SExtractor
+        if image_symlink.exists():
+            image_symlink.unlink()
+        image_symlink.symlink_to(image_path)
 
-        # If sex not found, try 'source-extractor' alias
-        if result.returncode == 127 or "not found" in result.stderr.lower():
-            cmd[0] = "source-extractor"
-            result = subprocess.run(cmd, capture_output=True, text=True, check=False, cwd=str(working_dir))
-    except FileNotFoundError:
-        # Command doesn't exist, try alternate name
-        cmd[0] = "source-extractor"
+        # Copy config files to working_dir so relative paths work
+        import shutil
+
+        for config_file in ["default.sex", "default.param", "default.conv", "default.nnw"]:
+            src = config_dir / config_file
+            dst = working_dir / config_file
+            if not dst.exists():
+                shutil.copy(src, dst)
+
+        # Build SExtractor command - all files in working_dir now
+        cmd = [
+            "sex",
+            "input.fits",  # Symlink in working_dir
+            "-c",
+            "default.sex",  # Local copy in working_dir
+            "-CATALOG_NAME",
+            "output.cat",  # Output in working_dir
+        ]
+
+        # Debug logging to diagnose path issues
+        import logging
+
+        logger = logging.getLogger("citrascope")
+        logger.info(f"Running SExtractor from cwd: {working_dir}")
+        logger.info(f"Config files copied to working_dir (default.sex, default.param, default.conv, default.nnw)")
+        logger.info(f"SExtractor command: {' '.join(cmd)}")
+        logger.info(f"Image symlink: {image_symlink} -> {image_path}")
+        logger.info(f"Catalog path: {catalog_path}")
+
+        # Try 'sex' command first (most common)
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, check=False, cwd=str(working_dir))
-        except FileNotFoundError:
-            raise RuntimeError("SExtractor not found. Install with: brew install sextractor")
 
-    if result.returncode != 0:
-        raise RuntimeError(f"SExtractor failed: {result.stderr}")
+            # If sex not found, try 'source-extractor' alias
+            if result.returncode == 127 or "not found" in result.stderr.lower():
+                cmd[0] = "source-extractor"
+                result = subprocess.run(cmd, capture_output=True, text=True, check=False, cwd=str(working_dir))
+        except FileNotFoundError:
+            # Command doesn't exist, try alternate name
+            cmd[0] = "source-extractor"
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True, check=False, cwd=str(working_dir))
+            except FileNotFoundError:
+                raise RuntimeError("SExtractor not found. Install with: brew install sextractor")
+
+        if result.returncode != 0:
+            raise RuntimeError(f"SExtractor failed: {result.stderr}")
+
+    finally:
+        # Clean up symlink
+        if image_symlink.exists():
+            image_symlink.unlink()
 
     # Parse catalog
     sources = parse_sex_catalog(catalog_path)
