@@ -55,97 +55,89 @@ class AbstractBaseTelescopeTask(ABC):
         return most_recent_elset
 
     def upload_image_and_mark_complete(self, filepath: str | list[str]) -> bool:
-
+        """
+        Image captured. Queue for background processing and return immediately.
+        Telescope is now free to start next task.
+        """
+        # Handle list input
         if isinstance(filepath, str):
             filepaths = [filepath]
         else:
             filepaths = filepath
 
-        for filepath in filepaths:
-            # Enrich FITS metadata with observation context before upload
+        for image_path in filepaths:
+            # 1. Enrich FITS metadata (quick, keep synchronous)
             try:
                 enrich_fits_metadata(
-                    filepath,
+                    image_path,
                     task=self.task,
                     daemon=self.daemon,
                 )
             except Exception as e:
-                # Log but don't fail upload on enrichment errors
-                self.logger.warning(f"Failed to enrich FITS metadata for {filepath}: {e}")
+                self.logger.warning(f"Failed to enrich FITS metadata for {image_path}: {e}")
 
-            # Run processors if enabled
-            processor_result = None
+            # 2. Queue for background processing
             if self.daemon.settings.processors_enabled:
-                try:
-                    # Build processing context with full task and observatory data
-                    from pathlib import Path
+                from pathlib import Path
 
-                    from citrascope.processors.processor_result import ProcessingContext
-
-                    context = ProcessingContext(
-                        image_path=Path(filepath),
-                        image_data=None,  # Will be loaded by registry
-                        task=self.task,
-                        telescope_record=self.daemon.telescope_record,
-                        ground_station_record=self.daemon.ground_station,
-                        settings=self.daemon.settings,
-                    )
-
-                    processor_result = self.daemon.processor_registry.process_all(context)
-
-                    # Log timing (watch for slow processing)
-                    self.logger.info(f"Image processing completed in {processor_result.total_time:.2f}s")
-                    if processor_result.total_time > 5.0:
-                        self.logger.warning(
-                            f"Processing took {processor_result.total_time:.2f}s - "
-                            "consider async processing in future"
-                        )
-
-                    # Check if we should skip upload
-                    if not processor_result.should_upload:
-                        self.logger.info(f"Skipping upload: {processor_result.skip_reason}")
-                        # Mark task as complete but image rejected
-                        # Note: This uses the existing mark_task_complete endpoint
-                        # Server may not support custom status yet, so we just mark it complete
-                        marked_complete = self.api_client.mark_task_complete(self.task.id)
-                        if marked_complete:
-                            self.logger.info(f"Task {self.task.id} marked complete (image rejected by processor)")
-                        return True  # Task "succeeded" but no upload
-                except Exception as e:
-                    self.logger.error(f"Processor failed: {e}", exc_info=True)
-                    # Fail-open: continue to upload
-
-            upload_result = self.api_client.upload_image(self.task.id, self.daemon.telescope_record["id"], filepath)
-            if upload_result:
-                self.logger.info(f"Successfully uploaded image {filepath}")
+                self.daemon.update_task_stage(self.task.id, "processing")
+                self.daemon.processing_queue.submit(
+                    task_id=self.task.id,
+                    image_path=Path(image_path),
+                    context={
+                        "task": self.task,
+                        "telescope_record": self.daemon.telescope_record,
+                        "ground_station_record": self.daemon.ground_station,
+                        "settings": self.daemon.settings,
+                        "daemon": self.daemon,
+                    },
+                    on_complete=lambda tid, result, fp=image_path: self._on_processing_complete(fp, tid, result),
+                )
             else:
-                self.logger.error(f"Failed to upload image {filepath}")
-                return False
+                # No processing, go straight to upload
+                self._queue_for_upload(image_path, processing_result=None)
 
-            # Log extracted data for now (API integration later)
-            if processor_result and processor_result.extracted_data:
-                self.logger.info(f"Extracted data: {processor_result.extracted_data}")
-
-            if not self.daemon.settings.keep_images:
-                try:
-                    os.remove(filepath)
-                    self.logger.debug(f"Deleted local image file {filepath} after upload.")
-                except Exception as e:
-                    self.logger.error(f"Failed to delete local image file {filepath}: {e}")
-            else:
-                self.logger.info(f"Keeping local image file {filepath} (--keep-images flag set).")
-
-        marked_complete = self.api_client.mark_task_complete(self.task.id)
-        if not marked_complete:
-            task_check = self.api_client.get_telescope_tasks(self.daemon.telescope_record["id"])
-            for t in task_check:
-                if t["id"] == self.task.id and t.get("status") == "Succeeded":
-                    self.logger.info(f"Task {self.task.id} is already marked complete.")
-                    return True
-            self.logger.error(f"Failed to mark task {self.task.id} as complete.")
-            return False
-        self.logger.info(f"Marked task {self.task.id} as complete.")
+        # Return immediately - telescope is free
         return True
+
+    def _on_processing_complete(self, filepath: str, task_id: str, result):
+        """Called by background worker when processing finishes."""
+        self.logger.info(f"Processing complete for task {task_id}")
+
+        # Check if processors rejected upload
+        if result and not result.should_upload:
+            self.logger.info(f"Skipping upload per processor: {result.skip_reason}")
+            self.api_client.mark_task_complete(task_id)
+            self.daemon.remove_task_from_stages(task_id)
+            return
+
+        # Log extracted data
+        if result and result.extracted_data:
+            self.logger.info(f"Extracted data: {result.extracted_data}")
+
+        # Queue for upload
+        self._queue_for_upload(filepath, processing_result=result)
+
+    def _queue_for_upload(self, filepath: str, processing_result):
+        """Queue image for background upload."""
+        self.daemon.update_task_stage(self.task.id, "uploading")
+        self.daemon.upload_queue.submit(
+            task_id=self.task.id,
+            image_path=filepath,
+            processing_result=processing_result,
+            api_client=self.api_client,
+            telescope_id=self.daemon.telescope_record["id"],
+            settings=self.daemon.settings,
+            on_complete=self._on_upload_complete,
+        )
+
+    def _on_upload_complete(self, task_id: str, success: bool):
+        """Called by background worker when upload finishes."""
+        self.daemon.remove_task_from_stages(task_id)
+        if success:
+            self.logger.info(f"Task {task_id} fully complete (uploaded)")
+        else:
+            self.logger.error(f"Task {task_id} upload failed - not retrying")
 
     @abstractmethod
     def execute(self):

@@ -48,6 +48,7 @@ class SystemStatus(BaseModel):
     last_update: str = ""
     missing_dependencies: List[Dict[str, str]] = []  # List of {device, packages, install_cmd}
     active_processors: List[str] = []  # Names of enabled image processors
+    tasks_by_stage: Optional[Dict[str, List[Dict]]] = None  # Tasks in each pipeline stage
 
 
 class HardwareConfig(BaseModel):
@@ -833,6 +834,12 @@ class CitraScopeWebApp:
                 self.status.active_processors = [p.name for p in self.daemon.processor_registry.processors]
             else:
                 self.status.active_processors = []
+
+            # Get tasks by pipeline stage
+            if hasattr(self.daemon, "get_tasks_by_stage"):
+                self.status.tasks_by_stage = self.daemon.get_tasks_by_stage()
+            else:
+                self.status.tasks_by_stage = None
 
             self.status.last_update = datetime.now().isoformat()
 

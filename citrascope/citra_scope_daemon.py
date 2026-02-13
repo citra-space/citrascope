@@ -47,6 +47,28 @@ class CitraScopeDaemon:
 
         self.processor_registry = ProcessorRegistry(settings=self.settings, logger=CITRASCOPE_LOGGER)
 
+        # Initialize background queues for pipeline
+        import threading
+
+        from citrascope.tasks.processing_queue import ProcessingQueue
+        from citrascope.tasks.upload_queue import UploadQueue
+
+        self.processing_queue = ProcessingQueue(
+            num_workers=1, logger=CITRASCOPE_LOGGER  # One processing task at a time
+        )
+        self.upload_queue = UploadQueue(num_workers=1, logger=CITRASCOPE_LOGGER)  # One upload at a time
+
+        # Start background workers
+        CITRASCOPE_LOGGER.info("Starting background processing workers...")
+        self.processing_queue.start()
+        self.upload_queue.start()
+
+        # Simple stage tracking (thread-safe)
+        self._stage_lock = threading.Lock()
+        self.shooting_tasks = {}  # task_id -> start_time (float)
+        self.processing_tasks = {}  # task_id -> start_time (float)
+        self.uploading_tasks = {}  # task_id -> start_time (float)
+
         # Create web server instance (always enabled)
         self.web_server = CitraScopeWebServer(daemon=self, host="0.0.0.0", port=self.settings.web_port)
 
@@ -381,8 +403,58 @@ class CitraScopeDaemon:
         except KeyboardInterrupt:
             CITRASCOPE_LOGGER.info("Shutting down daemon.")
 
+    def update_task_stage(self, task_id: str, stage: str):
+        """Move task to specified stage. Stage is 'shooting', 'processing', or 'uploading'."""
+        with self._stage_lock:
+            # Remove from all stages first
+            self.shooting_tasks.pop(task_id, None)
+            self.processing_tasks.pop(task_id, None)
+            self.uploading_tasks.pop(task_id, None)
+
+            # Add to new stage
+            if stage == "shooting":
+                self.shooting_tasks[task_id] = time.time()
+            elif stage == "processing":
+                self.processing_tasks[task_id] = time.time()
+            elif stage == "uploading":
+                self.uploading_tasks[task_id] = time.time()
+
+    def remove_task_from_stages(self, task_id: str):
+        """Remove task from all stages (when complete)."""
+        with self._stage_lock:
+            self.shooting_tasks.pop(task_id, None)
+            self.processing_tasks.pop(task_id, None)
+            self.uploading_tasks.pop(task_id, None)
+
+    def get_tasks_by_stage(self) -> dict:
+        """Get current tasks in each stage, enriched with task details from task manager."""
+        with self._stage_lock:
+            now = time.time()
+
+            def enrich_task(task_id: str, start_time: float) -> dict:
+                """Look up task details and create enriched dict."""
+                result = {"task_id": task_id, "elapsed": now - start_time}
+                # Look up task from task manager if available
+                if self.task_manager:
+                    task = self.task_manager.get_task_by_id(task_id)
+                    if task:
+                        result["target_name"] = task.satelliteName
+                return result
+
+            return {
+                "shooting": [enrich_task(tid, start) for tid, start in self.shooting_tasks.items()],
+                "processing": [enrich_task(tid, start) for tid, start in self.processing_tasks.items()],
+                "uploading": [enrich_task(tid, start) for tid, start in self.uploading_tasks.items()],
+            }
+
     def _shutdown(self):
         """Clean up resources on shutdown."""
+        # Stop background workers
+        if hasattr(self, "processing_queue"):
+            self.processing_queue.stop()
+        if hasattr(self, "upload_queue"):
+            self.upload_queue.stop()
+
         if self.task_manager:
             self.task_manager.stop()
         if self.time_monitor:

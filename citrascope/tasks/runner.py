@@ -29,6 +29,7 @@ class TaskManager:
         self.daemon = daemon
         self.task_heap = []  # min-heap by start time
         self.task_ids = set()
+        self.task_dict = {}  # task_id -> Task object for quick lookup
         self.heap_lock = threading.RLock()
         self._stop_event = threading.Event()
         self.current_task_id = None  # Track currently executing task
@@ -81,6 +82,7 @@ class TaskManager:
                         else:
                             self.logger.info(f"Removing task {tid} from queue (cancelled or status changed)")
                             self.task_ids.discard(tid)
+                            self.task_dict.pop(tid, None)
                             # Clean up retry tracking
                             self.task_retry_counts.pop(tid, None)
                             self.task_last_failure.pop(tid, None)
@@ -108,6 +110,7 @@ class TaskManager:
                                 continue  # Skip tasks whose end date has passed
                             heapq.heappush(self.task_heap, (start_epoch, stop_epoch, tid, task))
                             self.task_ids.add(tid)
+                            self.task_dict[tid] = task  # Store for quick lookup
                             added += 1
 
                     if added > 0 or removed > 0:
@@ -158,6 +161,9 @@ class TaskManager:
                         self.logger.info(f"Starting task {tid} at {datetime.now().isoformat()}: {task}")
                         self.current_task_id = tid  # Mark as in-flight
 
+                    # Mark task as entering shooting stage
+                    self.daemon.update_task_stage(tid, "shooting")
+
                     # Observation is now outside the lock!
                     try:
                         observation_succeeded = self._observe_satellite(task)
@@ -171,6 +177,7 @@ class TaskManager:
                             self.logger.info(f"Completed observation task {tid} successfully.")
                             heapq.heappop(self.task_heap)
                             self.task_ids.discard(tid)
+                            self.task_dict.pop(tid, None)
                             # Clean up retry tracking for successful task
                             self.task_retry_counts.pop(tid, None)
                             self.task_last_failure.pop(tid, None)
@@ -187,6 +194,7 @@ class TaskManager:
                                 )
                                 heapq.heappop(self.task_heap)
                                 self.task_ids.discard(tid)
+                                self.task_dict.pop(tid, None)
                                 # Clean up retry tracking
                                 self.task_retry_counts.pop(tid, None)
                                 self.task_last_failure.pop(tid, None)
@@ -213,6 +221,7 @@ class TaskManager:
                                 _, stop_epoch, _, task = heapq.heappop(self.task_heap)
                                 new_start_time = now + backoff_delay
                                 heapq.heappush(self.task_heap, (new_start_time, stop_epoch, tid, task))
+                                # task_dict already has it, no need to re-add
 
                                 self.logger.warning(
                                     f"Observation task {tid} failed (attempt {retry_count + 1}/{max_retries}). "
@@ -257,6 +266,11 @@ class TaskManager:
         #     self.api_client, self.hardware_adapter, self.logger, task, self.daemon
         # )
         # return tracking_task.execute()
+
+    def get_task_by_id(self, task_id: str):
+        """Get a task by ID. Thread-safe."""
+        with self.heap_lock:
+            return self.task_dict.get(task_id)
 
     def _heap_summary(self, event):
         with self.heap_lock:

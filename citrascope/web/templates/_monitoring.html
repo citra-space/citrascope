@@ -166,55 +166,99 @@
             </div>
         </div>
         <div class="container">
+            <!-- Pipeline Stage Cards -->
             <div class="row g-3 mb-3">
-                <div class="col-12">
-                    <div class="card bg-dark text-light border-secondary">
-                        <div class="card-header">
-                            Current Task
+                <!-- Shooting Stage -->
+                <div class="col-md-4">
+                    <div class="card bg-dark text-light border-secondary h-100">
+                        <div class="card-header d-flex align-items-center gap-2">
+                            <i class="bi bi-camera-fill text-primary"></i>
+                            <h6 class="mb-0">Shooting</h6>
+                            <span class="badge bg-primary ms-auto"
+                                  x-show="$store.citrascope.status?.tasks_by_stage?.shooting?.length > 0"
+                                  x-text="$store.citrascope.status.tasks_by_stage.shooting.length"></span>
                         </div>
                         <div class="card-body">
-                            <div>
-                                <template x-if="$store.citrascope.currentTaskId">
-                                    <div>
-                                        <template x-for="task in $store.citrascope.tasks.filter(t => t.id === $store.citrascope.currentTaskId)" :key="task.id">
-                                            <div>
-                                                <div class="d-flex align-items-center gap-2 mb-2">
-                                                    <div class="spinner-border spinner-border-sm text-success" role="status">
-                                                        <span class="visually-hidden">Loading...</span>
-                                                    </div>
-                                                    <div class="fw-bold" style="font-size: 1.3em;" x-text="task.target"></div>
-                                                </div>
-                                                <div class="text-secondary small">
-                                                    <span x-text="'Task ID: ' + task.id"></span>
-                                                </div>
-                                            </div>
-                                        </template>
-                                        <template x-if="!$store.citrascope.tasks.find(t => t.id === $store.citrascope.currentTaskId)">
-                                            <div>
-                                                <div class="d-flex align-items-center gap-2 mb-2">
-                                                    <div class="spinner-border spinner-border-sm text-success" role="status">
-                                                        <span class="visually-hidden">Loading...</span>
-                                                    </div>
-                                                    <div class="fw-bold" style="font-size: 1.3em;" x-text="$store.citrascope.currentTaskId"></div>
-                                                </div>
-                                                <div class="text-secondary small">
-                                                    <span x-text="'Task ID: ' + $store.citrascope.currentTaskId"></span>
-                                                </div>
-                                            </div>
-                                        </template>
-                                    </div>
-                                </template>
-                                <template x-if="!$store.citrascope.currentTaskId && !$store.citrascope.countdown">
-                                    <p class="no-task-message text-muted-dark">No active task</p>
-                                </template>
-                                <template x-if="!$store.citrascope.currentTaskId && $store.citrascope.countdown">
-                                    <p class="no-task-message">No active task - next task in <span x-text="$store.citrascope.countdown"></span></p>
-                                </template>
-                            </div>
+                            <template x-if="!$store.citrascope.status?.tasks_by_stage?.shooting?.length">
+                                <div class="text-muted text-center py-3">
+                                    <small>Idle</small>
+                                </div>
+                            </template>
+                            <template x-if="$store.citrascope.status?.tasks_by_stage?.shooting?.length > 0">
+                                <div>
+                                    <template x-for="task in $store.citrascope.status.tasks_by_stage.shooting" :key="task.task_id">
+                                        <div class="mb-2 pb-2 border-bottom border-secondary">
+                                            <div class="fw-semibold" x-text="task.target_name || task.task_id"></div>
+                                            <div class="text-muted small" x-text="'Elapsed: ' + Math.floor(task.elapsed) + 's'"></div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Processing Stage -->
+                <div class="col-md-4">
+                    <div class="card bg-dark text-light border-secondary h-100">
+                        <div class="card-header d-flex align-items-center gap-2">
+                            <i class="bi bi-gear-fill text-warning"></i>
+                            <h6 class="mb-0">Processing</h6>
+                            <span class="badge bg-warning text-dark ms-auto"
+                                  x-show="$store.citrascope.status?.tasks_by_stage?.processing?.length > 0"
+                                  x-text="$store.citrascope.status.tasks_by_stage.processing.length"></span>
+                        </div>
+                        <div class="card-body">
+                            <template x-if="!$store.citrascope.status?.tasks_by_stage?.processing?.length">
+                                <div class="text-muted text-center py-3">
+                                    <small>Idle</small>
+                                </div>
+                            </template>
+                            <template x-if="$store.citrascope.status?.tasks_by_stage?.processing?.length > 0">
+                                <div>
+                                    <template x-for="task in $store.citrascope.status.tasks_by_stage.processing" :key="task.task_id">
+                                        <div class="mb-2 pb-2 border-bottom border-secondary">
+                                            <div class="fw-semibold" x-text="task.target_name || task.task_id"></div>
+                                            <div class="text-muted small" x-text="'Elapsed: ' + Math.floor(task.elapsed) + 's'"></div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Uploading Stage -->
+                <div class="col-md-4">
+                    <div class="card bg-dark text-light border-secondary h-100">
+                        <div class="card-header d-flex align-items-center gap-2">
+                            <i class="bi bi-cloud-upload-fill text-success"></i>
+                            <h6 class="mb-0">Uploading</h6>
+                            <span class="badge bg-success ms-auto"
+                                  x-show="$store.citrascope.status?.tasks_by_stage?.uploading?.length > 0"
+                                  x-text="$store.citrascope.status.tasks_by_stage.uploading.length"></span>
+                        </div>
+                        <div class="card-body">
+                            <template x-if="!$store.citrascope.status?.tasks_by_stage?.uploading?.length">
+                                <div class="text-muted text-center py-3">
+                                    <small>Idle</small>
+                                </div>
+                            </template>
+                            <template x-if="$store.citrascope.status?.tasks_by_stage?.uploading?.length > 0">
+                                <div>
+                                    <template x-for="task in $store.citrascope.status.tasks_by_stage.uploading" :key="task.task_id">
+                                        <div class="mb-2 pb-2 border-bottom border-secondary">
+                                            <div class="fw-semibold" x-text="task.target_name || task.task_id"></div>
+                                            <div class="text-muted small" x-text="'Elapsed: ' + Math.floor(task.elapsed) + 's'"></div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
                         </div>
                     </div>
                 </div>
             </div>
+
             <div class="row g-3 mb-3">
                 <div class="col-12">
                     <div class="card bg-dark text-light border-secondary">
