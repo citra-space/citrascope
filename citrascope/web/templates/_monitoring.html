@@ -13,7 +13,20 @@
                             <span class="fw-semibold" x-text="task.target_name || task.task_id"></span>
                             <span class="text-muted small ms-2" x-text="'(' + Math.floor(task.elapsed) + 's)'"></span>
                         </div>
-                        <div class="text-muted small" x-show="task.status_msg" x-text="task.status_msg"></div>
+                        <div class="text-muted small" x-show="task.status_msg">
+                            <template x-if="task.retry_scheduled_time">
+                                <span x-text="(() => {
+                                    const now = Date.now() / 1000;
+                                    const remaining = Math.max(0, Math.ceil(task.retry_scheduled_time - now));
+                                    const match = task.status_msg.match(/^(.+?)retrying in \d+s\.\.\.$/);
+                                    const prefix = match ? match[1] : task.status_msg.replace(/retrying in \d+s\.\.\./, '');
+                                    return prefix + 'retrying in ' + remaining + 's...';
+                                })()"></span>
+                            </template>
+                            <template x-if="!task.retry_scheduled_time">
+                                <span x-text="task.status_msg"></span>
+                            </template>
+                        </div>
                     </div>
                 </template>
             </div>

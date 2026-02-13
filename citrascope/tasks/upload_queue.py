@@ -72,7 +72,7 @@ class UploadQueue(BaseWorkQueue):
 
         # Upload image (can be slow due to network)
         if task_obj:
-            task_obj.local_status_msg = "Uploading image..."
+            task_obj.set_status_msg("Uploading image...")
         upload_result = item["api_client"].upload_image(task_id, item["telescope_id"], item["image_path"])
 
         if not upload_result:
@@ -81,7 +81,7 @@ class UploadQueue(BaseWorkQueue):
 
         # Mark task complete on server
         if task_obj:
-            task_obj.local_status_msg = "Marking complete..."
+            task_obj.set_status_msg("Marking complete...")
         marked_complete = item["api_client"].mark_task_complete(task_id)
 
         if not marked_complete:
@@ -99,12 +99,12 @@ class UploadQueue(BaseWorkQueue):
         on_complete = item["on_complete"]
 
         if task_obj:
-            task_obj.local_status_msg = "Upload complete"
+            task_obj.set_status_msg("Upload complete")
 
         # Cleanup local files if configured
         if not item["settings"].keep_images:
             if task_obj:
-                task_obj.local_status_msg = "Cleaning up..."
+                task_obj.set_status_msg("Cleaning up...")
             self._cleanup_files(item["image_path"])
 
         on_complete(task_id, success=True)
@@ -118,7 +118,7 @@ class UploadQueue(BaseWorkQueue):
         self.logger.error(f"[UploadWorker] Task {task_id} upload permanently failed")
 
         if task_obj:
-            task_obj.local_status_msg = "Upload permanently failed"
+            task_obj.set_status_msg("Upload permanently failed")
 
         # Remove from stage tracking
         if self.daemon:
@@ -130,9 +130,15 @@ class UploadQueue(BaseWorkQueue):
         """Update task status message for retry."""
         task_obj = item.get("task")
         if task_obj:
-            task_obj.local_status_msg = (
+            task_obj.set_status_msg(
                 f"Upload failed (attempt {retry_count}/{max_retries}), retrying in {backoff:.0f}s..."
             )
+
+    def _set_retry_scheduled_time(self, item, scheduled_time=None):
+        """Set the retry scheduled time on the task."""
+        task_obj = item.get("task")
+        if task_obj:
+            task_obj.set_retry_time(scheduled_time)
 
     def _cleanup_files(self, filepath: str):
         """Clean up image files after successful upload."""

@@ -77,6 +77,17 @@ class BaseWorkQueue(ABC):
         """
         pass
 
+    @abstractmethod
+    def _set_retry_scheduled_time(self, item: Dict[str, Any], scheduled_time: float = None):
+        """
+        Set the retry scheduled time on the task. Must be implemented by subclasses.
+
+        Args:
+            item: Work item dictionary
+            scheduled_time: Unix timestamp when retry will execute (None if not waiting for retry)
+        """
+        pass
+
     def _calculate_backoff(self, task_id: str) -> float:
         """Calculate exponential backoff delay."""
         retry_count = self.retry_counts.get(task_id, 0)
@@ -105,8 +116,16 @@ class BaseWorkQueue(ABC):
         # Let subclass update task status message
         self._update_retry_status(item, backoff, retry_count, max_retries)
 
-        # Schedule resubmission
-        timer = threading.Timer(backoff, lambda: self.work_queue.put(item))
+        # Set retry scheduled time
+        scheduled_time = time.time() + backoff
+        self._set_retry_scheduled_time(item, scheduled_time)
+
+        # Schedule resubmission (clear scheduled time when resubmitted)
+        def resubmit():
+            self._set_retry_scheduled_time(item, None)
+            self.work_queue.put(item)
+
+        timer = threading.Timer(backoff, resubmit)
         timer.daemon = True
         timer.start()
 
@@ -127,6 +146,7 @@ class BaseWorkQueue(ABC):
                         # Clean up retry tracking
                         self.retry_counts.pop(task_id, None)
                         self.last_failure.pop(task_id, None)
+                        self._set_retry_scheduled_time(item, None)  # Clear retry scheduled time on success
                         self._on_success(item, result)
                     else:
                         # Work failed

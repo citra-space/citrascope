@@ -177,7 +177,7 @@ class TaskManager:
                     self.daemon.update_task_stage(tid, "imaging")
 
                     # Set initial status message
-                    task.local_status_msg = "Queued for imaging..."
+                    task.set_status_msg("Queued for imaging...")
 
                     # Create telescope task instance
                     telescope_task = self._create_telescope_task(task)

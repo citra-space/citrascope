@@ -65,6 +65,11 @@ class AbstractBaseTelescopeTask(ABC):
         else:
             filepaths = filepath
 
+        # Update status message and stage ONCE before processing loop
+        if self.daemon.settings.processors_enabled:
+            self.task.set_status_msg("Queued for processing...")
+            self.daemon.update_task_stage(self.task.id, "processing")
+
         for image_path in filepaths:
             # 1. Enrich FITS metadata (quick, keep synchronous)
             try:
@@ -80,9 +85,6 @@ class AbstractBaseTelescopeTask(ABC):
             if self.daemon.settings.processors_enabled:
                 from pathlib import Path
 
-                # Clear imaging status message and set processing message
-                self.task.local_status_msg = "Queued for processing..."
-                self.daemon.update_task_stage(self.task.id, "processing")
                 self.daemon.processing_queue.submit(
                     task_id=self.task.id,
                     image_path=Path(image_path),
@@ -123,7 +125,7 @@ class AbstractBaseTelescopeTask(ABC):
     def _queue_for_upload(self, filepath: str, processing_result):
         """Queue image for background upload."""
         # Clear previous status message and set upload message
-        self.task.local_status_msg = "Queued for upload..."
+        self.task.set_status_msg("Queued for upload...")
         self.daemon.update_task_stage(self.task.id, "uploading")
         self.daemon.upload_queue.submit(
             task_id=self.task.id,

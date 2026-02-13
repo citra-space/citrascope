@@ -465,13 +465,33 @@ class CitraScopeDaemon:
                     task = self.task_manager.get_task_by_id(task_id)
                     if task:
                         result["target_name"] = task.satelliteName
-                        result["status_msg"] = task.local_status_msg
+                        # Use thread-safe getters for status fields
+                        status_msg, retry_time = task.get_status_info()
+                        result["status_msg"] = status_msg
+                        result["retry_scheduled_time"] = retry_time
                 return result
 
+            def sort_tasks(tasks):
+                """Sort tasks: active work first, queued next, retry-waiting last."""
+
+                def sort_key(task):
+                    status_msg = task.get("status_msg", "")
+                    is_waiting_for_retry = task.get("retry_scheduled_time") is not None
+                    is_queued = "Queued for" in status_msg
+
+                    # Sort by: (waiting_for_retry, is_queued, -elapsed_time)
+                    # 1. Active work first (not queued, not waiting for retry)
+                    # 2. Queued work next (waiting in queue)
+                    # 3. Retry-waiting last (scheduled for retry)
+                    # Within each group, longest time first
+                    return (is_waiting_for_retry, is_queued, -task.get("elapsed", 0))
+
+                return sorted(tasks, key=sort_key)
+
             return {
-                "imaging": [enrich_task(tid, start) for tid, start in self.imaging_tasks.items()],
-                "processing": [enrich_task(tid, start) for tid, start in self.processing_tasks.items()],
-                "uploading": [enrich_task(tid, start) for tid, start in self.uploading_tasks.items()],
+                "imaging": sort_tasks([enrich_task(tid, start) for tid, start in self.imaging_tasks.items()]),
+                "processing": sort_tasks([enrich_task(tid, start) for tid, start in self.processing_tasks.items()]),
+                "uploading": sort_tasks([enrich_task(tid, start) for tid, start in self.uploading_tasks.items()]),
             }
 
     def _shutdown(self):

@@ -71,16 +71,14 @@ class ProcessorRegistry:
 
         results = []
         for processor in enabled_processors:
-            try:
-                # Update status message to show which processor is running
-                if context.task:
-                    context.task.local_status_msg = f"Running {processor.friendly_name}..."
+            # Update status message to show which processor is running
+            if context.task:
+                context.task.set_status_msg(f"Running {processor.friendly_name}...")
 
-                result = processor.process(context)
-                results.append(result)
-            except Exception as e:
-                self.logger.error(f"Processor {processor.name} failed: {e}", exc_info=True)
-                # Fail-open: errors don't block upload
+            result = processor.process(context)
+            results.append(result)
+            # Don't catch exceptions - let them propagate to trigger retries
+            # After max retries, ProcessingQueue will fail-open and upload raw image
 
         total_time = time.time() - start_time
         return self._aggregate_results(results, total_time)
