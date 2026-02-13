@@ -9,6 +9,7 @@ import uvicorn
 
 from citrascope.constants import DEFAULT_WEB_PORT
 from citrascope.logging import CITRASCOPE_LOGGER, WebLogHandler
+from citrascope.web.app import CitraScopeWebApp
 
 
 class CitraScopeWebServer:
@@ -80,8 +81,6 @@ class CitraScopeWebServer:
     async def run(self):
         """Run the web server."""
         try:
-            from citrascope.web.app import CitraScopeWebApp
-
             self.web_app = CitraScopeWebApp(daemon=self.daemon, web_log_handler=self.web_log_handler)
 
             # Connect the log handler to the web app for broadcasting

@@ -133,8 +133,6 @@ class UploadQueue(BaseWorkQueue):
     def _cleanup_files(self, filepath: str):
         """Clean up image files after successful upload."""
         try:
-            from pathlib import Path
-
             path = Path(filepath)
 
             # Delete main file

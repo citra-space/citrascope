@@ -2,6 +2,7 @@
 
 import random
 import threading
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -444,8 +445,6 @@ class DummyApiClient(AbstractCitraApiClient):
 
     def upload_image(self, task_id, telescope_id, filepath):
         """Fake image upload with simulated random failures for testing retry logic."""
-        import time
-
         if self.logger:
             self.logger.info(f"DummyApiClient: Fake upload for task {task_id}: {filepath}")
 

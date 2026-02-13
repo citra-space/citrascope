@@ -1,8 +1,11 @@
 """Background processing queue for image processing."""
 
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Callable
 
+from citrascope.processors.processor_result import ProcessingContext
 from citrascope.tasks.base_work_queue import BaseWorkQueue
 
 
@@ -40,8 +43,6 @@ class ProcessingQueue(BaseWorkQueue):
 
     def _execute_work(self, item):
         """Execute image processing work."""
-        from citrascope.processors.processor_result import ProcessingContext
-
         task_id = item["task_id"]
         task_obj = item["context"].get("task")
 
@@ -54,8 +55,6 @@ class ProcessingQueue(BaseWorkQueue):
                 working_dir = settings.get_images_dir().parent / "processing" / task_id
             else:
                 # Fallback to temp directory if settings not available
-                import tempfile
-
                 working_dir = Path(tempfile.gettempdir()) / "citrascope" / "processing" / task_id
 
             working_dir.mkdir(parents=True, exist_ok=True)
@@ -101,13 +100,9 @@ class ProcessingQueue(BaseWorkQueue):
             if settings:
                 working_dir = settings.get_images_dir().parent / "processing" / task_id
             else:
-                import tempfile
-
                 working_dir = Path(tempfile.gettempdir()) / "citrascope" / "processing" / task_id
 
             if working_dir.exists():
-                import shutil
-
                 shutil.rmtree(working_dir)
                 self.logger.debug(f"[ProcessingWorker] Cleaned up working directory: {working_dir}")
         except Exception as e:

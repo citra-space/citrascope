@@ -1,6 +1,7 @@
 import os
 import time
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 from dateutil import parser as dtparser
 from skyfield.api import Angle, EarthSatellite, load, wgs84
@@ -83,8 +84,6 @@ class AbstractBaseTelescopeTask(ABC):
 
             # 2. Queue for background processing
             if self.daemon.settings.processors_enabled:
-                from pathlib import Path
-
                 self.daemon.processing_queue.submit(
                     task_id=self.task.id,
                     image_path=Path(image_path),

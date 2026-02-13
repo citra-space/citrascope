@@ -2,11 +2,13 @@
 Unit tests for TaskManager task queue management.
 """
 
+import heapq
 import time
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
+from dateutil import parser as dtparser
 
 from citrascope.tasks.runner import TaskManager
 from citrascope.tasks.task import Task
@@ -125,10 +127,6 @@ def test_poll_tasks_adds_new_tasks(task_manager, mock_api_client):
                 api_task_map[tid] = task
 
         # Add new tasks
-        import heapq
-
-        from dateutil import parser as dtparser
-
         now = int(time.time())
 
         for tid, task in api_task_map.items():
@@ -155,10 +153,6 @@ def test_poll_tasks_removes_cancelled_tasks(task_manager, mock_api_client):
     task2 = create_test_task("task-002", "Pending", start_offset_seconds=120)
 
     # Add tasks to the heap manually
-    import heapq
-
-    from dateutil import parser as dtparser
-
     start_epoch1 = int(dtparser.isoparse(task1.taskStart).timestamp())
     stop_epoch1 = int(dtparser.isoparse(task1.taskStop).timestamp())
     start_epoch2 = int(dtparser.isoparse(task2.taskStart).timestamp())
@@ -218,10 +212,6 @@ def test_poll_tasks_removes_tasks_with_changed_status(task_manager, mock_api_cli
     # Create and add a task
     task1 = create_test_task("task-001", "Pending")
 
-    import heapq
-
-    from dateutil import parser as dtparser
-
     start_epoch = int(dtparser.isoparse(task1.taskStart).timestamp())
     stop_epoch = int(dtparser.isoparse(task1.taskStop).timestamp())
 
@@ -274,10 +264,6 @@ def test_poll_tasks_does_not_remove_current_task(task_manager, mock_api_client):
     """Test that poll_tasks doesn't remove the currently executing task even if it's not in API response."""
     # Create and add a task
     task1 = create_test_task("task-001", "Pending")
-
-    import heapq
-
-    from dateutil import parser as dtparser
 
     start_epoch = int(dtparser.isoparse(task1.taskStart).timestamp())
     stop_epoch = int(dtparser.isoparse(task1.taskStop).timestamp())

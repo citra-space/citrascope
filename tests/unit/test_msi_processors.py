@@ -10,6 +10,7 @@ import pytest
 
 from citrascope.processors.builtin.photometry_processor import PhotometryProcessor
 from citrascope.processors.builtin.plate_solver_processor import PlateSolverProcessor
+from citrascope.processors.builtin.processor_dependencies import check_astrometry, check_sextractor
 from citrascope.processors.builtin.satellite_matcher_processor import SatelliteMatcherProcessor
 from citrascope.processors.builtin.source_extractor_processor import SourceExtractorProcessor
 from citrascope.processors.processor_result import ProcessingContext, ProcessorResult
@@ -54,7 +55,7 @@ class TestPlateSolverProcessor:
         assert processor.friendly_name == "Plate Solver"
         assert "Astrometry" in processor.description
 
-    @patch("citrascope.processors.builtin.processor_dependencies.check_astrometry")
+    @patch("citrascope.processors.builtin.plate_solver_processor.check_astrometry")
     def test_astrometry_not_installed(self, mock_check, mock_context):
         """Test processor fails gracefully when Astrometry.net not installed."""
         mock_check.return_value = False
@@ -67,7 +68,7 @@ class TestPlateSolverProcessor:
         assert result.confidence == 0.0
         assert "not installed" in result.reason
 
-    @patch("citrascope.processors.builtin.processor_dependencies.check_astrometry")
+    @patch("citrascope.processors.builtin.plate_solver_processor.check_astrometry")
     @patch("citrascope.processors.builtin.plate_solver_processor.PlateSolverProcessor._solve_field")
     @patch("astropy.io.fits.open")
     def test_successful_plate_solve(self, mock_fits_open, mock_solve, mock_check, mock_context, tmp_path):
@@ -99,7 +100,7 @@ class TestPlateSolverProcessor:
         # Verify working_image_path was updated
         assert mock_context.working_image_path == new_file
 
-    @patch("citrascope.processors.builtin.processor_dependencies.check_astrometry")
+    @patch("citrascope.processors.builtin.plate_solver_processor.check_astrometry")
     @patch("citrascope.processors.builtin.plate_solver_processor.PlateSolverProcessor._solve_field")
     def test_plate_solve_timeout(self, mock_solve, mock_check, mock_context):
         """Test plate solving timeout handling."""
@@ -140,7 +141,7 @@ class TestSourceExtractorProcessor:
         assert "WCS missing" in result.reason
 
     @patch("astropy.io.fits.open")
-    @patch("citrascope.processors.builtin.processor_dependencies.check_sextractor")
+    @patch("citrascope.processors.builtin.source_extractor_processor.check_sextractor")
     def test_sextractor_not_installed(self, mock_check, mock_fits_open, mock_context):
         """Test processor fails gracefully when SExtractor not installed."""
         # Mock FITS with WCS
@@ -158,7 +159,7 @@ class TestSourceExtractorProcessor:
         assert "not installed" in result.reason
 
     @patch("astropy.io.fits.open")
-    @patch("citrascope.processors.builtin.processor_dependencies.check_sextractor")
+    @patch("citrascope.processors.builtin.source_extractor_processor.check_sextractor")
     @patch("citrascope.processors.builtin.source_extractor_processor.SourceExtractorProcessor._extract_sources")
     def test_successful_extraction(self, mock_extract, mock_check, mock_fits_open, mock_context, tmp_path):
         """Test successful source extraction."""
@@ -243,7 +244,7 @@ class TestSatelliteMatcherProcessor:
         assert result.confidence == 0.0
         assert "catalog not found" in result.reason
 
-    @patch("citrascope.processors.builtin.processor_dependencies.check_ephemeris")
+    @patch("citrascope.processors.builtin.satellite_matcher_processor.check_ephemeris")
     def test_missing_ephemeris(self, mock_check, mock_context, tmp_path):
         """Test processor fails gracefully when ephemeris missing."""
         # Create mock catalog file (processor expects output.cat in working_dir)
@@ -266,8 +267,6 @@ class TestDependencyChecks:
     @patch("citrascope.processors.builtin.processor_dependencies.shutil.which")
     def test_check_astrometry(self, mock_which):
         """Test Astrometry.net detection."""
-        from citrascope.processors.builtin.processor_dependencies import check_astrometry
-
         mock_which.return_value = "/usr/bin/solve-field"
         assert check_astrometry() is True
 
@@ -277,8 +276,6 @@ class TestDependencyChecks:
     @patch("citrascope.processors.builtin.processor_dependencies.shutil.which")
     def test_check_sextractor(self, mock_which):
         """Test SExtractor detection."""
-        from citrascope.processors.builtin.processor_dependencies import check_sextractor
-
         # Test source-extractor command
         mock_which.side_effect = lambda cmd: "/usr/bin/source-extractor" if cmd == "source-extractor" else None
         assert check_sextractor() is True

@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from citrascope.processors.abstract_processor import AbstractImageProcessor
+from citrascope.processors.builtin.example_quality_checker import QualityCheckProcessor
 from citrascope.processors.processor_registry import ProcessorRegistry
 from citrascope.processors.processor_result import AggregatedResult, ProcessingContext, ProcessorResult
 from citrascope.tasks.task import Task
@@ -298,8 +299,6 @@ class TestQualityCheckProcessor:
     @pytest.fixture
     def quality_processor(self):
         """Create a quality check processor instance."""
-        from citrascope.processors.builtin.example_quality_checker import QualityCheckProcessor
-
         return QualityCheckProcessor()
 
     def test_processor_name(self, quality_processor):

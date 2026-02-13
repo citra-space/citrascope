@@ -7,6 +7,7 @@ Real processors would implement more sophisticated checks like FWHM, SNR, star d
 import time
 
 import numpy as np
+from astropy.io import fits
 
 from citrascope.processors.abstract_processor import AbstractImageProcessor
 from citrascope.processors.processor_result import ProcessingContext, ProcessorResult
@@ -45,8 +46,6 @@ class QualityCheckProcessor(AbstractImageProcessor):
         # Access image data (already loaded by registry)
         image_data = context.image_data
         if image_data is None:
-            from astropy.io import fits
-
             image_data = fits.getdata(context.image_path)
 
         # Can access task info directly

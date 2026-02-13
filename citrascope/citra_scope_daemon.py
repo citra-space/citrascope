@@ -1,15 +1,21 @@
+import threading
 import time
 from typing import Optional
 
 from citrascope.api.citra_api_client import AbstractCitraApiClient, CitraApiClient
+from citrascope.api.dummy_api_client import DummyApiClient
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
 from citrascope.hardware.adapter_registry import get_adapter_class
 from citrascope.hardware.filter_sync import sync_filters_to_backend
 from citrascope.location import LocationService
 from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.logging._citrascope_logger import setup_file_logging
+from citrascope.processors.processor_registry import ProcessorRegistry
 from citrascope.settings.citrascope_settings import CitraScopeSettings
+from citrascope.tasks.imaging_queue import ImagingQueue
+from citrascope.tasks.processing_queue import ProcessingQueue
 from citrascope.tasks.runner import TaskManager
+from citrascope.tasks.upload_queue import UploadQueue
 from citrascope.time.time_health import TimeHealth
 from citrascope.time.time_monitor import TimeMonitor
 from citrascope.web.server import CitraScopeWebServer
@@ -43,17 +49,9 @@ class CitraScopeDaemon:
         self.configuration_error: Optional[str] = None
 
         # Initialize processor registry
-        from citrascope.processors.processor_registry import ProcessorRegistry
-
         self.processor_registry = ProcessorRegistry(settings=self.settings, logger=CITRASCOPE_LOGGER)
 
         # Initialize background queues for pipeline
-        import threading
-
-        from citrascope.tasks.imaging_queue import ImagingQueue
-        from citrascope.tasks.processing_queue import ProcessingQueue
-        from citrascope.tasks.upload_queue import UploadQueue
-
         # Note: imaging_queue will be created after api_client is initialized
         self.imaging_queue = None
         self.processing_queue = ProcessingQueue(
@@ -151,8 +149,6 @@ class CitraScopeDaemon:
 
             # Initialize API client
             if self.settings.use_dummy_api:
-                from citrascope.api.dummy_api_client import DummyApiClient
-
                 CITRASCOPE_LOGGER.info("Using DummyApiClient for local testing")
                 self.api_client = DummyApiClient(logger=CITRASCOPE_LOGGER)
             else:
@@ -265,8 +261,6 @@ class CitraScopeDaemon:
             self._sync_filters_to_backend()
 
             # Create imaging queue now that api_client is available
-            from citrascope.tasks.imaging_queue import ImagingQueue
-
             self.imaging_queue = ImagingQueue(
                 num_workers=1, settings=self.settings, logger=CITRASCOPE_LOGGER, api_client=self.api_client, daemon=self
             )

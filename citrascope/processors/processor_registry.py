@@ -5,8 +5,15 @@ from pathlib import Path
 from typing import List
 
 import numpy as np
+from astropy.io import fits
 
 from citrascope.processors.abstract_processor import AbstractImageProcessor
+from citrascope.processors.builtin.example_quality_checker import QualityCheckProcessor
+from citrascope.processors.builtin.photometry_processor import PhotometryProcessor
+from citrascope.processors.builtin.plate_solver_processor import PlateSolverProcessor
+from citrascope.processors.builtin.satellite_matcher_processor import SatelliteMatcherProcessor
+from citrascope.processors.builtin.source_extractor_processor import SourceExtractorProcessor
+from citrascope.processors.builtin.test_processor import TestProcessor
 from citrascope.processors.processor_result import AggregatedResult, ProcessingContext, ProcessorResult
 
 
@@ -24,13 +31,6 @@ class ProcessorRegistry:
         self.logger = logger
 
         # Hardcode processor list (simple, explicit)
-        from citrascope.processors.builtin.example_quality_checker import QualityCheckProcessor
-        from citrascope.processors.builtin.photometry_processor import PhotometryProcessor
-        from citrascope.processors.builtin.plate_solver_processor import PlateSolverProcessor
-        from citrascope.processors.builtin.satellite_matcher_processor import SatelliteMatcherProcessor
-        from citrascope.processors.builtin.source_extractor_processor import SourceExtractorProcessor
-        from citrascope.processors.builtin.test_processor import TestProcessor
-
         self.processors: List[AbstractImageProcessor] = [
             QualityCheckProcessor(),  # Always first (quick checks)
             PlateSolverProcessor(),  # MSI step 1: 30-40s
@@ -172,6 +172,4 @@ class ProcessorRegistry:
         Returns:
             Numpy array with image data
         """
-        from astropy.io import fits
-
         return fits.getdata(image_path)

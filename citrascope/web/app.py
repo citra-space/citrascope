@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import time
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -21,6 +22,8 @@ from citrascope.constants import (
     PROD_API_HOST,
     PROD_APP_URL,
 )
+from citrascope.hardware.adapter_registry import get_adapter_schema as get_schema
+from citrascope.hardware.adapter_registry import list_adapters
 from citrascope.logging import CITRASCOPE_LOGGER
 
 
@@ -242,8 +245,6 @@ class CitraScopeWebApp:
         @self.app.get("/api/hardware-adapters")
         async def get_hardware_adapters():
             """Get list of available hardware adapters."""
-            from citrascope.hardware.adapter_registry import list_adapters
-
             adapters_info = list_adapters()
             return {
                 "adapters": list(adapters_info.keys()),
@@ -258,10 +259,6 @@ class CitraScopeWebApp:
                 adapter_name: Name of the adapter
                 current_settings: JSON string of current adapter_settings (for dynamic schemas)
             """
-            import json
-
-            from citrascope.hardware.adapter_registry import get_adapter_schema as get_schema
-
             try:
                 # Parse current settings if provided
                 settings_kwargs = {}
@@ -805,8 +802,6 @@ class CitraScopeWebApp:
                     last_ts = settings.last_autofocus_timestamp
                     interval_minutes = settings.autofocus_interval_minutes
                     if last_ts is not None:
-                        import time
-
                         elapsed_minutes = (int(time.time()) - last_ts) / 60
                         remaining = max(0, interval_minutes - elapsed_minutes)
                         self.status.next_autofocus_minutes = int(remaining)

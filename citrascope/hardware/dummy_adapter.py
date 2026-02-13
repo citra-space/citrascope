@@ -1,8 +1,12 @@
 """Dummy hardware adapter for testing without real hardware."""
 
 import logging
+import shutil
 import time
 from pathlib import Path
+
+import numpy as np
+from astropy.io import fits
 
 from citrascope.hardware.abstract_astro_hardware_adapter import (
     AbstractAstroHardwareAdapter,
@@ -139,8 +143,6 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
 
     def take_image(self, task_id: str, exposure_duration_seconds=1.0) -> str:
         """Simulate image capture using real FITS file."""
-        import shutil
-
         self.logger.info(f"DummyAdapter: Starting {exposure_duration_seconds}s exposure for task {task_id}")
         self._simulate_delay(exposure_duration_seconds)
 
@@ -168,9 +170,6 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
     def _create_synthetic_fits(self, filepath: Path, exposure_duration: float):
         """Generate synthetic FITS file for testing."""
         try:
-            import numpy as np
-            from astropy.io import fits
-
             # Create realistic synthetic 16-bit image (small size for git/server)
             mean_signal = min(5000 * exposure_duration, 30000)
             image_data = np.random.normal(mean_signal, 1000, (512, 512)).astype(np.uint16)
