@@ -38,6 +38,7 @@ class CitraScopeSettings:
         self.use_ssl: bool = config.get("use_ssl", True)
         self.personal_access_token: str = config.get("personal_access_token", "")
         self.telescope_id: str = config.get("telescope_id", "")
+        self.use_dummy_api: bool = config.get("use_dummy_api", False)
 
         # Hardware adapter selection
         self.hardware_adapter: str = config.get("hardware_adapter", "")
@@ -125,6 +126,7 @@ class CitraScopeSettings:
             "use_ssl": self.use_ssl,
             "personal_access_token": self.personal_access_token,
             "telescope_id": self.telescope_id,
+            "use_dummy_api": self.use_dummy_api,
             "hardware_adapter": self.hardware_adapter,
             "adapter_settings": self._all_adapter_settings,
             "log_level": self.log_level,

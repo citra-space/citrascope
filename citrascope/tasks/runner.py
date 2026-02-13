@@ -177,7 +177,8 @@ class TaskManager:
                             self.logger.info(f"Completed observation task {tid} successfully.")
                             heapq.heappop(self.task_heap)
                             self.task_ids.discard(tid)
-                            self.task_dict.pop(tid, None)
+                            # Keep task in task_dict for processing/upload stages
+                            # It will be removed when remove_task_from_stages is called
                             # Clean up retry tracking for successful task
                             self.task_retry_counts.pop(tid, None)
                             self.task_last_failure.pop(tid, None)
@@ -194,6 +195,7 @@ class TaskManager:
                                 )
                                 heapq.heappop(self.task_heap)
                                 self.task_ids.discard(tid)
+                                # Remove from task_dict since task won't enter pipeline
                                 self.task_dict.pop(tid, None)
                                 # Clean up retry tracking
                                 self.task_retry_counts.pop(tid, None)

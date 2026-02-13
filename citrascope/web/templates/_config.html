@@ -49,6 +49,18 @@
                                     <label for="telescopeId" class="form-label">Telescope ID <span class="text-danger">*</span></label>
                                     <input type="text" id="telescopeId" class="form-control" placeholder="Enter telescope ID" required x-model="$store.citrascope.config.telescope_id">
                                 </div>
+                                <div class="col-12">
+                                    <div class="form-check mt-2">
+                                        <input class="form-check-input" type="checkbox" id="use_dummy_api"
+                                               x-model="$store.citrascope.config.use_dummy_api">
+                                        <label class="form-check-label" for="use_dummy_api">
+                                            Use Dummy API (Local Testing)
+                                        </label>
+                                    </div>
+                                    <small class="text-muted ms-4">
+                                        Use local task file instead of real API server for testing
+                                    </small>
+                                </div>
                             </div>
                         </div>
                     </div>

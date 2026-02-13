@@ -145,12 +145,18 @@ class CitraScopeDaemon:
                 return False, error_msg
 
             # Initialize API client
-            self.api_client = CitraApiClient(
-                self.settings.host,
-                self.settings.personal_access_token,
-                self.settings.use_ssl,
-                CITRASCOPE_LOGGER,
-            )
+            if self.settings.use_dummy_api:
+                from citrascope.api.dummy_api_client import DummyApiClient
+
+                CITRASCOPE_LOGGER.info("Using DummyApiClient for local testing")
+                self.api_client = DummyApiClient(logger=CITRASCOPE_LOGGER)
+            else:
+                self.api_client = CitraApiClient(
+                    self.settings.host,
+                    self.settings.personal_access_token,
+                    self.settings.use_ssl,
+                    CITRASCOPE_LOGGER,
+                )
 
             # Initialize hardware adapter
             self.hardware_adapter = self._create_hardware_adapter()
@@ -425,6 +431,11 @@ class CitraScopeDaemon:
             self.shooting_tasks.pop(task_id, None)
             self.processing_tasks.pop(task_id, None)
             self.uploading_tasks.pop(task_id, None)
+
+        # Also remove from task manager's task_dict now that pipeline is complete
+        if self.task_manager:
+            with self.task_manager.heap_lock:
+                self.task_manager.task_dict.pop(task_id, None)
 
     def get_tasks_by_stage(self) -> dict:
         """Get current tasks in each stage, enriched with task details from task manager."""

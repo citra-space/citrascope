@@ -120,6 +120,9 @@ async function loadConfiguration() {
             if (config.processors_enabled === null || config.processors_enabled === undefined) {
                 config.processors_enabled = true; // Default to true
             }
+            if (config.use_dummy_api === null || config.use_dummy_api === undefined) {
+                config.use_dummy_api = false; // Default to false
+            }
 
             store.config = config;
             store.savedAdapter = config.hardware_adapter; // Sync savedAdapter to store
@@ -231,6 +234,7 @@ async function saveConfiguration(event) {
     const config = {
         personal_access_token: formConfig.personal_access_token || '',
         telescope_id: formConfig.telescope_id || '',
+        use_dummy_api: formConfig.use_dummy_api || false,
         hardware_adapter: formConfig.hardware_adapter || '',
         adapter_settings: adapterSettings, // Send flat settings for current adapter
         log_level: formConfig.log_level || 'INFO',
@@ -242,6 +246,7 @@ async function saveConfiguration(event) {
         time_offset_pause_ms: parseFloat(formConfig.time_offset_pause_ms || 500),
         gps_location_updates_enabled: formConfig.gps_location_updates_enabled !== undefined ? formConfig.gps_location_updates_enabled : true,
         gps_update_interval_minutes: parseInt(formConfig.gps_update_interval_minutes || 5, 10),
+        processors_enabled: formConfig.processors_enabled !== undefined ? formConfig.processors_enabled : true,
         host,
         port,
         use_ssl,
