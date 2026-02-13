@@ -25,11 +25,11 @@ class ProcessorRegistry:
 
         # Hardcode processor list (simple, explicit)
         from citrascope.processors.builtin.example_quality_checker import QualityCheckProcessor
-        from citrascope.processors.builtin.slow_test_processor import SlowTestProcessor
+        from citrascope.processors.builtin.test_processor import TestProcessor
 
         self.processors: List[AbstractImageProcessor] = [
             QualityCheckProcessor(),
-            SlowTestProcessor(),
+            TestProcessor(),
             # Add more processors here as you build them
         ]
 

@@ -50,22 +50,27 @@ class CitraScopeDaemon:
         # Initialize background queues for pipeline
         import threading
 
+        from citrascope.tasks.imaging_queue import ImagingQueue
         from citrascope.tasks.processing_queue import ProcessingQueue
         from citrascope.tasks.upload_queue import UploadQueue
 
+        # Note: imaging_queue will be created after api_client is initialized
+        self.imaging_queue = None
         self.processing_queue = ProcessingQueue(
-            num_workers=1, logger=CITRASCOPE_LOGGER  # One processing task at a time
+            num_workers=1, settings=self.settings, logger=CITRASCOPE_LOGGER  # One processing task at a time
         )
-        self.upload_queue = UploadQueue(num_workers=1, logger=CITRASCOPE_LOGGER)  # One upload at a time
+        self.upload_queue = UploadQueue(
+            num_workers=1, settings=self.settings, logger=CITRASCOPE_LOGGER, daemon=self  # One upload at a time
+        )
 
-        # Start background workers
+        # Start background workers (imaging_queue started later in start())
         CITRASCOPE_LOGGER.info("Starting background processing workers...")
         self.processing_queue.start()
         self.upload_queue.start()
 
         # Simple stage tracking (thread-safe)
         self._stage_lock = threading.Lock()
-        self.shooting_tasks = {}  # task_id -> start_time (float)
+        self.imaging_tasks = {}  # task_id -> start_time (float)
         self.processing_tasks = {}  # task_id -> start_time (float)
         self.uploading_tasks = {}  # task_id -> start_time (float)
 
@@ -259,11 +264,20 @@ class CitraScopeDaemon:
             # Sync discovered filters to backend on startup
             self._sync_filters_to_backend()
 
+            # Create imaging queue now that api_client is available
+            from citrascope.tasks.imaging_queue import ImagingQueue
+
+            self.imaging_queue = ImagingQueue(
+                num_workers=1, settings=self.settings, logger=CITRASCOPE_LOGGER, api_client=self.api_client, daemon=self
+            )
+            self.imaging_queue.start()
+
             self.task_manager = TaskManager(
                 self.api_client,
                 CITRASCOPE_LOGGER,
                 self.hardware_adapter,
                 self,
+                self.imaging_queue,
             )
             self.task_manager.start()
 
@@ -410,16 +424,16 @@ class CitraScopeDaemon:
             CITRASCOPE_LOGGER.info("Shutting down daemon.")
 
     def update_task_stage(self, task_id: str, stage: str):
-        """Move task to specified stage. Stage is 'shooting', 'processing', or 'uploading'."""
+        """Move task to specified stage. Stage is 'imaging', 'processing', or 'uploading'."""
         with self._stage_lock:
             # Remove from all stages first
-            self.shooting_tasks.pop(task_id, None)
+            self.imaging_tasks.pop(task_id, None)
             self.processing_tasks.pop(task_id, None)
             self.uploading_tasks.pop(task_id, None)
 
             # Add to new stage
-            if stage == "shooting":
-                self.shooting_tasks[task_id] = time.time()
+            if stage == "imaging":
+                self.imaging_tasks[task_id] = time.time()
             elif stage == "processing":
                 self.processing_tasks[task_id] = time.time()
             elif stage == "uploading":
@@ -428,7 +442,7 @@ class CitraScopeDaemon:
     def remove_task_from_stages(self, task_id: str):
         """Remove task from all stages and active tracking (when complete)."""
         with self._stage_lock:
-            self.shooting_tasks.pop(task_id, None)
+            self.imaging_tasks.pop(task_id, None)
             self.processing_tasks.pop(task_id, None)
             self.uploading_tasks.pop(task_id, None)
 
@@ -455,7 +469,7 @@ class CitraScopeDaemon:
                 return result
 
             return {
-                "shooting": [enrich_task(tid, start) for tid, start in self.shooting_tasks.items()],
+                "imaging": [enrich_task(tid, start) for tid, start in self.imaging_tasks.items()],
                 "processing": [enrich_task(tid, start) for tid, start in self.processing_tasks.items()],
                 "uploading": [enrich_task(tid, start) for tid, start in self.uploading_tasks.items()],
             }
@@ -463,6 +477,8 @@ class CitraScopeDaemon:
     def _shutdown(self):
         """Clean up resources on shutdown."""
         # Stop background workers
+        if hasattr(self, "imaging_queue") and self.imaging_queue:
+            self.imaging_queue.stop()
         if hasattr(self, "processing_queue"):
             self.processing_queue.stop()
         if hasattr(self, "upload_queue"):

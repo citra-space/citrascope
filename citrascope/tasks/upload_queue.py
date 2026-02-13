@@ -1,54 +1,29 @@
 """Background upload queue for uploading images and marking tasks complete."""
 
-import queue
-import threading
 from pathlib import Path
 from typing import Callable, Optional
 
+from citrascope.tasks.base_work_queue import BaseWorkQueue
 
-class UploadQueue:
+
+class UploadQueue(BaseWorkQueue):
     """
     Background worker for uploading images and marking tasks complete.
     Uploads can be slow (network), so run in background.
     """
 
-    def __init__(self, num_workers: int = 1, logger=None):
+    def __init__(self, num_workers: int = 1, settings=None, logger=None, daemon=None):
         """
         Initialize upload queue.
 
         Args:
             num_workers: Number of concurrent upload threads (default: 1, network is bottleneck)
+            settings: Settings instance with retry configuration
             logger: Logger instance
+            daemon: Daemon instance for stage tracking
         """
-        self.upload_queue = queue.Queue()
-        self.num_workers = num_workers
-        self.logger = logger
-        self.workers = []
-        self.running = False
-
-    def start(self):
-        """Start upload worker threads."""
-        self.running = True
-        for i in range(self.num_workers):
-            worker = threading.Thread(target=self._upload_worker, name=f"UploadWorker-{i}", daemon=True)
-            worker.start()
-            self.workers.append(worker)
-            self.logger.info(f"Started upload worker {i}")
-
-    def stop(self):
-        """Stop all workers gracefully."""
-        self.logger.info("Stopping upload queue...")
-        self.running = False
-
-        # Send poison pills
-        for _ in range(self.num_workers):
-            self.upload_queue.put(None)
-
-        # Wait for completion
-        for worker in self.workers:
-            worker.join(timeout=5)
-
-        self.logger.info("Upload queue stopped")
+        super().__init__(num_workers, settings, logger)
+        self.daemon = daemon
 
     def submit(
         self,
@@ -75,7 +50,7 @@ class UploadQueue:
             on_complete: Callback(task_id, success) when upload finishes
         """
         self.logger.info(f"Queuing task {task_id} for upload")
-        self.upload_queue.put(
+        self.work_queue.put(
             {
                 "task_id": task_id,
                 "task": task,
@@ -88,58 +63,76 @@ class UploadQueue:
             }
         )
 
-    def _upload_worker(self):
-        """Upload worker main loop."""
-        while self.running:
-            try:
-                item = self.upload_queue.get(timeout=1)
-                if item is None:  # Poison pill
-                    break
+    def _execute_work(self, item):
+        """Execute upload work."""
+        task_id = item["task_id"]
+        task_obj = item.get("task")
 
-                task_id = item["task_id"]
-                task_obj = item.get("task")
-                self.logger.info(f"[UploadWorker] Uploading task {task_id}")
+        self.logger.info(f"[UploadWorker] Uploading task {task_id}")
 
-                try:
-                    # Upload image (can be slow due to network)
-                    if task_obj:
-                        task_obj.local_status_msg = "Uploading image..."
-                    upload_result = item["api_client"].upload_image(task_id, item["telescope_id"], item["image_path"])
+        # Upload image (can be slow due to network)
+        if task_obj:
+            task_obj.local_status_msg = "Uploading image..."
+        upload_result = item["api_client"].upload_image(task_id, item["telescope_id"], item["image_path"])
 
-                    if upload_result:
-                        # Mark task complete on server
-                        if task_obj:
-                            task_obj.local_status_msg = "Marking complete..."
-                        marked_complete = item["api_client"].mark_task_complete(task_id)
+        if not upload_result:
+            self.logger.error(f"[UploadWorker] Upload failed for {task_id}")
+            return (False, None)
 
-                        if marked_complete:
-                            self.logger.info(f"[UploadWorker] Task {task_id} completed successfully")
+        # Mark task complete on server
+        if task_obj:
+            task_obj.local_status_msg = "Marking complete..."
+        marked_complete = item["api_client"].mark_task_complete(task_id)
 
-                            # Cleanup local files if configured
-                            if not item["settings"].keep_images:
-                                if task_obj:
-                                    task_obj.local_status_msg = "Cleaning up..."
-                                self._cleanup_files(item["image_path"])
+        if not marked_complete:
+            self.logger.error(f"[UploadWorker] Failed to mark {task_id} complete")
+            return (False, None)
 
-                            item["on_complete"](task_id, success=True)
-                        else:
-                            self.logger.error(f"[UploadWorker] Failed to mark {task_id} complete")
-                            item["on_complete"](task_id, success=False)
-                    else:
-                        self.logger.error(f"[UploadWorker] Upload failed for {task_id}")
-                        item["on_complete"](task_id, success=False)
+        # Success
+        self.logger.info(f"[UploadWorker] Task {task_id} completed successfully")
+        return (True, None)
 
-                except Exception as e:
-                    self.logger.error(f"[UploadWorker] Upload error for {task_id}: {e}", exc_info=True)
-                    item["on_complete"](task_id, success=False)
+    def _on_success(self, item, result):
+        """Handle successful upload completion."""
+        task_id = item["task_id"]
+        task_obj = item.get("task")
+        on_complete = item["on_complete"]
 
-                finally:
-                    self.upload_queue.task_done()
+        if task_obj:
+            task_obj.local_status_msg = "Upload complete"
 
-            except queue.Empty:
-                continue
-            except Exception as e:
-                self.logger.error(f"[UploadWorker] Worker error: {e}", exc_info=True)
+        # Cleanup local files if configured
+        if not item["settings"].keep_images:
+            if task_obj:
+                task_obj.local_status_msg = "Cleaning up..."
+            self._cleanup_files(item["image_path"])
+
+        on_complete(task_id, success=True)
+
+    def _on_permanent_failure(self, item):
+        """Handle permanent upload failure."""
+        task_id = item["task_id"]
+        task_obj = item.get("task")
+        on_complete = item["on_complete"]
+
+        self.logger.error(f"[UploadWorker] Task {task_id} upload permanently failed")
+
+        if task_obj:
+            task_obj.local_status_msg = "Upload permanently failed"
+
+        # Remove from stage tracking
+        if self.daemon:
+            self.daemon.remove_task_from_stages(task_id)
+
+        on_complete(task_id, success=False)
+
+    def _update_retry_status(self, item, backoff, retry_count, max_retries):
+        """Update task status message for retry."""
+        task_obj = item.get("task")
+        if task_obj:
+            task_obj.local_status_msg = (
+                f"Upload failed (attempt {retry_count}/{max_retries}), retrying in {backoff:.0f}s..."
+            )
 
     def _cleanup_files(self, filepath: str):
         """Clean up image files after successful upload."""

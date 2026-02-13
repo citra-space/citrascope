@@ -1,5 +1,6 @@
 """Dummy API client for local testing without real server."""
 
+import random
 import threading
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -14,6 +15,9 @@ class DummyApiClient(AbstractCitraApiClient):
     Perfect for testing the task pipeline without needing the real API server.
     Automatically maintains ~10 upcoming tasks at all times.
     """
+
+    # Simulated failure rate for testing retry logic (30% chance of upload failure)
+    UPLOAD_FAILURE_RATE = 0.3
 
     def __init__(self, logger=None):
         """Initialize dummy API client with in-memory data."""
@@ -439,18 +443,32 @@ class DummyApiClient(AbstractCitraApiClient):
     # Additional methods used by the system
 
     def upload_image(self, task_id, telescope_id, filepath):
-        """Fake image upload (just logs, doesn't actually upload)."""
+        """Fake image upload with simulated random failures for testing retry logic."""
         import time
 
         if self.logger:
             self.logger.info(f"DummyApiClient: Fake upload for task {task_id}: {filepath}")
-        # Simulate upload delay (2-4 seconds)
+
+        # Simulate upload delay (5 seconds)
         time.sleep(5)
-        # Return a fake results URL
+
+        # Randomly fail to test retry logic
+        if random.random() < self.UPLOAD_FAILURE_RATE:
+            if self.logger:
+                self.logger.warning(f"DummyApiClient: Simulated upload failure for task {task_id}")
+            return None  # Indicate upload failure
+
+        # Return a fake results URL on success
         return f"https://dummy-server/results/{task_id}"
 
     def mark_task_complete(self, task_id):
-        """Mark a task as complete (updates in-memory)."""
+        """Mark a task as complete with simulated random failures for testing retry logic."""
+        # Randomly fail to test retry logic
+        if random.random() < self.UPLOAD_FAILURE_RATE:
+            if self.logger:
+                self.logger.warning(f"DummyApiClient: Simulated mark_complete failure for task {task_id}")
+            return False  # Indicate failure to mark complete
+
         with self._data_lock:
             tasks = self.data.get("tasks", [])
 
@@ -458,12 +476,11 @@ class DummyApiClient(AbstractCitraApiClient):
                 if task.get("id") == task_id:
                     task["status"] = "Succeeded"
                     task["updateEpoch"] = datetime.now(timezone.utc).isoformat()
+                    if self.logger:
+                        self.logger.info(f"DummyApiClient: Marked task {task_id} as Succeeded")
                     break
 
-            if self.logger:
-                self.logger.info(f"DummyApiClient: Marked task {task_id} as Succeeded")
-
-            return {"status": "Succeeded"}
+        return True  # Success
 
     def mark_task_failed(self, task_id):
         """Mark a task as failed (updates in-memory)."""

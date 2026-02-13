@@ -80,7 +80,7 @@ class AbstractBaseTelescopeTask(ABC):
             if self.daemon.settings.processors_enabled:
                 from pathlib import Path
 
-                # Clear shooting status message and set processing message
+                # Clear imaging status message and set processing message
                 self.task.local_status_msg = "Queued for processing..."
                 self.daemon.update_task_stage(self.task.id, "processing")
                 self.daemon.processing_queue.submit(

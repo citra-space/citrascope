@@ -22,11 +22,13 @@ class TaskManager:
         logger,
         hardware_adapter: AbstractAstroHardwareAdapter,
         daemon,
+        imaging_queue,
     ):
         self.api_client = api_client
         self.logger = logger
         self.hardware_adapter = hardware_adapter
         self.daemon = daemon
+        self.imaging_queue = imaging_queue
         self.task_heap = []  # min-heap by start time (scheduled future work only)
         self.task_ids = set()
         self.task_dict = {}  # task_id -> Task object for quick lookup
@@ -34,8 +36,6 @@ class TaskManager:
         self.heap_lock = threading.RLock()
         self._stop_event = threading.Event()
         self.current_task_id = None  # Track currently executing task
-        self.task_retry_counts = {}  # Track retry attempts per task ID
-        self.task_last_failure = {}  # Track last failure timestamp per task ID
         # Task processing control (always starts active)
         self._processing_active = True
         self._processing_lock = threading.Lock()
@@ -165,7 +165,7 @@ class TaskManager:
                         # Move to active tracking
                         self.active_tasks[tid] = {
                             "task": task,
-                            "stage": "shooting",
+                            "stage": "imaging",
                             "start_time": time.time(),
                             "stop_time": stop_time,
                         }
@@ -173,82 +173,33 @@ class TaskManager:
                         self.logger.info(f"Starting task {tid} at {datetime.now().isoformat()}: {task}")
                         self.current_task_id = tid  # Mark as in-flight
 
-                    # Mark task as entering shooting stage
-                    self.daemon.update_task_stage(tid, "shooting")
+                    # Mark task as entering imaging stage
+                    self.daemon.update_task_stage(tid, "imaging")
 
-                    # Observation is now outside the lock!
-                    try:
-                        observation_succeeded = self._observe_satellite(task)
-                    except Exception as e:
-                        self.logger.error(f"Exception during observation for task {tid}: {e}", exc_info=True)
-                        observation_succeeded = False
+                    # Set initial status message
+                    task.local_status_msg = "Queued for imaging..."
 
-                    with self.heap_lock:
-                        self.current_task_id = None  # Clear after done (success or fail)
-                        if observation_succeeded:
-                            self.logger.info(f"Completed observation task {tid} successfully.")
-                            # Task already popped from heap at start - stays in active_tasks
-                            # Keep task in task_dict for processing/upload stages
-                            # It will be removed when remove_task_from_stages is called
-                            # Clean up retry tracking for successful task
-                            self.task_retry_counts.pop(tid, None)
-                            self.task_last_failure.pop(tid, None)
-                            completed += 1
+                    # Create telescope task instance
+                    telescope_task = self._create_telescope_task(task)
+
+                    # Submit to imaging queue (handles retries)
+                    def on_imaging_complete(task_id, success):
+                        """Callback when imaging completes or permanently fails."""
+                        with self.heap_lock:
+                            self.current_task_id = None  # Clear after done
+
+                        if success:
+                            self.logger.info(f"Completed imaging task {task_id} successfully.")
+                            # Task stays in active_tasks and task_dict for processing/upload stages
                         else:
-                            # Task failed - implement retry logic with exponential backoff
-                            retry_count = self.task_retry_counts.get(tid, 0)
-                            max_retries = self.daemon.settings.max_task_retries if self.daemon.settings else 3
+                            # Permanent failure - remove from tracking
+                            self.logger.error(f"Imaging task {task_id} permanently failed.")
+                            with self.heap_lock:
+                                self.active_tasks.pop(task_id, None)
+                                self.task_dict.pop(task_id, None)
 
-                            if retry_count >= max_retries:
-                                # Max retries exceeded - permanently fail the task
-                                self.logger.error(
-                                    f"Observation task {tid} failed after {retry_count} retries. Permanently failing."
-                                )
-                                # Remove from active tracking
-                                self.active_tasks.pop(tid, None)
-                                # Remove from task_dict since task won't enter pipeline
-                                self.task_dict.pop(tid, None)
-                                # Clean up retry tracking
-                                self.task_retry_counts.pop(tid, None)
-                                self.task_last_failure.pop(tid, None)
-                                # Remove from stage tracking
-                                self.daemon.remove_task_from_stages(tid)
-                                # Mark task as failed in API
-                                try:
-                                    self.api_client.mark_task_failed(tid)
-                                except Exception as e:
-                                    self.logger.error(f"Failed to mark task {tid} as failed in API: {e}")
-                            else:
-                                # Retry with exponential backoff
-                                self.task_retry_counts[tid] = retry_count + 1
-                                self.task_last_failure[tid] = now
-
-                                # Calculate backoff delay: initial_delay * 2^retry_count, capped at max_delay
-                                initial_delay = (
-                                    self.daemon.settings.initial_retry_delay_seconds if self.daemon.settings else 30
-                                )
-                                max_delay = (
-                                    self.daemon.settings.max_retry_delay_seconds if self.daemon.settings else 300
-                                )
-                                backoff_delay = min(initial_delay * (2**retry_count), max_delay)
-
-                                # Move from active back to heap with new scheduled time
-                                active_info = self.active_tasks.pop(tid, None)
-                                if active_info:
-                                    new_start_time = now + backoff_delay
-                                    heapq.heappush(
-                                        self.task_heap,
-                                        (new_start_time, active_info["stop_time"], tid, active_info["task"]),
-                                    )
-                                    self.task_ids.add(tid)  # Re-add to set
-
-                                    self.logger.warning(
-                                        f"Observation task {tid} failed (attempt {retry_count + 1}/{max_retries}). "
-                                        f"Retrying in {backoff_delay} seconds at {datetime.fromtimestamp(new_start_time).isoformat()}"
-                                    )
-
-                                # Remove from stage tracking while waiting for retry
-                                self.daemon.remove_task_from_stages(tid)
+                    self.imaging_queue.submit(tid, task, telescope_task, on_imaging_complete)
+                    completed += 1
 
                 if completed > 0:
                     self.logger.info(self._heap_summary("Completed tasks"))
@@ -271,8 +222,20 @@ class TaskManager:
 
             self._stop_event.wait(1)
 
-    def _observe_satellite(self, task: Task):
+    def _create_telescope_task(self, task: Task):
+        """Create appropriate telescope task instance for the given task."""
+        # For now, use StaticTelescopeTask
+        # Future: could choose between Static and Tracking based on task type
+        return StaticTelescopeTask(
+            self.api_client,
+            self.hardware_adapter,
+            self.logger,
+            task,
+            self.daemon,
+        )
 
+    def _observe_satellite(self, task: Task):
+        """Legacy method - now handled by ImagingQueue. Kept for reference."""
         # stake a still
         static_task = StaticTelescopeTask(
             self.api_client,

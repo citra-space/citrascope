@@ -197,21 +197,21 @@
                         </div>
                         <div class="card-body">
                             <div class="row g-3 align-items-stretch">
-                                <!-- Shooting Stage -->
+                                <!-- Imaging Stage -->
                                 <div class="col-md">
                                     <div class="border border-secondary rounded p-3 h-100">
                                         <div class="d-flex align-items-center gap-2 mb-3">
                                             <i class="bi bi-camera-fill text-primary"></i>
-                                            <h6 class="mb-0">Shooting</h6>
+                                            <h6 class="mb-0">Imaging</h6>
                                             <span class="badge bg-primary ms-auto"
-                                                  x-show="$store.citrascope.status?.tasks_by_stage?.shooting?.length > 0"
-                                                  x-text="$store.citrascope.status.tasks_by_stage.shooting.length"></span>
+                                                  x-show="$store.citrascope.status?.tasks_by_stage?.imaging?.length > 0"
+                                                  x-text="$store.citrascope.status.tasks_by_stage.imaging.length"></span>
                                         </div>
-                                        {{ task_list('shooting') }}
+                                        {{ task_list('imaging') }}
                                     </div>
                                 </div>
 
-                                <!-- Arrow 1 (Shooting → Processing or Uploading) -->
+                                <!-- Arrow 1 (Imaging → Processing or Uploading) -->
                                 <div class="col-auto d-none d-md-flex align-items-center px-2">
                                     <i class="bi bi-arrow-right text-secondary" style="font-size: 1.5rem;"></i>
                                 </div>
