@@ -116,11 +116,6 @@
                                                     >
                                                     <label class="form-check-label" :for="'processor-' + processor.name">
                                                         <strong x-text="processor.friendly_name"></strong>
-                                                        <span
-                                                            class="badge ms-2"
-                                                            :class="processor.enabled ? 'bg-success' : 'bg-secondary'"
-                                                            x-text="processor.enabled ? 'Enabled' : 'Disabled'"
-                                                        ></span>
                                                     </label>
                                                 </div>
                                                 <small class="text-muted ms-4 d-block" x-text="processor.description"></small>
