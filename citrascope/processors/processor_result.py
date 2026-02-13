@@ -49,3 +49,6 @@ class ProcessingContext:
 
     # Settings
     settings: Optional[Any]  # CitraScopeSettings instance
+
+    # Logging
+    logger: Optional[Any] = None  # Logger instance for debugging

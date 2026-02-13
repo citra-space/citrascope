@@ -58,6 +58,19 @@ export async function getHardwareAdapters() {
 }
 
 /**
+ * Get available processors
+ */
+export async function getProcessors() {
+    try {
+        const result = await fetchJSON('/api/processors');
+        return result.data;
+    } catch (error) {
+        console.error('Error fetching processors:', error);
+        return [];
+    }
+}
+
+/**
  * Get hardware adapter schema
  */
 export async function getAdapterSchema(adapterName) {

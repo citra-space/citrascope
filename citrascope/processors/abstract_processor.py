@@ -16,7 +16,9 @@ class AbstractImageProcessor(ABC):
     Processors should be stateless and thread-safe.
     """
 
-    name: str  # Processor identifier
+    name: str  # Processor identifier (e.g., "quality_checker")
+    friendly_name: str  # Human-readable name (e.g., "Quality Checker")
+    description: str  # Brief description of what the processor does
 
     @abstractmethod
     def process(self, context: ProcessingContext) -> ProcessorResult:

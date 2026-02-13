@@ -1,6 +1,6 @@
 // Configuration management for CitraScope
 
-import { getConfig, saveConfig, getConfigStatus, getHardwareAdapters } from './api.js';
+import { getConfig, saveConfig, getConfigStatus, getHardwareAdapters, getProcessors } from './api.js';
 import { getFilterColor } from './filters.js';
 
 function updateStoreEnabledFilters(filters) {
@@ -53,6 +53,10 @@ export async function initConfig() {
 
     // Load initial config
     await loadConfiguration();
+
+    // Load processor list (after config so we can sync enabled states)
+    await loadProcessors();
+
     checkConfigStatus();
 }
 
@@ -97,6 +101,32 @@ async function loadAdapterOptions() {
 }
 
 /**
+ * Load available processors from API and sync with config
+ */
+async function loadProcessors() {
+    try {
+        const processors = await getProcessors();
+
+        if (typeof Alpine !== 'undefined' && Alpine.store) {
+            const store = Alpine.store('citrascope');
+
+            // Update processor enabled states from config
+            const enabledProcessors = store.config?.enabled_processors || {};
+            processors.forEach(proc => {
+                // If config has an explicit setting, use it; otherwise use the default from API
+                if (proc.name in enabledProcessors) {
+                    proc.enabled = enabledProcessors[proc.name];
+                }
+            });
+
+            store.processors = processors;
+        }
+    } catch (error) {
+        console.error('Failed to load processors:', error);
+    }
+}
+
+/**
  * Load configuration from API and populate form
  */
 async function loadConfiguration() {
@@ -122,6 +152,9 @@ async function loadConfiguration() {
             }
             if (config.use_dummy_api === null || config.use_dummy_api === undefined) {
                 config.use_dummy_api = false; // Default to false
+            }
+            if (!config.enabled_processors) {
+                config.enabled_processors = {}; // Default to empty object
             }
 
             store.config = config;
@@ -247,6 +280,7 @@ async function saveConfiguration(event) {
         gps_location_updates_enabled: formConfig.gps_location_updates_enabled !== undefined ? formConfig.gps_location_updates_enabled : true,
         gps_update_interval_minutes: parseInt(formConfig.gps_update_interval_minutes || 5, 10),
         processors_enabled: formConfig.processors_enabled !== undefined ? formConfig.processors_enabled : true,
+        enabled_processors: formConfig.enabled_processors || {},
         host,
         port,
         use_ssl,

@@ -25,14 +25,32 @@ class ProcessorRegistry:
 
         # Hardcode processor list (simple, explicit)
         from citrascope.processors.builtin.example_quality_checker import QualityCheckProcessor
+        from citrascope.processors.builtin.slow_test_processor import SlowTestProcessor
 
         self.processors: List[AbstractImageProcessor] = [
             QualityCheckProcessor(),
+            SlowTestProcessor(),
             # Add more processors here as you build them
         ]
 
+    def get_all_processors(self) -> List[dict]:
+        """Get metadata for all processors (enabled and disabled).
+
+        Returns:
+            List of dicts with processor metadata
+        """
+        return [
+            {
+                "name": p.name,
+                "friendly_name": p.friendly_name,
+                "description": p.description,
+                "enabled": self.settings.enabled_processors.get(p.name, True),  # Default to enabled
+            }
+            for p in self.processors
+        ]
+
     def process_all(self, context: ProcessingContext) -> AggregatedResult:
-        """Run all processors on an image.
+        """Run all enabled processors on an image.
 
         Args:
             context: ProcessingContext with image and task data
@@ -46,8 +64,13 @@ class ProcessorRegistry:
         if context.image_data is None:
             context.image_data = self._load_image(context.image_path)
 
+        # Filter to only enabled processors
+        enabled_processors = [
+            p for p in self.processors if self.settings.enabled_processors.get(p.name, True)  # Default to enabled
+        ]
+
         results = []
-        for processor in self.processors:
+        for processor in enabled_processors:
             try:
                 result = processor.process(context)
                 results.append(result)

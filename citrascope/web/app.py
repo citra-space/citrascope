@@ -208,6 +208,7 @@ class CitraScopeWebApp:
                 "gps_location_updates_enabled": settings.gps_location_updates_enabled,
                 "gps_update_interval_minutes": settings.gps_update_interval_minutes,
                 "processors_enabled": settings.processors_enabled,
+                "enabled_processors": settings.enabled_processors,
                 "app_url": app_url,
                 "config_file_path": config_path,
                 "log_file_path": log_file_path,
@@ -375,6 +376,14 @@ class CitraScopeWebApp:
             except Exception as e:
                 CITRASCOPE_LOGGER.error(f"Error updating config: {e}", exc_info=True)
                 return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.get("/api/processors")
+        async def get_processors():
+            """Get list of all available processors with metadata."""
+            if not self.daemon or not hasattr(self.daemon, "processor_registry") or not self.daemon.processor_registry:
+                return []
+
+            return self.daemon.processor_registry.get_all_processors()
 
         @self.app.get("/api/tasks")
         async def get_tasks():

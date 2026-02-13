@@ -70,181 +70,7 @@
                 {% include '_config_hardware.html' %}
 
 
-                <!-- Time Synchronization Settings Card -->
-                <div class="col-12" x-data="{ timeCardExpanded: $persist(true).as('timeCard') }">
-                    <div class="card bg-dark text-light border-secondary">
-                        <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" @click="timeCardExpanded = !timeCardExpanded">
-                            <div class="d-flex align-items-center gap-2">
-                                <i class="bi bi-clock-history"></i>
-                                <h5 class="mb-0">Time Synchronization</h5>
-                                <small class="text-muted" x-show="!timeCardExpanded" x-text="'Check every ' + ($store.citrascope.config.time_check_interval_minutes || 5) + 'min • ' + ($store.citrascope.config.time_offset_pause_ms || 500) + 'ms threshold'"></small>
-                            </div>
-                            <i class="bi" :class="timeCardExpanded ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
-                        </div>
-                        <div class="card-body" x-show="timeCardExpanded">
-                            <div class="row g-3">
-                                <div class="col-12 col-md-6">
-                                    <label for="time_offset_pause_ms" class="form-label">Pause Threshold (ms)</label>
-                                    <input type="number" class="form-control form-control-sm" id="time_offset_pause_ms" min="1" max="10000" step="1" x-model.number="$store.citrascope.config.time_offset_pause_ms">
-                                    <small class="text-muted">Clock drift that triggers task pause</small>
-                                </div>
-                                <div class="col-12 col-md-6">
-                                    <label for="time_check_interval_minutes" class="form-label">Check Interval (minutes)</label>
-                                    <input type="number" class="form-control form-control-sm" id="time_check_interval_minutes" min="1" max="60" step="1" x-model.number="$store.citrascope.config.time_check_interval_minutes">
-                                    <small class="text-muted">How often to check time synchronization</small>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- GPS Location Settings Card -->
-                <div class="col-12" x-data="{ gpsCardExpanded: $persist(true).as('gpsCard') }">
-                    <div class="card bg-dark text-light border-secondary">
-                        <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" @click="gpsCardExpanded = !gpsCardExpanded">
-                            <div class="d-flex align-items-center gap-2">
-                                <i class="bi bi-geo-alt"></i>
-                                <h5 class="mb-0">GPS Location</h5>
-                                <small class="text-muted" x-show="!gpsCardExpanded" x-text="$store.citrascope.config.gps_location_updates_enabled !== false ? 'Updates enabled' : 'Updates disabled'"></small>
-                            </div>
-                            <i class="bi" :class="gpsCardExpanded ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
-                        </div>
-                        <div class="card-body" x-show="gpsCardExpanded">
-                            <div class="row g-3">
-                                <div class="col-md-6">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="gps_location_updates_enabled" x-model="$store.citrascope.config.gps_location_updates_enabled">
-                                        <label class="form-check-label" for="gps_location_updates_enabled">
-                                            Use GPS for ground station location
-                                        </label>
-                                    </div>
-                                    <small class="text-muted d-block mt-2">
-                                        When enabled, ground station location will be updated from GPS (if available).
-                                        When disabled, server-provided location will be used for all operations.
-                                    </small>
-                                </div>
-                                <div class="col-md-6" x-show="$store.citrascope.config.gps_location_updates_enabled !== false">
-                                    <label for="gps_update_interval_minutes" class="form-label">GPS Update Interval (minutes)</label>
-                                    <input type="number" class="form-control" id="gps_update_interval_minutes"
-                                        x-model.number="$store.citrascope.config.gps_update_interval_minutes"
-                                        min="1" max="1440" step="1">
-                                    <small class="text-muted d-block mt-2">
-                                        How often to push location updates to the server (default: 5 minutes).
-                                        Local operations always use current GPS. This only controls server sync frequency.
-                                    </small>
-                                </div>
-                            </div>
-
-                            <!-- GPS Status Details -->
-                            <div class="row g-3 mt-2 pt-3 border-top border-secondary" x-show="$store.citrascope.status?.gps_location">
-                                <div class="col-12">
-                                    <h6 class="text-muted mb-3">Current GPS Status</h6>
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label text-muted small">Position</label>
-                                    <div class="font-monospace small" x-text="$store.citrascope.status?.gps_location ?
-                                        `${$store.citrascope.status.gps_location.latitude.toFixed(6)}°, ${$store.citrascope.status.gps_location.longitude.toFixed(6)}°` :
-                                        'Unavailable'"></div>
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label text-muted small">Altitude</label>
-                                    <div class="font-monospace small" x-text="$store.citrascope.status?.gps_location?.altitude != null ?
-                                        `${Math.round($store.citrascope.status.gps_location.altitude)}m (${Math.round($store.citrascope.status.gps_location.altitude * 3.28084)}ft)` :
-                                        'Unavailable'"></div>
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label text-muted small">Fix Quality</label>
-                                    <div class="font-monospace small">
-                                        <span x-text="$store.citrascope.formatGPSLocation($store.citrascope.status?.gps_location)"></span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="row g-3 mt-1" x-show="!$store.citrascope.status?.gps_location">
-                                <div class="col-12">
-                                    <div class="alert alert-secondary mb-0 small">
-                                        <i class="bi bi-info-circle me-2"></i>GPS unavailable or no fix yet
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Logging Settings Card -->
-                <div class="col-12" x-data="{ loggingCardExpanded: $persist(true).as('loggingCard') }">
-                    <div class="card bg-dark text-light border-secondary">
-                        <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" @click="loggingCardExpanded = !loggingCardExpanded">
-                            <div class="d-flex align-items-center gap-2">
-                                <i class="bi bi-file-earmark-text"></i>
-                                <h5 class="mb-0">Logging Settings</h5>
-                                <small class="text-muted" x-show="!loggingCardExpanded" x-text="($store.citrascope.config.log_level || 'INFO') + ($store.citrascope.config.file_logging_enabled !== false ? ' • File logging' : ' • Console only')"></small>
-                            </div>
-                            <i class="bi" :class="loggingCardExpanded ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
-                        </div>
-                        <div class="card-body" x-show="loggingCardExpanded">
-                            <div class="row g-3">
-                                <div class="col-12 col-md-6">
-                                    <label for="logLevel" class="form-label">Log Level</label>
-                                    <select id="logLevel" class="form-select" x-model="$store.citrascope.config.log_level">
-                                        <option value="DEBUG">DEBUG</option>
-                                        <option value="INFO">INFO</option>
-                                        <option value="WARNING">WARNING</option>
-                                        <option value="ERROR">ERROR</option>
-                                    </select>
-                                </div>
-                                <div class="col-12 col-md-6">
-                                    <div class="form-check mt-4">
-                                        <input class="form-check-input" type="checkbox" id="file_logging_enabled" x-model="$store.citrascope.config.file_logging_enabled">
-                                        <label class="form-check-label" for="file_logging_enabled">
-                                            Enable file logging
-                                        </label>
-                                    </div>
-                                </div>
-                                <div class="col-12">
-                                    <small class="text-muted">
-                                        Log file: <span class="text-secondary" x-text="$store.citrascope.config.log_file_path || 'Disabled'">Loading...</span>
-                                    </small>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Task Settings Card -->
-                <div class="col-12" x-data="{ taskCardExpanded: $persist(true).as('taskCard') }">
-                    <div class="card bg-dark text-light border-secondary">
-                        <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" @click="taskCardExpanded = !taskCardExpanded">
-                            <div class="d-flex align-items-center gap-2">
-                                <i class="bi bi-gear"></i>
-                                <h5 class="mb-0">Task Settings</h5>
-                                <small class="text-muted" x-show="!taskCardExpanded" x-text="$store.citrascope.config.keep_images ? 'Keep images' : 'Delete images after upload'"></small>
-                            </div>
-                            <i class="bi" :class="taskCardExpanded ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
-                        </div>
-                        <div class="card-body" x-show="taskCardExpanded">
-                            <div class="row g-3">
-                                <div class="col-12 col-md-6">
-                                    <div class="form-check mt-2">
-                                        <input class="form-check-input" type="checkbox" id="keep_images" x-model="$store.citrascope.config.keep_images">
-                                        <label class="form-check-label" for="keep_images">
-                                            Keep captured images
-                                        </label>
-                                    </div>
-                                    <small class="text-muted ms-4">By default, images are deleted after upload unless this is enabled</small>
-                                </div>
-                                <div class="col-12">
-                                    <small class="text-muted">
-                                        Images directory: <span class="text-secondary" x-text="$store.citrascope.config.images_dir_path || 'Loading...'">Loading...</span>
-                                    </small>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Image Processing Settings Card -->
-            <div class="row">
+                <!-- Image Processing Settings Card -->
                 <div class="col-12" x-data="{ processorCardExpanded: $persist(true).as('processorCard') }">
                     <div class="card bg-dark text-light border-secondary">
                         <div class="card-header d-flex justify-content-between align-items-center"
@@ -259,31 +85,201 @@
                         </div>
                         <div class="card-body" x-show="processorCardExpanded">
                             <div class="row g-3">
-                                <div class="col-12">
-                                    <div class="form-check mt-2">
+                                <!-- Left Column: Pipeline Toggle -->
+                                <div class="col-md-6">
+                                    <h6 class="text-muted mb-3"><i class="bi bi-toggle-on me-2"></i>Pipeline Control</h6>
+                                    <div class="form-check">
                                         <input class="form-check-input" type="checkbox" id="processors_enabled"
                                                x-model="$store.citrascope.config.processors_enabled">
                                         <label class="form-check-label" for="processors_enabled">
                                             Enable image processing pipeline
                                         </label>
                                     </div>
-                                    <small class="text-muted ms-4">
+                                    <small class="text-muted d-block mt-2">
                                         Process images before upload to extract readings and filter bad images
                                     </small>
                                 </div>
 
-                                <!-- Show active processors -->
-                                <div class="col-12" x-show="$store.citrascope.status?.active_processors?.length > 0">
-                                    <label class="form-label text-muted small">Active Processors:</label>
-                                    <div class="d-flex flex-wrap gap-2">
-                                        <template x-for="proc in $store.citrascope.status.active_processors" :key="proc">
-                                            <span class="badge bg-secondary" x-text="proc"></span>
+                                <!-- Right Column: Available Processors -->
+                                <div class="col-md-6" x-show="$store.citrascope.processors?.length > 0">
+                                    <h6 class="text-muted mb-3"><i class="bi bi-gear-fill me-2"></i>Available Processors</h6>
+                                    <div>
+                                        <template x-for="processor in $store.citrascope.processors" :key="processor.name">
+                                            <div class="mb-2">
+                                                <div class="form-check">
+                                                    <input
+                                                        class="form-check-input"
+                                                        type="checkbox"
+                                                        :id="'processor-' + processor.name"
+                                                        :checked="processor.enabled"
+                                                        @change="$store.citrascope.config.enabled_processors[processor.name] = $event.target.checked"
+                                                    >
+                                                    <label class="form-check-label" :for="'processor-' + processor.name">
+                                                        <strong x-text="processor.friendly_name"></strong>
+                                                        <span
+                                                            class="badge ms-2"
+                                                            :class="processor.enabled ? 'bg-success' : 'bg-secondary'"
+                                                            x-text="processor.enabled ? 'Enabled' : 'Disabled'"
+                                                        ></span>
+                                                    </label>
+                                                </div>
+                                                <small class="text-muted ms-4 d-block" x-text="processor.description"></small>
+                                            </div>
                                         </template>
                                     </div>
-                                    <small class="text-muted d-block mt-2">
-                                        To enable/disable individual processors, edit the processor list in
-                                        <code class="small">processor_registry.py</code>
-                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+
+                <!-- Time & Location Settings Card -->
+                <div class="col-12" x-data="{ timeLocationCardExpanded: $persist(true).as('timeLocationCard') }">
+                    <div class="card bg-dark text-light border-secondary">
+                        <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" @click="timeLocationCardExpanded = !timeLocationCardExpanded">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-globe"></i>
+                                <h5 class="mb-0">Time & Location</h5>
+                                <small class="text-muted" x-show="!timeLocationCardExpanded"
+                                       x-text="'Time sync: ' + ($store.citrascope.config.time_check_interval_minutes || 5) + 'min • GPS: ' + ($store.citrascope.config.gps_location_updates_enabled !== false ? 'Enabled' : 'Disabled')"></small>
+                            </div>
+                            <i class="bi" :class="timeLocationCardExpanded ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+                        </div>
+                        <div class="card-body" x-show="timeLocationCardExpanded">
+                            <div class="row g-3">
+                                <!-- Left Column: Time Synchronization -->
+                                <div class="col-md-6">
+                                    <h6 class="text-muted mb-3"><i class="bi bi-clock-history me-2"></i>Time Synchronization</h6>
+                                    <div class="mb-3">
+                                        <label for="time_offset_pause_ms" class="form-label">Pause Threshold (ms)</label>
+                                        <input type="number" class="form-control form-control-sm" id="time_offset_pause_ms" min="1" max="10000" step="1" x-model.number="$store.citrascope.config.time_offset_pause_ms">
+                                        <small class="text-muted">Clock drift that triggers task pause</small>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="time_check_interval_minutes" class="form-label">Check Interval (minutes)</label>
+                                        <input type="number" class="form-control form-control-sm" id="time_check_interval_minutes" min="1" max="60" step="1" x-model.number="$store.citrascope.config.time_check_interval_minutes">
+                                        <small class="text-muted">How often to check time synchronization</small>
+                                    </div>
+                                </div>
+
+                                <!-- Right Column: GPS Location -->
+                                <div class="col-md-6">
+                                    <h6 class="text-muted mb-3"><i class="bi bi-geo-alt me-2"></i>GPS Location</h6>
+                                    <div class="mb-3">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="gps_location_updates_enabled" x-model="$store.citrascope.config.gps_location_updates_enabled">
+                                            <label class="form-check-label" for="gps_location_updates_enabled">
+                                                Use GPS for ground station location
+                                            </label>
+                                        </div>
+                                        <small class="text-muted d-block mt-2">
+                                            When enabled, ground station location will be updated from GPS (if available).
+                                            When disabled, server-provided location will be used for all operations.
+                                        </small>
+                                    </div>
+                                    <div class="mb-3" x-show="$store.citrascope.config.gps_location_updates_enabled !== false">
+                                        <label for="gps_update_interval_minutes" class="form-label">GPS Update Interval (minutes)</label>
+                                        <input type="number" class="form-control" id="gps_update_interval_minutes"
+                                            x-model.number="$store.citrascope.config.gps_update_interval_minutes"
+                                            min="1" max="1440" step="1">
+                                        <small class="text-muted d-block mt-2">
+                                            How often to push location updates to the server (default: 5 minutes).
+                                            Local operations always use current GPS. This only controls server sync frequency.
+                                        </small>
+                                    </div>
+
+                                    <!-- GPS Status Details -->
+                                    <div class="pt-3 border-top border-secondary" x-show="$store.citrascope.status?.gps_location">
+                                        <h6 class="text-muted mb-3">Current GPS Status</h6>
+                                        <div class="mb-2">
+                                            <label class="form-label text-muted small">Position</label>
+                                            <div class="font-monospace small" x-text="$store.citrascope.status?.gps_location ?
+                                                `${$store.citrascope.status.gps_location.latitude.toFixed(6)}°, ${$store.citrascope.status.gps_location.longitude.toFixed(6)}°` :
+                                                'Unavailable'"></div>
+                                        </div>
+                                        <div class="mb-2">
+                                            <label class="form-label text-muted small">Altitude</label>
+                                            <div class="font-monospace small" x-text="$store.citrascope.status?.gps_location?.altitude != null ?
+                                                `${Math.round($store.citrascope.status.gps_location.altitude)}m (${Math.round($store.citrascope.status.gps_location.altitude * 3.28084)}ft)` :
+                                                'Unavailable'"></div>
+                                        </div>
+                                        <div class="mb-2">
+                                            <label class="form-label text-muted small">Fix Quality</label>
+                                            <div class="font-monospace small">
+                                                <span x-text="$store.citrascope.formatGPSLocation($store.citrascope.status?.gps_location)"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="pt-3 border-top border-secondary" x-show="!$store.citrascope.status?.gps_location">
+                                        <div class="alert alert-secondary mb-0 small">
+                                            <i class="bi bi-info-circle me-2"></i>GPS unavailable or no fix yet
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Advanced Settings Card -->
+                <div class="col-12" x-data="{ advancedCardExpanded: $persist(false).as('advancedCard') }">
+                    <div class="card bg-dark text-light border-secondary">
+                        <div class="card-header d-flex justify-content-between align-items-center" style="cursor: pointer;" @click="advancedCardExpanded = !advancedCardExpanded">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-sliders"></i>
+                                <h5 class="mb-0">Advanced Settings</h5>
+                                <small class="text-muted" x-show="!advancedCardExpanded"
+                                       x-text="($store.citrascope.config.log_level || 'INFO') + ' • ' + ($store.citrascope.config.keep_images ? 'Keep images' : 'Delete images')"></small>
+                            </div>
+                            <i class="bi" :class="advancedCardExpanded ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+                        </div>
+                        <div class="card-body" x-show="advancedCardExpanded">
+                            <div class="row g-3">
+                                <!-- Left Column: Logging -->
+                                <div class="col-md-6">
+                                    <h6 class="text-muted mb-3"><i class="bi bi-file-earmark-text me-2"></i>Logging</h6>
+                                    <div class="mb-3">
+                                        <label for="logLevel" class="form-label">Log Level</label>
+                                        <select id="logLevel" class="form-select" x-model="$store.citrascope.config.log_level">
+                                            <option value="DEBUG">DEBUG</option>
+                                            <option value="INFO">INFO</option>
+                                            <option value="WARNING">WARNING</option>
+                                            <option value="ERROR">ERROR</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="file_logging_enabled" x-model="$store.citrascope.config.file_logging_enabled">
+                                            <label class="form-check-label" for="file_logging_enabled">
+                                                Enable file logging
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <small class="text-muted">
+                                            Log file: <span class="text-secondary" x-text="$store.citrascope.config.log_file_path || 'Disabled'">Loading...</span>
+                                        </small>
+                                    </div>
+                                </div>
+
+                                <!-- Right Column: Image Storage -->
+                                <div class="col-md-6">
+                                    <h6 class="text-muted mb-3"><i class="bi bi-image me-2"></i>Image Storage</h6>
+                                    <div class="mb-3">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="keep_images" x-model="$store.citrascope.config.keep_images">
+                                            <label class="form-check-label" for="keep_images">
+                                                Keep captured images
+                                            </label>
+                                        </div>
+                                        <small class="text-muted d-block mt-2">By default, images are deleted after upload unless this is enabled</small>
+                                    </div>
+                                    <div>
+                                        <small class="text-muted">
+                                            Images directory: <span class="text-secondary" x-text="$store.citrascope.config.images_dir_path || 'Loading...'">Loading...</span>
+                                        </small>
+                                    </div>
                                 </div>
                             </div>
                         </div>

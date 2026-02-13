@@ -28,6 +28,8 @@ class QualityCheckProcessor(AbstractImageProcessor):
     """
 
     name = "quality_checker"
+    friendly_name = "Quality Checker"
+    description = "Validates image quality by checking for saturation and low signal"
 
     def process(self, context: ProcessingContext) -> ProcessorResult:
         """Process image and check basic quality metrics.

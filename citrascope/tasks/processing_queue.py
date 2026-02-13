@@ -87,6 +87,7 @@ class ProcessingQueue:
                         telescope_record=item["context"].get("telescope_record"),
                         ground_station_record=item["context"].get("ground_station_record"),
                         settings=item["context"].get("settings"),
+                        logger=self.logger,  # Pass logger to processors
                     )
 
                     # Get processor registry from daemon
