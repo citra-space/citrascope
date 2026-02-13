@@ -54,7 +54,7 @@ class TestPlateSolverProcessor:
         assert processor.friendly_name == "Plate Solver"
         assert "Astrometry" in processor.description
 
-    @patch("citrascope.processors.builtin.msi_utils.dependencies.check_astrometry")
+    @patch("citrascope.processors.builtin.processor_dependencies.check_astrometry")
     def test_astrometry_not_installed(self, mock_check, mock_context):
         """Test processor fails gracefully when Astrometry.net not installed."""
         mock_check.return_value = False
@@ -67,8 +67,8 @@ class TestPlateSolverProcessor:
         assert result.confidence == 0.0
         assert "not installed" in result.reason
 
-    @patch("citrascope.processors.builtin.msi_utils.dependencies.check_astrometry")
-    @patch("citrascope.processors.builtin.msi_utils.astrometry.solve_field")
+    @patch("citrascope.processors.builtin.processor_dependencies.check_astrometry")
+    @patch("citrascope.processors.builtin.plate_solver_processor.PlateSolverProcessor._solve_field")
     @patch("astropy.io.fits.open")
     def test_successful_plate_solve(self, mock_fits_open, mock_solve, mock_check, mock_context, tmp_path):
         """Test successful plate solving."""
@@ -99,8 +99,8 @@ class TestPlateSolverProcessor:
         # Verify working_image_path was updated
         assert mock_context.working_image_path == new_file
 
-    @patch("citrascope.processors.builtin.msi_utils.dependencies.check_astrometry")
-    @patch("citrascope.processors.builtin.msi_utils.astrometry.solve_field")
+    @patch("citrascope.processors.builtin.processor_dependencies.check_astrometry")
+    @patch("citrascope.processors.builtin.plate_solver_processor.PlateSolverProcessor._solve_field")
     def test_plate_solve_timeout(self, mock_solve, mock_check, mock_context):
         """Test plate solving timeout handling."""
         mock_check.return_value = True
@@ -140,7 +140,7 @@ class TestSourceExtractorProcessor:
         assert "WCS missing" in result.reason
 
     @patch("astropy.io.fits.open")
-    @patch("citrascope.processors.builtin.msi_utils.dependencies.check_sextractor")
+    @patch("citrascope.processors.builtin.processor_dependencies.check_sextractor")
     def test_sextractor_not_installed(self, mock_check, mock_fits_open, mock_context):
         """Test processor fails gracefully when SExtractor not installed."""
         # Mock FITS with WCS
@@ -158,8 +158,8 @@ class TestSourceExtractorProcessor:
         assert "not installed" in result.reason
 
     @patch("astropy.io.fits.open")
-    @patch("citrascope.processors.builtin.msi_utils.dependencies.check_sextractor")
-    @patch("citrascope.processors.builtin.msi_utils.sextractor.extract_sources")
+    @patch("citrascope.processors.builtin.processor_dependencies.check_sextractor")
+    @patch("citrascope.processors.builtin.source_extractor_processor.SourceExtractorProcessor._extract_sources")
     def test_successful_extraction(self, mock_extract, mock_check, mock_fits_open, mock_context, tmp_path):
         """Test successful source extraction."""
         # Mock FITS with WCS
@@ -200,13 +200,12 @@ class TestPhotometryProcessor:
         assert result.confidence == 0.0
         assert "catalog not found" in result.reason
 
-    @patch("citrascope.processors.builtin.msi_utils.apass.calibrate_photometry")
+    @patch("citrascope.processors.builtin.photometry_processor.PhotometryProcessor._calibrate_photometry")
     @patch("pandas.read_csv")
     def test_successful_calibration(self, mock_read, mock_calibrate, mock_context, tmp_path):
         """Test successful photometric calibration."""
-        # Create mock catalog file
-        catalog_path = tmp_path / "test_image.cat"
-        catalog_path.touch()
+        # Create mock catalog file (processor expects output.cat in working_dir)
+        (mock_context.working_dir / "output.cat").touch()
         mock_context.working_image_path = tmp_path / "test_image.fits"
 
         # Mock catalog reading
@@ -244,12 +243,11 @@ class TestSatelliteMatcherProcessor:
         assert result.confidence == 0.0
         assert "catalog not found" in result.reason
 
-    @patch("citrascope.processors.builtin.msi_utils.dependencies.check_ephemeris")
+    @patch("citrascope.processors.builtin.processor_dependencies.check_ephemeris")
     def test_missing_ephemeris(self, mock_check, mock_context, tmp_path):
         """Test processor fails gracefully when ephemeris missing."""
-        # Create mock catalog file
-        catalog_path = tmp_path / "test_image.cat"
-        catalog_path.touch()
+        # Create mock catalog file (processor expects output.cat in working_dir)
+        (mock_context.working_dir / "output.cat").touch()
         mock_context.working_image_path = tmp_path / "test_image.fits"
 
         mock_check.return_value = False
@@ -265,10 +263,10 @@ class TestSatelliteMatcherProcessor:
 class TestDependencyChecks:
     """Tests for dependency checking utilities."""
 
-    @patch("citrascope.processors.builtin.msi_utils.dependencies.shutil.which")
+    @patch("citrascope.processors.builtin.processor_dependencies.shutil.which")
     def test_check_astrometry(self, mock_which):
         """Test Astrometry.net detection."""
-        from citrascope.processors.builtin.msi_utils.dependencies import check_astrometry
+        from citrascope.processors.builtin.processor_dependencies import check_astrometry
 
         mock_which.return_value = "/usr/bin/solve-field"
         assert check_astrometry() is True
@@ -276,10 +274,10 @@ class TestDependencyChecks:
         mock_which.return_value = None
         assert check_astrometry() is False
 
-    @patch("citrascope.processors.builtin.msi_utils.dependencies.shutil.which")
+    @patch("citrascope.processors.builtin.processor_dependencies.shutil.which")
     def test_check_sextractor(self, mock_which):
         """Test SExtractor detection."""
-        from citrascope.processors.builtin.msi_utils.dependencies import check_sextractor
+        from citrascope.processors.builtin.processor_dependencies import check_sextractor
 
         # Test source-extractor command
         mock_which.side_effect = lambda cmd: "/usr/bin/source-extractor" if cmd == "source-extractor" else None

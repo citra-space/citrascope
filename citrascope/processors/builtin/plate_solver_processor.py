@@ -1,6 +1,9 @@
 """Plate solving processor using Astrometry.net."""
 
+import subprocess
 import time
+from pathlib import Path
+from typing import Optional
 
 from citrascope.processors.abstract_processor import AbstractImageProcessor
 from citrascope.processors.processor_result import ProcessingContext, ProcessorResult
@@ -20,6 +23,51 @@ class PlateSolverProcessor(AbstractImageProcessor):
     friendly_name = "Plate Solver"
     description = "Astrometric calibration via Astrometry.net (determines exact pointing and WCS)"
 
+    def _solve_field(self, image_path: Path, timeout: int = 40, index_path: Optional[str] = None) -> Path:
+        """Run Astrometry.net solve-field on image.
+
+        Args:
+            image_path: Path to FITS image to solve
+            timeout: CPU time limit in seconds (default: 40)
+            index_path: Optional path to astrometry index files directory
+
+        Returns:
+            Path to .new file with WCS in header
+
+        Raises:
+            RuntimeError: If plate solving fails
+            TimeoutError: If plate solving times out
+        """
+        cmd = [
+            "solve-field",
+            str(image_path),
+            "--cpulimit",
+            str(timeout),
+            "--overwrite",
+            "--no-plots",
+        ]
+
+        # Add index path if specified
+        if index_path:
+            cmd.extend(["--dir", str(index_path)])
+
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=timeout + 10  # Allow extra time for subprocess overhead
+            )
+        except subprocess.TimeoutExpired:
+            raise TimeoutError(f"Plate solving timed out after {timeout}s")
+
+        if result.returncode != 0:
+            raise RuntimeError(f"Plate solving failed: {result.stderr}")
+
+        # Check that .new file was created
+        new_file = image_path.with_suffix(".new")
+        if not new_file.exists():
+            raise RuntimeError("Plate solving did not produce .new file")
+
+        return new_file
+
     def process(self, context: ProcessingContext) -> ProcessorResult:
         """Process image with plate solving.
 
@@ -32,7 +80,7 @@ class PlateSolverProcessor(AbstractImageProcessor):
         start_time = time.time()
 
         # Check dependencies
-        from .msi_utils.dependencies import check_astrometry
+        from .processor_dependencies import check_astrometry
 
         if not check_astrometry():
             return ProcessorResult(
@@ -45,10 +93,8 @@ class PlateSolverProcessor(AbstractImageProcessor):
             )
 
         try:
-            from .msi_utils.astrometry import solve_field
-
             # Run plate solver
-            wcs_image_path = solve_field(
+            wcs_image_path = self._solve_field(
                 context.working_image_path,
                 timeout=context.settings.plate_solve_timeout,
                 index_path=context.settings.astrometry_index_path,

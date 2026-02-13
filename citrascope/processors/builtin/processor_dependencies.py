@@ -48,7 +48,7 @@ def check_ephemeris() -> bool:
     Returns:
         True if ephemeris file exists or was successfully downloaded
     """
-    ephemeris_path = Path(__file__).parent.parent.parent.parent / "data" / "ephemeris" / "de421.bsp"
+    ephemeris_path = Path(__file__).parent.parent.parent / "data" / "ephemeris" / "de421.bsp"
 
     if ephemeris_path.exists():
         return True
