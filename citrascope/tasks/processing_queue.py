@@ -96,22 +96,6 @@ class ProcessingQueue(BaseWorkQueue):
         # Fail-open: notify with None result (will upload raw image)
         on_complete(task_id, None)
 
-    def _update_retry_status(self, item, backoff, retry_count, max_retries):
-        """Update task status message for retry."""
-        task_obj = item["context"].get("task")
-        if task_obj:
-            task_obj.set_status_msg(
-                f"Processing failed (attempt {retry_count}/{max_retries}), retrying in {backoff:.0f}s..."
-            )
-
-    def _set_retry_scheduled_time(self, item, scheduled_time=None):
-        """Set the retry scheduled time on the task."""
-        task_obj = item["context"].get("task")
-        if task_obj:
-            task_obj.set_retry_time(scheduled_time)
-
-    def _update_status_on_resubmit(self, item):
-        """Update status when retry timer fires and task is resubmitted."""
-        task_obj = item["context"].get("task")
-        if task_obj:
-            task_obj.set_status_msg("Retrying processing...")
+    def _get_task_from_item(self, item):
+        """Get Task object from work item."""
+        return item["context"].get("task")

@@ -64,41 +64,49 @@ class BaseWorkQueue(ABC):
         """
         pass
 
-    @abstractmethod
     def _update_retry_status(self, item: Dict[str, Any], backoff: float, retry_count: int, max_retries: int):
+        """Update task status message for retry."""
+        task = self._get_task_from_item(item)
+        if task:
+            # Extract stage name from class name (e.g., "ImagingQueue" -> "Imaging")
+            stage_name = self.__class__.__name__.replace("Queue", "")
+            task.set_status_msg(
+                f"{stage_name} failed (attempt {retry_count}/{max_retries}), retrying in {backoff:.0f}s..."
+            )
+
+    @abstractmethod
+    def _get_task_from_item(self, item: Dict[str, Any]):
         """
-        Update task status message for retry. Must be implemented by subclasses.
+        Get the Task object from the work item dictionary.
+        Must be implemented by subclasses since item structure varies.
 
         Args:
             item: Work item dictionary
-            backoff: Backoff delay in seconds
-            retry_count: Current retry attempt number
-            max_retries: Maximum number of retries allowed
+
+        Returns:
+            Task object or None if not found
         """
         pass
 
-    @abstractmethod
     def _set_retry_scheduled_time(self, item: Dict[str, Any], scheduled_time: float = None):
-        """
-        Set the retry scheduled time on the task. Must be implemented by subclasses.
+        """Set the retry scheduled time on the task."""
+        task = self._get_task_from_item(item)
+        if task:
+            task.set_retry_time(scheduled_time)
 
-        Args:
-            item: Work item dictionary
-            scheduled_time: Unix timestamp when retry will execute (None if not waiting for retry)
-        """
-        pass
-
-    @abstractmethod
     def _update_status_on_resubmit(self, item: Dict[str, Any]):
-        """
-        Update task status message when retry timer fires and task is resubmitted to queue.
-        This prevents showing stale "retrying in Xs..." messages while task waits in queue.
-        Must be implemented by subclasses.
+        """Update status when retry timer fires and task is resubmitted."""
+        task = self._get_task_from_item(item)
+        if task:
+            # Extract stage name from class name (e.g., "ImagingQueue" -> "imaging")
+            stage_name = self.__class__.__name__.replace("Queue", "").lower()
+            task.set_status_msg(f"Retrying {stage_name}...")
 
-        Args:
-            item: Work item dictionary
-        """
-        pass
+    def _set_executing(self, item: Dict[str, Any], executing: bool):
+        """Set whether task is being actively executed."""
+        task = self._get_task_from_item(item)
+        if task:
+            task.set_executing(executing)
 
     def _calculate_backoff(self, task_id: str) -> float:
         """Calculate exponential backoff delay."""
@@ -154,7 +162,13 @@ class BaseWorkQueue(ABC):
                 task_id = item["task_id"]
 
                 try:
+                    # Mark task as being actively executed
+                    self._set_executing(item, True)
+
                     success, result = self._execute_work(item)
+
+                    # Mark task as no longer executing
+                    self._set_executing(item, False)
 
                     if success:
                         # Clean up retry tracking
@@ -177,6 +191,9 @@ class BaseWorkQueue(ABC):
                             self._on_permanent_failure(item)
 
                 except Exception as e:
+                    # Mark task as no longer executing (even on exception)
+                    self._set_executing(item, False)
+
                     self.logger.error(f"Worker error for {task_id}: {e}", exc_info=True)
                     if self._should_retry(task_id):
                         self._schedule_retry(item)

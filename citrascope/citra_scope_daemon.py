@@ -466,30 +466,31 @@ class CitraScopeDaemon:
                     if task:
                         result["target_name"] = task.satelliteName
                         # Use thread-safe getters for status fields
-                        status_msg, retry_time = task.get_status_info()
+                        status_msg, retry_time, is_executing = task.get_status_info()
                         result["status_msg"] = status_msg
                         result["retry_scheduled_time"] = retry_time
+                        result["is_being_executed"] = is_executing
                 return result
 
             def sort_tasks(tasks):
                 """Sort tasks: active work first, queued next, retry-waiting last."""
 
                 def sort_key(task):
-                    status_msg = task.get("status_msg", "")
                     retry_time = task.get("retry_scheduled_time")
                     is_waiting_for_retry = retry_time is not None
-                    is_queued = "Queued for" in status_msg
+                    is_executing = task.get("is_being_executed", False)
 
-                    # Sort by: (waiting_for_retry, is_queued, sort_value)
-                    # 1. Active work first (not queued, not waiting for retry) - longest elapsed first
-                    # 2. Queued work next (waiting in queue) - longest elapsed first
-                    # 3. Retry-waiting last (scheduled for retry) - soonest retry first
+                    # Sort by: (waiting_for_retry, not_executing, sort_value)
+                    # 1. Actively executing first (is_executing=True) - longest elapsed first
+                    # 2. Queued work next (is_executing=False) - longest elapsed first
+                    # 3. Retry-waiting last (retry_scheduled_time is set) - soonest retry first
                     if is_waiting_for_retry:
                         sort_value = retry_time  # Earlier retry time = lower value = sorts first
                     else:
                         sort_value = -task.get("elapsed", 0)  # Longer elapsed = higher negative = sorts first
 
-                    return (is_waiting_for_retry, is_queued, sort_value)
+                    # not is_executing ensures executing tasks sort first (False < True)
+                    return (is_waiting_for_retry, not is_executing, sort_value)
 
                 return sorted(tasks, key=sort_key)
 
