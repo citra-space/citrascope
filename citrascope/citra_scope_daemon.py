@@ -477,20 +477,23 @@ class CitraScopeDaemon:
 
                 def sort_key(task):
                     retry_time = task.get("retry_scheduled_time")
-                    is_waiting_for_retry = retry_time is not None
                     is_executing = task.get("is_being_executed", False)
 
-                    # Sort by: (waiting_for_retry, not_executing, sort_value)
-                    # 1. Actively executing first (is_executing=True) - longest elapsed first
-                    # 2. Queued work next (is_executing=False) - longest elapsed first
-                    # 3. Retry-waiting last (retry_scheduled_time is set) - soonest retry first
-                    if is_waiting_for_retry:
-                        sort_value = retry_time  # Earlier retry time = lower value = sorts first
+                    # Three-tier priority:
+                    # Priority 0: Currently executing (highest priority)
+                    # Priority 1: Queued and ready to execute
+                    # Priority 2: Waiting for retry (lowest priority)
+                    if retry_time is not None:
+                        priority = 2
+                        sort_value = retry_time  # Soonest retry first
+                    elif is_executing:
+                        priority = 0
+                        sort_value = -task.get("elapsed", 0)  # Longest running first
                     else:
-                        sort_value = -task.get("elapsed", 0)  # Longer elapsed = higher negative = sorts first
+                        priority = 1
+                        sort_value = -task.get("elapsed", 0)  # Longest waiting first
 
-                    # not is_executing ensures executing tasks sort first (False < True)
-                    return (is_waiting_for_retry, not is_executing, sort_value)
+                    return (priority, sort_value)
 
                 return sorted(tasks, key=sort_key)
 

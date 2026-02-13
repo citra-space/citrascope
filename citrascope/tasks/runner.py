@@ -84,9 +84,6 @@ class TaskManager:
                             self.logger.info(f"Removing task {tid} from queue (cancelled or status changed)")
                             self.task_ids.discard(tid)
                             self.task_dict.pop(tid, None)
-                            # Clean up retry tracking
-                            self.task_retry_counts.pop(tid, None)
-                            self.task_last_failure.pop(tid, None)
                             removed += 1
 
                     # Rebuild heap if we removed anything
@@ -185,16 +182,16 @@ class TaskManager:
                     # Submit to imaging queue (handles retries)
                     def on_imaging_complete(task_id, success):
                         """Callback when imaging completes or permanently fails."""
-                        with self.heap_lock:
-                            self.current_task_id = None  # Clear after done
-
                         if success:
+                            with self.heap_lock:
+                                self.current_task_id = None  # Clear after done
                             self.logger.info(f"Completed imaging task {task_id} successfully.")
                             # Task stays in active_tasks and task_dict for processing/upload stages
                         else:
                             # Permanent failure - remove from tracking
                             self.logger.error(f"Imaging task {task_id} permanently failed.")
                             with self.heap_lock:
+                                self.current_task_id = None  # Clear after done
                                 self.active_tasks.pop(task_id, None)
                                 self.task_dict.pop(task_id, None)
 
