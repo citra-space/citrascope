@@ -88,6 +88,18 @@ class BaseWorkQueue(ABC):
         """
         pass
 
+    @abstractmethod
+    def _update_status_on_resubmit(self, item: Dict[str, Any]):
+        """
+        Update task status message when retry timer fires and task is resubmitted to queue.
+        This prevents showing stale "retrying in Xs..." messages while task waits in queue.
+        Must be implemented by subclasses.
+
+        Args:
+            item: Work item dictionary
+        """
+        pass
+
     def _calculate_backoff(self, task_id: str) -> float:
         """Calculate exponential backoff delay."""
         retry_count = self.retry_counts.get(task_id, 0)
@@ -120,9 +132,11 @@ class BaseWorkQueue(ABC):
         scheduled_time = time.time() + backoff
         self._set_retry_scheduled_time(item, scheduled_time)
 
-        # Schedule resubmission (clear scheduled time when resubmitted)
+        # Schedule resubmission (clear scheduled time and update status when resubmitted)
         def resubmit():
             self._set_retry_scheduled_time(item, None)
+            # Update status to show we're no longer waiting, but about to retry
+            self._update_status_on_resubmit(item)
             self.work_queue.put(item)
 
         timer = threading.Timer(backoff, resubmit)

@@ -109,3 +109,9 @@ class ProcessingQueue(BaseWorkQueue):
         task_obj = item["context"].get("task")
         if task_obj:
             task_obj.set_retry_time(scheduled_time)
+
+    def _update_status_on_resubmit(self, item):
+        """Update status when retry timer fires and task is resubmitted."""
+        task_obj = item["context"].get("task")
+        if task_obj:
+            task_obj.set_status_msg("Retrying processing...")

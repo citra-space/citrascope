@@ -113,3 +113,9 @@ class ImagingQueue(BaseWorkQueue):
         task = item.get("task")
         if task:
             task.set_retry_time(scheduled_time)
+
+    def _update_status_on_resubmit(self, item):
+        """Update status when retry timer fires and task is resubmitted."""
+        task = item.get("task")
+        if task:
+            task.set_status_msg("Retrying imaging...")

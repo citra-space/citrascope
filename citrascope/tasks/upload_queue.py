@@ -140,6 +140,12 @@ class UploadQueue(BaseWorkQueue):
         if task_obj:
             task_obj.set_retry_time(scheduled_time)
 
+    def _update_status_on_resubmit(self, item):
+        """Update status when retry timer fires and task is resubmitted."""
+        task_obj = item.get("task")
+        if task_obj:
+            task_obj.set_status_msg("Retrying upload...")
+
     def _cleanup_files(self, filepath: str):
         """Clean up image files after successful upload."""
         try:
