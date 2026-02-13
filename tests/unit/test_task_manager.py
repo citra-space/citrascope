@@ -54,13 +54,21 @@ def mock_daemon(mock_api_client, mock_hardware_adapter, mock_logger):
 
 
 @pytest.fixture
-def task_manager(mock_api_client, mock_hardware_adapter, mock_logger, mock_daemon):
+def mock_imaging_queue():
+    """Create a mock imaging queue."""
+    queue = MagicMock()
+    return queue
+
+
+@pytest.fixture
+def task_manager(mock_api_client, mock_hardware_adapter, mock_logger, mock_daemon, mock_imaging_queue):
     """Create a TaskManager instance for testing."""
     tm = TaskManager(
         api_client=mock_api_client,
         logger=mock_logger,
         hardware_adapter=mock_hardware_adapter,
         daemon=mock_daemon,
+        imaging_queue=mock_imaging_queue,
     )
     return tm
 
@@ -132,6 +140,7 @@ def test_poll_tasks_adds_new_tasks(task_manager, mock_api_client):
                 if not (stop_epoch and stop_epoch < now):
                     heapq.heappush(task_manager.task_heap, (start_epoch, stop_epoch, tid, task))
                     task_manager.task_ids.add(tid)
+                    task_manager.task_dict[tid] = task
 
     # Assert both tasks were added
     assert len(task_manager.task_heap) == 2
@@ -160,6 +169,8 @@ def test_poll_tasks_removes_cancelled_tasks(task_manager, mock_api_client):
         heapq.heappush(task_manager.task_heap, (start_epoch2, stop_epoch2, "task-002", task2))
         task_manager.task_ids.add("task-001")
         task_manager.task_ids.add("task-002")
+        task_manager.task_dict["task-001"] = task1
+        task_manager.task_dict["task-002"] = task2
 
     assert len(task_manager.task_heap) == 2
 
@@ -188,8 +199,7 @@ def test_poll_tasks_removes_cancelled_tasks(task_manager, mock_api_client):
                 new_heap.append((start_epoch, stop_epoch, tid, task))
             else:
                 task_manager.task_ids.discard(tid)
-                task_manager.task_retry_counts.pop(tid, None)
-                task_manager.task_last_failure.pop(tid, None)
+                task_manager.task_dict.pop(tid, None)
                 removed += 1
 
         if removed > 0:
@@ -218,6 +228,7 @@ def test_poll_tasks_removes_tasks_with_changed_status(task_manager, mock_api_cli
     with task_manager.heap_lock:
         heapq.heappush(task_manager.task_heap, (start_epoch, stop_epoch, "task-001", task1))
         task_manager.task_ids.add("task-001")
+        task_manager.task_dict["task-001"] = task1
 
     assert len(task_manager.task_heap) == 1
 
@@ -247,8 +258,7 @@ def test_poll_tasks_removes_tasks_with_changed_status(task_manager, mock_api_cli
                 new_heap.append((start_epoch, stop_epoch, tid, task))
             else:
                 task_manager.task_ids.discard(tid)
-                task_manager.task_retry_counts.pop(tid, None)
-                task_manager.task_last_failure.pop(tid, None)
+                task_manager.task_dict.pop(tid, None)
                 removed += 1
 
         if removed > 0:
@@ -275,6 +285,7 @@ def test_poll_tasks_does_not_remove_current_task(task_manager, mock_api_client):
     with task_manager.heap_lock:
         heapq.heappush(task_manager.task_heap, (start_epoch, stop_epoch, "task-001", task1))
         task_manager.task_ids.add("task-001")
+        task_manager.task_dict["task-001"] = task1
         # Mark this task as currently executing
         task_manager.current_task_id = "task-001"
 
