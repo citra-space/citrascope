@@ -426,15 +426,16 @@ class CitraScopeDaemon:
                 self.uploading_tasks[task_id] = time.time()
 
     def remove_task_from_stages(self, task_id: str):
-        """Remove task from all stages (when complete)."""
+        """Remove task from all stages and active tracking (when complete)."""
         with self._stage_lock:
             self.shooting_tasks.pop(task_id, None)
             self.processing_tasks.pop(task_id, None)
             self.uploading_tasks.pop(task_id, None)
 
-        # Also remove from task manager's task_dict now that pipeline is complete
+        # Also remove from task manager's active tasks and task_dict
         if self.task_manager:
             with self.task_manager.heap_lock:
+                self.task_manager.active_tasks.pop(task_id, None)
                 self.task_manager.task_dict.pop(task_id, None)
 
     def get_tasks_by_stage(self) -> dict:

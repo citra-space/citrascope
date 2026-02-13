@@ -14,6 +14,8 @@ class SlowTestProcessor(AbstractImageProcessor):
     sitting in the processing stage for a while.
     """
 
+    delay_seconds = 30
+
     name = "slow_test"
     friendly_name = "Slow Test Processor"
     description = "Test processor with 20-second delay for pipeline visualization testing"
@@ -26,7 +28,7 @@ class SlowTestProcessor(AbstractImageProcessor):
             context.logger.info(f"SlowTestProcessor: Starting 20-second processing for {context.task.satelliteName}")
 
         # Simulate long-running processing (e.g., plate solving, photometry)
-        time.sleep(20)
+        time.sleep(self.delay_seconds)
 
         if context.logger:
             context.logger.info(f"SlowTestProcessor: Completed processing for {context.task.satelliteName}")
@@ -34,7 +36,7 @@ class SlowTestProcessor(AbstractImageProcessor):
         return ProcessorResult(
             should_upload=True,
             extracted_data={
-                "slow_test.processing_time": 20.0,
+                "slow_test.processing_time": float(self.delay_seconds),
                 "slow_test.satellite": context.task.satelliteName,
             },
             confidence=1.0,

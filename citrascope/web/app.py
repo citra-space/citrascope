@@ -387,7 +387,7 @@ class CitraScopeWebApp:
 
         @self.app.get("/api/tasks")
         async def get_tasks():
-            """Get current task queue."""
+            """Get scheduled task queue (not yet started or waiting to retry)."""
             if not self.daemon or not hasattr(self.daemon, "task_manager") or self.daemon.task_manager is None:
                 return []
 
@@ -396,19 +396,52 @@ class CitraScopeWebApp:
 
             with task_manager.heap_lock:
                 for start_time, stop_time, task_id, task in task_manager.task_heap:
-                    tasks.append(
+                    # Only include tasks not currently active (executing)
+                    if task_id not in task_manager.active_tasks:
+                        tasks.append(
+                            {
+                                "id": task_id,
+                                "start_time": datetime.fromtimestamp(start_time, tz=timezone.utc).isoformat(),
+                                "stop_time": (
+                                    datetime.fromtimestamp(stop_time, tz=timezone.utc).isoformat()
+                                    if stop_time
+                                    else None
+                                ),
+                                "status": task.status,
+                                "target": getattr(task, "satelliteName", getattr(task, "target", "unknown")),
+                            }
+                        )
+
+            return tasks
+
+        @self.app.get("/api/tasks/active")
+        async def get_active_tasks():
+            """Get currently executing tasks (all stages)."""
+            if not self.daemon or not hasattr(self.daemon, "task_manager") or self.daemon.task_manager is None:
+                return []
+
+            task_manager = self.daemon.task_manager
+            active = []
+
+            with task_manager.heap_lock:
+                now = time.time()
+                for task_id, info in task_manager.active_tasks.items():
+                    active.append(
                         {
                             "id": task_id,
-                            "start_time": datetime.fromtimestamp(start_time, tz=timezone.utc).isoformat(),
+                            "target": info["task"].satelliteName,
+                            "stage": info["stage"],
+                            "elapsed": now - info["start_time"],
+                            "start_time": datetime.fromtimestamp(info["start_time"], tz=timezone.utc).isoformat(),
                             "stop_time": (
-                                datetime.fromtimestamp(stop_time, tz=timezone.utc).isoformat() if stop_time else None
+                                datetime.fromtimestamp(info["stop_time"], tz=timezone.utc).isoformat()
+                                if info.get("stop_time")
+                                else None
                             ),
-                            "status": task.status,
-                            "target": getattr(task, "satelliteName", getattr(task, "target", "unknown")),
                         }
                     )
 
-            return tasks
+            return active
 
         @self.app.get("/api/logs")
         async def get_logs(limit: int = 100):

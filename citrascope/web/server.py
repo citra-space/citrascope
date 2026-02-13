@@ -118,12 +118,12 @@ class CitraScopeWebServer:
         check_counter = 0
         while True:
             try:
-                await asyncio.sleep(2)  # Update every 2 seconds
+                await asyncio.sleep(1)  # Update every 1 second
                 if self.web_app:
                     await self.web_app.broadcast_status()
                     await self.web_app.broadcast_tasks()
 
-                # Every 10 iterations (20 seconds), check if log handler is still attached
+                # Every 10 iterations (10 seconds), check if log handler is still attached
                 check_counter += 1
                 if check_counter >= 10:
                     check_counter = 0

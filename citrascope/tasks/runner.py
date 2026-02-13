@@ -27,9 +27,10 @@ class TaskManager:
         self.logger = logger
         self.hardware_adapter = hardware_adapter
         self.daemon = daemon
-        self.task_heap = []  # min-heap by start time
+        self.task_heap = []  # min-heap by start time (scheduled future work only)
         self.task_ids = set()
         self.task_dict = {}  # task_id -> Task object for quick lookup
+        self.active_tasks = {}  # task_id -> {task, stage, start_time, stop_time} for in-flight work
         self.heap_lock = threading.RLock()
         self._stop_event = threading.Event()
         self.current_task_id = None  # Track currently executing task
@@ -157,7 +158,18 @@ class TaskManager:
                     with self.heap_lock:
                         if not (self.task_heap and self.task_heap[0][0] <= now):
                             break
-                        _, _, tid, task = self.task_heap[0]
+                        # Pop task from heap BEFORE starting execution
+                        start_time, stop_time, tid, task = heapq.heappop(self.task_heap)
+                        self.task_ids.discard(tid)
+
+                        # Move to active tracking
+                        self.active_tasks[tid] = {
+                            "task": task,
+                            "stage": "shooting",
+                            "start_time": time.time(),
+                            "stop_time": stop_time,
+                        }
+
                         self.logger.info(f"Starting task {tid} at {datetime.now().isoformat()}: {task}")
                         self.current_task_id = tid  # Mark as in-flight
 
@@ -175,8 +187,7 @@ class TaskManager:
                         self.current_task_id = None  # Clear after done (success or fail)
                         if observation_succeeded:
                             self.logger.info(f"Completed observation task {tid} successfully.")
-                            heapq.heappop(self.task_heap)
-                            self.task_ids.discard(tid)
+                            # Task already popped from heap at start - stays in active_tasks
                             # Keep task in task_dict for processing/upload stages
                             # It will be removed when remove_task_from_stages is called
                             # Clean up retry tracking for successful task
@@ -193,13 +204,15 @@ class TaskManager:
                                 self.logger.error(
                                     f"Observation task {tid} failed after {retry_count} retries. Permanently failing."
                                 )
-                                heapq.heappop(self.task_heap)
-                                self.task_ids.discard(tid)
+                                # Remove from active tracking
+                                self.active_tasks.pop(tid, None)
                                 # Remove from task_dict since task won't enter pipeline
                                 self.task_dict.pop(tid, None)
                                 # Clean up retry tracking
                                 self.task_retry_counts.pop(tid, None)
                                 self.task_last_failure.pop(tid, None)
+                                # Remove from stage tracking
+                                self.daemon.remove_task_from_stages(tid)
                                 # Mark task as failed in API
                                 try:
                                     self.api_client.mark_task_failed(tid)
@@ -219,16 +232,23 @@ class TaskManager:
                                 )
                                 backoff_delay = min(initial_delay * (2**retry_count), max_delay)
 
-                                # Update task start time in heap to retry after backoff delay
-                                _, stop_epoch, _, task = heapq.heappop(self.task_heap)
-                                new_start_time = now + backoff_delay
-                                heapq.heappush(self.task_heap, (new_start_time, stop_epoch, tid, task))
-                                # task_dict already has it, no need to re-add
+                                # Move from active back to heap with new scheduled time
+                                active_info = self.active_tasks.pop(tid, None)
+                                if active_info:
+                                    new_start_time = now + backoff_delay
+                                    heapq.heappush(
+                                        self.task_heap,
+                                        (new_start_time, active_info["stop_time"], tid, active_info["task"]),
+                                    )
+                                    self.task_ids.add(tid)  # Re-add to set
 
-                                self.logger.warning(
-                                    f"Observation task {tid} failed (attempt {retry_count + 1}/{max_retries}). "
-                                    f"Retrying in {backoff_delay} seconds at {datetime.fromtimestamp(new_start_time).isoformat()}"
-                                )
+                                    self.logger.warning(
+                                        f"Observation task {tid} failed (attempt {retry_count + 1}/{max_retries}). "
+                                        f"Retrying in {backoff_delay} seconds at {datetime.fromtimestamp(new_start_time).isoformat()}"
+                                    )
+
+                                # Remove from stage tracking while waiting for retry
+                                self.daemon.remove_task_from_stages(tid)
 
                 if completed > 0:
                     self.logger.info(self._heap_summary("Completed tasks"))
