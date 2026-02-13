@@ -184,6 +184,9 @@ class CitraScopeWebApp:
             # Get images directory path
             images_dir_path = str(settings.get_images_dir())
 
+            # Get processing working directory path (sibling to images directory)
+            processing_dir_path = str(settings.get_images_dir().parent / "processing")
+
             return {
                 "host": settings.host,
                 "port": settings.port,
@@ -213,6 +216,7 @@ class CitraScopeWebApp:
                 "config_file_path": config_path,
                 "log_file_path": log_file_path,
                 "images_dir_path": images_dir_path,
+                "processing_dir_path": processing_dir_path,
             }
 
         @self.app.get("/api/config/status")
@@ -353,25 +357,117 @@ class CitraScopeWebApp:
                                         status_code=400,
                                     )
 
+                # Determine what changed and what needs to be reloaded
+                old_config = {
+                    "telescope_id": self.daemon.settings.telescope_id,
+                    "hardware_adapter": self.daemon.settings.hardware_adapter,
+                    "adapter_settings": self.daemon.settings._all_adapter_settings.get(
+                        self.daemon.settings.hardware_adapter, {}
+                    ),
+                    "host": self.daemon.settings.host,
+                    "port": self.daemon.settings.port,
+                    "use_ssl": self.daemon.settings.use_ssl,
+                    "personal_access_token": self.daemon.settings.personal_access_token,
+                    "use_dummy_api": self.daemon.settings.use_dummy_api,
+                }
+
+                # Check if any critical settings changed that require full reload
+                critical_changes = []
+                if config.get("telescope_id") != old_config["telescope_id"]:
+                    critical_changes.append("telescope_id")
+                if config.get("hardware_adapter") != old_config["hardware_adapter"]:
+                    critical_changes.append("hardware_adapter")
+                if config.get("adapter_settings") != old_config["adapter_settings"]:
+                    critical_changes.append("adapter_settings")
+                if config.get("host") != old_config["host"]:
+                    critical_changes.append("host")
+                if config.get("port") != old_config["port"]:
+                    critical_changes.append("port")
+                if config.get("use_ssl") != old_config["use_ssl"]:
+                    critical_changes.append("use_ssl")
+                if config.get("personal_access_token") != old_config["personal_access_token"]:
+                    critical_changes.append("personal_access_token")
+                if config.get("use_dummy_api") != old_config["use_dummy_api"]:
+                    critical_changes.append("use_dummy_api")
+
+                # Save config to disk
                 self.daemon.settings.update_and_save(config)
 
-                # Trigger hot-reload
-                success, error = self.daemon.reload_configuration()
+                if critical_changes:
+                    # Critical changes require full reload (destroys TaskManager)
+                    CITRASCOPE_LOGGER.info(
+                        f"Critical config changes detected ({', '.join(critical_changes)}), performing full reload..."
+                    )
+                    success, error = self.daemon.reload_configuration()
 
-                if success:
+                    if success:
+                        return {
+                            "status": "success",
+                            "message": f"Configuration updated and reloaded successfully (full reload required for: {', '.join(critical_changes)})",
+                            "reload_type": "full",
+                        }
+                    else:
+                        return JSONResponse(
+                            {
+                                "status": "error",
+                                "message": f"Configuration saved but reload failed: {error}",
+                                "error": error,
+                            },
+                            status_code=500,
+                        )
+                else:
+                    # Non-critical changes: update settings in-place (no reload needed)
+                    CITRASCOPE_LOGGER.info(
+                        "Non-critical config changes detected, updating settings in-place (no reload needed)"
+                    )
+
+                    # Manually update in-memory settings for non-critical fields
+                    # (critical fields are updated via reload_configuration)
+
+                    # Update log level if changed
+                    if config.get("log_level") != self.daemon.settings.log_level:
+                        self.daemon.settings.log_level = config.get("log_level")
+                        CITRASCOPE_LOGGER.setLevel(config.get("log_level"))
+
+                    # Update processor settings - takes effect immediately on next processing task
+                    if "enabled_processors" in config:
+                        self.daemon.settings.enabled_processors = config["enabled_processors"]
+                    if "processors_enabled" in config:
+                        self.daemon.settings.processors_enabled = config["processors_enabled"]
+
+                    # Update other non-critical settings
+                    if "keep_images" in config:
+                        self.daemon.settings.keep_images = config["keep_images"]
+                    if "max_task_retries" in config:
+                        self.daemon.settings.max_task_retries = config["max_task_retries"]
+                    if "initial_retry_delay_seconds" in config:
+                        self.daemon.settings.initial_retry_delay_seconds = config["initial_retry_delay_seconds"]
+                    if "max_retry_delay_seconds" in config:
+                        self.daemon.settings.max_retry_delay_seconds = config["max_retry_delay_seconds"]
+                    if "scheduled_autofocus_enabled" in config:
+                        self.daemon.settings.scheduled_autofocus_enabled = config["scheduled_autofocus_enabled"]
+                    if "autofocus_interval_minutes" in config:
+                        self.daemon.settings.autofocus_interval_minutes = config["autofocus_interval_minutes"]
+                    if "time_check_interval_minutes" in config:
+                        self.daemon.settings.time_check_interval_minutes = config["time_check_interval_minutes"]
+                    if "time_offset_pause_ms" in config:
+                        self.daemon.settings.time_offset_pause_ms = config["time_offset_pause_ms"]
+                    if "gps_location_updates_enabled" in config:
+                        self.daemon.settings.gps_location_updates_enabled = config["gps_location_updates_enabled"]
+                    if "gps_update_interval_minutes" in config:
+                        self.daemon.settings.gps_update_interval_minutes = config["gps_update_interval_minutes"]
+                    if "file_logging_enabled" in config:
+                        self.daemon.settings.file_logging_enabled = config["file_logging_enabled"]
+                    if "log_retention_days" in config:
+                        self.daemon.settings.log_retention_days = config["log_retention_days"]
+
+                    CITRASCOPE_LOGGER.info("In-memory settings updated successfully")
+
                     return {
                         "status": "success",
-                        "message": "Configuration updated and reloaded successfully",
+                        "message": "Configuration updated successfully (no reload needed)",
+                        "reload_type": "none",
                     }
-                else:
-                    return JSONResponse(
-                        {
-                            "status": "error",
-                            "message": f"Configuration saved but reload failed: {error}",
-                            "error": error,
-                        },
-                        status_code=500,
-                    )
 
             except Exception as e:
                 CITRASCOPE_LOGGER.error(f"Error updating config: {e}", exc_info=True)

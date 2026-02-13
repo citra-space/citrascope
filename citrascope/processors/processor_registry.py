@@ -25,13 +25,24 @@ class ProcessorRegistry:
 
         # Hardcode processor list (simple, explicit)
         from citrascope.processors.builtin.example_quality_checker import QualityCheckProcessor
+        from citrascope.processors.builtin.photometry_processor import PhotometryProcessor
+        from citrascope.processors.builtin.plate_solver_processor import PlateSolverProcessor
+        from citrascope.processors.builtin.satellite_matcher_processor import SatelliteMatcherProcessor
+        from citrascope.processors.builtin.source_extractor_processor import SourceExtractorProcessor
         from citrascope.processors.builtin.test_processor import TestProcessor
 
         self.processors: List[AbstractImageProcessor] = [
-            QualityCheckProcessor(),
+            QualityCheckProcessor(),  # Always first (quick checks)
+            PlateSolverProcessor(),  # MSI step 1: 30-40s
+            SourceExtractorProcessor(),  # MSI step 2: 2-5s (requires plate solver)
+            PhotometryProcessor(),  # MSI step 3: 2-5s (requires source extractor)
+            SatelliteMatcherProcessor(),  # MSI step 4: 1-2s (requires photometry)
             TestProcessor(),
-            # Add more processors here as you build them
         ]
+
+        # Log registered processors on startup
+        processor_names = [p.name for p in self.processors]
+        self.logger.info(f"ProcessorRegistry initialized with {len(self.processors)} processors: {processor_names}")
 
     def get_all_processors(self) -> List[dict]:
         """Get metadata for all processors (enabled and disabled).
@@ -69,19 +80,50 @@ class ProcessorRegistry:
             p for p in self.processors if self.settings.enabled_processors.get(p.name, True)  # Default to enabled
         ]
 
+        # Log enabled vs disabled processors
+        enabled_names = [p.name for p in enabled_processors]
+        disabled_names = [p.name for p in self.processors if p not in enabled_processors]
+        self.logger.info(f"Processing with {len(enabled_processors)} enabled processors: {enabled_names}")
+        if disabled_names:
+            self.logger.info(f"Skipping {len(disabled_names)} disabled processors: {disabled_names}")
+
         results = []
         for processor in enabled_processors:
             # Update status message to show which processor is running
             if context.task:
                 context.task.set_status_msg(f"Running {processor.friendly_name}...")
 
+            self.logger.info(f"Starting processor: {processor.name} ({processor.friendly_name})")
+            proc_start = time.time()
+
             # Let exceptions propagate - they will trigger retries in ProcessingQueue
             # After max retries, ProcessingQueue will fail-open and upload raw image
             result = processor.process(context)
             results.append(result)
 
+            proc_elapsed = time.time() - proc_start
+
+            # Log failures as warnings, successes as info
+            if result.confidence == 0.0 or not result.should_upload:
+                self.logger.warning(
+                    f"Processor {processor.name} FAILED in {proc_elapsed:.2f}s: "
+                    f"confidence={result.confidence:.2f}, should_upload={result.should_upload}, "
+                    f"reason='{result.reason}'"
+                )
+            else:
+                self.logger.info(
+                    f"Processor {processor.name} completed in {proc_elapsed:.2f}s: "
+                    f"confidence={result.confidence:.2f}, should_upload={result.should_upload}, "
+                    f"reason='{result.reason}', extracted_keys={list(result.extracted_data.keys())}"
+                )
+
         total_time = time.time() - start_time
-        return self._aggregate_results(results, total_time)
+        aggregated = self._aggregate_results(results, total_time)
+        self.logger.info(
+            f"All processors completed in {total_time:.2f}s. "
+            f"Total extracted keys: {len(aggregated.extracted_data)}, should_upload={aggregated.should_upload}"
+        )
+        return aggregated
 
     def _aggregate_results(self, results: List[ProcessorResult], total_time: float) -> AggregatedResult:
         """Combine processor results into upload decision.

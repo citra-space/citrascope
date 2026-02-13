@@ -103,11 +103,17 @@ def processing_context(tmp_path, mock_task):
     # Create a dummy FITS file path (doesn't need to exist for most tests)
     image_path = tmp_path / "test_image.fits"
 
+    # Create working directory
+    working_dir = tmp_path / "working"
+    working_dir.mkdir(exist_ok=True)
+
     # Create mock image data
     image_data = np.random.randint(0, 1000, size=(100, 100), dtype=np.uint16)
 
     return ProcessingContext(
         image_path=image_path,
+        working_image_path=image_path,
+        working_dir=working_dir,
         image_data=image_data,
         task=mock_task,
         telescope_record={"id": "tel-123", "name": "Test Telescope"},
@@ -149,8 +155,13 @@ class TestProcessingContext:
 
     def test_context_without_task(self, tmp_path):
         """Test context without task (manual capture)."""
+        working_dir = tmp_path / "working"
+        working_dir.mkdir(exist_ok=True)
+
         context = ProcessingContext(
             image_path=tmp_path / "test.fits",
+            working_image_path=tmp_path / "test.fits",
+            working_dir=working_dir,
             image_data=None,
             task=None,
             telescope_record=None,

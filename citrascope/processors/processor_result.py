@@ -37,7 +37,9 @@ class ProcessingContext:
     """Rich context provided to image processors."""
 
     # Image data
-    image_path: Path
+    image_path: Path  # Original captured image
+    working_image_path: Path  # Current working image (processors can update this)
+    working_dir: Path  # Task-specific temp directory for intermediate files
     image_data: Optional[np.ndarray]  # Pre-loaded for performance
 
     # Task context (None for manual captures)

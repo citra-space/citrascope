@@ -48,9 +48,24 @@ class ProcessingQueue(BaseWorkQueue):
         self.logger.info(f"[ProcessingWorker] Processing task {task_id}")
 
         try:
+            # Create task-specific working directory
+            settings = item["context"].get("settings")
+            if settings:
+                working_dir = settings.get_images_dir().parent / "processing" / task_id
+            else:
+                # Fallback to temp directory if settings not available
+                import tempfile
+
+                working_dir = Path(tempfile.gettempdir()) / "citrascope" / "processing" / task_id
+
+            working_dir.mkdir(parents=True, exist_ok=True)
+            self.logger.debug(f"[ProcessingWorker] Created working directory: {working_dir}")
+
             # Build processing context
             context = ProcessingContext(
                 image_path=item["image_path"],
+                working_image_path=item["image_path"],  # Initialize to original image
+                working_dir=working_dir,
                 image_data=None,  # Loaded by processors
                 task=task_obj,
                 telescope_record=item["context"].get("telescope_record"),
@@ -79,6 +94,24 @@ class ProcessingQueue(BaseWorkQueue):
 
         if task_obj:
             task_obj.set_status_msg("Processing complete")
+
+        # Clean up working directory on success
+        try:
+            settings = item["context"].get("settings")
+            if settings:
+                working_dir = settings.get_images_dir().parent / "processing" / task_id
+            else:
+                import tempfile
+
+                working_dir = Path(tempfile.gettempdir()) / "citrascope" / "processing" / task_id
+
+            if working_dir.exists():
+                import shutil
+
+                shutil.rmtree(working_dir)
+                self.logger.debug(f"[ProcessingWorker] Cleaned up working directory: {working_dir}")
+        except Exception as e:
+            self.logger.warning(f"[ProcessingWorker] Failed to clean up working directory for {task_id}: {e}")
 
         on_complete(task_id, result)
 

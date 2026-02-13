@@ -94,6 +94,12 @@ class CitraScopeSettings:
         self.gps_location_updates_enabled: bool = config.get("gps_location_updates_enabled", True)
         self.gps_update_interval_minutes: int = config.get("gps_update_interval_minutes", 5)
 
+        # MSI Processor configuration
+        # Note: Individual processor enable/disable is handled via enabled_processors dict (already exists)
+        # We only need MSI-specific settings here
+        self.plate_solve_timeout: int = config.get("plate_solve_timeout", 40)  # seconds
+        self.astrometry_index_path: Optional[str] = config.get("astrometry_index_path")  # Path to index files
+
     def get_images_dir(self) -> Path:
         """Get the path to the images directory.
 
@@ -146,6 +152,8 @@ class CitraScopeSettings:
             "gps_update_interval_minutes": self.gps_update_interval_minutes,
             "processors_enabled": self.processors_enabled,
             "enabled_processors": self.enabled_processors,
+            "plate_solve_timeout": self.plate_solve_timeout,
+            "astrometry_index_path": self.astrometry_index_path,
         }
 
     def save(self) -> None:
