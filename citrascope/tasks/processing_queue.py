@@ -60,7 +60,7 @@ class ProcessingQueue(BaseWorkQueue):
             working_dir.mkdir(parents=True, exist_ok=True)
             self.logger.debug(f"[ProcessingWorker] Created working directory: {working_dir}")
 
-            # Build processing context
+            # Build processing context (daemon for LocationService at runtime)
             context = ProcessingContext(
                 image_path=item["image_path"],
                 working_image_path=item["image_path"],  # Initialize to original image
@@ -70,6 +70,7 @@ class ProcessingQueue(BaseWorkQueue):
                 telescope_record=item["context"].get("telescope_record"),
                 ground_station_record=item["context"].get("ground_station_record"),
                 settings=item["context"].get("settings"),
+                daemon=item["context"].get("daemon"),
                 logger=self.logger,  # Pass logger to processors
             )
 

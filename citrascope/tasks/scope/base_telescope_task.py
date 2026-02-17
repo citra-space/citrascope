@@ -118,6 +118,20 @@ class AbstractBaseTelescopeTask(ABC):
         if result and result.extracted_data:
             self.logger.info(f"Extracted data: {result.extracted_data}")
 
+        # Feed plate solve result to hardware adapter so mount model can update (e.g. alignment offsets)
+        if result and result.extracted_data and self.daemon.hardware_adapter:
+            ra = result.extracted_data.get("plate_solver.ra_center")
+            dec = result.extracted_data.get("plate_solver.dec_center")
+            if ra is not None and dec is not None:
+                expected_ra = getattr(self.task, "target_ra_deg", None)
+                expected_dec = getattr(self.task, "target_dec_deg", None)
+                self.daemon.hardware_adapter.update_from_plate_solve(
+                    float(ra),
+                    float(dec),
+                    expected_ra_deg=expected_ra,
+                    expected_dec_deg=expected_dec,
+                )
+
         # Queue for upload
         self._queue_for_upload(filepath, processing_result=result)
 

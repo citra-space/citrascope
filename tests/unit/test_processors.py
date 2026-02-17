@@ -2,13 +2,12 @@
 
 import time
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
 
 from citrascope.processors.abstract_processor import AbstractImageProcessor
-from citrascope.processors.builtin.example_quality_checker import QualityCheckProcessor
 from citrascope.processors.processor_registry import ProcessorRegistry
 from citrascope.processors.processor_result import AggregatedResult, ProcessingContext, ProcessorResult
 from citrascope.tasks.task import Task
@@ -178,12 +177,10 @@ class TestProcessorRegistry:
 
     def test_registry_initialization(self, mock_settings, mock_logger):
         """Test registry initialization."""
-        # Import is done inside __init__, so we need to patch it there
-        with patch("citrascope.processors.builtin.example_quality_checker.QualityCheckProcessor"):
-            registry = ProcessorRegistry(mock_settings, mock_logger)
-            assert registry.settings == mock_settings
-            assert registry.logger == mock_logger
-            assert isinstance(registry.processors, list)
+        registry = ProcessorRegistry(mock_settings, mock_logger)
+        assert registry.settings == mock_settings
+        assert registry.logger == mock_logger
+        assert isinstance(registry.processors, list)
 
     def test_process_all_with_pass_processor(self, mock_settings, mock_logger, processing_context):
         """Test processing with a processor that passes."""
@@ -291,62 +288,3 @@ class TestProcessorRegistry:
 
         assert result.total_time > 0
         assert result.total_time < (end - start) + 0.1  # Allow small margin
-
-
-class TestQualityCheckProcessor:
-    """Tests for the example quality check processor."""
-
-    @pytest.fixture
-    def quality_processor(self):
-        """Create a quality check processor instance."""
-        return QualityCheckProcessor()
-
-    def test_processor_name(self, quality_processor):
-        """Test processor has correct name."""
-        assert quality_processor.name == "quality_checker"
-
-    def test_quality_check_acceptable_image(self, quality_processor, processing_context):
-        """Test quality check with acceptable image."""
-        # Create image with good values
-        processing_context.image_data = np.random.randint(1000, 30000, size=(100, 100), dtype=np.uint16)
-
-        result = quality_processor.process(processing_context)
-
-        assert result.should_upload is True
-        assert result.confidence > 0.5
-        assert "acceptable" in result.reason.lower()
-
-    def test_quality_check_saturated_image(self, quality_processor, processing_context):
-        """Test quality check rejects saturated image."""
-        # Create saturated image
-        processing_context.image_data = np.full((100, 100), 65000, dtype=np.uint16)
-
-        result = quality_processor.process(processing_context)
-
-        assert result.should_upload is False
-        assert "saturated" in result.reason.lower()
-
-    def test_quality_check_dark_image(self, quality_processor, processing_context):
-        """Test quality check rejects dark image."""
-        # Create very dark image
-        processing_context.image_data = np.random.randint(0, 50, size=(100, 100), dtype=np.uint16)
-
-        result = quality_processor.process(processing_context)
-
-        assert result.should_upload is False
-        assert "dark" in result.reason.lower()
-
-    def test_quality_check_extracts_stats(self, quality_processor, processing_context):
-        """Test that quality checker extracts image statistics."""
-        result = quality_processor.process(processing_context)
-
-        assert "max_pixel_value" in result.extracted_data
-        assert "mean_pixel_value" in result.extracted_data
-        assert "std_pixel_value" in result.extracted_data
-
-    def test_quality_check_includes_task_context(self, quality_processor, processing_context):
-        """Test that quality checker includes task context in extracted data."""
-        result = quality_processor.process(processing_context)
-
-        assert result.extracted_data["satellite_name"] == "Test Satellite"
-        assert result.extracted_data["task_id"] == "test-task-123"

@@ -133,7 +133,9 @@ dmypy.json
 as_headers/
 
 certs/
+# Ephemeris: de421.bsp downloaded at runtime if missing (phase angle); do not commit
 de421.bsp
+**/data/ephemeris/*.bsp
 citra_image.fits
 /images/*
 .DS_Store

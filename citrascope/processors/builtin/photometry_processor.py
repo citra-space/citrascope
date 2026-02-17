@@ -184,8 +184,15 @@ class PhotometryProcessor(AbstractImageProcessor):
             )
 
         try:
-            # Load source catalog
-            sources_df = pd.read_csv(catalog_path, delim_whitespace=True, comment="#")
+            # Load source catalog (SExtractor format: no header, cols 4=mag 5=magerr 8=ra 9=dec 10=fwhm)
+            sources_df = pd.read_csv(
+                catalog_path,
+                sep=r"\s+",
+                comment="#",
+                header=None,
+                usecols=[4, 5, 8, 9, 10],
+                names=["mag", "magerr", "ra", "dec", "fwhm"],
+            )
 
             # Get filter name
             filter_name = context.task.assigned_filter_name if context.task else "Clear"

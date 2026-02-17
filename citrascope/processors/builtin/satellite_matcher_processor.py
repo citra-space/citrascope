@@ -14,7 +14,7 @@ from skyfield.sgp4lib import EarthSatellite
 from citrascope.processors.abstract_processor import AbstractImageProcessor
 from citrascope.processors.processor_result import ProcessingContext, ProcessorResult
 
-from .processor_dependencies import check_ephemeris
+from .processor_dependencies import check_ephemeris, get_ephemeris_path
 
 
 class SatelliteMatcherProcessor(AbstractImageProcessor):
@@ -79,10 +79,12 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
         if potential_sats.empty:
             return []
 
-        # Get observer location from context
-        # Note: This assumes location service is available in daemon
+        # Get observer location (runtime: context.daemon from ProcessingQueue; tests: context.daemon or settings.daemon)
         try:
-            location = context.settings.daemon.location_service.get_current_location()
+            daemon = context.daemon or getattr(context.settings, "daemon", None)
+            if not daemon or not getattr(daemon, "location_service", None):
+                raise RuntimeError("No location service available (daemon.location_service)")
+            location = daemon.location_service.get_current_location()
             observer = wgs84.latlon(location["latitude"], location["longitude"], location.get("altitude", 0))
         except Exception as e:
             raise RuntimeError(f"Failed to get observer location: {e}")
@@ -104,8 +106,8 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
         if len(tle_data) < 2:
             raise RuntimeError("Invalid TLE format")
 
-        # Load ephemeris and timescale
-        ephemeris_path = Path(__file__).parent.parent.parent / "data" / "ephemeris" / "de421.bsp"
+        # Load ephemeris and timescale (data/ephemeris/ or repo-root de421.bsp)
+        ephemeris_path = get_ephemeris_path()
         eph = load(str(ephemeris_path))
         ts = load.timescale()
 
@@ -198,8 +200,15 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
             )
 
         try:
-            # Load sources
-            sources_df = pd.read_csv(catalog_path, delim_whitespace=True, comment="#")
+            # Load sources (SExtractor format: no header, cols 4=mag 5=magerr 8=ra 9=dec 10=fwhm)
+            sources_df = pd.read_csv(
+                catalog_path,
+                sep=r"\s+",
+                comment="#",
+                header=None,
+                usecols=[4, 5, 8, 9, 10],
+                names=["mag", "magerr", "ra", "dec", "fwhm"],
+            )
 
             # Match satellites
             satellite_observations = self._match_satellites(

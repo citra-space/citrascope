@@ -2,9 +2,22 @@
 
 import shutil
 from pathlib import Path
-from typing import Optional
 
 import requests
+
+
+def check_pixelemon() -> bool:
+    """Check if Pixelemon (Tetra3) plate solving is available.
+
+    Returns:
+        True if pixelemon can be imported and provides Telescope, TelescopeImage, TetraSolver
+    """
+    try:
+        from pixelemon import Telescope, TelescopeImage, TetraSolver  # noqa: F401
+
+        return True
+    except Exception:
+        return False
 
 
 def check_all_dependencies(settings) -> dict:
@@ -17,20 +30,10 @@ def check_all_dependencies(settings) -> dict:
         Dictionary with dependency check results
     """
     return {
-        "astrometry": check_astrometry(),
+        "pixelemon": check_pixelemon(),
         "sextractor": check_sextractor(),
         "ephemeris": check_ephemeris(),
-        "index_files": check_astrometry_indices(settings.astrometry_index_path),
     }
-
-
-def check_astrometry() -> bool:
-    """Check if Astrometry.net is installed.
-
-    Returns:
-        True if solve-field command is available
-    """
-    return shutil.which("solve-field") is not None
 
 
 def check_sextractor() -> bool:
@@ -42,61 +45,56 @@ def check_sextractor() -> bool:
     return shutil.which("source-extractor") is not None or shutil.which("sex") is not None
 
 
+def get_ephemeris_path() -> Path:
+    """Return path to de421.bsp: first location that exists, otherwise canonical (for download).
+
+    Checked in order: citrascope/data/ephemeris/de421.bsp, then repo-root de421.bsp.
+    """
+    canonical = Path(__file__).parent.parent.parent / "data" / "ephemeris" / "de421.bsp"
+    if canonical.exists():
+        return canonical
+    repo_root = Path(__file__).parent.parent.parent.parent
+    if (repo_root / "de421.bsp").exists():
+        return repo_root / "de421.bsp"
+    return canonical
+
+
 def check_ephemeris() -> bool:
-    """Check if de421.bsp exists, download if missing.
+    """Check if de421.bsp exists; download from NASA NAIF at runtime if missing.
+
+    File is used for phase-angle (Sun/Earth) in the satellite matcher. Not committed;
+    see .gitignore. Looks in data/ephemeris/ then repo root.
 
     Returns:
         True if ephemeris file exists or was successfully downloaded
     """
-    ephemeris_path = Path(__file__).parent.parent.parent / "data" / "ephemeris" / "de421.bsp"
-
-    if ephemeris_path.exists():
+    path = get_ephemeris_path()
+    if path.exists():
         return True
 
-    # Auto-download on first run
+    canonical = Path(__file__).parent.parent.parent / "data" / "ephemeris" / "de421.bsp"
     try:
-        download_ephemeris(ephemeris_path)
+        download_ephemeris(canonical)
         return True
     except Exception:
         return False
 
 
 def download_ephemeris(dest_path: Path) -> None:
-    """Download de421.bsp ephemeris file from NASA NAIF.
+    """Download de421.bsp ephemeris file from NASA NAIF (Sun/Moon/planets for phase angle).
 
     Args:
-        dest_path: Destination path for the ephemeris file
+        dest_path: Destination path for the ephemeris file (e.g. .../data/ephemeris/de421.bsp)
 
     Raises:
-        Exception: If download fails
+        Exception: If download fails (network, timeout, or write error)
     """
     url = "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de421.bsp"
     dest_path.parent.mkdir(parents=True, exist_ok=True)
 
-    response = requests.get(url, stream=True)
+    response = requests.get(url, stream=True, timeout=60)
     response.raise_for_status()
 
     with open(dest_path, "wb") as f:
         for chunk in response.iter_content(chunk_size=8192):
             f.write(chunk)
-
-
-def check_astrometry_indices(index_path: Optional[str]) -> bool:
-    """Check if astrometry index files exist.
-
-    Args:
-        index_path: Path to directory containing index files
-
-    Returns:
-        True if at least one 4100-series index file exists
-    """
-    if not index_path:
-        return False
-
-    path = Path(index_path)
-    if not path.exists():
-        return False
-
-    # Check for at least one 4100-series index file
-    indices = list(path.glob("index-41*.fits"))
-    return len(indices) > 0

@@ -52,5 +52,8 @@ class ProcessingContext:
     # Settings
     settings: Optional[Any]  # CitraScopeSettings instance
 
+    # Daemon (at runtime: for LocationService, etc.; tests can pass Mock)
+    daemon: Optional[Any] = None
+
     # Logging
     logger: Optional[Any] = None  # Logger instance for debugging
