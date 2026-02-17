@@ -1,5 +1,6 @@
 """Unit tests for MSI science processors."""
 
+import json
 import os
 import time
 from pathlib import Path
@@ -24,6 +25,7 @@ def run_from_repo_root():
         os.chdir(prev)
 
 
+from citrascope.elset_cache import ElsetCache
 from citrascope.processors.builtin.photometry_processor import PhotometryProcessor
 from citrascope.processors.builtin.plate_solver_processor import PlateSolverProcessor
 from citrascope.processors.builtin.processor_dependencies import (
@@ -51,6 +53,26 @@ def _first_tle_from_file(tle_path: Path) -> list:
                     return [line1, next_line.rstrip("\n")]
                 break
     return []
+
+
+def _first_three_elsets_from_file(tle_path: Path) -> list:
+    """Read first three TLE pairs from file; return processor-ready list of {satellite_id, name, tle}."""
+    if not tle_path.exists():
+        return []
+    result = []
+    with open(tle_path) as f:
+        for line in f:
+            line = line.rstrip("\n")
+            if line.startswith("1 "):
+                line1 = line
+                next_line = f.readline()
+                if next_line and next_line.startswith("2 "):
+                    line2 = next_line.rstrip("\n")
+                    norad = line2[2:7].strip() if len(line2) >= 7 else "00000"
+                    result.append({"satellite_id": norad, "name": f"SAT-{norad}", "tle": [line1, line2]})
+                    if len(result) >= 3:
+                        break
+    return result
 
 
 @pytest.fixture
@@ -426,6 +448,7 @@ class TestFullPipelineDemoFits:
 
         daemon = Mock()
         daemon.location_service = FakeLocationService()
+        daemon.elset_cache = None  # no hot list: use single-TLE from task (backward compatibility)
         settings.daemon = daemon
 
         working_dir = tmp_path / "working"
@@ -464,3 +487,74 @@ class TestFullPipelineDemoFits:
         # Pipeline ran end-to-end against the FITS
         assert context.working_image_path.suffix == ".new"
         assert context.working_image_path.exists()
+
+    def test_full_pipeline_with_elset_cache_uses_multi_tle(self, tmp_path, run_from_repo_root):
+        """Run full pipeline with daemon.elset_cache populated; matcher uses multi-TLE path, observations match elsets."""
+        if not self.DEMO_FITS.exists():
+            pytest.skip("Demo FITS not found")
+        if not self.TLE_FILE.exists():
+            pytest.skip("TLE file not found")
+        if not check_pixelemon():
+            pytest.skip("Pixelemon not available")
+        if not check_sextractor():
+            pytest.skip("SExtractor not available")
+        if not check_ephemeris():
+            pytest.skip("Ephemeris (de421.bsp) not available")
+
+        elsets = _first_three_elsets_from_file(self.TLE_FILE)
+        if len(elsets) < 3:
+            pytest.skip("Need at least 3 TLE pairs in TLE file")
+
+        # File-backed elset cache with 3 elsets (one is in-frame for demo FITS)
+        cache_file = tmp_path / "elset_cache.json"
+        cache_file.write_text(json.dumps(elsets), encoding="utf-8")
+        elset_cache = ElsetCache(cache_path=cache_file)
+        elset_cache.load_from_file()
+        assert len(elset_cache.get_elsets()) == 3
+        elset_ids = {e["satellite_id"] for e in elsets}
+        elset_names = {e["name"] for e in elsets}
+
+        task = Mock(
+            satelliteName="TEST-SAT",
+            satelliteId="00005",
+            assigned_filter_name="Clear",
+            most_recent_elset={"tle": elsets[0]["tle"]},
+        )
+        settings = Mock()
+        settings.enabled_processors = {}
+
+        class FakeLocationService:
+            def get_current_location(self):
+                return {"latitude": 40.0, "longitude": -111.0, "altitude": 1400.0}
+
+        daemon = Mock()
+        daemon.location_service = FakeLocationService()
+        daemon.elset_cache = elset_cache
+        settings.daemon = daemon
+
+        working_dir = tmp_path / "working"
+        working_dir.mkdir(exist_ok=True)
+        context = ProcessingContext(
+            image_path=self.DEMO_FITS,
+            working_image_path=self.DEMO_FITS,
+            working_dir=working_dir,
+            image_data=None,
+            task=task,
+            telescope_record=None,
+            ground_station_record=None,
+            settings=settings,
+            daemon=daemon,
+            logger=Mock(),
+        )
+
+        registry = ProcessorRegistry(settings, Mock())
+        result = registry.process_all(context)
+
+        assert result.should_upload is True
+        assert result.extracted_data["plate_solver.plate_solved"] is True
+        observations = result.extracted_data.get("satellite_matcher.satellite_observations", [])
+        # Multi-TLE path: we may get one or more matched satellites from the 3 elsets
+        assert isinstance(observations, list)
+        for obs in observations:
+            assert obs.get("norad_id") in elset_ids
+            assert obs.get("name") in elset_names

@@ -81,6 +81,13 @@ class CitraApiClient(AbstractCitraApiClient):
         """Fetch ground station details from /ground-stations/{ground_station_id}"""
         return self._request("GET", f"/ground-stations/{ground_station_id}")
 
+    def get_elsets_latest(self, days: int = 14):
+        """Fetch all latest elsets from GET /elsets/latest for satellite matching hot list.
+
+        Uses a long timeout because the response can be ~26MB.
+        """
+        return self._request("GET", f"/elsets/latest?days={days}", timeout=300.0)
+
     def upload_image(self, task_id, telescope_id, filepath):
         """Upload an image file for a given task."""
         file_size = os.path.getsize(filepath)

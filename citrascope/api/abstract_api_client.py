@@ -49,3 +49,11 @@ class AbstractCitraApiClient(ABC):
         PATCH to /ground-stations to update ground station's GPS location.
         """
         pass
+
+    @abstractmethod
+    def get_elsets_latest(self, days: int = 14):
+        """
+        GET /elsets/latest - fetch all latest elsets (for satellite matching hot list).
+        Returns list of dicts with satelliteId, satelliteName, tle, etc., or None on failure.
+        """
+        pass

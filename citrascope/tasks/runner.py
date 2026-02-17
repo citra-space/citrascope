@@ -159,6 +159,12 @@ class TaskManager:
     def poll_tasks(self):
         while not self._stop_event.is_set():
             try:
+                # Refresh elset hot list when stale (for satellite matcher)
+                if getattr(self.daemon, "elset_cache", None) and self.daemon.telescope_record:
+                    interval_hours = getattr(self.daemon.settings, "elset_refresh_interval_hours", 6)
+                    self.daemon.elset_cache.refresh_if_stale(
+                        self.api_client, self.logger, interval_hours=interval_hours
+                    )
                 self._report_online()
                 tasks = self.api_client.get_telescope_tasks(self.daemon.telescope_record["id"])
 

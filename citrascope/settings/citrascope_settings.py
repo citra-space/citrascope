@@ -96,6 +96,7 @@ class CitraScopeSettings:
 
         # MSI Processor configuration
         # Note: Individual processor enable/disable is handled via enabled_processors dict (already exists)
+        self.elset_refresh_interval_hours: float = config.get("elset_refresh_interval_hours", 6)
 
     def get_images_dir(self) -> Path:
         """Get the path to the images directory.
@@ -149,6 +150,7 @@ class CitraScopeSettings:
             "gps_update_interval_minutes": self.gps_update_interval_minutes,
             "processors_enabled": self.processors_enabled,
             "enabled_processors": self.enabled_processors,
+            "elset_refresh_interval_hours": self.elset_refresh_interval_hours,
         }
 
     def save(self) -> None:

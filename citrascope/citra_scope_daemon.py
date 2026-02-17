@@ -4,6 +4,7 @@ from typing import Optional
 
 from citrascope.api.citra_api_client import AbstractCitraApiClient, CitraApiClient
 from citrascope.api.dummy_api_client import DummyApiClient
+from citrascope.elset_cache import ElsetCache
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
 from citrascope.hardware.adapter_registry import get_adapter_class
 from citrascope.hardware.filter_sync import sync_filters_to_backend
@@ -47,6 +48,10 @@ class CitraScopeDaemon:
 
         # Initialize processor registry
         self.processor_registry = ProcessorRegistry(settings=self.settings, logger=CITRASCOPE_LOGGER)
+
+        # Elset cache for satellite matcher (file-backed; path from platformdirs inside ElsetCache)
+        self.elset_cache = ElsetCache()
+        self.elset_cache.load_from_file()
 
         # Note: Work queues and stage tracking now managed by TaskManager
 

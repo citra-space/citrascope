@@ -55,31 +55,19 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
     ) -> List[Dict[str, Any]]:
         """Propagate TLEs and match detected sources with predicted satellite positions.
 
-        Args:
-            sources: DataFrame with detected sources (columns: ra, dec, mag, fwhm)
-            context: Processing context with task, settings, and image info
-            tracking_mode: Tracking mode ("rate" or "sidereal")
-
-        Returns:
-            List of matched satellite observations with NORAD ID, position, magnitude, etc.
-
-        Raises:
-            RuntimeError: If matching fails
+        Uses elset hot list from daemon.elset_cache when available (multi-TLE); otherwise
+        uses context.task.most_recent_elset (single TLE).
         """
         # Separate stars from satellites by FWHM based on tracking mode
-        # In rate tracking: stars are streaked (high FWHM), satellites are sharp (low FWHM)
-        # In sidereal tracking: opposite
         if tracking_mode == "rate":
-            stars = sources[sources["fwhm"] >= 1.5].copy()
             potential_sats = sources[sources["fwhm"] < 1.5].copy()
         else:
-            stars = sources[sources["fwhm"] < 1.5].copy()
             potential_sats = sources[sources["fwhm"] >= 1.5].copy()
 
         if potential_sats.empty:
             return []
 
-        # Get observer location (runtime: context.daemon from ProcessingQueue; tests: context.daemon or settings.daemon)
+        # Get observer location
         try:
             daemon = context.daemon or getattr(context.settings, "daemon", None)
             if not daemon or not getattr(daemon, "location_service", None):
@@ -89,80 +77,152 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
         except Exception as e:
             raise RuntimeError(f"Failed to get observer location: {e}")
 
-        # Get satellite TLE from task
-        if not context.task:
-            raise RuntimeError("No task context available for satellite matching")
-
-        satellite_name = context.task.satelliteName
-        satellite_id = context.task.satelliteId
-
-        # Get most recent elset from task
-        most_recent_elset = getattr(context.task, "most_recent_elset", None)
-        if not most_recent_elset:
-            raise RuntimeError("No TLE data available in task")
-
-        # Extract TLE lines
-        tle_data = most_recent_elset.get("tle", [])
-        if len(tle_data) < 2:
-            raise RuntimeError("Invalid TLE format")
-
-        # Load ephemeris and timescale (data/ephemeris/ or repo-root de421.bsp)
+        # Load ephemeris and get image time/center from FITS
         ephemeris_path = get_ephemeris_path()
         eph = load(str(ephemeris_path))
         ts = load.timescale()
-
-        # Get image timestamp from FITS header
         with fits.open(context.working_image_path) as hdul:
             header = hdul[0].header
             timestamp_str = header.get("DATE-OBS")
             if not timestamp_str:
                 raise RuntimeError("No DATE-OBS in FITS header")
-
-        # Parse timestamp
+            ra_center = float(header.get("CRVAL1", 0.0))
+            dec_center = float(header.get("CRVAL2", 0.0))
         t = self._parse_fits_timestamp(timestamp_str, ts)
+        sun, earth = eph["sun"], eph["earth"]
 
-        # Create satellite object and propagate
+        # Hot list path: use all elsets from daemon.elset_cache when available
+        elset_cache = getattr(daemon, "elset_cache", None) if daemon else None
+        elsets = (elset_cache.get_elsets() if elset_cache else []) or []
+
+        if elsets:
+            return self._match_satellites_multi_tle(
+                potential_sats, observer, t, sun, earth, ts, elsets, ra_center, dec_center, context, timestamp_str
+            )
+        # Fallback: single TLE from task
+        return self._match_satellites_single_tle(potential_sats, observer, t, sun, earth, ts, context, timestamp_str)
+
+    def _match_satellites_multi_tle(
+        self,
+        potential_sats: pd.DataFrame,
+        observer,
+        t,
+        sun,
+        earth,
+        ts,
+        elsets: List[Dict[str, Any]],
+        ra_center: float,
+        dec_center: float,
+        context: ProcessingContext,
+        timestamp_str: str,
+    ) -> List[Dict[str, Any]]:
+        """Match using hot list: propagate all TLEs, keep in-field (~2 deg), KDTree match."""
+        in_field_deg = 2.0
+        predictions = []  # list of dicts: ra, dec, satellite_id, name, phase_angle
+        for elset in elsets:
+            tle = elset.get("tle") or []
+            if len(tle) < 2:
+                continue
+            sat_id = elset.get("satellite_id") or "unknown"
+            name = elset.get("name") or sat_id
+            try:
+                satellite = EarthSatellite(tle[0], tle[1], name, ts)
+                topocentric = (satellite - observer).at(t)
+                ra, dec, _ = topocentric.radec()
+                ra_deg = ra.hours * 15.0
+                dec_deg = dec.degrees
+                if abs(ra_center - ra_deg) >= in_field_deg or abs(dec_center - dec_deg) >= in_field_deg:
+                    continue
+                geosat = earth + satellite
+                phase_angle = geosat.at(t).observe(sun).separation_from(geosat.at(t).observe(earth)).degrees
+                predictions.append(
+                    {"ra": ra_deg, "dec": dec_deg, "satellite_id": sat_id, "name": name, "phase_angle": phase_angle}
+                )
+            except Exception:
+                continue
+        if not predictions:
+            return []
+        pred_ra_dec = [[p["ra"], p["dec"]] for p in predictions]
+        tree = KDTree(pred_ra_dec)
+        distances, indices = tree.query(potential_sats[["ra", "dec"]].values, distance_upper_bound=1.0 / 60.0)
+        valid_mask = distances < 1.0 / 60.0
+        if not valid_mask.any():
+            return []
+        observations = []
+        filter_name = (context.task.assigned_filter_name if context.task else None) or "Clear"
+        for i in range(len(potential_sats)):
+            if not valid_mask[i]:
+                continue
+            idx = int(indices[i]) if hasattr(indices[i], "__int__") else indices[i]
+            if idx < 0 or idx >= len(predictions):
+                continue
+            p = predictions[idx]
+            row = potential_sats.iloc[i]
+            observations.append(
+                {
+                    "norad_id": p["satellite_id"],
+                    "name": p["name"],
+                    "ra": row["ra"],
+                    "dec": row["dec"],
+                    "mag": row["mag"],
+                    "filter": filter_name,
+                    "timestamp": timestamp_str,
+                    "phase_angle": round(p["phase_angle"], 1),
+                    "fwhm": row["fwhm"],
+                }
+            )
+        return observations
+
+    def _match_satellites_single_tle(
+        self,
+        potential_sats: pd.DataFrame,
+        observer,
+        t,
+        sun,
+        earth,
+        ts,
+        context: ProcessingContext,
+        timestamp_str: str,
+    ) -> List[Dict[str, Any]]:
+        """Match using single TLE from context.task.most_recent_elset."""
+        if not context.task:
+            raise RuntimeError("No task context available for satellite matching")
+        most_recent_elset = getattr(context.task, "most_recent_elset", None)
+        if not most_recent_elset:
+            raise RuntimeError("No TLE data available in task")
+        tle_data = most_recent_elset.get("tle", [])
+        if len(tle_data) < 2:
+            raise RuntimeError("Invalid TLE format")
+        satellite_name = context.task.satelliteName
+        satellite_id = context.task.satelliteId
         satellite = EarthSatellite(tle_data[0], tle_data[1], satellite_name, ts)
         topocentric = (satellite - observer).at(t)
         ra, dec, _ = topocentric.radec()
         ra_deg, dec_deg = ra.hours * 15.0, dec.degrees
-
-        # Calculate phase angle
-        sun = eph["sun"]
-        earth = eph["earth"]
         geosat = earth + satellite
         phase_angle = geosat.at(t).observe(sun).separation_from(geosat.at(t).observe(earth)).degrees
-
-        # Match potential satellites with predicted position
         predicted_pos = [[ra_deg, dec_deg]]
         tree = KDTree(predicted_pos)
-        distances, indices = tree.query(
-            potential_sats[["ra", "dec"]].values, distance_upper_bound=1.0 / 60.0
-        )  # 1 arcmin
-
+        distances, indices = tree.query(potential_sats[["ra", "dec"]].values, distance_upper_bound=1.0 / 60.0)
         valid_mask = distances < 1.0 / 60.0
         if not valid_mask.any():
             return []
-
-        # Build matched observations
-        matched = potential_sats[valid_mask].copy()
         observations = []
-
-        for _, row in matched.iterrows():
+        filter_name = context.task.assigned_filter_name or "Clear"
+        for _, row in potential_sats[valid_mask].iterrows():
             observations.append(
                 {
                     "norad_id": satellite_id,
                     "name": satellite_name,
                     "ra": row["ra"],
                     "dec": row["dec"],
-                    "mag": row["mag"],  # Note: Zero point should be applied before this
-                    "filter": context.task.assigned_filter_name if context.task.assigned_filter_name else "Clear",
+                    "mag": row["mag"],
+                    "filter": filter_name,
                     "timestamp": timestamp_str,
                     "phase_angle": round(phase_angle, 1),
                     "fwhm": row["fwhm"],
                 }
             )
-
         return observations
 
     def process(self, context: ProcessingContext) -> ProcessorResult:

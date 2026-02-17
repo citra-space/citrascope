@@ -441,6 +441,33 @@ class DummyApiClient(AbstractCitraApiClient):
                 self.data["ground_station"]["altitude"] = altitude
             return {"status": "ok"}
 
+    def get_elsets_latest(self, days: int = 14):
+        """Return stub list of elsets (same shape as real API: satelliteId, satelliteName, tle)."""
+        now_iso = datetime.now(timezone.utc).isoformat()
+        stub = [
+            {
+                "satelliteId": "sat-iss",
+                "satelliteName": "ISS",
+                "tle": [
+                    "1 25544U 98067A   24043.12345678  .00002182  00000+0  41420-4 0  9990",
+                    "2 25544  51.6461 208.9163 0001567  96.4656 263.6710 15.54225995123456",
+                ],
+                "creationEpoch": now_iso,
+            },
+            {
+                "satelliteId": "sat-starlink",
+                "satelliteName": "STARLINK-1234",
+                "tle": [
+                    "1 44713U 19074A   24043.12345678  .00001234  00000+0  12345-4 0  9998",
+                    "2 44713  53.0000 123.4567 0001234  90.0000 270.0000 15.06000000123456",
+                ],
+                "creationEpoch": now_iso,
+            },
+        ]
+        if self.logger:
+            self.logger.debug(f"DummyApiClient: get_elsets_latest(days={days}) -> {len(stub)} items")
+        return stub
+
     # Additional methods used by the system
 
     def upload_image(self, task_id, telescope_id, filepath):
