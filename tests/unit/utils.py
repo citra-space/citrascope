@@ -101,3 +101,7 @@ class MockCitraApiClient(AbstractCitraApiClient):
                 ],
             },
         ]
+
+    def upload_optical_observations(self, observations, telescope_record, sensor_location, task_id=None):
+        """Simulate uploading optical observations — always succeeds."""
+        return True

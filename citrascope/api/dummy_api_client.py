@@ -468,6 +468,18 @@ class DummyApiClient(AbstractCitraApiClient):
             self.logger.debug(f"DummyApiClient: get_elsets_latest(days={days}) -> {len(stub)} items")
         return stub
 
+    def upload_optical_observations(
+        self,
+        observations: list,
+        telescope_record: dict,
+        sensor_location: dict,
+        task_id: str | None = None,
+    ) -> bool:
+        """Stub: log and return True (no real upload in dummy mode)."""
+        if self.logger:
+            self.logger.info(f"DummyApiClient: upload_optical_observations({len(observations)} obs, task={task_id})")
+        return True
+
     # Additional methods used by the system
 
     def upload_image(self, task_id, telescope_id, filepath):

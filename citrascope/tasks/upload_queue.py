@@ -32,9 +32,10 @@ class UploadQueue(BaseWorkQueue):
         image_path: str,
         processing_result: Optional[dict],
         api_client,
-        telescope_id: str,
+        telescope_record: dict,
         settings,
         on_complete: Callable,
+        sensor_location: Optional[dict] = None,
     ):
         """
         Submit image for upload.
@@ -45,9 +46,10 @@ class UploadQueue(BaseWorkQueue):
             image_path: Path to image file
             processing_result: Result from processors (or None if skipped)
             api_client: API client instance
-            telescope_id: Telescope ID for upload
+            telescope_record: Full telescope dict from the API (id, angularNoise, spectral bounds, …)
             settings: Settings instance (for keep_images flag)
             on_complete: Callback(task_id, success) when upload finishes
+            sensor_location: Observer location dict with latitude/longitude/altitude keys
         """
         self.logger.info(f"Queuing task {task_id} for upload")
         self.work_queue.put(
@@ -57,25 +59,56 @@ class UploadQueue(BaseWorkQueue):
                 "image_path": image_path,
                 "processing_result": processing_result,
                 "api_client": api_client,
-                "telescope_id": telescope_id,
+                "telescope_record": telescope_record,
+                "sensor_location": sensor_location,
                 "settings": settings,
                 "on_complete": on_complete,
             }
         )
 
     def _execute_work(self, item):
-        """Execute upload work."""
+        """Execute upload work.
+
+        If the processing pipeline produced satellite observations, upload them via
+        POST /observations/optical and skip the FITS upload entirely. Otherwise fall
+        back to uploading the FITS image as before.
+        """
         task_id = item["task_id"]
         task_obj = item.get("task")
 
         self.logger.info(f"[UploadWorker] Uploading task {task_id}")
 
-        # Upload image (can be slow due to network)
-        if task_obj:
-            task_obj.set_status_msg("Uploading image...")
-        upload_result = item["api_client"].upload_image(task_id, item["telescope_id"], item["image_path"])
+        # Decide which upload path to take
+        sat_obs = []
+        pr = item.get("processing_result")
+        if pr and getattr(pr, "extracted_data", None):
+            sat_obs = pr.extracted_data.get("satellite_matcher.satellite_observations") or []
 
-        if not upload_result:
+        telescope_record = item.get("telescope_record")
+        telescope_id = telescope_record["id"] if telescope_record else None
+        sensor_location = item.get("sensor_location")
+        can_upload_obs = bool(sat_obs and telescope_record and sensor_location)
+
+        if can_upload_obs:
+            # Observations-only path: post structured data, no FITS needed
+            if task_obj:
+                task_obj.set_status_msg("Uploading observations...")
+            self.logger.info(f"[UploadWorker] Uploading {len(sat_obs)} satellite observation(s) for task {task_id}")
+            upload_ok = item["api_client"].upload_optical_observations(
+                sat_obs, telescope_record, sensor_location, task_id=task_id
+            )
+        else:
+            # Standard FITS upload path
+            if sat_obs and not (telescope_record and sensor_location):
+                self.logger.warning(
+                    f"[UploadWorker] Have {len(sat_obs)} sat obs but missing telescope_record "
+                    f"or sensor_location — falling back to FITS upload for task {task_id}"
+                )
+            if task_obj:
+                task_obj.set_status_msg("Uploading image...")
+            upload_ok = item["api_client"].upload_image(task_id, telescope_id, item["image_path"])
+
+        if not upload_ok:
             self.logger.error(f"[UploadWorker] Upload failed for {task_id}")
             return (False, None)
 
@@ -88,20 +121,27 @@ class UploadQueue(BaseWorkQueue):
             self.logger.error(f"[UploadWorker] Failed to mark {task_id} complete")
             return (False, None)
 
-        # Success
+        # Success — stash whether we took the obs path so _on_success can decide on cleanup
         self.logger.info(f"[UploadWorker] Task {task_id} completed successfully")
-        return (True, None)
+        return (True, {"obs_path": can_upload_obs})
 
     def _on_success(self, item, result):
         """Handle successful upload completion."""
         task_id = item["task_id"]
         task_obj = item.get("task")
         on_complete = item["on_complete"]
+        obs_path = (result or {}).get("obs_path", False)
 
-        if task_obj:
-            task_obj.set_status_msg("Upload complete")
+        if obs_path:
+            if task_obj:
+                task_obj.set_status_msg("Observations uploaded")
+        else:
+            if task_obj:
+                task_obj.set_status_msg("Upload complete")
 
-        # Cleanup local files if configured
+        # Cleanup local FITS and working files if configured.
+        # This runs on both the obs-only and FITS upload paths — when we took the obs path
+        # the FITS was never sent to the server and should still be cleaned up locally.
         if not item["settings"].keep_images:
             if task_obj:
                 task_obj.set_status_msg("Cleaning up...")

@@ -57,3 +57,25 @@ class AbstractCitraApiClient(ABC):
         Returns list of dicts with satelliteId, satelliteName, tle, etc., or None on failure.
         """
         pass
+
+    @abstractmethod
+    def upload_optical_observations(
+        self,
+        observations: list,
+        telescope_record: dict,
+        sensor_location: dict,
+        task_id: str | None = None,
+    ) -> bool:
+        """
+        POST /observations/optical - submit satellite observations extracted from an image.
+
+        Args:
+            observations: list of observation dicts (from satellite_matcher.satellite_observations)
+            telescope_record: full telescope dict from the API (provides angularNoise, spectral
+                wavelength bounds, and telescope UUID)
+            sensor_location: dict with latitude, longitude, altitude keys (metres)
+            task_id: optional task UUID to attach to each observation
+
+        Returns True on success, False otherwise.
+        """
+        pass

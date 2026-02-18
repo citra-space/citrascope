@@ -137,6 +137,13 @@ class AbstractBaseTelescopeTask(ABC):
 
     def _queue_for_upload(self, filepath: str, processing_result):
         """Queue image for background upload."""
+        # Capture sensor location now (GPS-enhanced if available) so the upload worker
+        # can attach it to optical observations without accessing the daemon later.
+        try:
+            sensor_location = self.daemon.location_service.get_current_location()
+        except Exception:
+            sensor_location = None
+
         # Clear previous status message and set upload message
         self.task.set_status_msg("Queued for upload...")
         self.daemon.task_manager.update_task_stage(self.task.id, "uploading")
@@ -146,7 +153,8 @@ class AbstractBaseTelescopeTask(ABC):
             image_path=filepath,
             processing_result=processing_result,
             api_client=self.api_client,
-            telescope_id=self.daemon.telescope_record["id"],
+            telescope_record=self.daemon.telescope_record,
+            sensor_location=sensor_location,
             settings=self.daemon.settings,
             on_complete=self._on_upload_complete,
         )
