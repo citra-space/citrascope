@@ -1,11 +1,16 @@
 """Plate solving processor using Pixelemon (Tetra3)."""
 
+import math
 import time
 from pathlib import Path
 from typing import Optional
 
 from astropy.io import fits
 from astropy.wcs import WCS
+from astropy.wcs.utils import proj_plane_pixel_scales
+from pixelemon import Telescope
+from pixelemon.optics._base_optical_assembly import BaseOpticalAssembly
+from pixelemon.sensors._base_sensor import BaseSensor
 
 from citrascope.processors.abstract_processor import AbstractImageProcessor
 from citrascope.processors.processor_result import ProcessingContext, ProcessorResult
@@ -13,28 +18,70 @@ from citrascope.processors.processor_result import ProcessingContext, ProcessorR
 from .processor_dependencies import check_pixelemon
 
 
-def _build_telescope_for_image(image_path: Path):
-    """Build a Telescope (sensor + optics) matching the image dimensions in the FITS file."""
-    from pixelemon import Telescope
-    from pixelemon.optics._base_optical_assembly import BaseOpticalAssembly
-    from pixelemon.sensors._base_sensor import BaseSensor
+def _build_telescope_for_image(image_path: Path, context: Optional["ProcessingContext"] = None):
+    """Build a Pixelemon Telescope from telescope_record and FITS binning info.
+
+    telescope_record (from the Citra API) must supply the physical sensor specifications:
+        pixelSize            — physical pixel size in μm (unbinned)
+        focalLength          — focal length in mm
+        horizontalPixelCount — full-resolution pixel count (unbinned)
+        verticalPixelCount   — full-resolution pixel count (unbinned)
+
+    XBINNING / YBINNING are read from the FITS header (default 1) to derive the
+    effective pixel size and image dimensions for the current acquisition.
+
+    focalRatio and imageCircleDiameter are used from telescope_record when present;
+    imageCircleDiameter falls back to the sensor diagonal (geometric minimum).
+
+    Raises:
+        ValueError: If telescope_record is absent or any required field is missing.
+    """
+
+    telescope_record = getattr(context, "telescope_record", None) if context else None
+    if not telescope_record:
+        raise ValueError("telescope_record is required for plate solving — configure the telescope in Citra first")
+
+    required = ("pixelSize", "focalLength", "focalRatio", "horizontalPixelCount", "verticalPixelCount")
+    missing = [f for f in required if not telescope_record.get(f)]
+    if missing:
+        raise ValueError(
+            f"telescope_record is missing required field(s): {', '.join(missing)} — "
+            "populate the telescope sensor specs in Citra to enable plate solving"
+        )
+
+    pixel_size_um = float(telescope_record["pixelSize"])
+    focal_length_mm = float(telescope_record["focalLength"])
+    focal_ratio = float(telescope_record["focalRatio"])
+    h_px = int(telescope_record["horizontalPixelCount"])
+    v_px = int(telescope_record["verticalPixelCount"])
 
     with fits.open(image_path) as hdul:
         header = hdul[0].header
-        nx = int(header.get("NAXIS1", 1280))
-        ny = int(header.get("NAXIS2", 1024))
+        x_binning = int(header.get("XBINNING", 1))
+        y_binning = int(header.get("YBINNING", 1))
 
-    # Default pixel size (um) and optics; can be made configurable via settings
+    effective_pixel_w_um = pixel_size_um * x_binning
+    effective_pixel_h_um = pixel_size_um * y_binning
+    nx = h_px // x_binning
+    ny = v_px // y_binning
+
+    sensor_diag_mm = math.sqrt((nx * effective_pixel_w_um) ** 2 + (ny * effective_pixel_h_um) ** 2) / 1000.0
+    image_circle_diameter = (
+        float(telescope_record["imageCircleDiameter"])
+        if telescope_record.get("imageCircleDiameter")
+        else sensor_diag_mm
+    )
+
     sensor = BaseSensor(
         x_pixel_count=nx,
         y_pixel_count=ny,
-        pixel_width=5.86,
-        pixel_height=5.86,
+        pixel_width=effective_pixel_w_um,
+        pixel_height=effective_pixel_h_um,
     )
     optics = BaseOpticalAssembly(
-        image_circle_diameter=9.61,
-        focal_length=300,
-        focal_ratio=6,
+        focal_length=focal_length_mm,
+        focal_ratio=focal_ratio,
+        image_circle_diameter=image_circle_diameter,
     )
     return Telescope(sensor=sensor, optics=optics)
 
@@ -82,27 +129,6 @@ def _ensure_fits_has_observer_location(image_path: Path, context: ProcessingCont
         return out_path
 
 
-def _solution_to_wcs_header(solution, naxis1: int, naxis2: int) -> fits.Header:
-    """Build a FITS header with WCS from a Pixelemon plate solve solution."""
-    ra_deg = float(solution.right_ascension)
-    dec_deg = float(solution.declination)
-    fov_deg = float(getattr(solution, "estimated_horizontal_fov", 1.0))
-    if fov_deg <= 0:
-        fov_deg = 1.0
-
-    # Pixel scale in deg/pixel (RA typically negative)
-    scale_deg = fov_deg / max(naxis1, 1)
-    cdelt1 = -scale_deg
-    cdelt2 = scale_deg
-
-    w = WCS(naxis=2)
-    w.wcs.crpix = [naxis1 / 2.0 + 0.5, naxis2 / 2.0 + 0.5]
-    w.wcs.crval = [ra_deg, dec_deg]
-    w.wcs.cdelt = [cdelt1, cdelt2]
-    w.wcs.ctype = ["RA---TAN", "DEC--TAN"]
-    return w.to_header()
-
-
 class PlateSolverProcessor(AbstractImageProcessor):
     """
     Plate solving processor using Pixelemon (Tetra3).
@@ -120,12 +146,17 @@ class PlateSolverProcessor(AbstractImageProcessor):
     def _solve_with_pixelemon(self, image_path: Path, context: Optional[ProcessingContext] = None) -> Path:
         """Run Pixelemon (Tetra3) plate solve and write WCS to a .new file.
 
+        Pixelemon internally fits a full 5th-degree SIP WCS from matched star centroids
+        (equivalent to astrometry.net quality). We write that fitted WCS directly to the
+        .new file via image._wcs.to_header(relax=True), which includes the CD rotation
+        matrix and SIP distortion coefficients.
+
         Args:
             image_path: Path to FITS image to solve
             context: Optional processing context (unused; for API consistency)
 
         Returns:
-            Path to .new file with WCS in header
+            Path to .new file with full SIP WCS in header
 
         Raises:
             RuntimeError: If plate solving fails or solution is None
@@ -133,9 +164,9 @@ class PlateSolverProcessor(AbstractImageProcessor):
         from pixelemon import TelescopeImage, TetraSolver
 
         TetraSolver.high_memory()
-        telescope = _build_telescope_for_image(image_path)
+        telescope = _build_telescope_for_image(image_path, context)
         image = TelescopeImage.from_fits_file(image_path, telescope)
-        solve = image.plate_solve
+        solve = image.plate_solve  # triggers internal fit_wcs_from_points(sip_degree=5)
 
         if solve is None:
             raise RuntimeError("Pixelemon plate solving returned no solution")
@@ -146,9 +177,32 @@ class PlateSolverProcessor(AbstractImageProcessor):
             if naxis1 <= 0 or naxis2 <= 0:
                 raise RuntimeError("FITS image has invalid dimensions")
 
-            wcs_header = _solution_to_wcs_header(solve, naxis1, naxis2)
             new_header = hdul[0].header.copy()
-            new_header.update(wcs_header)
+            # Clear any legacy WCS scale/rotation keys from the original FITS before
+            # applying Pixelemon's new solution.  This prevents ambiguous headers where
+            # both a CD matrix and CDELT+PC keywords coexist.  The update() call below
+            # will then write exactly the keywords Pixelemon's fitted WCS requires.
+            for stale_key in (
+                "CD1_1",
+                "CD1_2",
+                "CD2_1",
+                "CD2_2",  # CD-matrix convention
+                "CDELT1",
+                "CDELT2",  # CDELT+PC convention
+                "PC1_1",
+                "PC1_2",
+                "PC2_1",
+                "PC2_2",
+                "CROTA1",
+                "CROTA2",  # deprecated rotation
+            ):
+                new_header.remove(stale_key, ignore_missing=True)
+            # Use Pixelemon's fitted SIP WCS (includes rotation matrix + distortion coefficients).
+            # _wcs is always initialised in from_fits_file and updated by fit_wcs_from_points
+            # during plate_solve; the assertion guards against unexpected library changes.
+            if image._wcs is None:
+                raise RuntimeError("Pixelemon _wcs not available after successful plate solve")
+            new_header.update(image._wcs.to_header(relax=True))
             new_file = image_path.with_suffix(".new")
             fits.writeto(new_file, hdul[0].data, new_header, overwrite=True)
 
@@ -185,7 +239,11 @@ class PlateSolverProcessor(AbstractImageProcessor):
                 header = hdul[0].header
                 ra_center = header.get("CRVAL1")
                 dec_center = header.get("CRVAL2")
-                pixel_scale = abs(header.get("CDELT1", 0)) * 3600  # arcsec/pixel
+                # proj_plane_pixel_scales handles both CDELT and CD-matrix WCS conventions
+                try:
+                    pixel_scale = float(proj_plane_pixel_scales(WCS(header)).mean()) * 3600
+                except Exception:
+                    pixel_scale = 0.0
 
             elapsed = time.time() - start_time
 
