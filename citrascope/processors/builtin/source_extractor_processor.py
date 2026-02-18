@@ -1,6 +1,5 @@
 """Source extraction processor using SExtractor."""
 
-import logging
 import shutil
 import subprocess
 import time
@@ -73,13 +72,14 @@ class SourceExtractorProcessor(AbstractImageProcessor):
 
         return pd.DataFrame(sources)
 
-    def _extract_sources(self, image_path: Path, config_dir: Path, working_dir: Path) -> pd.DataFrame:
+    def _extract_sources(self, image_path: Path, config_dir: Path, working_dir: Path, logger=None) -> pd.DataFrame:
         """Run SExtractor and parse catalog.
 
         Args:
             image_path: Path to FITS image (should be plate-solved with WCS)
             config_dir: Path to directory containing SExtractor config files
             working_dir: Directory for temporary files (catalog will be written here)
+            logger: Logger instance (falls back to module-level citrascope logger if None)
 
         Returns:
             DataFrame with columns: ra, dec, mag, magerr, fwhm
@@ -87,6 +87,10 @@ class SourceExtractorProcessor(AbstractImageProcessor):
         Raises:
             RuntimeError: If SExtractor fails
         """
+        if logger is None:
+            from citrascope.logging import CITRASCOPE_LOGGER
+
+            logger = CITRASCOPE_LOGGER
         # Ensure paths are absolute
         image_path = image_path.resolve()
         config_dir = config_dir.resolve()
@@ -121,7 +125,6 @@ class SourceExtractorProcessor(AbstractImageProcessor):
             ]
 
             # Debug logging to diagnose path issues
-            logger = logging.getLogger("citrascope")
             logger.info(f"Running SExtractor from cwd: {working_dir}")
             logger.info(f"Config files copied to working_dir (default.sex, default.param, default.conv, default.nnw)")
             logger.info(f"SExtractor command: {' '.join(cmd)}")
@@ -202,7 +205,9 @@ class SourceExtractorProcessor(AbstractImageProcessor):
 
         try:
             config_dir = Path(__file__).parent / "sextractor_configs"
-            sources_df = self._extract_sources(context.working_image_path, config_dir, context.working_dir)
+            sources_df = self._extract_sources(
+                context.working_image_path, config_dir, context.working_dir, logger=context.logger
+            )
 
             elapsed = time.time() - start_time
 

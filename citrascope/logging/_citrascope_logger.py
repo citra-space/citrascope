@@ -52,8 +52,10 @@ class ColoredFormatter(logging.Formatter):
         return result
 
 
-CITRASCOPE_LOGGER = logging.getLogger()
+CITRASCOPE_LOGGER = logging.getLogger("citrascope")
 CITRASCOPE_LOGGER.setLevel(logging.INFO)
+# Don't bubble up to the root logger — keeps third-party library logs separate.
+CITRASCOPE_LOGGER.propagate = False
 
 # Console handler with colors
 handler = logging.StreamHandler()
@@ -64,6 +66,14 @@ formatter = ColoredFormatter(fmt=log_format, datefmt=date_format)
 handler.setFormatter(formatter)
 CITRASCOPE_LOGGER.handlers.clear()
 CITRASCOPE_LOGGER.addHandler(handler)
+
+# Silence noisy third-party loggers that write to stdout with their own formats.
+# Setting propagate=False on these prevents them reaching the root logger;
+# raising their level to WARNING keeps truly unexpected errors visible.
+for _noisy_logger in ("pixelemon", "httpx", "httpcore"):
+    _lib_log = logging.getLogger(_noisy_logger)
+    _lib_log.propagate = False
+    _lib_log.setLevel(logging.WARNING)
 
 # File handler will be added by setup_file_logging()
 _file_handler: Optional[TimedRotatingFileHandler] = None

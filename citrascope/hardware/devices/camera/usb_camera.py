@@ -122,7 +122,7 @@ class UsbCamera(AbstractCamera):
                 # Assumption: enumerate_cameras() returns cameras in the same order as OpenCV detection
                 camera_infos = list(enumerate_cameras())
 
-                logging.debug(f"cv2_enumerate_cameras found {len(camera_infos)} cameras")
+                logging.getLogger("citrascope").debug(f"cv2_enumerate_cameras found {len(camera_infos)} cameras")
 
                 # Use the actual device index from camera_info for OpenCV compatibility
                 # Don't actually open cameras here - too wasteful
@@ -132,7 +132,7 @@ class UsbCamera(AbstractCamera):
                     # Note: We're NOT opening cameras to verify or get resolution
                     # Use camera_info.index (the actual OpenCV device index) not enumerate position
                     cameras.append({"value": camera_info.index, "label": name})
-                    logging.debug(f"Found camera with device_id {camera_info.index}: {name}")
+                    logging.getLogger("citrascope").debug(f"Found camera with device_id {camera_info.index}: {name}")
 
             except ImportError:
                 # cv2-enumerate-cameras not installed, use basic detection
