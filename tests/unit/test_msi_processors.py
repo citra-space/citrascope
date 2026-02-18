@@ -444,7 +444,8 @@ class TestFullPipelineDemoFits:
 
         class FakeLocationService:
             def get_current_location(self):
-                return {"latitude": 40.0, "longitude": -111.0, "altitude": 1400.0}
+                # Coordinates from demo FITS SITELAT/SITELONG/SITEELEV header keywords
+                return {"latitude": 31.9070277777778, "longitude": -109.021111111111, "altitude": 1250.0}
 
         daemon = Mock()
         daemon.location_service = FakeLocationService()
@@ -525,7 +526,8 @@ class TestFullPipelineDemoFits:
 
         class FakeLocationService:
             def get_current_location(self):
-                return {"latitude": 40.0, "longitude": -111.0, "altitude": 1400.0}
+                # Coordinates from demo FITS SITELAT/SITELONG/SITEELEV header keywords
+                return {"latitude": 31.9070277777778, "longitude": -109.021111111111, "altitude": 1250.0}
 
         daemon = Mock()
         daemon.location_service = FakeLocationService()
@@ -553,8 +555,9 @@ class TestFullPipelineDemoFits:
         assert result.should_upload is True
         assert result.extracted_data["plate_solver.plate_solved"] is True
         observations = result.extracted_data.get("satellite_matcher.satellite_observations", [])
-        # Multi-TLE path: we may get one or more matched satellites from the 3 elsets
-        assert isinstance(observations, list)
+        # Multi-TLE path: the first 3 elsets (36131, 37748, 40663) include GEO sats in-frame;
+        # at least one should match a detected source at the correct observer location.
+        assert len(observations) >= 1, f"Expected >= 1 satellite detection from elsets {elset_ids}, got 0"
         for obs in observations:
             assert obs.get("norad_id") in elset_ids
             assert obs.get("name") in elset_names
