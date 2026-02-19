@@ -41,6 +41,22 @@ class ProcessingQueue(BaseWorkQueue):
             {"task_id": task_id, "image_path": image_path, "context": context, "on_complete": on_complete}
         )
 
+    def _get_working_dir(self, task_id: str, settings) -> Path:
+        """Return the task-specific working directory path."""
+        if settings:
+            return settings.get_images_dir().parent / "processing" / task_id
+        return Path(tempfile.gettempdir()) / "citrascope" / "processing" / task_id
+
+    def _cleanup_working_dir(self, task_id: str, settings):
+        """Remove the task-specific working directory, logging any failure."""
+        try:
+            working_dir = self._get_working_dir(task_id, settings)
+            if working_dir.exists():
+                shutil.rmtree(working_dir)
+                self.logger.debug(f"[ProcessingWorker] Cleaned up working directory: {working_dir}")
+        except Exception as e:
+            self.logger.warning(f"[ProcessingWorker] Failed to clean up working directory for {task_id}: {e}")
+
     def _execute_work(self, item):
         """Execute image processing work."""
         task_id = item["task_id"]
@@ -51,16 +67,12 @@ class ProcessingQueue(BaseWorkQueue):
         try:
             # Create task-specific working directory
             settings = item["context"].get("settings")
-            if settings:
-                working_dir = settings.get_images_dir().parent / "processing" / task_id
-            else:
-                # Fallback to temp directory if settings not available
-                working_dir = Path(tempfile.gettempdir()) / "citrascope" / "processing" / task_id
-
+            working_dir = self._get_working_dir(task_id, settings)
             working_dir.mkdir(parents=True, exist_ok=True)
             self.logger.debug(f"[ProcessingWorker] Created working directory: {working_dir}")
 
-            # Build processing context (daemon for LocationService at runtime)
+            # Build processing context, injecting specific services rather than the whole daemon
+            daemon = item["context"].get("daemon")
             context = ProcessingContext(
                 image_path=item["image_path"],
                 working_image_path=item["image_path"],  # Initialize to original image
@@ -70,12 +82,10 @@ class ProcessingQueue(BaseWorkQueue):
                 telescope_record=item["context"].get("telescope_record"),
                 ground_station_record=item["context"].get("ground_station_record"),
                 settings=item["context"].get("settings"),
-                daemon=item["context"].get("daemon"),
+                location_service=getattr(daemon, "location_service", None),
+                elset_cache=getattr(daemon, "elset_cache", None),
                 logger=self.logger,  # Pass logger to processors
             )
-
-            # Get processor registry from daemon
-            daemon = item["context"]["daemon"]
             result = daemon.processor_registry.process_all(context)
 
             # Success
@@ -96,18 +106,7 @@ class ProcessingQueue(BaseWorkQueue):
             task_obj.set_status_msg("Processing complete")
 
         # Clean up working directory on success
-        try:
-            settings = item["context"].get("settings")
-            if settings:
-                working_dir = settings.get_images_dir().parent / "processing" / task_id
-            else:
-                working_dir = Path(tempfile.gettempdir()) / "citrascope" / "processing" / task_id
-
-            if working_dir.exists():
-                shutil.rmtree(working_dir)
-                self.logger.debug(f"[ProcessingWorker] Cleaned up working directory: {working_dir}")
-        except Exception as e:
-            self.logger.warning(f"[ProcessingWorker] Failed to clean up working directory for {task_id}: {e}")
+        self._cleanup_working_dir(task_id, item["context"].get("settings"))
 
         on_complete(task_id, result)
 
@@ -121,6 +120,9 @@ class ProcessingQueue(BaseWorkQueue):
 
         if task_obj:
             task_obj.set_status_msg("Processing permanently failed (uploading raw image)")
+
+        # Clean up working directory even on failure to avoid disk accumulation
+        self._cleanup_working_dir(task_id, item["context"].get("settings"))
 
         # Fail-open: notify with None result (will upload raw image)
         on_complete(task_id, None)

@@ -8,12 +8,20 @@
                             <div class="d-flex align-items-center gap-2">
                                 <i class="bi bi-cloud-arrow-up"></i>
                                 <h5 class="mb-0">API Configuration</h5>
-                                <small class="text-muted" x-show="!apiCardExpanded" x-text="$store.citrascope.apiEndpoint === 'production' ? 'Production' : ($store.citrascope.apiEndpoint === 'development' ? 'Development' : 'Custom')"></small>
+                                <small class="text-muted" x-show="!apiCardExpanded && !$store.citrascope.config.use_dummy_api" x-text="$store.citrascope.apiEndpoint === 'production' ? 'Production' : ($store.citrascope.apiEndpoint === 'development' ? 'Development' : 'Custom')"></small>
+                                <span x-show="!apiCardExpanded && $store.citrascope.config.use_dummy_api"
+                                      class="badge bg-warning text-dark">
+                                    <i class="bi bi-exclamation-triangle-fill me-1"></i>Dummy API
+                                </span>
                             </div>
                             <i class="bi" :class="apiCardExpanded ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
                         </div>
                         <div class="card-body" x-show="apiCardExpanded">
-                            <div class="row g-3">
+                            <div x-show="$store.citrascope.config.use_dummy_api"
+                                 class="alert alert-warning mb-3 py-2" role="alert">
+                                <i class="bi bi-exclamation-triangle-fill me-2"></i>Dummy API is active — these settings are ignored. You can change this in Advanced Settings below.
+                            </div>
+                            <div class="row g-3" :class="$store.citrascope.config.use_dummy_api ? 'opacity-50' : ''">
                                 <div class="col-12">
                                     <label for="apiEndpoint" class="form-label">API Endpoint</label>
                                     <select id="apiEndpoint" class="form-select" x-model="$store.citrascope.apiEndpoint">
@@ -48,18 +56,6 @@
                                 <div class="col-12 col-md-6">
                                     <label for="telescopeId" class="form-label">Telescope ID <span class="text-danger">*</span></label>
                                     <input type="text" id="telescopeId" class="form-control" placeholder="Enter telescope ID" required x-model="$store.citrascope.config.telescope_id">
-                                </div>
-                                <div class="col-12">
-                                    <div class="form-check mt-2">
-                                        <input class="form-check-input" type="checkbox" id="use_dummy_api"
-                                               x-model="$store.citrascope.config.use_dummy_api">
-                                        <label class="form-check-label" for="use_dummy_api">
-                                            Use Dummy API (Local Testing)
-                                        </label>
-                                    </div>
-                                    <small class="text-muted ms-4">
-                                        Use local task file instead of real API server for testing
-                                    </small>
                                 </div>
                             </div>
                         </div>
@@ -234,7 +230,7 @@
                                 <i class="bi bi-sliders"></i>
                                 <h5 class="mb-0">Advanced Settings</h5>
                                 <small class="text-muted" x-show="!advancedCardExpanded"
-                                       x-text="($store.citrascope.config.log_level || 'INFO') + ' • ' + ($store.citrascope.config.keep_images ? 'Keep images' : 'Delete images')"></small>
+                                       x-text="($store.citrascope.config.log_level || 'INFO') + ' • ' + ($store.citrascope.config.keep_images ? 'Keep images' : 'Delete images') + ($store.citrascope.config.use_dummy_api ? ' • Dummy API' : '')"></small>
                             </div>
                             <i class="bi" :class="advancedCardExpanded ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
                         </div>
@@ -284,6 +280,20 @@
                                             Images directory: <span class="text-secondary" x-text="$store.citrascope.config.images_dir_path || 'Loading...'">Loading...</span>
                                         </small>
                                     </div>
+                                </div>
+
+                                <!-- Development -->
+                                <div class="col-12">
+                                    <hr class="border-secondary">
+                                    <h6 class="text-muted mb-3"><i class="bi bi-code-slash me-2"></i>Development</h6>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="use_dummy_api"
+                                               x-model="$store.citrascope.config.use_dummy_api">
+                                        <label class="form-check-label" for="use_dummy_api">
+                                            Use Dummy API (Local Testing)
+                                        </label>
+                                    </div>
+                                    <small class="text-muted ms-4">Use a mock API server for testing, overrides api settings above</small>
                                 </div>
                             </div>
                         </div>

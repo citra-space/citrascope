@@ -386,14 +386,11 @@ class TestPixelemonDemoFits:
         working_dir = tmp_path / "working"
         working_dir.mkdir(exist_ok=True)
 
-        # Provide observer location via daemon (LocationService); processor injects into working copy for Pixelemon
+        # Provide observer location via location_service; processor injects into working copy for Pixelemon
         class FakeLocationService:
             def get_current_location(self):
                 return {"latitude": 40.0, "longitude": -111.0, "altitude": 1400.0}
 
-        daemon = Mock()
-        daemon.location_service = FakeLocationService()
-        mock_settings.daemon = daemon
         context = ProcessingContext(
             image_path=self.DEMO_FITS,
             working_image_path=self.DEMO_FITS,
@@ -403,7 +400,7 @@ class TestPixelemonDemoFits:
             telescope_record=_PLANEWAVE_TELESCOPE_RECORD,
             ground_station_record=None,
             settings=mock_settings,
-            daemon=daemon,
+            location_service=FakeLocationService(),
             logger=Mock(),
         )
 
@@ -461,7 +458,6 @@ class TestFullPipelineDemoFits:
             most_recent_elset={"tle": tle_lines},
         )
 
-        # Settings: enabled_processors (default all on), daemon.location_service
         settings = Mock()
         settings.enabled_processors = {}
 
@@ -470,14 +466,8 @@ class TestFullPipelineDemoFits:
                 # Coordinates from demo FITS SITELAT/SITELONG/SITEELEV header keywords
                 return {"latitude": 31.9070277777778, "longitude": -109.021111111111, "altitude": 1250.0}
 
-        daemon = Mock()
-        daemon.location_service = FakeLocationService()
-        daemon.elset_cache = None  # no hot list: use single-TLE from task (backward compatibility)
-        settings.daemon = daemon
-
         working_dir = tmp_path / "working"
         working_dir.mkdir(exist_ok=True)
-        # Provide observer location via daemon (LocationService); plate solver injects into working copy for Pixelemon
         context = ProcessingContext(
             image_path=self.DEMO_FITS,
             working_image_path=self.DEMO_FITS,
@@ -487,7 +477,8 @@ class TestFullPipelineDemoFits:
             telescope_record=_PLANEWAVE_TELESCOPE_RECORD,
             ground_station_record=None,
             settings=settings,
-            daemon=daemon,
+            location_service=FakeLocationService(),
+            elset_cache=None,  # no hot list: use single-TLE from task (backward compatibility)
             logger=Mock(),
         )
 
@@ -552,11 +543,6 @@ class TestFullPipelineDemoFits:
                 # Coordinates from demo FITS SITELAT/SITELONG/SITEELEV header keywords
                 return {"latitude": 31.9070277777778, "longitude": -109.021111111111, "altitude": 1250.0}
 
-        daemon = Mock()
-        daemon.location_service = FakeLocationService()
-        daemon.elset_cache = elset_cache
-        settings.daemon = daemon
-
         working_dir = tmp_path / "working"
         working_dir.mkdir(exist_ok=True)
         context = ProcessingContext(
@@ -568,7 +554,8 @@ class TestFullPipelineDemoFits:
             telescope_record=_PLANEWAVE_TELESCOPE_RECORD,
             ground_station_record=None,
             settings=settings,
-            daemon=daemon,
+            location_service=FakeLocationService(),
+            elset_cache=elset_cache,
             logger=Mock(),
         )
 
@@ -703,11 +690,6 @@ class TestSatelliteMatcherProcessor:
                 # Coordinates from demo FITS SITELAT/SITELONG/SITEELEV header keywords
                 return {"latitude": 31.9070277777778, "longitude": -109.021111111111, "altitude": 1250.0}
 
-        daemon = Mock()
-        daemon.location_service = FakeLocationService()
-        daemon.elset_cache = elset_cache
-        settings.daemon = daemon
-
         context = ProcessingContext(
             image_path=self.DEMO_FITS,
             working_image_path=wcs_fits,  # pre-solved reference FITS
@@ -717,7 +699,8 @@ class TestSatelliteMatcherProcessor:
             telescope_record=None,
             ground_station_record=None,
             settings=settings,
-            daemon=daemon,
+            location_service=FakeLocationService(),
+            elset_cache=elset_cache,
             logger=Mock(),
         )
 

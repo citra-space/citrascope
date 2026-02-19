@@ -105,10 +105,8 @@ def _ensure_fits_has_observer_location(image_path: Path, context: ProcessingCont
             return image_path
         location = None
         try:
-            # Runtime: use context.daemon (set by ProcessingQueue). Tests: can use context.daemon or settings.daemon.
-            daemon = context.daemon or getattr(context.settings, "daemon", None)
-            if daemon and getattr(daemon, "location_service", None):
-                location = daemon.location_service.get_current_location()
+            if context.location_service:
+                location = context.location_service.get_current_location()
         except Exception:
             pass
         if not location or not isinstance(location, dict):

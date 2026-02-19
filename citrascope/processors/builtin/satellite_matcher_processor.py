@@ -69,10 +69,9 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
 
         # Get observer location
         try:
-            daemon = context.daemon or getattr(context.settings, "daemon", None)
-            if not daemon or not getattr(daemon, "location_service", None):
-                raise RuntimeError("No location service available (daemon.location_service)")
-            location = daemon.location_service.get_current_location()
+            if not context.location_service:
+                raise RuntimeError("No location service available")
+            location = context.location_service.get_current_location()
             observer = wgs84.latlon(location["latitude"], location["longitude"], location.get("altitude", 0))
         except Exception as e:
             raise RuntimeError(f"Failed to get observer location: {e}")
@@ -91,9 +90,8 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
         t = self._parse_fits_timestamp(timestamp_str, ts)
         sun, earth = eph["sun"], eph["earth"]
 
-        # Hot list path: use all elsets from daemon.elset_cache when available
-        elset_cache = getattr(daemon, "elset_cache", None) if daemon else None
-        elsets = (elset_cache.get_elsets() if elset_cache else []) or []
+        # Hot list path: use all elsets from context.elset_cache when available
+        elsets = (context.elset_cache.get_elsets() if context.elset_cache else []) or []
 
         if elsets:
             return self._match_satellites_multi_tle(
