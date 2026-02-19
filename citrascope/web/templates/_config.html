@@ -133,8 +133,8 @@
                                                              title() {
                                                                  const s = $store.citrascope.status?.pipeline_stats?.processors?.[processor.name];
                                                                  if (!s) return '';
-                                                                 const ok = s.runs - s.failures;
-                                                                 return `${ok} ok · ${s.failures} failed · ${s.runs} runs`;
+                                                                const ok = s.runs - s.failures;
+                                                                return `${ok} ok · ${s.failures} failed`;
                                                              }
                                                          })">
                                                         <div class="progress-bar bg-success" role="progressbar"

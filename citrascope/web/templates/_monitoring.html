@@ -24,13 +24,15 @@
                      title() {
                          const s = $store.citrascope.status?.pipeline_stats?.{{ stage }};
                          if (!s) return '';
-                         return `${s.successes} ok · ${s.permanent_failures} failed · ${s.attempts} attempts`;
+                         const retries = s.attempts - s.successes - s.permanent_failures;
+                         const retrySuffix = retries > 0 ? ` · ${retries} retr${retries === 1 ? 'y' : 'ies'}` : '';
+                         return `${s.successes} ok · ${s.permanent_failures} failed${retrySuffix}`;
                      }
                  })">
                 <div class="progress-bar bg-success" role="progressbar"
-                     :style="`width: ${($store.citrascope.status.pipeline_stats.{{ stage }}.successes / $store.citrascope.status.pipeline_stats.{{ stage }}.attempts) * 100}%`"></div>
+                     :style="`width: ${(() => { const s = $store.citrascope.status.pipeline_stats.{{ stage }}; const r = s.successes + s.permanent_failures; return r > 0 ? (s.successes / r) * 100 : 0; })()}%`"></div>
                 <div class="progress-bar bg-danger" role="progressbar"
-                     :style="`width: ${($store.citrascope.status.pipeline_stats.{{ stage }}.permanent_failures / $store.citrascope.status.pipeline_stats.{{ stage }}.attempts) * 100}%`"></div>
+                     :style="`width: ${(() => { const s = $store.citrascope.status.pipeline_stats.{{ stage }}; const r = s.successes + s.permanent_failures; return r > 0 ? (s.permanent_failures / r) * 100 : 0; })()}%`"></div>
             </div>
             {{ task_list(stage) }}
         </div>
