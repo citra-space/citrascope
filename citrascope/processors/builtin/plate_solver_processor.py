@@ -15,7 +15,7 @@ from pixelemon.sensors._base_sensor import BaseSensor
 from citrascope.processors.abstract_processor import AbstractImageProcessor
 from citrascope.processors.processor_result import ProcessingContext, ProcessorResult
 
-from .processor_dependencies import check_pixelemon
+from .processor_dependencies import check_pixelemon, normalize_fits_timestamp
 
 
 def _build_telescope_for_image(image_path: Path, context: Optional["ProcessingContext"] = None):
@@ -123,6 +123,12 @@ def _ensure_fits_has_observer_location(image_path: Path, context: ProcessingCont
         new_header["SITELAT"] = float(lat)
         new_header["SITELONG"] = float(lon)
         new_header["SITEALT"] = float(alt)
+
+        # Pixelemon parses DATE-OBS internally via fromisoformat(); normalize to
+        # 6 fractional digits so it works on Python 3.10 as well as 3.11+.
+        if "DATE-OBS" in new_header:
+            new_header["DATE-OBS"] = normalize_fits_timestamp(new_header["DATE-OBS"])
+
         fits.writeto(out_path, hdul[0].data, new_header, overwrite=True)
         return out_path
 

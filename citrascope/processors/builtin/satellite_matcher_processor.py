@@ -13,7 +13,7 @@ from skyfield.sgp4lib import EarthSatellite
 from citrascope.processors.abstract_processor import AbstractImageProcessor
 from citrascope.processors.processor_result import ProcessingContext, ProcessorResult
 
-from .processor_dependencies import check_ephemeris, get_ephemeris_path
+from .processor_dependencies import check_ephemeris, get_ephemeris_path, normalize_fits_timestamp
 
 
 class SatelliteMatcherProcessor(AbstractImageProcessor):
@@ -41,8 +41,7 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
         Returns:
             Skyfield Time object
         """
-        # Parse ISO format: YYYY-MM-DDTHH:MM:SS.ssssss
-        dt = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(normalize_fits_timestamp(timestamp_str).replace("Z", "+00:00"))
 
         # Convert to Skyfield time
         t = ts.utc(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second + dt.microsecond / 1e6)

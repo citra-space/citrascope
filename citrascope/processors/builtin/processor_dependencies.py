@@ -6,6 +6,21 @@ from pathlib import Path
 import requests
 
 
+def normalize_fits_timestamp(timestamp: str) -> str:
+    """Truncate FITS DATE-OBS fractional seconds to 6 digits (microseconds).
+
+    NINA on Windows writes DATE-OBS with 7 fractional digits using Windows
+    FILETIME (100ns) resolution, e.g. "2025-11-12T01:38:11.1054519".
+    Python 3.10's datetime.fromisoformat() only accepts up to 6 fractional
+    digits; 3.11+ relaxed this restriction. Truncate here so any downstream
+    fromisoformat() call is safe on all supported Python versions.
+    """
+    if timestamp and "." in timestamp:
+        dot = timestamp.index(".")
+        return timestamp[: dot + 7]  # dot + 6 digits = microseconds
+    return timestamp
+
+
 def check_pixelemon() -> bool:
     """Check if Pixelemon (Tetra3) plate solving is available.
 
