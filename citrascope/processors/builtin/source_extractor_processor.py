@@ -151,9 +151,13 @@ class SourceExtractorProcessor(AbstractImageProcessor):
                 raise RuntimeError(f"SExtractor failed: {result.stderr}")
 
         finally:
-            # Clean up symlink
+            # Clean up symlink and any config files copied into working_dir
             if image_symlink.exists():
                 image_symlink.unlink()
+            for config_file in ["default.sex", "default.param", "default.conv", "default.nnw"]:
+                cfg = working_dir / config_file
+                if cfg.exists():
+                    cfg.unlink()
 
         # Parse catalog
         sources = self._parse_sex_catalog(catalog_path)
