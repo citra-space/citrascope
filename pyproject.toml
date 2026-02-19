@@ -46,7 +46,8 @@ dependencies = [
   "astropy>=5.0.0",
   "pandas>=2.0.0",
   "scipy>=1.11.0",
-  "pixelemon",
+  "pixelemon>=0.7.0",
+  "keplemon>=3.6.3",
   "plotly", # required by pixelemon
 ]
 

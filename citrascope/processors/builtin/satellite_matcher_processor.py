@@ -2,12 +2,14 @@
 
 import math
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 
-import keplemon._keplemon as _k
+import astropy.units as u
 import pandas as pd
+from astropy.coordinates import get_body_barycentric_posvel
 from astropy.io import fits
+from astropy.time import Time as AstropyTime
 from keplemon import time as ktime
 from keplemon.bodies import Observatory, Satellite
 from keplemon.elements import TLE
@@ -45,6 +47,8 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
             ktime.Epoch in UTC
         """
         dt = datetime.fromisoformat(normalize_fits_timestamp(timestamp_str).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
         return ktime.Epoch.from_datetime(dt)
 
     def _match_satellites(
@@ -82,8 +86,11 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
             dec_center = float(header.get("CRVAL2", 0.0))
         epoch = self._parse_fits_timestamp(timestamp_str)
 
-        # Sun position (km, J2000/ECI) from Keplemon's bundled JPL ephemeris
-        sun_pos_km, _ = _k.astro_func_interface.get_jpl_sun_and_moon_position(epoch.days_since_1950)
+        # Sun position (km, J2000/ECI) via astropy ERFA — no external ephemeris file required
+        _t = AstropyTime(epoch.to_datetime())
+        _sun_bary, _ = get_body_barycentric_posvel("sun", _t)
+        _earth_bary, _ = get_body_barycentric_posvel("earth", _t)
+        sun_pos_km = (_sun_bary.xyz - _earth_bary.xyz).to(u.km).value
 
         # Observer position (km, J2000)
         obs_state = obs.get_state_at_epoch(epoch).to_frame(ReferenceFrame.J2000)
