@@ -1,5 +1,7 @@
 """Registry for managing and executing image processors."""
 
+import copy
+import threading
 import time
 from pathlib import Path
 from typing import List
@@ -36,9 +38,20 @@ class ProcessorRegistry:
             SatelliteMatcherProcessor(),  # MSI step 4: 1-2s (requires photometry)
         ]
 
+        # Per-processor lifetime stats — lock gives atomic multi-field snapshots in get_processor_stats().
+        self._stats_lock = threading.Lock()
+        self._processor_stats: dict = {
+            p.name: {"runs": 0, "failures": 0, "last_failure_reason": None} for p in self.processors
+        }
+
         # Log registered processors on startup
         processor_names = [p.name for p in self.processors]
         self.logger.info(f"ProcessorRegistry initialized with {len(self.processors)} processors: {processor_names}")
+
+    def get_processor_stats(self) -> dict:
+        """Return a consistent snapshot of per-processor lifetime stats."""
+        with self._stats_lock:
+            return copy.deepcopy(self._processor_stats)
 
     def get_all_processors(self) -> List[dict]:
         """Get metadata for all processors (enabled and disabled).
@@ -98,6 +111,15 @@ class ProcessorRegistry:
             results.append(result)
 
             proc_elapsed = time.time() - proc_start
+
+            # Update per-processor stats (key may be absent for processors injected after __init__)
+            with self._stats_lock:
+                s = self._processor_stats.get(processor.name)
+                if s is not None:
+                    s["runs"] += 1
+                    if result.confidence == 0.0:
+                        s["failures"] += 1
+                        s["last_failure_reason"] = result.reason
 
             # Log failures as warnings, successes as info
             if result.confidence == 0.0 or not result.should_upload:

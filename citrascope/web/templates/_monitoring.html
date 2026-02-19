@@ -1,3 +1,42 @@
+    {#
+        stage_box(stage, label, icon, color)
+        stage  — Alpine store key, e.g. 'imaging'
+        label  — display heading, e.g. 'Imaging'
+        icon   — bootstrap-icons name, e.g. 'camera-fill'
+        color  — Bootstrap color name for badge/icon, e.g. 'primary'
+        col_attrs — extra HTML attrs on the col div, e.g. x-show="..."
+    #}
+    {% macro stage_box(stage, label, icon, color, col_attrs='') %}
+    <div class="col-md" {{ col_attrs }}>
+        <div class="border border-secondary rounded p-3 h-100">
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <i class="bi bi-{{ icon }} text-{{ color }}"></i>
+                <h6 class="mb-0">{{ label }}</h6>
+                <span class="badge bg-{{ color }}{% if color == 'warning' %} text-dark{% endif %} ms-auto"
+                      x-show="$store.citrascope.status?.tasks_by_stage?.{{ stage }}?.length > 0"
+                      x-text="$store.citrascope.status.tasks_by_stage.{{ stage }}.length"></span>
+            </div>
+            <div class="progress mb-2" style="height: 4px; cursor: default;"
+                 x-show="$store.citrascope.status?.pipeline_stats?.{{ stage }}?.attempts > 0"
+                 x-init="new bootstrap.Tooltip($el, {
+                     placement: 'top',
+                     trigger: 'hover',
+                     title() {
+                         const s = $store.citrascope.status?.pipeline_stats?.{{ stage }};
+                         if (!s) return '';
+                         return `${s.successes} ok · ${s.permanent_failures} failed · ${s.attempts} attempts`;
+                     }
+                 })">
+                <div class="progress-bar bg-success" role="progressbar"
+                     :style="`width: ${($store.citrascope.status.pipeline_stats.{{ stage }}.successes / $store.citrascope.status.pipeline_stats.{{ stage }}.attempts) * 100}%`"></div>
+                <div class="progress-bar bg-danger" role="progressbar"
+                     :style="`width: ${($store.citrascope.status.pipeline_stats.{{ stage }}.permanent_failures / $store.citrascope.status.pipeline_stats.{{ stage }}.attempts) * 100}%`"></div>
+            </div>
+            {{ task_list(stage) }}
+        </div>
+    </div>
+    {% endmacro %}
+
     <!-- Macro for task list display -->
     {% macro task_list(stage_name) %}
         <template x-if="!$store.citrascope.status?.tasks_by_stage?.{{ stage_name }}?.length">
@@ -205,62 +244,34 @@
             <div class="row g-3 mb-3">
                 <div class="col-12">
                     <div class="card bg-dark text-light border-secondary">
-                        <div class="card-header">
-                            <i class="bi bi-lightning-charge-fill me-2"></i>Active Tasks
+                        <div class="card-header d-flex align-items-center justify-content-between">
+                            <span><i class="bi bi-lightning-charge-fill me-2"></i>Active Tasks</span>
+                            <span class="text-muted small"
+                                  x-show="$store.citrascope.status?.pipeline_stats?.tasks?.started > 0">
+                                <span x-text="$store.citrascope.status.pipeline_stats.tasks.started"></span> run &middot;
+                                <span class="text-success" x-text="$store.citrascope.status.pipeline_stats.tasks.succeeded"></span> ok
+                                <template x-if="$store.citrascope.status.pipeline_stats.tasks.failed > 0">
+                                    <span> &middot; <span class="text-danger" x-text="$store.citrascope.status.pipeline_stats.tasks.failed"></span> failed</span>
+                                </template>
+                            </span>
                         </div>
                         <div class="card-body">
                             <div class="row g-3 align-items-stretch">
-                                <!-- Imaging Stage -->
-                                <div class="col-md">
-                                    <div class="border border-secondary rounded p-3 h-100">
-                                        <div class="d-flex align-items-center gap-2 mb-3">
-                                            <i class="bi bi-camera-fill text-primary"></i>
-                                            <h6 class="mb-0">Imaging</h6>
-                                            <span class="badge bg-primary ms-auto"
-                                                  x-show="$store.citrascope.status?.tasks_by_stage?.imaging?.length > 0"
-                                                  x-text="$store.citrascope.status.tasks_by_stage.imaging.length"></span>
-                                        </div>
-                                        {{ task_list('imaging') }}
-                                    </div>
-                                </div>
+                                {{ stage_box('imaging',    'Imaging',    'camera-fill',       'primary') }}
 
                                 <!-- Arrow 1 (Imaging → Processing or Uploading) -->
                                 <div class="col-auto d-none d-md-flex align-items-center px-2">
                                     <i class="bi bi-arrow-right text-secondary" style="font-size: 1.5rem;"></i>
                                 </div>
 
-                                <!-- Processing Stage (hidden when processors disabled) -->
-                                <div class="col-md" x-show="$store.citrascope.config?.processors_enabled">
-                                    <div class="border border-secondary rounded p-3 h-100">
-                                        <div class="d-flex align-items-center gap-2 mb-3">
-                                            <i class="bi bi-gear-fill text-warning"></i>
-                                            <h6 class="mb-0">Processing</h6>
-                                            <span class="badge bg-warning text-dark ms-auto"
-                                                  x-show="$store.citrascope.status?.tasks_by_stage?.processing?.length > 0"
-                                                  x-text="$store.citrascope.status.tasks_by_stage.processing.length"></span>
-                                        </div>
-                                        {{ task_list('processing') }}
-                                    </div>
-                                </div>
+                                {{ stage_box('processing', 'Processing', 'gear-fill',          'warning', 'x-show="$store.citrascope.config?.processors_enabled"') }}
 
                                 <!-- Arrow 2 (Processing → Uploading, only shown when processing enabled) -->
                                 <div class="col-auto align-items-center px-2" x-show="$store.citrascope.config?.processors_enabled" :class="{'d-flex': $store.citrascope.config?.processors_enabled}">
                                     <i class="bi bi-arrow-right text-secondary d-none d-md-inline-block" style="font-size: 1.5rem;"></i>
                                 </div>
 
-                                <!-- Uploading Stage -->
-                                <div class="col-md">
-                                    <div class="border border-secondary rounded p-3 h-100">
-                                        <div class="d-flex align-items-center gap-2 mb-3">
-                                            <i class="bi bi-cloud-upload-fill text-success"></i>
-                                            <h6 class="mb-0">Submission</h6>
-                                            <span class="badge bg-success ms-auto"
-                                                  x-show="$store.citrascope.status?.tasks_by_stage?.uploading?.length > 0"
-                                                  x-text="$store.citrascope.status.tasks_by_stage.uploading.length"></span>
-                                        </div>
-                                        {{ task_list('uploading') }}
-                                    </div>
-                                </div>
+                                {{ stage_box('uploading',  'Submission', 'cloud-upload-fill',  'success') }}
                             </div>
                         </div>
                     </div>

@@ -124,6 +124,29 @@
                                                     </label>
                                                 </div>
                                                 <small class="text-muted ms-4 d-block" x-text="processor.description"></small>
+                                                <div class="ms-4 mt-1"
+                                                     x-show="$store.citrascope.status?.pipeline_stats?.processors?.[processor.name]?.runs > 0">
+                                                    <div class="progress" style="height: 3px; cursor: default;"
+                                                         x-init="new bootstrap.Tooltip($el, {
+                                                             placement: 'top',
+                                                             trigger: 'hover',
+                                                             title() {
+                                                                 const s = $store.citrascope.status?.pipeline_stats?.processors?.[processor.name];
+                                                                 if (!s) return '';
+                                                                 const ok = s.runs - s.failures;
+                                                                 return `${ok} ok · ${s.failures} failed · ${s.runs} runs`;
+                                                             }
+                                                         })">
+                                                        <div class="progress-bar bg-success" role="progressbar"
+                                                             :style="`width: ${(($store.citrascope.status.pipeline_stats.processors[processor.name].runs - $store.citrascope.status.pipeline_stats.processors[processor.name].failures) / $store.citrascope.status.pipeline_stats.processors[processor.name].runs) * 100}%`"></div>
+                                                        <div class="progress-bar bg-danger" role="progressbar"
+                                                             :style="`width: ${($store.citrascope.status.pipeline_stats.processors[processor.name].failures / $store.citrascope.status.pipeline_stats.processors[processor.name].runs) * 100}%`"></div>
+                                                    </div>
+                                                    <small class="text-muted d-block mt-1"
+                                                           x-show="$store.citrascope.status.pipeline_stats.processors[processor.name].last_failure_reason"
+                                                           x-text="'Last failure: ' + $store.citrascope.status.pipeline_stats.processors[processor.name].last_failure_reason">
+                                                    </small>
+                                                </div>
                                             </div>
                                         </template>
                                     </div>

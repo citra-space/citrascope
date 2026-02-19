@@ -74,6 +74,12 @@ class TaskManager:
         # Autofocus request flag (set by manual or scheduled triggers)
         self._autofocus_requested = False
         self._autofocus_lock = threading.Lock()
+
+        # Lifetime task counters — lock gives atomic multi-field snapshots in get_task_stats().
+        self._task_stats_lock = threading.Lock()
+        self.total_tasks_started: int = 0
+        self.total_tasks_succeeded: int = 0
+        self.total_tasks_failed: int = 0
         # Automated scheduling state (initialized from server on startup)
         self._automated_scheduling = (
             daemon.telescope_record.get("automatedScheduling", False) if daemon.telescope_record else False
@@ -105,6 +111,15 @@ class TaskManager:
         # Also remove from task_dict
         with self.heap_lock:
             self.task_dict.pop(task_id, None)
+
+    def get_task_stats(self) -> dict:
+        """Return a consistent snapshot of lifetime task counters."""
+        with self._task_stats_lock:
+            return {
+                "started": self.total_tasks_started,
+                "succeeded": self.total_tasks_succeeded,
+                "failed": self.total_tasks_failed,
+            }
 
     def get_tasks_by_stage(self) -> dict:
         """Get current tasks in each stage, enriched with task details."""
@@ -299,6 +314,7 @@ class TaskManager:
                             self.logger.error(f"Imaging task {task_id} permanently failed.")
                             with self.heap_lock:
                                 self.current_task_id = None  # Clear after done
+                            self.total_tasks_failed += 1
                             self.remove_task_from_all_stages(task_id)
 
                     self.imaging_queue.submit(tid, task, telescope_task, on_imaging_complete)

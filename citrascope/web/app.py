@@ -52,6 +52,7 @@ class SystemStatus(BaseModel):
     missing_dependencies: List[Dict[str, str]] = []  # List of {device, packages, install_cmd}
     active_processors: List[str] = []  # Names of enabled image processors
     tasks_by_stage: Optional[Dict[str, List[Dict]]] = None  # Tasks in each pipeline stage
+    pipeline_stats: Optional[Dict[str, Any]] = None  # Lifetime counters for queues, processors, and tasks
 
 
 class HardwareConfig(BaseModel):
@@ -888,6 +889,22 @@ class CitraScopeWebApp:
                 self.status.tasks_by_stage = self.daemon.task_manager.get_tasks_by_stage()
             else:
                 self.status.tasks_by_stage = None
+
+            # Collect lifetime pipeline stats from queues, processor registry, and task manager
+            if hasattr(self.daemon, "task_manager") and self.daemon.task_manager:
+                tm = self.daemon.task_manager
+                self.status.pipeline_stats = {
+                    "imaging": tm.imaging_queue.get_stats(),
+                    "processing": tm.processing_queue.get_stats(),
+                    "uploading": tm.upload_queue.get_stats(),
+                    "tasks": tm.get_task_stats(),
+                }
+            else:
+                self.status.pipeline_stats = None
+            if hasattr(self.daemon, "processor_registry") and self.daemon.processor_registry:
+                if self.status.pipeline_stats is None:
+                    self.status.pipeline_stats = {}
+                self.status.pipeline_stats["processors"] = self.daemon.processor_registry.get_processor_stats()
 
             self.status.last_update = datetime.now().isoformat()
 

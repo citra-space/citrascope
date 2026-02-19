@@ -30,6 +30,13 @@ class BaseWorkQueue(ABC):
         self.retry_counts: Dict[str, int] = {}
         self.last_failure: Dict[str, float] = {}
 
+        # Lifetime counters — increments are GIL-safe for simple int in CPython;
+        # the lock exists to give atomic multi-field snapshots in get_stats().
+        self._stats_lock = threading.Lock()
+        self.total_attempts: int = 0
+        self.total_successes: int = 0
+        self.total_permanent_failures: int = 0
+
     @abstractmethod
     def _execute_work(self, item: Dict[str, Any]) -> tuple[bool, Any]:
         """
@@ -164,6 +171,7 @@ class BaseWorkQueue(ABC):
                 try:
                     # Mark task as being actively executed
                     self._set_executing(item, True)
+                    self.total_attempts += 1
 
                     success, result = self._execute_work(item)
 
@@ -171,6 +179,7 @@ class BaseWorkQueue(ABC):
                     self._set_executing(item, False)
 
                     if success:
+                        self.total_successes += 1
                         # Clean up retry tracking
                         self.retry_counts.pop(task_id, None)
                         self.last_failure.pop(task_id, None)
@@ -182,6 +191,7 @@ class BaseWorkQueue(ABC):
                             self._schedule_retry(item)
                         else:
                             # Permanent failure
+                            self.total_permanent_failures += 1
                             self.logger.error(
                                 f"Task {task_id} permanently failed after "
                                 f"{self.retry_counts.get(task_id, 0)} retries"
@@ -198,6 +208,7 @@ class BaseWorkQueue(ABC):
                     if self._should_retry(task_id):
                         self._schedule_retry(item)
                     else:
+                        self.total_permanent_failures += 1
                         self.retry_counts.pop(task_id, None)
                         self.last_failure.pop(task_id, None)
                         self._on_permanent_failure(item)
@@ -207,6 +218,15 @@ class BaseWorkQueue(ABC):
 
             except queue.Empty:
                 continue
+
+    def get_stats(self) -> dict:
+        """Return a consistent snapshot of lifetime counters."""
+        with self._stats_lock:
+            return {
+                "attempts": self.total_attempts,
+                "successes": self.total_successes,
+                "permanent_failures": self.total_permanent_failures,
+            }
 
     def start(self):
         """Start worker threads."""
