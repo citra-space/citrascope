@@ -29,7 +29,6 @@ from citrascope.elset_cache import ElsetCache
 from citrascope.processors.builtin.photometry_processor import PhotometryProcessor
 from citrascope.processors.builtin.plate_solver_processor import PlateSolverProcessor
 from citrascope.processors.builtin.processor_dependencies import (
-    check_ephemeris,
     check_pixelemon,
     check_sextractor,
 )
@@ -321,22 +320,6 @@ class TestSatelliteMatcherProcessorUnit:
         assert result.confidence == 0.0
         assert "catalog not found" in result.reason
 
-    @patch("citrascope.processors.builtin.satellite_matcher_processor.check_ephemeris")
-    def test_missing_ephemeris(self, mock_check, mock_context, tmp_path):
-        """Test processor fails gracefully when ephemeris missing."""
-        # Create mock catalog file (processor expects output.cat in working_dir)
-        (mock_context.working_dir / "output.cat").touch()
-        mock_context.working_image_path = tmp_path / "test_image.fits"
-
-        mock_check.return_value = False
-
-        processor = SatelliteMatcherProcessor()
-        result = processor.process(mock_context)
-
-        assert result.should_upload is True
-        assert result.confidence == 0.0
-        assert "Ephemeris" in result.reason
-
 
 class TestDependencyChecks:
     """Tests for dependency checking utilities."""
@@ -443,8 +426,6 @@ class TestFullPipelineDemoFits:
             pytest.skip("Pixelemon not available")
         if not check_sextractor():
             pytest.skip("SExtractor not available")
-        if not check_ephemeris():
-            pytest.skip("Ephemeris (de421.bsp) not available")
 
         tle_lines = _first_tle_from_file(self.TLE_FILE)
         if len(tle_lines) != 2:
@@ -513,8 +494,6 @@ class TestFullPipelineDemoFits:
             pytest.skip("Pixelemon not available")
         if not check_sextractor():
             pytest.skip("SExtractor not available")
-        if not check_ephemeris():
-            pytest.skip("Ephemeris (de421.bsp) not available")
 
         elsets = _first_three_elsets_from_file(self.TLE_FILE)
         if len(elsets) < 3:
@@ -652,9 +631,6 @@ class TestSatelliteMatcherProcessor:
             pytest.skip("Reference catalog not found")
         if not self.TLE_FILE.exists():
             pytest.skip("TLE file not found")
-        if not check_ephemeris():
-            pytest.skip("Ephemeris (de421.bsp) not available")
-
         elsets = _all_elsets_from_file(self.TLE_FILE)
         if len(elsets) < 6:
             pytest.skip("Need all 6 TLE pairs in TLE file")

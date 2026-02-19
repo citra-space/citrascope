@@ -1,19 +1,23 @@
 """Satellite association processor using TLE propagation."""
 
+import math
 import time
 from datetime import datetime
 from typing import Any, Dict, List
 
+import keplemon._keplemon as _k
 import pandas as pd
 from astropy.io import fits
+from keplemon import time as ktime
+from keplemon.bodies import Observatory, Satellite
+from keplemon.elements import TLE
+from keplemon.enums import ReferenceFrame
 from scipy.spatial import KDTree
-from skyfield.api import load, wgs84
-from skyfield.sgp4lib import EarthSatellite
 
 from citrascope.processors.abstract_processor import AbstractImageProcessor
 from citrascope.processors.processor_result import ProcessingContext, ProcessorResult
 
-from .processor_dependencies import check_ephemeris, get_ephemeris_path, normalize_fits_timestamp
+from .processor_dependencies import normalize_fits_timestamp
 
 
 class SatelliteMatcherProcessor(AbstractImageProcessor):
@@ -31,22 +35,17 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
     friendly_name = "Satellite Matcher"
     description = "Match detected sources with TLE predictions (requires full pipeline)"
 
-    def _parse_fits_timestamp(self, timestamp_str: str, ts) -> Any:
-        """Parse FITS DATE-OBS timestamp into Skyfield Time object.
+    def _parse_fits_timestamp(self, timestamp_str: str) -> ktime.Epoch:
+        """Parse FITS DATE-OBS timestamp into a Keplemon Epoch.
 
         Args:
             timestamp_str: Timestamp string from FITS header (ISO format)
-            ts: Skyfield timescale object
 
         Returns:
-            Skyfield Time object
+            ktime.Epoch in UTC
         """
         dt = datetime.fromisoformat(normalize_fits_timestamp(timestamp_str).replace("Z", "+00:00"))
-
-        # Convert to Skyfield time
-        t = ts.utc(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second + dt.microsecond / 1e6)
-
-        return t
+        return ktime.Epoch.from_datetime(dt)
 
     def _match_satellites(
         self, sources: pd.DataFrame, context: ProcessingContext, tracking_mode: str = "rate"
@@ -69,13 +68,11 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
             if not context.location_service:
                 raise RuntimeError("No location service available")
             location = context.location_service.get_current_location()
-            observer = wgs84.latlon(location["latitude"], location["longitude"], location.get("altitude", 0))
+            obs = Observatory(location["latitude"], location["longitude"], location.get("altitude", 0) / 1000.0)
         except Exception as e:
             raise RuntimeError(f"Failed to get observer location: {e}")
 
-        # Ephemeris and image metadata from FITS header
-        eph = load(str(get_ephemeris_path()))
-        ts = load.timescale()
+        # Image metadata from FITS header
         with fits.open(context.working_image_path) as hdul:
             header = hdul[0].header
             timestamp_str = header.get("DATE-OBS")
@@ -83,8 +80,14 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
                 raise RuntimeError("No DATE-OBS in FITS header")
             ra_center = float(header.get("CRVAL1", 0.0))
             dec_center = float(header.get("CRVAL2", 0.0))
-        t = self._parse_fits_timestamp(timestamp_str, ts)
-        sun, earth = eph["sun"], eph["earth"]
+        epoch = self._parse_fits_timestamp(timestamp_str)
+
+        # Sun position (km, J2000/ECI) from Keplemon's bundled JPL ephemeris
+        sun_pos_km, _ = _k.astro_func_interface.get_jpl_sun_and_moon_position(epoch.days_since_1950)
+
+        # Observer position (km, J2000)
+        obs_state = obs.get_state_at_epoch(epoch).to_frame(ReferenceFrame.J2000)
+        obs_pos = obs_state.position
 
         # Build elset list: prefer cache, fall back to the task's single TLE
         elsets = (context.elset_cache.get_elsets() if context.elset_cache else []) or []
@@ -109,15 +112,27 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
             sat_id = elset.get("satellite_id") or "unknown"
             name = elset.get("name") or sat_id
             try:
-                satellite = EarthSatellite(tle[0], tle[1], name, ts)
-                topocentric = (satellite - observer).at(t)
-                ra, dec, _ = topocentric.radec()
-                ra_deg = ra.hours * 15.0
-                dec_deg = dec.degrees
+                kep_tle = TLE.from_lines(tle[0], tle[1])
+                satellite = Satellite.from_tle(kep_tle)
+                topo = obs.get_topocentric_to_satellite(epoch, satellite, ReferenceFrame.J2000)
+                ra_deg = topo.right_ascension
+                dec_deg = topo.declination
                 if abs(ra_center - ra_deg) >= in_field_deg or abs(dec_center - dec_deg) >= in_field_deg:
                     continue
-                geosat = earth + satellite
-                phase_angle = geosat.at(t).observe(sun).separation_from(geosat.at(t).observe(earth)).degrees
+
+                # Phase angle: Sun–Satellite–Observer (angle at satellite between sat→sun and sat→observer)
+                sat_state = satellite.get_state_at_epoch(epoch).to_frame(ReferenceFrame.J2000)
+                sat_pos = sat_state.position
+                sat_to_sun = [sun_pos_km[i] - [sat_pos.x, sat_pos.y, sat_pos.z][i] for i in range(3)]
+                sat_to_obs = [
+                    [obs_pos.x, obs_pos.y, obs_pos.z][i] - [sat_pos.x, sat_pos.y, sat_pos.z][i] for i in range(3)
+                ]
+                dot = sum(sat_to_sun[i] * sat_to_obs[i] for i in range(3))
+                mag_a = math.sqrt(sum(x * x for x in sat_to_sun))
+                mag_b = math.sqrt(sum(x * x for x in sat_to_obs))
+                cos_angle = max(-1.0, min(1.0, dot / (mag_a * mag_b)))
+                phase_angle = math.degrees(math.acos(cos_angle))
+
                 predictions.append(
                     {"ra": ra_deg, "dec": dec_deg, "satellite_id": sat_id, "name": name, "phase_angle": phase_angle}
                 )
@@ -178,17 +193,6 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
                 extracted_data={},
                 confidence=0.0,
                 reason="Source catalog not found",
-                processing_time_seconds=time.time() - start_time,
-                processor_name=self.name,
-            )
-
-        # Check for ephemeris
-        if not check_ephemeris():
-            return ProcessorResult(
-                should_upload=True,
-                extracted_data={},
-                confidence=0.0,
-                reason="Ephemeris file missing (de421.bsp)",
                 processing_time_seconds=time.time() - start_time,
                 processor_name=self.name,
             )
