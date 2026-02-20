@@ -191,6 +191,10 @@ class TaskManager:
                 added = 0
                 removed = 0
                 now = int(time.time())
+                # Snapshot in-flight task IDs before acquiring heap_lock to avoid
+                # lock inversion (remove_task_from_all_stages holds _stage_lock then heap_lock).
+                with self._stage_lock:
+                    inflight_ids = set(self.imaging_tasks) | set(self.processing_tasks) | set(self.uploading_tasks)
                 with self.heap_lock:
                     # Build a map of current valid tasks from the API
                     api_task_map = {}
@@ -223,8 +227,9 @@ class TaskManager:
 
                     # Add new tasks that aren't already in the heap
                     for tid, task in api_task_map.items():
-                        # Skip if task is in heap or is currently being executed
-                        if tid not in self.task_ids and tid != self.current_task_id:
+                        # Skip if task is in heap, currently executing, or already in-flight
+                        # through the imaging → processing → upload pipeline.
+                        if tid not in self.task_ids and tid != self.current_task_id and tid not in inflight_ids:
                             task_start = task.taskStart
                             task_stop = task.taskStop
                             try:
