@@ -1,3 +1,79 @@
+    {#
+        stage_box(stage, label, icon, color)
+        stage  — Alpine store key, e.g. 'imaging'
+        label  — display heading, e.g. 'Imaging'
+        icon   — bootstrap-icons name, e.g. 'camera-fill'
+        color  — Bootstrap color name for badge/icon, e.g. 'primary'
+        col_attrs — extra HTML attrs on the col div, e.g. x-show="..."
+    #}
+    {% macro stage_box(stage, label, icon, color, col_attrs='') %}
+    <div class="col-md" {{ col_attrs }}>
+        <div class="border border-secondary rounded p-3 h-100">
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <i class="bi bi-{{ icon }} text-{{ color }}"></i>
+                <h6 class="mb-0">{{ label }}</h6>
+                <span class="badge bg-{{ color }}{% if color == 'warning' %} text-dark{% endif %} ms-auto"
+                      x-show="$store.citrascope.status?.tasks_by_stage?.{{ stage }}?.length > 0"
+                      x-text="$store.citrascope.status.tasks_by_stage.{{ stage }}.length"></span>
+            </div>
+            <div class="progress mb-2" style="height: 4px; cursor: default;"
+                 x-show="$store.citrascope.status?.pipeline_stats?.{{ stage }}?.attempts > 0"
+                 x-init="new bootstrap.Tooltip($el, {
+                     placement: 'top',
+                     trigger: 'hover',
+                     title() {
+                         const s = $store.citrascope.status?.pipeline_stats?.{{ stage }};
+                         if (!s) return '';
+                         const retries = s.attempts - s.successes - s.permanent_failures;
+                         const retrySuffix = retries > 0 ? ` · ${retries} retr${retries === 1 ? 'y' : 'ies'}` : '';
+                         return `${s.successes} ok · ${s.permanent_failures} failed${retrySuffix}`;
+                     }
+                 })">
+                <div class="progress-bar bg-success" role="progressbar"
+                     :style="`width: ${(() => { const s = $store.citrascope.status.pipeline_stats.{{ stage }}; const r = s.successes + s.permanent_failures; return r > 0 ? (s.successes / r) * 100 : 0; })()}%`"></div>
+                <div class="progress-bar bg-danger" role="progressbar"
+                     :style="`width: ${(() => { const s = $store.citrascope.status.pipeline_stats.{{ stage }}; const r = s.successes + s.permanent_failures; return r > 0 ? (s.permanent_failures / r) * 100 : 0; })()}%`"></div>
+            </div>
+            {{ task_list(stage) }}
+        </div>
+    </div>
+    {% endmacro %}
+
+    <!-- Macro for task list display -->
+    {% macro task_list(stage_name) %}
+        <template x-if="!$store.citrascope.status?.tasks_by_stage?.{{ stage_name }}?.length">
+            <div class="text-muted text-center py-2">
+                <small>Idle</small>
+            </div>
+        </template>
+        <template x-if="$store.citrascope.status?.tasks_by_stage?.{{ stage_name }}?.length > 0">
+            <div>
+                <template x-for="(task, index) in $store.citrascope.status.tasks_by_stage.{{ stage_name }}" :key="task.task_id">
+                    <div class="mb-2" :class="index < $store.citrascope.status.tasks_by_stage.{{ stage_name }}.length - 1 ? 'pb-2 border-bottom border-secondary' : ''">
+                        <div>
+                            <span class="fw-semibold" x-text="task.target_name || task.task_id"></span>
+                            <span class="text-muted small ms-2" x-text="'(' + Math.floor(task.elapsed) + 's)'"></span>
+                        </div>
+                        <div class="text-muted small" x-show="task.status_msg">
+                            <template x-if="task.retry_scheduled_time">
+                                <span x-text="(() => {
+                                    const now = Date.now() / 1000;
+                                    const remaining = Math.max(0, Math.ceil(task.retry_scheduled_time - now));
+                                    const match = task.status_msg.match(/^(.+?)retrying in \d+s\.\.\.$/);
+                                    const prefix = match ? match[1] : task.status_msg.replace(/retrying in \d+s\.\.\./, '');
+                                    return prefix + 'retrying in ' + remaining + 's...';
+                                })()"></span>
+                            </template>
+                            <template x-if="!task.retry_scheduled_time">
+                                <span x-text="task.status_msg"></span>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </template>
+    {% endmacro %}
+
     <div id="monitoringSection" x-show="$store.citrascope.currentSection === 'monitoring'"
         x-effect="$store.citrascope.status && $nextTick(() => { document.querySelectorAll('[data-bs-toggle=tooltip]').forEach(el => { try { bootstrap.Tooltip.getOrCreateInstance(el); } catch (_) {} }); })">
         <div class="container">
@@ -166,65 +242,54 @@
             </div>
         </div>
         <div class="container">
+            <!-- Active Tasks Card with Pipeline Stages -->
             <div class="row g-3 mb-3">
                 <div class="col-12">
                     <div class="card bg-dark text-light border-secondary">
-                        <div class="card-header">
-                            Current Task
+                        <div class="card-header d-flex align-items-center justify-content-between">
+                            <span><i class="bi bi-lightning-charge-fill me-2"></i>Active Tasks</span>
+                            <span class="text-muted small"
+                                  x-show="$store.citrascope.status?.pipeline_stats?.tasks?.started > 0">
+                                <span x-text="$store.citrascope.status.pipeline_stats.tasks.started"></span> run &middot;
+                                <span class="text-success" x-text="$store.citrascope.status.pipeline_stats.tasks.succeeded"></span> ok
+                                <template x-if="$store.citrascope.status.pipeline_stats.tasks.failed > 0">
+                                    <span> &middot; <span class="text-danger" x-text="$store.citrascope.status.pipeline_stats.tasks.failed"></span> failed</span>
+                                </template>
+                            </span>
                         </div>
                         <div class="card-body">
-                            <div>
-                                <template x-if="$store.citrascope.currentTaskId">
-                                    <div>
-                                        <template x-for="task in $store.citrascope.tasks.filter(t => t.id === $store.citrascope.currentTaskId)" :key="task.id">
-                                            <div>
-                                                <div class="d-flex align-items-center gap-2 mb-2">
-                                                    <div class="spinner-border spinner-border-sm text-success" role="status">
-                                                        <span class="visually-hidden">Loading...</span>
-                                                    </div>
-                                                    <div class="fw-bold" style="font-size: 1.3em;" x-text="task.target"></div>
-                                                </div>
-                                                <div class="text-secondary small">
-                                                    <span x-text="'Task ID: ' + task.id"></span>
-                                                </div>
-                                            </div>
-                                        </template>
-                                        <template x-if="!$store.citrascope.tasks.find(t => t.id === $store.citrascope.currentTaskId)">
-                                            <div>
-                                                <div class="d-flex align-items-center gap-2 mb-2">
-                                                    <div class="spinner-border spinner-border-sm text-success" role="status">
-                                                        <span class="visually-hidden">Loading...</span>
-                                                    </div>
-                                                    <div class="fw-bold" style="font-size: 1.3em;" x-text="$store.citrascope.currentTaskId"></div>
-                                                </div>
-                                                <div class="text-secondary small">
-                                                    <span x-text="'Task ID: ' + $store.citrascope.currentTaskId"></span>
-                                                </div>
-                                            </div>
-                                        </template>
-                                    </div>
-                                </template>
-                                <template x-if="!$store.citrascope.currentTaskId && !$store.citrascope.countdown">
-                                    <p class="no-task-message text-muted-dark">No active task</p>
-                                </template>
-                                <template x-if="!$store.citrascope.currentTaskId && $store.citrascope.countdown">
-                                    <p class="no-task-message">No active task - next task in <span x-text="$store.citrascope.countdown"></span></p>
-                                </template>
+                            <div class="row g-3 align-items-stretch">
+                                {{ stage_box('imaging',    'Imaging',    'camera-fill',       'primary') }}
+
+                                <!-- Arrow 1 (Imaging → Processing or Uploading) -->
+                                <div class="col-auto d-none d-md-flex align-items-center px-2">
+                                    <i class="bi bi-arrow-right text-secondary" style="font-size: 1.5rem;"></i>
+                                </div>
+
+                                {{ stage_box('processing', 'Processing', 'gear-fill',          'warning', 'x-show="$store.citrascope.config?.processors_enabled"') }}
+
+                                <!-- Arrow 2 (Processing → Uploading, only shown when processing enabled) -->
+                                <div class="col-auto align-items-center px-2" x-show="$store.citrascope.config?.processors_enabled" :class="{'d-flex': $store.citrascope.config?.processors_enabled}">
+                                    <i class="bi bi-arrow-right text-secondary d-none d-md-inline-block" style="font-size: 1.5rem;"></i>
+                                </div>
+
+                                {{ stage_box('uploading',  'Submission', 'cloud-upload-fill',  'success') }}
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
+
             <div class="row g-3 mb-3">
                 <div class="col-12">
                     <div class="card bg-dark text-light border-secondary">
                         <div class="card-header d-flex align-items-center justify-content-between">
-                            <span>Task Queue</span>
-                            <span class="small text-secondary"><span x-text="$store.citrascope.status?.tasks_pending ?? $store.citrascope.tasks?.length ?? 0">0</span> pending</span>
+                            <span>Scheduled Tasks</span>
+                            <span class="small text-secondary"><span x-text="$store.citrascope.status?.tasks_pending ?? $store.citrascope.tasks?.length ?? 0">0</span> scheduled</span>
                         </div>
                         <div class="card-body p-0">
                             <div class="table-responsive">
-                                <p class="p-3 text-muted-dark" x-show="$store.citrascope.tasks.length === 0">No pending tasks</p>
+                                <p class="p-3 text-muted-dark" x-show="$store.citrascope.tasks.length === 0">No scheduled tasks</p>
                                 <table class="table table-dark table-hover mb-0" x-show="$store.citrascope.tasks.length > 0">
                                     <thead>
                                         <tr>

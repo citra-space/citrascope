@@ -2,11 +2,13 @@
 Unit tests for TaskManager task queue management.
 """
 
+import heapq
 import time
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
+from dateutil import parser as dtparser
 
 from citrascope.tasks.runner import TaskManager
 from citrascope.tasks.task import Task
@@ -36,7 +38,25 @@ def mock_logger():
 
 
 @pytest.fixture
-def mock_daemon(mock_api_client, mock_hardware_adapter, mock_logger):
+def mock_settings():
+    """Create a mock settings instance."""
+    settings = MagicMock()
+    settings.keep_images = False
+    settings.max_task_retries = 3
+    settings.initial_retry_delay_seconds = 30
+    settings.max_retry_delay_seconds = 300
+    return settings
+
+
+@pytest.fixture
+def mock_processor_registry():
+    """Create a mock processor registry."""
+    registry = MagicMock()
+    return registry
+
+
+@pytest.fixture
+def mock_daemon(mock_api_client, mock_hardware_adapter, mock_logger, mock_settings):
     """Create a mock daemon instance for testing."""
     daemon = MagicMock()
     daemon.api_client = mock_api_client
@@ -44,23 +64,23 @@ def mock_daemon(mock_api_client, mock_hardware_adapter, mock_logger):
     daemon.logger = mock_logger
     daemon.telescope_record = {"id": "test-telescope-123", "maxSlewRate": 5.0, "automatedScheduling": False}
     daemon.ground_station = {"id": "test-gs-456", "latitude": 40.0, "longitude": -74.0, "altitude": 100}
-    daemon.settings = MagicMock()
-    daemon.settings.keep_images = False
-    daemon.settings.max_task_retries = 3
-    daemon.settings.initial_retry_delay_seconds = 30
-    daemon.settings.max_retry_delay_seconds = 300
+    daemon.settings = mock_settings
     daemon.location_service = MagicMock()
     return daemon
 
 
 @pytest.fixture
-def task_manager(mock_api_client, mock_hardware_adapter, mock_logger, mock_daemon):
+def task_manager(
+    mock_api_client, mock_hardware_adapter, mock_logger, mock_daemon, mock_settings, mock_processor_registry
+):
     """Create a TaskManager instance for testing."""
     tm = TaskManager(
         api_client=mock_api_client,
         logger=mock_logger,
         hardware_adapter=mock_hardware_adapter,
         daemon=mock_daemon,
+        settings=mock_settings,
+        processor_registry=mock_processor_registry,
     )
     return tm
 
@@ -117,10 +137,6 @@ def test_poll_tasks_adds_new_tasks(task_manager, mock_api_client):
                 api_task_map[tid] = task
 
         # Add new tasks
-        import heapq
-
-        from dateutil import parser as dtparser
-
         now = int(time.time())
 
         for tid, task in api_task_map.items():
@@ -132,6 +148,7 @@ def test_poll_tasks_adds_new_tasks(task_manager, mock_api_client):
                 if not (stop_epoch and stop_epoch < now):
                     heapq.heappush(task_manager.task_heap, (start_epoch, stop_epoch, tid, task))
                     task_manager.task_ids.add(tid)
+                    task_manager.task_dict[tid] = task
 
     # Assert both tasks were added
     assert len(task_manager.task_heap) == 2
@@ -146,10 +163,6 @@ def test_poll_tasks_removes_cancelled_tasks(task_manager, mock_api_client):
     task2 = create_test_task("task-002", "Pending", start_offset_seconds=120)
 
     # Add tasks to the heap manually
-    import heapq
-
-    from dateutil import parser as dtparser
-
     start_epoch1 = int(dtparser.isoparse(task1.taskStart).timestamp())
     stop_epoch1 = int(dtparser.isoparse(task1.taskStop).timestamp())
     start_epoch2 = int(dtparser.isoparse(task2.taskStart).timestamp())
@@ -160,6 +173,8 @@ def test_poll_tasks_removes_cancelled_tasks(task_manager, mock_api_client):
         heapq.heappush(task_manager.task_heap, (start_epoch2, stop_epoch2, "task-002", task2))
         task_manager.task_ids.add("task-001")
         task_manager.task_ids.add("task-002")
+        task_manager.task_dict["task-001"] = task1
+        task_manager.task_dict["task-002"] = task2
 
     assert len(task_manager.task_heap) == 2
 
@@ -188,8 +203,7 @@ def test_poll_tasks_removes_cancelled_tasks(task_manager, mock_api_client):
                 new_heap.append((start_epoch, stop_epoch, tid, task))
             else:
                 task_manager.task_ids.discard(tid)
-                task_manager.task_retry_counts.pop(tid, None)
-                task_manager.task_last_failure.pop(tid, None)
+                task_manager.task_dict.pop(tid, None)
                 removed += 1
 
         if removed > 0:
@@ -208,16 +222,13 @@ def test_poll_tasks_removes_tasks_with_changed_status(task_manager, mock_api_cli
     # Create and add a task
     task1 = create_test_task("task-001", "Pending")
 
-    import heapq
-
-    from dateutil import parser as dtparser
-
     start_epoch = int(dtparser.isoparse(task1.taskStart).timestamp())
     stop_epoch = int(dtparser.isoparse(task1.taskStop).timestamp())
 
     with task_manager.heap_lock:
         heapq.heappush(task_manager.task_heap, (start_epoch, stop_epoch, "task-001", task1))
         task_manager.task_ids.add("task-001")
+        task_manager.task_dict["task-001"] = task1
 
     assert len(task_manager.task_heap) == 1
 
@@ -247,8 +258,7 @@ def test_poll_tasks_removes_tasks_with_changed_status(task_manager, mock_api_cli
                 new_heap.append((start_epoch, stop_epoch, tid, task))
             else:
                 task_manager.task_ids.discard(tid)
-                task_manager.task_retry_counts.pop(tid, None)
-                task_manager.task_last_failure.pop(tid, None)
+                task_manager.task_dict.pop(tid, None)
                 removed += 1
 
         if removed > 0:
@@ -265,16 +275,13 @@ def test_poll_tasks_does_not_remove_current_task(task_manager, mock_api_client):
     # Create and add a task
     task1 = create_test_task("task-001", "Pending")
 
-    import heapq
-
-    from dateutil import parser as dtparser
-
     start_epoch = int(dtparser.isoparse(task1.taskStart).timestamp())
     stop_epoch = int(dtparser.isoparse(task1.taskStop).timestamp())
 
     with task_manager.heap_lock:
         heapq.heappush(task_manager.task_heap, (start_epoch, stop_epoch, "task-001", task1))
         task_manager.task_ids.add("task-001")
+        task_manager.task_dict["task-001"] = task1
         # Mark this task as currently executing
         task_manager.current_task_id = "task-001"
 

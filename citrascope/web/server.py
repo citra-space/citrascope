@@ -9,6 +9,7 @@ import uvicorn
 
 from citrascope.constants import DEFAULT_WEB_PORT
 from citrascope.logging import CITRASCOPE_LOGGER, WebLogHandler
+from citrascope.web.app import CitraScopeWebApp
 
 
 class CitraScopeWebServer:
@@ -80,8 +81,6 @@ class CitraScopeWebServer:
     async def run(self):
         """Run the web server."""
         try:
-            from citrascope.web.app import CitraScopeWebApp
-
             self.web_app = CitraScopeWebApp(daemon=self.daemon, web_log_handler=self.web_log_handler)
 
             # Connect the log handler to the web app for broadcasting
@@ -118,12 +117,12 @@ class CitraScopeWebServer:
         check_counter = 0
         while True:
             try:
-                await asyncio.sleep(2)  # Update every 2 seconds
+                await asyncio.sleep(1)  # Update every 1 second
                 if self.web_app:
                     await self.web_app.broadcast_status()
                     await self.web_app.broadcast_tasks()
 
-                # Every 10 iterations (20 seconds), check if log handler is still attached
+                # Every 10 iterations (10 seconds), check if log handler is still attached
                 check_counter += 1
                 if check_counter >= 10:
                     check_counter = 0

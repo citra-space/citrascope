@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import time
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -21,6 +22,8 @@ from citrascope.constants import (
     PROD_API_HOST,
     PROD_APP_URL,
 )
+from citrascope.hardware.adapter_registry import get_adapter_schema as get_schema
+from citrascope.hardware.adapter_registry import list_adapters
 from citrascope.logging import CITRASCOPE_LOGGER
 
 
@@ -47,6 +50,9 @@ class SystemStatus(BaseModel):
     gps_location: Optional[Dict[str, Any]] = None
     last_update: str = ""
     missing_dependencies: List[Dict[str, str]] = []  # List of {device, packages, install_cmd}
+    active_processors: List[str] = []  # Names of enabled image processors
+    tasks_by_stage: Optional[Dict[str, List[Dict]]] = None  # Tasks in each pipeline stage
+    pipeline_stats: Optional[Dict[str, Any]] = None  # Lifetime counters for queues, processors, and tasks
 
 
 class HardwareConfig(BaseModel):
@@ -182,12 +188,16 @@ class CitraScopeWebApp:
             # Get images directory path
             images_dir_path = str(settings.get_images_dir())
 
+            # Get processing working directory path (sibling to images directory)
+            processing_dir_path = str(settings.get_images_dir().parent / "processing")
+
             return {
                 "host": settings.host,
                 "port": settings.port,
                 "use_ssl": settings.use_ssl,
                 "personal_access_token": settings.personal_access_token,
                 "telescope_id": settings.telescope_id,
+                "use_dummy_api": settings.use_dummy_api,
                 "hardware_adapter": settings.hardware_adapter,
                 "adapter_settings": settings._all_adapter_settings,
                 "log_level": settings.log_level,
@@ -204,10 +214,13 @@ class CitraScopeWebApp:
                 "time_offset_pause_ms": settings.time_offset_pause_ms,
                 "gps_location_updates_enabled": settings.gps_location_updates_enabled,
                 "gps_update_interval_minutes": settings.gps_update_interval_minutes,
+                "processors_enabled": settings.processors_enabled,
+                "enabled_processors": settings.enabled_processors,
                 "app_url": app_url,
                 "config_file_path": config_path,
                 "log_file_path": log_file_path,
                 "images_dir_path": images_dir_path,
+                "processing_dir_path": processing_dir_path,
             }
 
         @self.app.get("/api/config/status")
@@ -233,8 +246,6 @@ class CitraScopeWebApp:
         @self.app.get("/api/hardware-adapters")
         async def get_hardware_adapters():
             """Get list of available hardware adapters."""
-            from citrascope.hardware.adapter_registry import list_adapters
-
             adapters_info = list_adapters()
             return {
                 "adapters": list(adapters_info.keys()),
@@ -249,10 +260,6 @@ class CitraScopeWebApp:
                 adapter_name: Name of the adapter
                 current_settings: JSON string of current adapter_settings (for dynamic schemas)
             """
-            import json
-
-            from citrascope.hardware.adapter_registry import get_adapter_schema as get_schema
-
             try:
                 # Parse current settings if provided
                 settings_kwargs = {}
@@ -372,30 +379,76 @@ class CitraScopeWebApp:
                 CITRASCOPE_LOGGER.error(f"Error updating config: {e}", exc_info=True)
                 return JSONResponse({"error": str(e)}, status_code=500)
 
+        @self.app.get("/api/processors")
+        async def get_processors():
+            """Get list of all available processors with metadata."""
+            if not self.daemon or not hasattr(self.daemon, "processor_registry") or not self.daemon.processor_registry:
+                return []
+
+            return self.daemon.processor_registry.get_all_processors()
+
         @self.app.get("/api/tasks")
         async def get_tasks():
-            """Get current task queue."""
+            """Get scheduled task queue (not yet started or waiting to retry)."""
             if not self.daemon or not hasattr(self.daemon, "task_manager") or self.daemon.task_manager is None:
                 return []
 
             task_manager = self.daemon.task_manager
             tasks = []
 
+            # Get IDs of tasks that are actively in a stage
+            with task_manager._stage_lock:
+                active_ids = set()
+                active_ids.update(task_manager.imaging_tasks.keys())
+                active_ids.update(task_manager.processing_tasks.keys())
+                active_ids.update(task_manager.uploading_tasks.keys())
+
             with task_manager.heap_lock:
                 for start_time, stop_time, task_id, task in task_manager.task_heap:
-                    tasks.append(
+                    # Only include tasks not currently in a stage (scheduled future work)
+                    if task_id not in active_ids:
+                        tasks.append(
+                            {
+                                "id": task_id,
+                                "start_time": datetime.fromtimestamp(start_time, tz=timezone.utc).isoformat(),
+                                "stop_time": (
+                                    datetime.fromtimestamp(stop_time, tz=timezone.utc).isoformat()
+                                    if stop_time
+                                    else None
+                                ),
+                                "status": task.status,
+                                "target": getattr(task, "satelliteName", getattr(task, "target", "unknown")),
+                            }
+                        )
+
+            return tasks
+
+        @self.app.get("/api/tasks/active")
+        async def get_active_tasks():
+            """Get currently executing tasks (all stages)."""
+            if not self.daemon or not hasattr(self.daemon, "task_manager") or self.daemon.task_manager is None:
+                return []
+
+            # Use get_tasks_by_stage which returns enriched task info
+            tasks_by_stage = self.daemon.task_manager.get_tasks_by_stage()
+
+            # Flatten into single list with stage information
+            active = []
+            for stage, tasks in tasks_by_stage.items():
+                for task_info in tasks:
+                    active.append(
                         {
-                            "id": task_id,
-                            "start_time": datetime.fromtimestamp(start_time, tz=timezone.utc).isoformat(),
-                            "stop_time": (
-                                datetime.fromtimestamp(stop_time, tz=timezone.utc).isoformat() if stop_time else None
-                            ),
-                            "status": task.status,
-                            "target": getattr(task, "satelliteName", getattr(task, "target", "unknown")),
+                            "id": task_info["task_id"],
+                            "target": task_info.get("target_name", "unknown"),
+                            "stage": stage,
+                            "elapsed": task_info["elapsed"],
+                            "status_msg": task_info.get("status_msg"),
+                            "retry_scheduled_time": task_info.get("retry_scheduled_time"),
+                            "is_being_executed": task_info.get("is_being_executed", False),
                         }
                     )
 
-            return tasks
+            return active
 
         @self.app.get("/api/logs")
         async def get_logs(limit: int = 100):
@@ -755,8 +808,6 @@ class CitraScopeWebApp:
                     last_ts = settings.last_autofocus_timestamp
                     interval_minutes = settings.autofocus_interval_minutes
                     if last_ts is not None:
-                        import time
-
                         elapsed_minutes = (int(time.time()) - last_ts) / 60
                         remaining = max(0, interval_minutes - elapsed_minutes)
                         self.status.next_autofocus_minutes = int(remaining)
@@ -826,6 +877,34 @@ class CitraScopeWebApp:
                         self.status.missing_dependencies = self.daemon.hardware_adapter.get_missing_dependencies()
                     except Exception as e:
                         CITRASCOPE_LOGGER.debug(f"Could not check missing dependencies: {e}")
+
+            # Get list of active processors
+            if hasattr(self.daemon, "processor_registry") and self.daemon.processor_registry:
+                self.status.active_processors = [p.name for p in self.daemon.processor_registry.processors]
+            else:
+                self.status.active_processors = []
+
+            # Get tasks by pipeline stage
+            if hasattr(self.daemon, "task_manager") and self.daemon.task_manager:
+                self.status.tasks_by_stage = self.daemon.task_manager.get_tasks_by_stage()
+            else:
+                self.status.tasks_by_stage = None
+
+            # Collect lifetime pipeline stats from queues, processor registry, and task manager
+            if hasattr(self.daemon, "task_manager") and self.daemon.task_manager:
+                tm = self.daemon.task_manager
+                self.status.pipeline_stats = {
+                    "imaging": tm.imaging_queue.get_stats(),
+                    "processing": tm.processing_queue.get_stats(),
+                    "uploading": tm.upload_queue.get_stats(),
+                    "tasks": tm.get_task_stats(),
+                }
+            else:
+                self.status.pipeline_stats = None
+            if hasattr(self.daemon, "processor_registry") and self.daemon.processor_registry:
+                if self.status.pipeline_stats is None:
+                    self.status.pipeline_stats = {}
+                self.status.pipeline_stats["processors"] = self.daemon.processor_registry.get_processor_stats()
 
             self.status.last_update = datetime.now().isoformat()
 

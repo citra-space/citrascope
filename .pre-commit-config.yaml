@@ -4,7 +4,7 @@ repos:
   rev: v6.0.0
   hooks:
   - id: check-added-large-files
-    exclude: data
+    exclude: data|tests/unit/test_assets
   - id: check-case-conflict
   - id: check-yaml
   - id: debug-statements

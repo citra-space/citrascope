@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+import threading
+from dataclasses import dataclass, field
 from typing import Optional
 
 
@@ -21,6 +22,14 @@ class Task:
     groundStationName: str
     assigned_filter_name: Optional[str] = None
 
+    # Local execution state (not from API, never sent to server)
+    local_status_msg: Optional[str] = None
+    retry_scheduled_time: Optional[float] = None  # Unix timestamp when retry will execute (None if not retrying)
+    is_being_executed: bool = False  # True when a worker is actively executing this task
+
+    # Thread safety for status fields (not included in __init__)
+    _status_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False, compare=False)
+
     @classmethod
     def from_dict(cls, data: dict) -> "Task":
         return cls(
@@ -41,6 +50,41 @@ class Task:
             groundStationName=data.get("groundStationName", ""),
             assigned_filter_name=data.get("assigned_filter_name"),
         )
+
+    def set_status_msg(self, msg: Optional[str]):
+        """Thread-safe setter for local_status_msg."""
+        with self._status_lock:
+            self.local_status_msg = msg
+
+    def get_status_msg(self) -> Optional[str]:
+        """Thread-safe getter for local_status_msg."""
+        with self._status_lock:
+            return self.local_status_msg
+
+    def set_retry_time(self, timestamp: Optional[float]):
+        """Thread-safe setter for retry_scheduled_time."""
+        with self._status_lock:
+            self.retry_scheduled_time = timestamp
+
+    def get_retry_time(self) -> Optional[float]:
+        """Thread-safe getter for retry_scheduled_time."""
+        with self._status_lock:
+            return self.retry_scheduled_time
+
+    def set_executing(self, executing: bool):
+        """Thread-safe setter for is_being_executed."""
+        with self._status_lock:
+            self.is_being_executed = executing
+
+    def get_executing(self) -> bool:
+        """Thread-safe getter for is_being_executed."""
+        with self._status_lock:
+            return self.is_being_executed
+
+    def get_status_info(self) -> tuple[Optional[str], Optional[float], bool]:
+        """Thread-safe getter for all status fields at once."""
+        with self._status_lock:
+            return (self.local_status_msg, self.retry_scheduled_time, self.is_being_executed)
 
     def __repr__(self):
         return f"<Task {self.id} {self.type} {self.status}>"

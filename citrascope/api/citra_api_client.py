@@ -81,6 +81,69 @@ class CitraApiClient(AbstractCitraApiClient):
         """Fetch ground station details from /ground-stations/{ground_station_id}"""
         return self._request("GET", f"/ground-stations/{ground_station_id}")
 
+    def get_elsets_latest(self, days: int = 14):
+        """Fetch all latest elsets from GET /elsets/latest for satellite matching hot list.
+
+        Uses a long timeout because the response can be ~26MB.
+        """
+        return self._request("GET", f"/elsets/latest?days={days}", timeout=300.0)
+
+    def upload_optical_observations(
+        self,
+        observations: list,
+        telescope_record: dict,
+        sensor_location: dict,
+        task_id: str | None = None,
+    ) -> bool:
+        """POST /observations/optical with satellite observations extracted from an image.
+
+        Maps each observation dict (from satellite_matcher) to the OpticalObservationCreate schema.
+        angularNoise and spectral wavelength bounds come from the telescope record; sensor position
+        from sensor_location. Returns True on success, False otherwise.
+        """
+        telescope_id = telescope_record.get("id")
+        angular_noise = telescope_record.get("angularNoise")
+        min_wavelength = telescope_record.get("spectralMinWavelengthNm")
+        max_wavelength = telescope_record.get("spectralMaxWavelengthNm")
+
+        payload = []
+        for obs in observations:
+            entry = {
+                "satelliteId": obs["norad_id"],
+                "telescopeId": telescope_id,
+                "epoch": obs["timestamp"],
+                "rightAscension": obs["ra"],
+                "declination": obs["dec"],
+                "sensorLatitude": sensor_location["latitude"],
+                "sensorLongitude": sensor_location["longitude"],
+                "sensorAltitude": sensor_location.get("altitude", 0.0),
+                "angularNoise": angular_noise,
+            }
+            if obs.get("mag") is not None:
+                entry["visualMagnitude"] = obs["mag"]
+            if task_id is not None:
+                entry["taskId"] = task_id
+            if min_wavelength is not None:
+                entry["minWavelength"] = min_wavelength
+            if max_wavelength is not None:
+                entry["maxWavelength"] = max_wavelength
+            payload.append(entry)
+
+        if not payload:
+            if self.logger:
+                self.logger.warning("upload_optical_observations: no observations to upload")
+            return False
+
+        result = self._request("POST", "/observations/optical", json=payload)
+        if result is None:
+            if self.logger:
+                self.logger.error("upload_optical_observations: POST /observations/optical failed")
+            return False
+
+        if self.logger:
+            self.logger.info(f"upload_optical_observations: uploaded {len(payload)} observation(s) for task {task_id}")
+        return True
+
     def upload_image(self, task_id, telescope_id, filepath):
         """Upload an image file for a given task."""
         file_size = os.path.getsize(filepath)

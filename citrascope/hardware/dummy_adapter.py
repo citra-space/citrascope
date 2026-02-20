@@ -1,8 +1,12 @@
 """Dummy hardware adapter for testing without real hardware."""
 
 import logging
+import shutil
 import time
 from pathlib import Path
+
+import numpy as np
+from astropy.io import fits
 
 from citrascope.hardware.abstract_astro_hardware_adapter import (
     AbstractAstroHardwareAdapter,
@@ -138,21 +142,54 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         return True
 
     def take_image(self, task_id: str, exposure_duration_seconds=1.0) -> str:
-        """Simulate image capture."""
+        """Simulate image capture using real FITS file."""
         self.logger.info(f"DummyAdapter: Starting {exposure_duration_seconds}s exposure for task {task_id}")
         self._simulate_delay(exposure_duration_seconds)
 
-        # Create dummy image file
+        # Use test FITS file from test_data directory (git-ignored, ~1MB)
+        # Falls back to generating synthetic FITS if test file doesn't exist
+        test_fits = Path(__file__).parent.parent.parent / "test_data" / "test_image_small.fits"
+
+        # Create output filename
         timestamp = int(time.time())
         filename = f"dummy_{task_id}_{timestamp}.fits"
         filepath = self.images_dir / filename
-
-        # Create empty file to simulate image
         filepath.parent.mkdir(parents=True, exist_ok=True)
-        filepath.write_text(f"DUMMY FITS IMAGE\nTask: {task_id}\nExposure: {exposure_duration_seconds}s\n")
 
-        self.logger.info(f"DummyAdapter: Image saved to {filepath}")
+        if test_fits.exists():
+            # Copy real test FITS
+            shutil.copy(test_fits, filepath)
+            self.logger.info(f"DummyAdapter: Image saved to {filepath} (copied from test data)")
+        else:
+            # Generate synthetic FITS if test file not available
+            self._create_synthetic_fits(filepath, exposure_duration_seconds)
+            self.logger.info(f"DummyAdapter: Image saved to {filepath} (synthetic)")
+
         return str(filepath)
+
+    def _create_synthetic_fits(self, filepath: Path, exposure_duration: float):
+        """Generate synthetic FITS file for testing."""
+        try:
+            # Create realistic synthetic 16-bit image (small size for git/server)
+            mean_signal = min(5000 * exposure_duration, 30000)
+            image_data = np.random.normal(mean_signal, 1000, (512, 512)).astype(np.uint16)
+
+            # Add some "stars" (bright spots)
+            num_stars = np.random.randint(50, 200)
+            for _ in range(num_stars):
+                y, x = np.random.randint(10, 502, 2)
+                brightness = np.random.randint(10000, 50000)
+                image_data[y : y + 3, x : x + 3] = np.minimum(image_data[y : y + 3, x : x + 3] + brightness, 65535)
+
+            # Save as FITS with basic header
+            hdu = fits.PrimaryHDU(image_data)
+            hdu.header["EXPTIME"] = exposure_duration
+            hdu.header["DATE-OBS"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+            hdu.header["OBSERVER"] = "DummyAdapter"
+            hdu.writeto(filepath, overwrite=True)
+        except ImportError:
+            # Fallback: create minimal FITS if astropy not available
+            filepath.write_text(f"DUMMY FITS IMAGE\nTask exposure: {exposure_duration}s\n")
 
     def set_custom_tracking_rate(self, ra_rate: float, dec_rate: float):
         """Simulate setting tracking rate."""

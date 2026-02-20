@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Test data files (large FITS files)
+test_data/
+
 # C extensions
 *.so
 
@@ -130,7 +133,13 @@ dmypy.json
 as_headers/
 
 certs/
+# Ephemeris: de421.bsp downloaded at runtime if missing (phase angle); do not commit
 de421.bsp
+# Large TLE catalog files — only small curated fixtures belong in the repo
+# (full Space-Track exports can be 5MB+; download them at test time if needed)
+*.tle
+!tests/unit/test_assets/*.tle
+**/data/ephemeris/*.bsp
 citra_image.fits
 /images/*
 .DS_Store
@@ -138,4 +147,5 @@ hip_main.dat
 nina_sequence_*.json
 nina_focus_positions.json
 
-citrascope-env/
+citrascope-env/test_data/
+test_data/

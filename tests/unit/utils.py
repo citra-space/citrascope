@@ -88,3 +88,20 @@ class MockCitraApiClient(AbstractCitraApiClient):
             "longitude": longitude,
             "altitude": altitude,
         }
+
+    def get_elsets_latest(self, days=14):
+        """Simulate fetching latest elsets (same shape as real API for normalization)."""
+        return [
+            {
+                "satelliteId": "12345",
+                "satelliteName": "Mock Sat",
+                "tle": [
+                    "1 12345U 98067A  12345.67890123  .00012345  00000-0  12345-3 0  1234",
+                    "2 12345  51.6400 123.4567 0001234  0.0000  0.0000 15.12345678901234",
+                ],
+            },
+        ]
+
+    def upload_optical_observations(self, observations, telescope_record, sensor_location, task_id=None):
+        """Simulate uploading optical observations — always succeeds."""
+        return True

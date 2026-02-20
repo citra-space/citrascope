@@ -1,13 +1,17 @@
+import threading
 import time
 from typing import Optional
 
 from citrascope.api.citra_api_client import AbstractCitraApiClient, CitraApiClient
+from citrascope.api.dummy_api_client import DummyApiClient
+from citrascope.elset_cache import ElsetCache
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
 from citrascope.hardware.adapter_registry import get_adapter_class
 from citrascope.hardware.filter_sync import sync_filters_to_backend
 from citrascope.location import LocationService
 from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.logging._citrascope_logger import setup_file_logging
+from citrascope.processors.processor_registry import ProcessorRegistry
 from citrascope.settings.citrascope_settings import CitraScopeSettings
 from citrascope.tasks.runner import TaskManager
 from citrascope.time.time_health import TimeHealth
@@ -41,6 +45,15 @@ class CitraScopeDaemon:
         self.ground_station = None
         self.telescope_record = None
         self.configuration_error: Optional[str] = None
+
+        # Initialize processor registry
+        self.processor_registry = ProcessorRegistry(settings=self.settings, logger=CITRASCOPE_LOGGER)
+
+        # Elset cache for satellite matcher (file-backed; path from platformdirs inside ElsetCache)
+        self.elset_cache = ElsetCache()
+        self.elset_cache.load_from_file()
+
+        # Note: Work queues and stage tracking now managed by TaskManager
 
         # Create web server instance (always enabled)
         self.web_server = CitraScopeWebServer(daemon=self, host="0.0.0.0", port=self.settings.web_port)
@@ -89,9 +102,20 @@ class CitraScopeDaemon:
                     log_path = self.settings.config_manager.get_current_log_path()
                     setup_file_logging(log_path, backup_count=self.settings.log_retention_days)
 
+            # Preserve task metadata across reload
+            old_task_dict = {}
+            old_imaging_tasks = {}
+            old_processing_tasks = {}
+            old_uploading_tasks = {}
+
             # Cleanup existing resources
             if self.task_manager:
                 CITRASCOPE_LOGGER.info("Stopping existing task manager...")
+                # Capture task metadata before destruction
+                old_task_dict = dict(self.task_manager.task_dict)
+                old_imaging_tasks = dict(self.task_manager.imaging_tasks)
+                old_processing_tasks = dict(self.task_manager.processing_tasks)
+                old_uploading_tasks = dict(self.task_manager.uploading_tasks)
                 self.task_manager.stop()
                 self.task_manager = None
 
@@ -118,12 +142,16 @@ class CitraScopeDaemon:
                 return False, error_msg
 
             # Initialize API client
-            self.api_client = CitraApiClient(
-                self.settings.host,
-                self.settings.personal_access_token,
-                self.settings.use_ssl,
-                CITRASCOPE_LOGGER,
-            )
+            if self.settings.use_dummy_api:
+                CITRASCOPE_LOGGER.info("Using DummyApiClient for local testing")
+                self.api_client = DummyApiClient(logger=CITRASCOPE_LOGGER)
+            else:
+                self.api_client = CitraApiClient(
+                    self.settings.host,
+                    self.settings.personal_access_token,
+                    self.settings.use_ssl,
+                    CITRASCOPE_LOGGER,
+                )
 
             # Initialize hardware adapter
             self.hardware_adapter = self._create_hardware_adapter()
@@ -155,7 +183,12 @@ class CitraScopeDaemon:
             CITRASCOPE_LOGGER.info("Time synchronization monitoring started")
 
             # Initialize telescope
-            success, error = self._initialize_telescope()
+            success, error = self._initialize_telescope(
+                old_task_dict=old_task_dict,
+                old_imaging_tasks=old_imaging_tasks,
+                old_processing_tasks=old_processing_tasks,
+                old_uploading_tasks=old_uploading_tasks,
+            )
 
             if success:
                 self.configuration_error = None
@@ -175,12 +208,28 @@ class CitraScopeDaemon:
         """Reload configuration from file and reinitialize all components."""
         return self._initialize_components(reload_settings=True)
 
-    def _initialize_telescope(self) -> tuple[bool, Optional[str]]:
+    def _initialize_telescope(
+        self,
+        old_task_dict: dict | None = None,
+        old_imaging_tasks: dict | None = None,
+        old_processing_tasks: dict | None = None,
+        old_uploading_tasks: dict | None = None,
+    ) -> tuple[bool, Optional[str]]:
         """Initialize telescope connection and task manager.
+
+        Args:
+            old_task_dict: Preserved task_dict from previous TaskManager (for config reload)
+            old_imaging_tasks: Preserved imaging_tasks from previous TaskManager (for config reload)
+            old_processing_tasks: Preserved processing_tasks from previous TaskManager (for config reload)
+            old_uploading_tasks: Preserved uploading_tasks from previous TaskManager (for config reload)
 
         Returns:
             Tuple of (success, error_message)
         """
+        old_task_dict = old_task_dict or {}
+        old_imaging_tasks = old_imaging_tasks or {}
+        old_processing_tasks = old_processing_tasks or {}
+        old_uploading_tasks = old_uploading_tasks or {}
         try:
             CITRASCOPE_LOGGER.info(f"CitraAPISettings host is {self.settings.host}")
             CITRASCOPE_LOGGER.info(f"CitraAPISettings telescope_id is {self.settings.telescope_id}")
@@ -226,12 +275,30 @@ class CitraScopeDaemon:
             # Sync discovered filters to backend on startup
             self._sync_filters_to_backend()
 
+            # Create TaskManager (now owns all queues and stage tracking)
             self.task_manager = TaskManager(
                 self.api_client,
                 CITRASCOPE_LOGGER,
                 self.hardware_adapter,
                 self,
+                self.settings,
+                self.processor_registry,
             )
+
+            # Restore preserved task metadata
+            if old_task_dict:
+                CITRASCOPE_LOGGER.info(f"Restoring {len(old_task_dict)} task(s) from previous TaskManager")
+                self.task_manager.task_dict.update(old_task_dict)
+            if old_imaging_tasks:
+                CITRASCOPE_LOGGER.info(f"Restoring {len(old_imaging_tasks)} imaging task(s)")
+                self.task_manager.imaging_tasks.update(old_imaging_tasks)
+            if old_processing_tasks:
+                CITRASCOPE_LOGGER.info(f"Restoring {len(old_processing_tasks)} processing task(s)")
+                self.task_manager.processing_tasks.update(old_processing_tasks)
+            if old_uploading_tasks:
+                CITRASCOPE_LOGGER.info(f"Restoring {len(old_uploading_tasks)} uploading task(s)")
+                self.task_manager.uploading_tasks.update(old_uploading_tasks)
+
             self.task_manager.start()
 
             CITRASCOPE_LOGGER.info("Telescope initialized successfully!")
@@ -378,6 +445,7 @@ class CitraScopeDaemon:
 
     def _shutdown(self):
         """Clean up resources on shutdown."""
+        # TaskManager now handles stopping all work queues
         if self.task_manager:
             self.task_manager.stop()
         if self.time_monitor:

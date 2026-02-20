@@ -206,6 +206,29 @@ class AbstractAstroHardwareAdapter(ABC):
         """
         pass
 
+    def update_from_plate_solve(
+        self,
+        solved_ra_deg: float,
+        solved_dec_deg: float,
+        expected_ra_deg: Optional[float] = None,
+        expected_dec_deg: Optional[float] = None,
+    ) -> None:
+        """Update mount model from a plate solve result (pipeline → adapter).
+
+        Called by the daemon/task manager when processing completes with plate solve
+        data, so the adapter can apply pointing corrections (e.g. alignment offsets).
+        Default implementation does nothing. Override in adapters that maintain
+        a mount model.
+
+        Args:
+            solved_ra_deg: Solved right ascension in degrees.
+            solved_dec_deg: Solved declination in degrees.
+            expected_ra_deg: Optional target RA (e.g. from task/mount); if set with
+                expected_dec_deg, adapter can compute offset = solved - expected.
+            expected_dec_deg: Optional target Dec in degrees.
+        """
+        pass
+
     def do_autofocus(self) -> None:
         """Perform autofocus routine for all filters.
 

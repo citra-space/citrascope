@@ -38,6 +38,7 @@ class CitraScopeSettings:
         self.use_ssl: bool = config.get("use_ssl", True)
         self.personal_access_token: str = config.get("personal_access_token", "")
         self.telescope_id: str = config.get("telescope_id", "")
+        self.use_dummy_api: bool = config.get("use_dummy_api", False)
 
         # Hardware adapter selection
         self.hardware_adapter: str = config.get("hardware_adapter", "")
@@ -52,6 +53,10 @@ class CitraScopeSettings:
         # Runtime settings (all loaded from config file, configurable via web UI)
         self.log_level: str = config.get("log_level", "INFO")
         self.keep_images: bool = config.get("keep_images", False)
+
+        # Processor configuration
+        self.processors_enabled: bool = config.get("processors_enabled", True)
+        self.enabled_processors: Dict[str, bool] = config.get("enabled_processors", {})
 
         # Web port: CLI-only, never loaded from or saved to config file
         self.web_port: int = web_port
@@ -89,6 +94,10 @@ class CitraScopeSettings:
         self.gps_location_updates_enabled: bool = config.get("gps_location_updates_enabled", True)
         self.gps_update_interval_minutes: int = config.get("gps_update_interval_minutes", 5)
 
+        # MSI Processor configuration
+        # Note: Individual processor enable/disable is handled via enabled_processors dict (already exists)
+        self.elset_refresh_interval_hours: float = config.get("elset_refresh_interval_hours", 6)
+
     def get_images_dir(self) -> Path:
         """Get the path to the images directory.
 
@@ -122,6 +131,7 @@ class CitraScopeSettings:
             "use_ssl": self.use_ssl,
             "personal_access_token": self.personal_access_token,
             "telescope_id": self.telescope_id,
+            "use_dummy_api": self.use_dummy_api,
             "hardware_adapter": self.hardware_adapter,
             "adapter_settings": self._all_adapter_settings,
             "log_level": self.log_level,
@@ -138,6 +148,9 @@ class CitraScopeSettings:
             "time_offset_pause_ms": self.time_offset_pause_ms,
             "gps_location_updates_enabled": self.gps_location_updates_enabled,
             "gps_update_interval_minutes": self.gps_update_interval_minutes,
+            "processors_enabled": self.processors_enabled,
+            "enabled_processors": self.enabled_processors,
+            "elset_refresh_interval_hours": self.elset_refresh_interval_hours,
         }
 
     def save(self) -> None:
