@@ -68,7 +68,7 @@ class DummyApiClient(AbstractCitraApiClient):
             "tasks": [
                 {
                     "id": str(uuid.uuid4()),
-                    "type": "observation",
+                    "type": "Track",
                     "status": "Pending",
                     "creationEpoch": now.isoformat(),
                     "updateEpoch": now.isoformat(),
@@ -85,7 +85,7 @@ class DummyApiClient(AbstractCitraApiClient):
                 },
                 {
                     "id": str(uuid.uuid4()),
-                    "type": "observation",
+                    "type": "Track",
                     "status": "Pending",
                     "creationEpoch": now.isoformat(),
                     "updateEpoch": now.isoformat(),
@@ -102,7 +102,7 @@ class DummyApiClient(AbstractCitraApiClient):
                 },
                 {
                     "id": str(uuid.uuid4()),
-                    "type": "observation",
+                    "type": "Track",
                     "status": "Pending",
                     "creationEpoch": now.isoformat(),
                     "updateEpoch": now.isoformat(),
@@ -376,7 +376,7 @@ class DummyApiClient(AbstractCitraApiClient):
 
                     new_task = {
                         "id": str(uuid.uuid4()),
-                        "type": "observation",
+                        "type": "Track",
                         "status": "Pending",
                         "creationEpoch": now.isoformat(),
                         "updateEpoch": now.isoformat(),

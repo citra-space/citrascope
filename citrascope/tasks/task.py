@@ -48,7 +48,7 @@ class Task:
             telescopeName=data.get("telescopeName", ""),
             groundStationId=data.get("groundStationId", ""),
             groundStationName=data.get("groundStationName", ""),
-            assigned_filter_name=data.get("assigned_filter_name"),
+            assigned_filter_name=data.get("assignedFilterName"),
         )
 
     def set_status_msg(self, msg: Optional[str]):
