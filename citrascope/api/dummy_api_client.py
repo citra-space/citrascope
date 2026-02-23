@@ -421,14 +421,25 @@ class DummyApiClient(AbstractCitraApiClient):
         """Expand filter names to spectral specs."""
         if self.logger:
             self.logger.debug(f"DummyApiClient: expand_filters({filter_names})")
-        # Return fake filter specs
+        known_filters = {
+            "Red": (635.0, 120.0),
+            "Green": (530.0, 100.0),
+            "Blue": (450.0, 100.0),
+            "Clear": (550.0, 300.0),
+            "Luminance": (550.0, 300.0),
+            "Ha": (656.3, 7.0),
+            "OIII": (500.7, 7.0),
+            "SII": (671.6, 7.0),
+        }
         filters = []
         for name in filter_names:
+            wavelength, bandwidth = known_filters.get(name, (550.0, 100.0))
             filters.append(
                 {
                     "name": name,
-                    "centralWavelength": 550.0,  # Fake wavelength
-                    "bandwidth": 100.0,
+                    "central_wavelength_nm": wavelength,
+                    "bandwidth_nm": bandwidth,
+                    "is_known": name in known_filters,
                 }
             )
         return {"filters": filters}
