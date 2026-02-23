@@ -244,7 +244,7 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         # the on-sky pixel scale is isotropic at the field centre without any
         # additional correction here.
         wcs = WCS(naxis=2)
-        wcs.wcs.crpix = [size_x / 2.0, size_y / 2.0]
+        wcs.wcs.crpix = [(size_x + 1) / 2.0, (size_y + 1) / 2.0]
         wcs.wcs.cdelt = [-pixel_scale / 3600.0, pixel_scale / 3600.0]
         wcs.wcs.crval = [ra_center, dec_center]
         wcs.wcs.ctype = ["RA---TAN", "DEC--TAN"]
