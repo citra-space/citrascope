@@ -368,7 +368,7 @@ class CitraScopeDaemon:
             return False, "Task manager not initialized"
 
         # Request autofocus - will run between tasks
-        self.task_manager.request_autofocus()
+        self.task_manager.autofocus_manager.request()
         return True, None
 
     def cancel_autofocus(self) -> bool:
@@ -379,7 +379,7 @@ class CitraScopeDaemon:
         """
         if not self.task_manager:
             return False
-        return self.task_manager.cancel_autofocus()
+        return self.task_manager.autofocus_manager.cancel()
 
     def is_autofocus_requested(self) -> bool:
         """Check if autofocus is currently queued.
@@ -389,7 +389,7 @@ class CitraScopeDaemon:
         """
         if not self.task_manager:
             return False
-        return self.task_manager.is_autofocus_requested()
+        return self.task_manager.autofocus_manager.is_requested()
 
     def _on_time_drift_pause(self, health: TimeHealth) -> None:
         """

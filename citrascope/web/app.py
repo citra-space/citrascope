@@ -806,7 +806,7 @@ class CitraScopeWebApp:
             if hasattr(self.daemon, "task_manager") and self.daemon.task_manager:
                 task_manager = self.daemon.task_manager
                 self.status.current_task = task_manager.current_task_id
-                self.status.autofocus_requested = task_manager.is_autofocus_requested()
+                self.status.autofocus_requested = task_manager.autofocus_manager.is_requested()
                 with task_manager.heap_lock:
                     self.status.tasks_pending = len(task_manager.task_heap)
 
