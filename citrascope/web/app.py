@@ -697,9 +697,7 @@ class CitraScopeWebApp:
         @self.app.get("/api/adapter/autofocus/presets")
         async def get_autofocus_presets():
             """Return available autofocus target star presets."""
-            presets = [
-                {"key": key, **{k: v for k, v in preset.items()}} for key, preset in AUTOFOCUS_TARGET_PRESETS.items()
-            ]
+            presets = [{"key": key, **preset} for key, preset in AUTOFOCUS_TARGET_PRESETS.items()]
             return {"presets": presets}
 
         @self.app.post("/api/camera/capture")

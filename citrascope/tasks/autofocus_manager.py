@@ -1,11 +1,18 @@
 """Autofocus management: scheduling, target resolution, and execution."""
 
+from __future__ import annotations
+
 import logging
 import threading
 import time
+from typing import TYPE_CHECKING
 
 from citrascope.constants import AUTOFOCUS_TARGET_PRESETS
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
+
+if TYPE_CHECKING:
+    from citrascope.citra_scope_daemon import CitraScopeDaemon
+    from citrascope.tasks.base_work_queue import BaseWorkQueue
 
 
 class AutofocusManager:
@@ -17,7 +24,11 @@ class AutofocusManager:
     """
 
     def __init__(
-        self, logger: logging.Logger, hardware_adapter: AbstractAstroHardwareAdapter, daemon, imaging_queue=None
+        self,
+        logger: logging.Logger,
+        hardware_adapter: AbstractAstroHardwareAdapter,
+        daemon: CitraScopeDaemon,
+        imaging_queue: BaseWorkQueue | None = None,
     ):
         self.logger = logger
         self.hardware_adapter = hardware_adapter

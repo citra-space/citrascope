@@ -152,32 +152,35 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
     # autofocus routine
     def _auto_focus_one_filter(self, filter_id: int, filter_name: str, existing_focus_position: int) -> int:
 
-        # change to the requested filter
-        correct_filter_in_place = False
-        while not correct_filter_in_place:
-            requests.get(self.nina_api_path + self.FILTERWHEEL_URL + "change-filter?filterId=" + str(filter_id))
-            filterwheel_status = requests.get(self.nina_api_path + self.FILTERWHEEL_URL + "info").json()
-            current_filter_id = filterwheel_status["Response"]["SelectedFilter"]["Id"]
-            if current_filter_id == filter_id:
-                correct_filter_in_place = True
-            else:
-                self.logger.info(f"Waiting for filterwheel to change to filter ID {filter_id} ...")
-                time.sleep(5)
+        HARDWARE_TIMEOUT_SECONDS = 60
 
-        # move to starting focus position
+        requests.get(self.nina_api_path + self.FILTERWHEEL_URL + "change-filter?filterId=" + str(filter_id))
+        deadline = time.time() + HARDWARE_TIMEOUT_SECONDS
+        while True:
+            filterwheel_status = requests.get(self.nina_api_path + self.FILTERWHEEL_URL + "info").json()
+            if filterwheel_status["Response"]["SelectedFilter"]["Id"] == filter_id:
+                break
+            if time.time() > deadline:
+                raise RuntimeError(
+                    f"Filterwheel failed to change to filter {filter_id} within {HARDWARE_TIMEOUT_SECONDS}s"
+                )
+            self.logger.info(f"Waiting for filterwheel to change to filter ID {filter_id} ...")
+            time.sleep(5)
+
         self.logger.info("Moving focus to autofocus starting position ...")
         starting_focus_position = self.DEFAULT_FOCUS_POSITION
-        is_in_starting_position = False
-        while not is_in_starting_position:
-            focuser_status = requests.get(
-                self.nina_api_path + self.FOCUSER_URL + "move?position=" + str(starting_focus_position)
-            ).json()
+        requests.get(self.nina_api_path + self.FOCUSER_URL + "move?position=" + str(starting_focus_position))
+        deadline = time.time() + HARDWARE_TIMEOUT_SECONDS
+        while True:
             focuser_status = requests.get(self.nina_api_path + self.FOCUSER_URL + "info").json()
             if int(focuser_status["Response"]["Position"]) == starting_focus_position:
-                is_in_starting_position = True
-            else:
-                self.logger.info("Waiting for focuser to reach starting position ...")
-                time.sleep(5)
+                break
+            if time.time() > deadline:
+                raise RuntimeError(
+                    f"Focuser failed to reach position {starting_focus_position} within {HARDWARE_TIMEOUT_SECONDS}s"
+                )
+            self.logger.info("Waiting for focuser to reach starting position ...")
+            time.sleep(5)
 
         AUTOFOCUS_TIMEOUT_SECONDS = 300
         AUTOFOCUS_POLL_INTERVAL = 15

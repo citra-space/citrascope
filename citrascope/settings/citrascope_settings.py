@@ -78,6 +78,20 @@ class CitraScopeSettings:
         self.autofocus_target_custom_ra: Optional[float] = config.get("autofocus_target_custom_ra")
         self.autofocus_target_custom_dec: Optional[float] = config.get("autofocus_target_custom_dec")
 
+        # Validate custom RA/Dec ranges
+        if self.autofocus_target_custom_ra is not None:
+            if not (0 <= self.autofocus_target_custom_ra <= 360):
+                CITRASCOPE_LOGGER.warning(
+                    f"Invalid autofocus_target_custom_ra ({self.autofocus_target_custom_ra}). Clearing."
+                )
+                self.autofocus_target_custom_ra = None
+        if self.autofocus_target_custom_dec is not None:
+            if not (-90 <= self.autofocus_target_custom_dec <= 90):
+                CITRASCOPE_LOGGER.warning(
+                    f"Invalid autofocus_target_custom_dec ({self.autofocus_target_custom_dec}). Clearing."
+                )
+                self.autofocus_target_custom_dec = None
+
         # Validate autofocus interval
         if (
             not isinstance(self.autofocus_interval_minutes, int)
