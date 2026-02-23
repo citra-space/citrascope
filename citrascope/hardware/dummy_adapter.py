@@ -57,7 +57,7 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         self._connected = False
         self._telescope_connected = False
         self._camera_connected = False
-        self._current_ra = 0.0  # hours (hardware convention)
+        self._current_ra = 0.0  # degrees
         self._current_dec = 0.0  # degrees
         self._is_moving = False
         self._tracking_rate = (15.041, 0.0)  # arcsec/sec (sidereal rate)
@@ -140,7 +140,7 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
 
     def _do_point_telescope(self, ra: float, dec: float):
         """Simulate telescope slew."""
-        self.logger.info(f"DummyAdapter: Slewing to RA={ra:.4f}h, Dec={dec:.4f}°")
+        self.logger.info(f"DummyAdapter: Slewing to RA={ra:.4f}°, Dec={dec:.4f}°")
         self._is_moving = True
         self._simulate_delay()
         self._current_ra = ra
@@ -194,7 +194,7 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
 
     def _generate_starfield(
         self,
-        ra_center_hours: float,
+        ra_center_deg: float,
         dec_center: float,
         exptime: float,
         seed: int,
@@ -205,16 +205,16 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         projects them onto the pixel grid, and renders each as a Gaussian PSF.
 
         Args:
-            ra_center_hours: RA of the field centre in hours (hardware convention).
-            dec_center:      Dec of the field centre in degrees.
-            exptime:         Exposure duration in seconds (scales star brightness).
-            seed:            RNG seed for the noise model (use Unix timestamp).
+            ra_center_deg: RA of the field centre in degrees.
+            dec_center:    Dec of the field centre in degrees.
+            exptime:       Exposure duration in seconds (scales star brightness).
+            seed:          RNG seed for the noise model (use Unix timestamp).
 
         Returns:
             Tuple of (image array uint16, WCS object).
         """
         rng = np.random.default_rng(seed)
-        ra_center = ra_center_hours * 15.0  # hours → degrees for WCS & catalog
+        ra_center = ra_center_deg
 
         # Derive sensor geometry from telescope_record when available,
         # so the simulated image matches the real instrument's FOV and resolution.

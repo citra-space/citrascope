@@ -243,12 +243,12 @@ class AbstractBaseTelescopeTask(ABC):
             # Estimate lead position and slew time
             lead_ra, lead_dec, est_slew_time = self.estimate_lead_position(satellite_data)
             self.logger.info(
-                f"Pointing ahead to RA: {lead_ra.hours:.4f}h, DEC: {lead_dec.degrees:.4f}°, estimated slew time: {est_slew_time:.1f}s"
+                f"Pointing ahead to RA: {lead_ra.degrees:.4f}°, DEC: {lead_dec.degrees:.4f}°, estimated slew time: {est_slew_time:.1f}s"
             )
 
             # Move the scope
             slew_start_time = time.time()
-            self.hardware_adapter.point_telescope(lead_ra.hours, lead_dec.degrees)  # type: ignore
+            self.hardware_adapter.point_telescope(lead_ra.degrees, lead_dec.degrees)  # type: ignore
             while self.hardware_adapter.telescope_is_moving():
                 self.logger.debug(f"Slewing to lead position for {satellite_data['name']}...")
                 time.sleep(0.1)
