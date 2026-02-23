@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -81,7 +82,12 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             },
         ]
 
-    def do_autofocus(self, target_ra: float | None = None, target_dec: float | None = None):
+    def do_autofocus(
+        self,
+        target_ra: float | None = None,
+        target_dec: float | None = None,
+        on_progress: Callable[[str], None] | None = None,
+    ):
         """Perform autofocus routine for all enabled filters.
 
         Slews telescope to a bright reference star and runs autofocus
@@ -90,19 +96,25 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         Args:
             target_ra: RA of the slew target in degrees (J2000), or None for Mirach
             target_dec: Dec of the slew target in degrees (J2000), or None for Mirach
+            on_progress: Optional callback(str) to report progress updates
 
         Raises:
             RuntimeError: If no filters discovered or no enabled filters
         """
+
+        def report(msg):
+            if on_progress:
+                on_progress(msg)
+
         if not self.filter_map:
             raise RuntimeError("No filters discovered. Cannot perform autofocus.")
 
-        # Filter to only enabled filters
         enabled_filters = {fid: fdata for fid, fdata in self.filter_map.items() if fdata.get("enabled", True)}
         if not enabled_filters:
             raise RuntimeError("No enabled filters. Cannot perform autofocus.")
 
-        self.logger.info(f"Performing autofocus routine on {len(enabled_filters)} enabled filter(s) ...")
+        total = len(enabled_filters)
+        self.logger.info(f"Performing autofocus routine on {total} enabled filter(s) ...")
 
         if target_ra is not None and target_dec is not None:
             ra = target_ra
@@ -112,6 +124,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             ra = mirach["ra"]
             dec = mirach["dec"]
 
+        report("Slewing to target...")
         self.logger.info(f"Slewing to autofocus target (RA={ra:.4f}, Dec={dec:.4f}) ...")
         try:
             response = requests.get(f"{self.nina_api_path}{self.MOUNT_URL}slew?ra={ra}&dec={dec}", timeout=30)
@@ -123,17 +136,18 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         except requests.RequestException as e:
             raise RuntimeError(f"Mount slew failed: {e}")
 
-        # wait for slew to complete
         while self.telescope_is_moving():
             self.logger.info("Waiting for mount to finish slewing...")
             time.sleep(5)
 
-        for id, filter in enabled_filters.items():
-            self.logger.info(f"Focusing Filter ID: {id}, Name: {filter['name']}")
-            # Pass existing focus position to preserve it if autofocus fails
+        for idx, (id, filter) in enumerate(enabled_filters.items(), 1):
+            name = filter["name"]
+            report(f"Filter {idx}/{total}: {name} — focusing...")
+            self.logger.info(f"Focusing Filter ID: {id}, Name: {name}")
             existing_focus = filter.get("focus_position", self.DEFAULT_FOCUS_POSITION)
-            focus_value = self._auto_focus_one_filter(id, filter["name"], existing_focus)
+            focus_value = self._auto_focus_one_filter(id, name, existing_focus)
             self.filter_map[id]["focus_position"] = focus_value
+            report(f"Filter {idx}/{total}: {name} — done (position {focus_value})")
 
     # autofocus routine
     def _auto_focus_one_filter(self, filter_id: int, filter_name: str, existing_focus_position: int) -> int:
@@ -165,38 +179,36 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
                 self.logger.info("Waiting for focuser to reach starting position ...")
                 time.sleep(5)
 
-        # start autofocus
+        AUTOFOCUS_TIMEOUT_SECONDS = 300
+
         self.logger.info("Starting autofocus ...")
         focuser_status = requests.get(self.nina_api_path + self.FOCUSER_URL + "auto-focus").json()
         self.logger.info(f"Focuser {focuser_status['Response']}")
 
-        last_completed_autofocus = requests.get(self.nina_api_path + self.FOCUSER_URL + "last-af").json()
+        deadline = time.time() + AUTOFOCUS_TIMEOUT_SECONDS
+        while True:
+            last_af = requests.get(self.nina_api_path + self.FOCUSER_URL + "last-af").json()
 
-        if not last_completed_autofocus.get("Success"):
-            self.logger.error(f"Failed to start autofocus: {last_completed_autofocus.get('Error')}")
-            # Preserve existing focus position if it's not the default, otherwise use default
-            if existing_focus_position != self.DEFAULT_FOCUS_POSITION:
-                self.logger.warning(f"Preserving existing focus position: {existing_focus_position}")
-                return existing_focus_position
-            else:
-                self.logger.warning(f"Using default focus position: {self.DEFAULT_FOCUS_POSITION}")
-                return self.DEFAULT_FOCUS_POSITION
+            if not last_af.get("Success"):
+                self.logger.warning(f"last-af reports failure: {last_af.get('Error')}")
+                break
 
-        while (
-            last_completed_autofocus["Response"]["Filter"] != filter_name
-            or last_completed_autofocus["Response"]["InitialFocusPoint"]["Position"] != starting_focus_position
-        ):
-            self.logger.info("Waiting autofocus")
-            last_completed_autofocus = requests.get(self.nina_api_path + self.FOCUSER_URL + "last-af").json()
+            resp = last_af["Response"]
+            if resp["Filter"] == filter_name and resp["InitialFocusPoint"]["Position"] == starting_focus_position:
+                position = resp["CalculatedFocusPoint"]["Position"]
+                hfr = resp["CalculatedFocusPoint"]["Value"]
+                self.logger.info(f"Autofocus complete for filter {filter_name}: Position {position}, HFR {hfr}")
+                return position
+
+            if time.time() > deadline:
+                self.logger.warning(f"Autofocus timed out after {AUTOFOCUS_TIMEOUT_SECONDS}s for filter {filter_name}")
+                break
+
+            self.logger.info("Awaiting autofocus...")
             time.sleep(15)
 
-        autofocused_position = last_completed_autofocus["Response"]["CalculatedFocusPoint"]["Position"]
-        autofocused_value = last_completed_autofocus["Response"]["CalculatedFocusPoint"]["Value"]
-
-        self.logger.info(
-            f"Autofocus complete for filter {filter_name}: Position {autofocused_position}, HFR {autofocused_value}"
-        )
-        return autofocused_position
+        self.logger.warning(f"Preserving existing focus position {existing_focus_position} for {filter_name}")
+        return existing_focus_position
 
     def _do_point_telescope(self, ra: float, dec: float):
         self.logger.info(f"Slewing to RA: {ra}, Dec: {dec}")

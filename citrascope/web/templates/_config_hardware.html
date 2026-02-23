@@ -186,7 +186,8 @@
                                         </div>
                                         <div class="mb-3">
                                             <label class="form-label small text-muted">Last Autofocus</label>
-                                            <div x-show="$store.citrascope.status?.autofocus_running" class="text-info">In progress...</div>
+                                            <div x-show="$store.citrascope.status?.autofocus_running" class="text-info"
+                                                 x-text="$store.citrascope.status?.autofocus_progress || 'In progress...'"></div>
                                             <div x-show="!$store.citrascope.status?.autofocus_running" class="text-light" x-text="$store.citrascope.formatLastAutofocus($store.citrascope.status)">Never</div>
                                         </div>
                                         <div class="mb-3">

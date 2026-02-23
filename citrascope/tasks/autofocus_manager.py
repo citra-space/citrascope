@@ -25,6 +25,7 @@ class AutofocusManager:
         self.imaging_queue = imaging_queue
         self._requested = False
         self._running = False
+        self._progress = ""
         self._lock = threading.Lock()
 
     def request(self) -> bool:
@@ -56,6 +57,16 @@ class AutofocusManager:
         """Check if autofocus is currently executing."""
         with self._lock:
             return self._running
+
+    @property
+    def progress(self) -> str:
+        """Current autofocus progress description (empty if not running)."""
+        with self._lock:
+            return self._progress
+
+    def _set_progress(self, msg: str) -> None:
+        with self._lock:
+            self._progress = msg
 
     def check_and_execute(self) -> bool:
         """Check if autofocus should run (manual or scheduled) and execute if so.
@@ -133,10 +144,15 @@ class AutofocusManager:
         """Execute autofocus routine and update timestamp on both success and failure."""
         with self._lock:
             self._running = True
+            self._progress = "Starting..."
         try:
             target_ra, target_dec = self._resolve_target()
             self.logger.info("Starting autofocus routine...")
-            self.hardware_adapter.do_autofocus(target_ra=target_ra, target_dec=target_dec)
+            self.hardware_adapter.do_autofocus(
+                target_ra=target_ra,
+                target_dec=target_dec,
+                on_progress=self._set_progress,
+            )
 
             if self.hardware_adapter.supports_filter_management():
                 try:
@@ -153,6 +169,7 @@ class AutofocusManager:
         finally:
             with self._lock:
                 self._running = False
+                self._progress = ""
             if self.daemon.settings:
                 self.daemon.settings.last_autofocus_timestamp = int(time.time())
                 self.daemon.settings.save()

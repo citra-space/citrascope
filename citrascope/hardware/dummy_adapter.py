@@ -3,6 +3,7 @@
 import datetime
 import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import astropy.units as u
@@ -371,13 +372,27 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         """Dummy adapter supports autofocus."""
         return True
 
-    def do_autofocus(self, target_ra: float | None = None, target_dec: float | None = None) -> None:
+    def do_autofocus(
+        self,
+        target_ra: float | None = None,
+        target_dec: float | None = None,
+        on_progress: Callable[[str], None] | None = None,
+    ) -> None:
         """Simulate autofocus routine."""
         if target_ra is not None and target_dec is not None:
             self.logger.info(f"DummyAdapter: Starting autofocus on target RA={target_ra:.4f}, Dec={target_dec:.4f}")
         else:
             self.logger.info("DummyAdapter: Starting autofocus (default target)")
-        self._simulate_delay(3.0)
+
+        filters = [f for f in self.filter_map.values() if f.get("enabled", True)] if self.filter_map else []
+        total = len(filters) or 1
+        for idx, f in enumerate(filters or [{"name": "Default"}], 1):
+            if on_progress:
+                on_progress(f"Filter {idx}/{total}: {f['name']} — focusing...")
+            self._simulate_delay(1.0)
+            if on_progress:
+                on_progress(f"Filter {idx}/{total}: {f['name']} — done")
+
         self.logger.info("DummyAdapter: Autofocus complete")
 
     def supports_filter_management(self) -> bool:

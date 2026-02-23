@@ -1,6 +1,7 @@
 import logging
 import math
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
 from typing import Any, Optional, TypedDict
@@ -229,7 +230,12 @@ class AbstractAstroHardwareAdapter(ABC):
         """
         pass
 
-    def do_autofocus(self, target_ra: float | None = None, target_dec: float | None = None) -> None:
+    def do_autofocus(
+        self,
+        target_ra: float | None = None,
+        target_dec: float | None = None,
+        on_progress: Callable[[str], None] | None = None,
+    ) -> None:
         """Perform autofocus routine for all filters.
 
         This is an optional method for adapters that support filter management.
@@ -239,6 +245,7 @@ class AbstractAstroHardwareAdapter(ABC):
         Args:
             target_ra: RA of the slew target in degrees (J2000), or None for adapter default
             target_dec: Dec of the slew target in degrees (J2000), or None for adapter default
+            on_progress: Optional callback(str) to report progress updates
 
         Raises:
             NotImplementedError: If the adapter doesn't support autofocus
