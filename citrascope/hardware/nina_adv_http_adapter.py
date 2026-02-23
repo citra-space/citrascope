@@ -180,10 +180,15 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
                 time.sleep(5)
 
         AUTOFOCUS_TIMEOUT_SECONDS = 300
+        AUTOFOCUS_POLL_INTERVAL = 15
 
         self.logger.info("Starting autofocus ...")
         focuser_status = requests.get(self.nina_api_path + self.FOCUSER_URL + "auto-focus").json()
         self.logger.info(f"Focuser {focuser_status['Response']}")
+
+        # Wait one interval before polling — AF always takes longer than this,
+        # so last-af still holds the previous result and won't false-match.
+        time.sleep(AUTOFOCUS_POLL_INTERVAL)
 
         deadline = time.time() + AUTOFOCUS_TIMEOUT_SECONDS
         while True:
@@ -205,7 +210,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
                 break
 
             self.logger.info("Awaiting autofocus...")
-            time.sleep(15)
+            time.sleep(AUTOFOCUS_POLL_INTERVAL)
 
         self.logger.warning(f"Preserving existing focus position {existing_focus_position} for {filter_name}")
         return existing_focus_position
