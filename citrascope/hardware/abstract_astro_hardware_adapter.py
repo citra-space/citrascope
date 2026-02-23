@@ -100,7 +100,7 @@ class AbstractAstroHardwareAdapter(ABC):
     def angular_distance(
         self, ra1_degrees: float, dec1_degrees: float, ra2_degrees: float, dec2_degrees: float
     ) -> float:  # TODO: move this out of the hardware adapter... this isn't hardware stuff
-        """Compute angular distance between two (RA hours, Dec deg) points in degrees."""
+        """Compute angular distance between two (RA deg, Dec deg) points in degrees."""
 
         # Convert to radians
         ra1_rad = math.radians(ra1_degrees)

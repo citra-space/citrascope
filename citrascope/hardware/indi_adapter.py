@@ -387,14 +387,14 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
             self.logger.error(f"EQUATORIAL_EOD_COORD has {len(telescope_radec)} elements, expected 2")
             return
 
-        new_ra = float(ra)
+        ra_hours = float(ra) / 15.0
         new_dec = float(dec)
-        telescope_radec[0].setValue(new_ra)  # RA in hours
+        telescope_radec[0].setValue(ra_hours)  # RA converted from degrees to hours for INDI
         telescope_radec[1].setValue(new_dec)  # DEC in degrees
 
         try:
             self.sendNewNumber(telescope_radec)
-            self.logger.info(f"Sent telescope coordinates: RA={new_ra}h, DEC={new_dec}°")
+            self.logger.info(f"Sent telescope coordinates: RA={ra_hours:.4f}h ({ra:.4f}°), DEC={new_dec}°")
         except Exception as e:
             self.logger.error(f"Error sending new RA/DEC to telescope: {e}")
             return
