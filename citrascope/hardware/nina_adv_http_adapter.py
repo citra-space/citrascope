@@ -2,7 +2,7 @@ import base64
 import json
 import logging
 import os
-import sys
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -17,6 +17,7 @@ from citrascope.hardware.abstract_astro_hardware_adapter import (
     ObservationStrategy,
     SettingSchemaEntry,
 )
+from citrascope.hardware.nina_event_listener import NinaEventListener, derive_ws_url
 
 
 class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
@@ -38,6 +39,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
         self.binning_x = kwargs.get("binning_x", 1)
         self.binning_y = kwargs.get("binning_y", 1)
+        self._event_listener: NinaEventListener | None = None
 
     @classmethod
     def get_settings_schema(cls, **kwargs) -> list[SettingSchemaEntry]:
@@ -145,27 +147,30 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             report(f"Filter {idx}/{total}: {name} — focusing...")
             self.logger.info(f"Focusing Filter ID: {id}, Name: {name}")
             existing_focus = filter.get("focus_position", self.DEFAULT_FOCUS_POSITION)
-            focus_value = self._auto_focus_one_filter(id, name, existing_focus)
+
+            def af_point_progress(position: int, hfr: float, _idx=idx, _total=total, _name=name):
+                report(f"Filter {_idx}/{_total}: {_name} — pos {position}, HFR {hfr:.2f}")
+
+            focus_value = self._auto_focus_one_filter(id, name, existing_focus, on_af_point=af_point_progress)
             self.filter_map[id]["focus_position"] = focus_value
             report(f"Filter {idx}/{total}: {name} — done (position {focus_value})")
 
-    # autofocus routine
-    def _auto_focus_one_filter(self, filter_id: int, filter_name: str, existing_focus_position: int) -> int:
+    def _auto_focus_one_filter(
+        self,
+        filter_id: int,
+        filter_name: str,
+        existing_focus_position: int,
+        on_af_point: Callable[[int, float], None] | None = None,
+    ) -> int:
+        assert self._event_listener is not None
 
         HARDWARE_TIMEOUT_SECONDS = 60
 
+        self._event_listener.filter_changed.clear()
         requests.get(self.nina_api_path + self.FILTERWHEEL_URL + "change-filter?filterId=" + str(filter_id))
-        deadline = time.time() + HARDWARE_TIMEOUT_SECONDS
-        while True:
-            filterwheel_status = requests.get(self.nina_api_path + self.FILTERWHEEL_URL + "info").json()
-            if filterwheel_status["Response"]["SelectedFilter"]["Id"] == filter_id:
-                break
-            if time.time() > deadline:
-                raise RuntimeError(
-                    f"Filterwheel failed to change to filter {filter_id} within {HARDWARE_TIMEOUT_SECONDS}s"
-                )
-            self.logger.info(f"Waiting for filterwheel to change to filter ID {filter_id} ...")
-            time.sleep(5)
+        if not self._event_listener.filter_changed.wait(timeout=HARDWARE_TIMEOUT_SECONDS):
+            raise RuntimeError(f"Filterwheel failed to change to filter {filter_id} within {HARDWARE_TIMEOUT_SECONDS}s")
+        self.logger.info(f"Filter changed to ID {filter_id}")
 
         self.logger.info("Moving focus to autofocus starting position ...")
         starting_focus_position = self.DEFAULT_FOCUS_POSITION
@@ -183,40 +188,59 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             time.sleep(5)
 
         AUTOFOCUS_TIMEOUT_SECONDS = 300
-        AUTOFOCUS_POLL_INTERVAL = 15
 
         self.logger.info("Starting autofocus ...")
+
+        self._event_listener.autofocus_finished.clear()
+        self._event_listener.autofocus_error.clear()
+        prev_af_callback = self._event_listener.on_af_point
+        self._event_listener.on_af_point = on_af_point
+
         focuser_status = requests.get(self.nina_api_path + self.FOCUSER_URL + "auto-focus").json()
         self.logger.info(f"Focuser {focuser_status['Response']}")
 
-        # Wait one interval before polling — AF always takes longer than this,
-        # so last-af still holds the previous result and won't false-match.
-        time.sleep(AUTOFOCUS_POLL_INTERVAL)
+        try:
+            deadline = time.time() + AUTOFOCUS_TIMEOUT_SECONDS
+            while not self._event_listener.autofocus_finished.is_set():
+                if self._event_listener.autofocus_error.is_set():
+                    self.logger.warning(f"Autofocus error reported via WebSocket for filter {filter_name}")
+                    break
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    self.logger.warning(
+                        f"Autofocus timed out after {AUTOFOCUS_TIMEOUT_SECONDS}s for filter {filter_name}"
+                    )
+                    break
+                self._event_listener.autofocus_finished.wait(timeout=min(remaining, 1.0))
+        finally:
+            self._event_listener.on_af_point = prev_af_callback
 
-        deadline = time.time() + AUTOFOCUS_TIMEOUT_SECONDS
-        while True:
+        if self._event_listener.autofocus_finished.is_set():
             last_af = requests.get(self.nina_api_path + self.FOCUSER_URL + "last-af").json()
-
-            if not last_af.get("Success"):
-                self.logger.warning(f"last-af reports failure: {last_af.get('Error')}")
-                break
-
-            resp = last_af["Response"]
-            if resp["Filter"] == filter_name and resp["InitialFocusPoint"]["Position"] == starting_focus_position:
+            if last_af.get("Success"):
+                resp = last_af["Response"]
                 position = resp["CalculatedFocusPoint"]["Position"]
                 hfr = resp["CalculatedFocusPoint"]["Value"]
                 self.logger.info(f"Autofocus complete for filter {filter_name}: Position {position}, HFR {hfr}")
                 return position
-
-            if time.time() > deadline:
-                self.logger.warning(f"Autofocus timed out after {AUTOFOCUS_TIMEOUT_SECONDS}s for filter {filter_name}")
-                break
-
-            self.logger.info("Awaiting autofocus...")
-            time.sleep(AUTOFOCUS_POLL_INTERVAL)
+            self.logger.warning(f"last-af fetch after AUTOFOCUS-FINISHED failed: {last_af.get('Error')}")
 
         self.logger.warning(f"Preserving existing focus position {existing_focus_position} for {filter_name}")
         return existing_focus_position
+
+    def _find_task_images(self, task_id: str, expected_count: int) -> list[int]:
+        """Query NINA /image-history and return indices of images matching task_id."""
+        resp = requests.get(f"{self.nina_api_path}/image-history?all=true").json()
+        if not resp.get("Success"):
+            self.logger.error(f"Failed to get image history: {resp.get('Error')}")
+            raise RuntimeError("Failed to get images list from NINA")
+        all_images = resp["Response"]
+        search_window = expected_count + 10
+        matches = []
+        for i in range(max(0, len(all_images) - search_window), len(all_images)):
+            if task_id in all_images[i].get("Filename", ""):
+                matches.append(i)
+        return matches
 
     def _do_point_telescope(self, ra: float, dec: float):
         self.logger.info(f"Slewing to RA: {ra}, Dec: {dec}")
@@ -286,6 +310,11 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             # Discover available filters (focus positions loaded from saved settings)
             self.discover_filters()
 
+            # Start WebSocket event listener for reactive hardware monitoring
+            ws_url = derive_ws_url(self.nina_api_path)
+            self._event_listener = NinaEventListener(ws_url, self.logger)
+            self._event_listener.start()
+
             return True
         except Exception as e:
             self.logger.error(f"Failed to connect to NINA Advanced API: {e}")
@@ -319,7 +348,11 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             self.filter_map[filter_id] = {"name": filter_name, "focus_position": focus_position, "enabled": enabled}
 
     def disconnect(self):
-        pass
+        if self._event_listener:
+            try:
+                self._event_listener.stop()
+            finally:
+                self._event_listener = None
 
     def supports_autofocus(self) -> bool:
         """Indicates that NINA adapter supports autofocus."""
@@ -470,6 +503,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         Returns:
             str: Path to the captured image
         """
+        assert self._event_listener is not None
         elset = satellite_data["most_recent_elset"]
 
         # Load template as JSON and replace binning placeholders
@@ -557,70 +591,68 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
         self.logger.info(f"Loaded sequence to NINA, starting sequence...")
 
-        start_response = requests.get(
-            f"{self.nina_api_path}{self.SEQUENCE_URL}start?skipValidation=true"
-        ).json()  # TODO: try and fix validation issues
-        if not start_response.get("Success"):
-            self.logger.error(f"Failed to start sequence: {start_response.get('Error')}")
-            raise RuntimeError("Failed to start NINA sequence")
-
         timeout_minutes = 60
-        poll_interval_seconds = 10
-        elapsed_time = 0
-        status_response = None
-        while elapsed_time < timeout_minutes * 60:
-            status_response = requests.get(f"{self.nina_api_path}{self.SEQUENCE_URL}json").json()
 
-            start_status = status_response["Response"][1][
-                "Status"
-            ]  # these are also based on the hardcoded template sections for now...
-            targets_status = status_response["Response"][2]["Status"]
-            end_status = status_response["Response"][3]["Status"]
-            self.logger.debug(f"Sequence status - Start: {start_status}, Targets: {targets_status}, End: {end_status}")
+        self._event_listener.sequence_finished.clear()
+        self._event_listener.sequence_failed.clear()
 
-            if start_status == "FINISHED" and targets_status == "FINISHED" and end_status == "FINISHED":
-                self.logger.info(f"NINA sequence completed")
-                break
+        # Wait for IMAGE-SAVE WS events to know images are flushed to disk,
+        # then query image-history once to get indices for download.
+        expected_image_count = len(filters_to_use)
+        matched_count = [0]
+        images_ready = threading.Event()
 
-            self.logger.info(f"NINA sequence still running, waiting {poll_interval_seconds} seconds...")
-            time.sleep(poll_interval_seconds)
-            elapsed_time += poll_interval_seconds
-        else:
-            self.logger.error(f"NINA sequence did not complete within timeout of {timeout_minutes} minutes")
-            raise RuntimeError("NINA sequence timeout")
+        def _on_image_saved(stats: dict) -> None:
+            # Called on the single WS listener thread — no concurrent writes to matched_count
+            filename = stats.get("Filename", "")
+            if task.id in filename:
+                matched_count[0] += 1
+                self.logger.info(f"IMAGE-SAVE: {filename} ({matched_count[0]}/{expected_image_count})")
+                if matched_count[0] >= expected_image_count:
+                    images_ready.set()
 
-        # get a list of images taken in the sequence
-        self.logger.info(f"Retrieving list of images taken in sequence...")
-        images_response = requests.get(f"{self.nina_api_path}/image-history?all=true").json()
-        if not images_response.get("Success"):
-            self.logger.error(f"Failed to get images list: {images_response.get('Error')}")
-            raise RuntimeError("Failed to get images list from NINA")
+        prev_callback = self._event_listener.on_image_save
+        self._event_listener.on_image_save = _on_image_saved
 
-        images_to_download = []
-        expected_image_count = len(filters_to_use)  # One image per filter in sequence
-        images_found = len(images_response["Response"])
-        self.logger.info(
-            f"Found {images_found} images in NINA image history, considering the last {expected_image_count}"
-        )
-        start_index = max(0, images_found - expected_image_count)
-        end_index = images_found
-        if images_found < expected_image_count:
-            self.logger.warning(f"Fewer images found ({images_found}) than expected ({expected_image_count})")
-        for i in range(start_index, end_index):
-            possible_image = images_response["Response"][i]
-            if "Filename" not in possible_image:
-                self.logger.warning(f"Image {i} has no filename in response, skipping")
-                continue
+        try:
+            start_response = requests.get(
+                f"{self.nina_api_path}{self.SEQUENCE_URL}start?skipValidation=true"
+            ).json()  # TODO: try and fix validation issues
+            if not start_response.get("Success"):
+                self.logger.error(f"Failed to start sequence: {start_response.get('Error')}")
+                raise RuntimeError("Failed to start NINA sequence")
 
-            if task.id in possible_image["Filename"]:
-                self.logger.info(f"Image {i} {possible_image['Filename']} matches task id")
-                images_to_download.append(i)
-            else:
-                self.logger.warning(
-                    f"Image {i} {possible_image['Filename']} does not match task id, skipping. Please make sure NINA is configured to include Sequence Title in image filenames under Options > Imaging > Image File Pattern."
-                )
+            deadline = time.time() + timeout_minutes * 60
+            while not self._event_listener.sequence_finished.is_set():
+                if self._event_listener.sequence_failed.is_set():
+                    err = self._event_listener.last_sequence_error or {}
+                    entity = err.get("Entity", "unknown")
+                    error_msg = err.get("Error", "unknown error")
+                    self.logger.error(f"NINA sequence entity failed: {entity} — {error_msg}")
+                    raise RuntimeError(f"NINA sequence failed: {entity} — {error_msg}")
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    self.logger.error(f"NINA sequence did not complete within timeout of {timeout_minutes} minutes")
+                    raise RuntimeError("NINA sequence timeout")
+                self._event_listener.sequence_finished.wait(timeout=min(remaining, 2.0))
 
-        # Get the most recent image from NINA (index 0) in raw FITS format
+            self.logger.info("NINA sequence completed, waiting for images to save...")
+            images_ready.wait(timeout=10)
+        finally:
+            self._event_listener.on_image_save = prev_callback
+
+        images_to_download = self._find_task_images(task.id, expected_image_count)
+
+        if not images_to_download:
+            self.logger.error(
+                f"No images matching task {task.id} found. "
+                "Ensure NINA is configured to include Sequence Title in image filenames "
+                "under Options > Imaging > Image File Pattern."
+            )
+            raise RuntimeError(f"No matching images found for task {task.id}")
+
+        self.logger.info(f"Downloading {len(images_to_download)} images")
+
         filepaths = []
         for image_index in images_to_download:
             self.logger.debug(f"Retrieving image from NINA...")
