@@ -147,5 +147,5 @@ hip_main.dat
 nina_sequence_*.json
 nina_focus_positions.json
 
-citrascope-env/test_data/
+citrascope-env/
 test_data/
