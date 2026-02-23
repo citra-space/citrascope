@@ -16,11 +16,15 @@ class AutofocusManager:
     executes the routine via the hardware adapter.
     """
 
-    def __init__(self, logger: logging.Logger, hardware_adapter: AbstractAstroHardwareAdapter, daemon):
+    def __init__(
+        self, logger: logging.Logger, hardware_adapter: AbstractAstroHardwareAdapter, daemon, imaging_queue=None
+    ):
         self.logger = logger
         self.hardware_adapter = hardware_adapter
         self.daemon = daemon
+        self.imaging_queue = imaging_queue
         self._requested = False
+        self._running = False
         self._lock = threading.Lock()
 
     def request(self) -> bool:
@@ -48,10 +52,17 @@ class AutofocusManager:
         with self._lock:
             return self._requested
 
+    def is_running(self) -> bool:
+        """Check if autofocus is currently executing."""
+        with self._lock:
+            return self._running
+
     def check_and_execute(self) -> bool:
         """Check if autofocus should run (manual or scheduled) and execute if so.
 
         Call this between tasks in the runner loop. Returns True if autofocus ran.
+        Waits for the imaging queue to drain before starting so we don't slew
+        mid-exposure.
         """
         with self._lock:
             should_run = self._requested
@@ -61,10 +72,17 @@ class AutofocusManager:
                 should_run = True
                 self._requested = False
 
-        if should_run:
-            self._execute()
-            return True
-        return False
+        if not should_run:
+            return False
+
+        if self.imaging_queue and not self.imaging_queue.is_idle():
+            self.logger.info("Autofocus deferred - waiting for imaging queue to drain")
+            with self._lock:
+                self._requested = True
+            return False
+
+        self._execute()
+        return True
 
     def _should_run_scheduled(self) -> bool:
         """Check if scheduled autofocus should run based on settings."""
@@ -113,6 +131,8 @@ class AutofocusManager:
 
     def _execute(self) -> None:
         """Execute autofocus routine and update timestamp on both success and failure."""
+        with self._lock:
+            self._running = True
         try:
             target_ra, target_dec = self._resolve_target()
             self.logger.info("Starting autofocus routine...")
@@ -131,6 +151,8 @@ class AutofocusManager:
         except Exception as e:
             self.logger.error(f"Autofocus failed: {str(e)}", exc_info=True)
         finally:
+            with self._lock:
+                self._running = False
             if self.daemon.settings:
                 self.daemon.settings.last_autofocus_timestamp = int(time.time())
                 self.daemon.settings.save()

@@ -72,7 +72,12 @@ class TaskManager:
         # Task processing control (always starts active)
         self._processing_active = True
         self._processing_lock = threading.Lock()
-        self.autofocus_manager = AutofocusManager(self.logger, self.hardware_adapter, self.daemon)
+        self.autofocus_manager = AutofocusManager(
+            self.logger,
+            self.hardware_adapter,
+            self.daemon,
+            imaging_queue=self.imaging_queue,
+        )
 
         # Lifetime task counters — lock gives atomic multi-field snapshots in get_task_stats().
         self._task_stats_lock = threading.Lock()

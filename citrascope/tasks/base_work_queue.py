@@ -219,6 +219,10 @@ class BaseWorkQueue(ABC):
             except queue.Empty:
                 continue
 
+    def is_idle(self) -> bool:
+        """Return True if no items are queued or being actively worked on."""
+        return self.work_queue.unfinished_tasks == 0
+
     def get_stats(self) -> dict:
         """Return a consistent snapshot of lifetime counters."""
         with self._stats_lock:

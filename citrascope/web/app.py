@@ -45,6 +45,7 @@ class SystemStatus(BaseModel):
     ground_station_name: Optional[str] = None
     ground_station_url: Optional[str] = None
     autofocus_requested: bool = False
+    autofocus_running: bool = False
     last_autofocus_timestamp: Optional[int] = None
     next_autofocus_minutes: Optional[int] = None
     time_health: Optional[Dict[str, Any]] = None
@@ -807,6 +808,7 @@ class CitraScopeWebApp:
                 task_manager = self.daemon.task_manager
                 self.status.current_task = task_manager.current_task_id
                 self.status.autofocus_requested = task_manager.autofocus_manager.is_requested()
+                self.status.autofocus_running = task_manager.autofocus_manager.is_running()
                 with task_manager.heap_lock:
                     self.status.tasks_pending = len(task_manager.task_heap)
 

@@ -170,15 +170,24 @@
                                         <h6 class="mb-2">Autofocus</h6>
                                         <div class="mb-3">
                                             <button type="button" class="btn btn-sm w-100"
-                                                :class="$store.citrascope.status?.autofocus_requested ? 'btn-outline-warning' : 'btn-outline-primary'"
+                                                :class="$store.citrascope.status?.autofocus_running ? 'btn-outline-info' : ($store.citrascope.status?.autofocus_requested ? 'btn-outline-warning' : 'btn-outline-primary')"
+                                                :disabled="$store.citrascope.status?.autofocus_running"
                                                 @click="window.triggerAutofocus()">
-                                                <span x-text="$store.citrascope.status?.autofocus_requested ? 'Cancel Autofocus' : 'Run Autofocus'">Run Autofocus</span>
-                                                <span x-show="$store.citrascope.isAutofocusing" class="spinner-border spinner-border-sm ms-2" role="status"></span>
+                                                <template x-if="$store.citrascope.status?.autofocus_running">
+                                                    <span>
+                                                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                                        Autofocusing...
+                                                    </span>
+                                                </template>
+                                                <template x-if="!$store.citrascope.status?.autofocus_running">
+                                                    <span x-text="$store.citrascope.status?.autofocus_requested ? 'Cancel Autofocus' : 'Run Autofocus'">Run Autofocus</span>
+                                                </template>
                                             </button>
                                         </div>
                                         <div class="mb-3">
                                             <label class="form-label small text-muted">Last Autofocus</label>
-                                            <div class="text-light" x-text="$store.citrascope.formatLastAutofocus($store.citrascope.status)">Never</div>
+                                            <div x-show="$store.citrascope.status?.autofocus_running" class="text-info">In progress...</div>
+                                            <div x-show="!$store.citrascope.status?.autofocus_running" class="text-light" x-text="$store.citrascope.formatLastAutofocus($store.citrascope.status)">Never</div>
                                         </div>
                                         <div class="mb-3">
                                             <label for="autofocus_target_preset" class="form-label small">Focus Target</label>
