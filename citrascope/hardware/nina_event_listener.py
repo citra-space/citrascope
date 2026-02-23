@@ -72,17 +72,17 @@ class NinaEventListener:
     @property
     def last_filter_change(self) -> dict[str, Any] | None:
         with self._data_lock:
-            return self._last_filter_change
+            return dict(self._last_filter_change) if self._last_filter_change else None
 
     @property
     def last_image_save(self) -> dict[str, Any] | None:
         with self._data_lock:
-            return self._last_image_save
+            return dict(self._last_image_save) if self._last_image_save else None
 
     @property
     def last_sequence_error(self) -> dict[str, Any] | None:
         with self._data_lock:
-            return self._last_sequence_error
+            return dict(self._last_sequence_error) if self._last_sequence_error else None
 
     # -- lifecycle --
 

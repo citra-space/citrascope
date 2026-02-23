@@ -349,8 +349,10 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
     def disconnect(self):
         if self._event_listener:
-            self._event_listener.stop()
-            self._event_listener = None
+            try:
+                self._event_listener.stop()
+            finally:
+                self._event_listener = None
 
     def supports_autofocus(self) -> bool:
         """Indicates that NINA adapter supports autofocus."""
@@ -612,15 +614,14 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         prev_callback = self._event_listener.on_image_save
         self._event_listener.on_image_save = _on_image_saved
 
-        start_response = requests.get(
-            f"{self.nina_api_path}{self.SEQUENCE_URL}start?skipValidation=true"
-        ).json()  # TODO: try and fix validation issues
-        if not start_response.get("Success"):
-            self._event_listener.on_image_save = prev_callback
-            self.logger.error(f"Failed to start sequence: {start_response.get('Error')}")
-            raise RuntimeError("Failed to start NINA sequence")
-
         try:
+            start_response = requests.get(
+                f"{self.nina_api_path}{self.SEQUENCE_URL}start?skipValidation=true"
+            ).json()  # TODO: try and fix validation issues
+            if not start_response.get("Success"):
+                self.logger.error(f"Failed to start sequence: {start_response.get('Error')}")
+                raise RuntimeError("Failed to start NINA sequence")
+
             deadline = time.time() + timeout_minutes * 60
             while not self._event_listener.sequence_finished.is_set():
                 if self._event_listener.sequence_failed.is_set():
