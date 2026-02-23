@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from dateutil import parser as dtparser
 
+from citrascope.constants import AUTOFOCUS_TARGET_PRESETS
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
 from citrascope.tasks.scope.static_telescope_task import StaticTelescopeTask
 from citrascope.tasks.scope.tracking_telescope_task import TrackingTelescopeTask
@@ -479,11 +480,37 @@ class TaskManager:
         elapsed_minutes = (int(time.time()) - last_timestamp) / 60
         return elapsed_minutes >= interval_minutes
 
+    def _resolve_autofocus_target(self) -> tuple[float | None, float | None]:
+        """Resolve autofocus target RA/Dec from settings (preset or custom)."""
+        settings = self.daemon.settings
+        if not settings:
+            return None, None
+
+        preset_key = settings.autofocus_target_preset or "mirach"
+
+        if preset_key == "custom":
+            ra = settings.autofocus_target_custom_ra
+            dec = settings.autofocus_target_custom_dec
+            if ra is not None and dec is not None:
+                self.logger.info(f"Autofocus target: custom (RA={ra:.4f}, Dec={dec:.4f})")
+                return ra, dec
+            self.logger.warning("Custom autofocus target missing RA/Dec, falling back to Mirach")
+            preset_key = "mirach"
+
+        preset = AUTOFOCUS_TARGET_PRESETS.get(preset_key)
+        if not preset:
+            self.logger.warning(f"Unknown autofocus preset '{preset_key}', falling back to Mirach")
+            preset = AUTOFOCUS_TARGET_PRESETS["mirach"]
+
+        self.logger.info(f"Autofocus target: {preset['name']} ({preset['designation']})")
+        return preset["ra"], preset["dec"]
+
     def _execute_autofocus(self) -> None:
         """Execute autofocus routine and update timestamp on both success and failure."""
         try:
+            target_ra, target_dec = self._resolve_autofocus_target()
             self.logger.info("Starting autofocus routine...")
-            self.hardware_adapter.do_autofocus()
+            self.hardware_adapter.do_autofocus(target_ra=target_ra, target_dec=target_dec)
 
             # Save updated filter configuration after autofocus
             if self.hardware_adapter.supports_filter_management():

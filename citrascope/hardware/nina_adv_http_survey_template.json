@@ -174,8 +174,8 @@
                             "_autoFocusBinning": {
                               "$id": "31",
                               "$type": "NINA.Core.Model.Equipment.BinningMode, NINA.Core",
-                              "X": {autofocus_binning},
-                              "Y": {autofocus_binning}
+                              "X": 1,
+                              "Y": 1
                             },
                             "_autoFocusGain": -1,
                             "_autoFocusOffset": -1

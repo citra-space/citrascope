@@ -371,9 +371,12 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         """Dummy adapter supports autofocus."""
         return True
 
-    def do_autofocus(self) -> None:
+    def do_autofocus(self, target_ra: float | None = None, target_dec: float | None = None) -> None:
         """Simulate autofocus routine."""
-        self.logger.info("DummyAdapter: Starting autofocus...")
+        if target_ra is not None and target_dec is not None:
+            self.logger.info(f"DummyAdapter: Starting autofocus on target RA={target_ra:.4f}, Dec={target_dec:.4f}")
+        else:
+            self.logger.info("DummyAdapter: Starting autofocus (default target)")
         self._simulate_delay(3.0)
         self.logger.info("DummyAdapter: Autofocus complete")
 

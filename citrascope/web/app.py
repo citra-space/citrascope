@@ -17,6 +17,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from citrascope.constants import (
+    AUTOFOCUS_TARGET_PRESETS,
     DEV_API_HOST,
     DEV_APP_URL,
     PROD_API_HOST,
@@ -210,6 +211,9 @@ class CitraScopeWebApp:
                 "scheduled_autofocus_enabled": settings.scheduled_autofocus_enabled,
                 "autofocus_interval_minutes": settings.autofocus_interval_minutes,
                 "last_autofocus_timestamp": settings.last_autofocus_timestamp,
+                "autofocus_target_preset": settings.autofocus_target_preset,
+                "autofocus_target_custom_ra": settings.autofocus_target_custom_ra,
+                "autofocus_target_custom_dec": settings.autofocus_target_custom_dec,
                 "time_check_interval_minutes": settings.time_check_interval_minutes,
                 "time_offset_pause_ms": settings.time_offset_pause_ms,
                 "gps_location_updates_enabled": settings.gps_location_updates_enabled,
@@ -687,6 +691,14 @@ class CitraScopeWebApp:
             except Exception as e:
                 CITRASCOPE_LOGGER.error(f"Error cancelling autofocus: {e}", exc_info=True)
                 return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.get("/api/adapter/autofocus/presets")
+        async def get_autofocus_presets():
+            """Return available autofocus target star presets."""
+            presets = [
+                {"key": key, **{k: v for k, v in preset.items()}} for key, preset in AUTOFOCUS_TARGET_PRESETS.items()
+            ]
+            return {"presets": presets}
 
         @self.app.post("/api/camera/capture")
         async def camera_capture(request: Dict[str, Any]):

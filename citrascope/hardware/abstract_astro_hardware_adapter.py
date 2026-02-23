@@ -229,12 +229,16 @@ class AbstractAstroHardwareAdapter(ABC):
         """
         pass
 
-    def do_autofocus(self) -> None:
+    def do_autofocus(self, target_ra: float | None = None, target_dec: float | None = None) -> None:
         """Perform autofocus routine for all filters.
 
         This is an optional method for adapters that support filter management.
         Default implementation raises NotImplementedError. Override in subclasses
         that support autofocus.
+
+        Args:
+            target_ra: RA of the slew target in degrees (J2000), or None for adapter default
+            target_dec: Dec of the slew target in degrees (J2000), or None for adapter default
 
         Raises:
             NotImplementedError: If the adapter doesn't support autofocus

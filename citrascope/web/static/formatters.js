@@ -83,7 +83,11 @@ export function formatMinutes(minutes) {
  */
 export function formatLastAutofocus(status) {
     if (!status || !status.last_autofocus_timestamp) return 'Never';
-    const elapsed = Date.now() - status.last_autofocus_timestamp * 1000;
+    const ts = status.last_autofocus_timestamp;
+    // Sanity check: must be a reasonable Unix timestamp (after 2020-01-01)
+    if (ts < 1577836800) return 'Never';
+    const elapsed = Date.now() - ts * 1000;
+    if (elapsed < 0) return 'Never';
     return formatElapsedTime(elapsed);
 }
 

@@ -9,6 +9,7 @@ from typing import Any
 
 import requests
 
+from citrascope.constants import AUTOFOCUS_TARGET_PRESETS
 from citrascope.hardware.abstract_astro_hardware_adapter import (
     AbstractAstroHardwareAdapter,
     FilterConfig,
@@ -36,7 +37,6 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
         self.binning_x = kwargs.get("binning_x", 1)
         self.binning_y = kwargs.get("binning_y", 1)
-        self.autofocus_binning = kwargs.get("autofocus_binning", 1)
 
     @classmethod
     def get_settings_schema(cls, **kwargs) -> list[SettingSchemaEntry]:
@@ -54,18 +54,6 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
                 "placeholder": "http://localhost:1888/v2/api",
                 "pattern": r"^https?://.*",
                 "group": "Connection",
-            },
-            {
-                "name": "autofocus_binning",
-                "friendly_name": "Autofocus Binning",
-                "type": "int",
-                "default": 1,
-                "description": "Pixel binning for autofocus (1=no binning, 2=2x2, etc.)",
-                "required": False,
-                "placeholder": "1",
-                "min": 1,
-                "max": 4,
-                "group": "Imaging",
             },
             {
                 "name": "binning_x",
@@ -93,11 +81,15 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             },
         ]
 
-    def do_autofocus(self):
+    def do_autofocus(self, target_ra: float | None = None, target_dec: float | None = None):
         """Perform autofocus routine for all enabled filters.
 
-        Slews telescope to Mirach (bright reference star) and runs autofocus
+        Slews telescope to a bright reference star and runs autofocus
         for each enabled filter in the filter map, updating focus positions.
+
+        Args:
+            target_ra: RA of the slew target in degrees (J2000), or None for Mirach
+            target_dec: Dec of the slew target in degrees (J2000), or None for Mirach
 
         Raises:
             RuntimeError: If no filters discovered or no enabled filters
@@ -111,12 +103,16 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             raise RuntimeError("No enabled filters. Cannot perform autofocus.")
 
         self.logger.info(f"Performing autofocus routine on {len(enabled_filters)} enabled filter(s) ...")
-        # move telescope to bright star and start autofocus
-        # Mirach ra=(1+9/60.+47.45/3600.)*15 dec=(35+37/60.+11.1/3600.)
-        ra = (1 + 9 / 60.0 + 47.45 / 3600.0) * 15
-        dec = 35 + 37 / 60.0 + 11.1 / 3600.0
 
-        self.logger.info("Slewing to Mirach ...")
+        if target_ra is not None and target_dec is not None:
+            ra = target_ra
+            dec = target_dec
+        else:
+            mirach = AUTOFOCUS_TARGET_PRESETS["mirach"]
+            ra = mirach["ra"]
+            dec = mirach["dec"]
+
+        self.logger.info(f"Slewing to autofocus target (RA={ra:.4f}, Dec={dec:.4f}) ...")
         try:
             response = requests.get(f"{self.nina_api_path}{self.MOUNT_URL}slew?ra={ra}&dec={dec}", timeout=30)
             response.raise_for_status()
@@ -460,7 +456,6 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         template_str = self._get_sequence_template()
         template_str = template_str.replace("{binning_x}", str(self.binning_x))
         template_str = template_str.replace("{binning_y}", str(self.binning_y))
-        template_str = template_str.replace("{autofocus_binning}", str(self.autofocus_binning))
         sequence_json = json.loads(template_str)
 
         nina_sequence_name = f"Citra Target: {satellite_data['name']}, Task: {task.id}"

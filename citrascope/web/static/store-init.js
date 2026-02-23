@@ -39,6 +39,9 @@ import * as components from './components.js';
             versionCheckState: 'idle',
             versionCheckResult: null,
 
+            // Autofocus target presets (loaded from API)
+            autofocusPresets: [],
+
             // Loading states for async operations
             isSavingConfig: false,
             isCapturing: false,

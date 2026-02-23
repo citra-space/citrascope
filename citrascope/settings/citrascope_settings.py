@@ -74,6 +74,9 @@ class CitraScopeSettings:
         self.scheduled_autofocus_enabled: bool = config.get("scheduled_autofocus_enabled", False)
         self.autofocus_interval_minutes: int = config.get("autofocus_interval_minutes", 60)
         self.last_autofocus_timestamp: Optional[int] = config.get("last_autofocus_timestamp")
+        self.autofocus_target_preset: str = config.get("autofocus_target_preset", "mirach")
+        self.autofocus_target_custom_ra: Optional[float] = config.get("autofocus_target_custom_ra")
+        self.autofocus_target_custom_dec: Optional[float] = config.get("autofocus_target_custom_dec")
 
         # Validate autofocus interval
         if (
@@ -144,6 +147,9 @@ class CitraScopeSettings:
             "scheduled_autofocus_enabled": self.scheduled_autofocus_enabled,
             "autofocus_interval_minutes": self.autofocus_interval_minutes,
             "last_autofocus_timestamp": self.last_autofocus_timestamp,
+            "autofocus_target_preset": self.autofocus_target_preset,
+            "autofocus_target_custom_ra": self.autofocus_target_custom_ra,
+            "autofocus_target_custom_dec": self.autofocus_target_custom_dec,
             "time_check_interval_minutes": self.time_check_interval_minutes,
             "time_offset_pause_ms": self.time_offset_pause_ms,
             "gps_location_updates_enabled": self.gps_location_updates_enabled,
