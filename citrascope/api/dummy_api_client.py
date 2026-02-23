@@ -44,6 +44,19 @@ class DummyApiClient(AbstractCitraApiClient):
                 "groundStationId": "dummy-gs-001",
                 "automatedScheduling": True,
                 "maxSlewRate": 5.0,  # degrees per second
+                # Sensor specs matching the DummyAdapter's synthetic camera constants
+                # (1024×1024 px @ ~6 arcsec/px → pixel_size / focal_length * 206.265 ≈ 6.04
+                #  → using pixel_size=5.86 μm and focal_length=200 mm)
+                # Wide FOV (~1.7°) ensures enough V≤10 stars for Tetra3 plate solving.
+                "pixelSize": 5.86,
+                "focalLength": 200.0,
+                "focalRatio": 3.4,
+                "horizontalPixelCount": 1024,
+                "verticalPixelCount": 1024,
+                "imageCircleDiameter": None,
+                "angularNoise": 2.0,
+                "spectralMinWavelengthNm": None,
+                "spectralMaxWavelengthNm": None,
             },
             "ground_station": {
                 "id": "dummy-gs-001",
