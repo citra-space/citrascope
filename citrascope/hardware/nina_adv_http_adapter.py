@@ -235,8 +235,9 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             self.logger.error(f"Failed to get image history: {resp.get('Error')}")
             raise RuntimeError("Failed to get images list from NINA")
         all_images = resp["Response"]
+        search_window = expected_count + 10
         matches = []
-        for i in range(max(0, len(all_images) - expected_count), len(all_images)):
+        for i in range(max(0, len(all_images) - search_window), len(all_images)):
             if task_id in all_images[i].get("Filename", ""):
                 matches.append(i)
         return matches
@@ -600,6 +601,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         images_ready = threading.Event()
 
         def _on_image_saved(stats: dict) -> None:
+            # Called on the single WS listener thread — no concurrent writes to matched_count
             filename = stats.get("Filename", "")
             if task.id in filename:
                 matched_count[0] += 1
@@ -634,7 +636,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
                 self._event_listener.sequence_finished.wait(timeout=min(remaining, 2.0))
 
             self.logger.info("NINA sequence completed, waiting for images to save...")
-            images_ready.wait(timeout=30)
+            images_ready.wait(timeout=10)
         finally:
             self._event_listener.on_image_save = prev_callback
 
