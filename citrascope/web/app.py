@@ -17,6 +17,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from citrascope.constants import (
+    AUTOFOCUS_TARGET_PRESETS,
     DEV_API_HOST,
     DEV_APP_URL,
     PROD_API_HOST,
@@ -44,6 +45,8 @@ class SystemStatus(BaseModel):
     ground_station_name: Optional[str] = None
     ground_station_url: Optional[str] = None
     autofocus_requested: bool = False
+    autofocus_running: bool = False
+    autofocus_progress: str = ""
     last_autofocus_timestamp: Optional[int] = None
     next_autofocus_minutes: Optional[int] = None
     time_health: Optional[Dict[str, Any]] = None
@@ -210,6 +213,9 @@ class CitraScopeWebApp:
                 "scheduled_autofocus_enabled": settings.scheduled_autofocus_enabled,
                 "autofocus_interval_minutes": settings.autofocus_interval_minutes,
                 "last_autofocus_timestamp": settings.last_autofocus_timestamp,
+                "autofocus_target_preset": settings.autofocus_target_preset,
+                "autofocus_target_custom_ra": settings.autofocus_target_custom_ra,
+                "autofocus_target_custom_dec": settings.autofocus_target_custom_dec,
                 "time_check_interval_minutes": settings.time_check_interval_minutes,
                 "time_offset_pause_ms": settings.time_offset_pause_ms,
                 "gps_location_updates_enabled": settings.gps_location_updates_enabled,
@@ -688,6 +694,12 @@ class CitraScopeWebApp:
                 CITRASCOPE_LOGGER.error(f"Error cancelling autofocus: {e}", exc_info=True)
                 return JSONResponse({"error": str(e)}, status_code=500)
 
+        @self.app.get("/api/adapter/autofocus/presets")
+        async def get_autofocus_presets():
+            """Return available autofocus target star presets."""
+            presets = [{"key": key, **preset} for key, preset in AUTOFOCUS_TARGET_PRESETS.items()]
+            return {"presets": presets}
+
         @self.app.post("/api/camera/capture")
         async def camera_capture(request: Dict[str, Any]):
             """Trigger a test camera capture."""
@@ -794,7 +806,9 @@ class CitraScopeWebApp:
             if hasattr(self.daemon, "task_manager") and self.daemon.task_manager:
                 task_manager = self.daemon.task_manager
                 self.status.current_task = task_manager.current_task_id
-                self.status.autofocus_requested = task_manager.is_autofocus_requested()
+                self.status.autofocus_requested = task_manager.autofocus_manager.is_requested()
+                self.status.autofocus_running = task_manager.autofocus_manager.is_running()
+                self.status.autofocus_progress = task_manager.autofocus_manager.progress
                 with task_manager.heap_lock:
                     self.status.tasks_pending = len(task_manager.task_heap)
 

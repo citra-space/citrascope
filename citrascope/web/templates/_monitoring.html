@@ -280,6 +280,20 @@
                 </div>
             </div>
 
+            <div class="row g-3 mb-3" x-show="$store.citrascope.status?.autofocus_running">
+                <div class="col-12">
+                    <div class="alert alert-info d-flex align-items-center mb-0 py-2" role="alert">
+                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                        <span>
+                            Autofocus in progress &mdash; task processing is paused.
+                            <span x-show="$store.citrascope.status?.autofocus_progress"
+                                  class="ms-1 fw-semibold"
+                                  x-text="$store.citrascope.status?.autofocus_progress"></span>
+                        </span>
+                    </div>
+                </div>
+            </div>
+
             <div class="row g-3 mb-3">
                 <div class="col-12">
                     <div class="card bg-dark text-light border-secondary">

@@ -157,6 +157,21 @@ async function loadConfiguration() {
                 config.enabled_processors = {}; // Default to empty object
             }
 
+            // Default autofocus target settings
+            if (!config.autofocus_target_preset) {
+                config.autofocus_target_preset = 'mirach';
+            }
+
+            // Load autofocus presets before setting config so the select renders with options
+            try {
+                const presetsResp = await fetch('/api/adapter/autofocus/presets');
+                const presetsData = await presetsResp.json();
+                store.autofocusPresets = presetsData.presets || [];
+            } catch (e) {
+                console.warn('Failed to load autofocus presets:', e);
+                store.autofocusPresets = [];
+            }
+
             store.config = config;
             store.savedAdapter = config.hardware_adapter; // Sync savedAdapter to store
             store.apiEndpoint =
@@ -290,6 +305,9 @@ async function saveConfiguration(event) {
         max_retry_delay_seconds: store.config.max_retry_delay_seconds || 300,
         log_retention_days: store.config.log_retention_days || 30,
         last_autofocus_timestamp: store.config.last_autofocus_timestamp,
+        autofocus_target_preset: store.config.autofocus_target_preset || 'mirach',
+        autofocus_target_custom_ra: store.config.autofocus_target_custom_ra,
+        autofocus_target_custom_dec: store.config.autofocus_target_custom_dec,
     };
 
     try {

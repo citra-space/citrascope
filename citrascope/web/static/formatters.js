@@ -83,7 +83,10 @@ export function formatMinutes(minutes) {
  */
 export function formatLastAutofocus(status) {
     if (!status || !status.last_autofocus_timestamp) return 'Never';
-    const elapsed = Date.now() - status.last_autofocus_timestamp * 1000;
+    const ts = status.last_autofocus_timestamp;
+    if (ts < 1577836800) return 'Never'; // 2020-01-01T00:00:00Z
+    const elapsed = Date.now() - ts * 1000;
+    if (elapsed < 0) return 'Never';
     return formatElapsedTime(elapsed);
 }
 
