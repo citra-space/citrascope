@@ -597,7 +597,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
                 self.logger.warning(f"Image {i} has no filename in response, skipping")
                 continue
 
-            if task_id in possible_image["Filename"]:
+            if task.id in possible_image["Filename"]:
                 self.logger.info(f"Image {i} {possible_image['Filename']} matches task id")
                 images_to_download.append(i)
             else:
@@ -628,7 +628,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             fits_bytes = base64.b64decode(fits_base64)
 
             # Save the FITS file
-            filepath = str(self.images_dir / f"citra_task_{task_id}_image_{image_index}.fits")
+            filepath = str(self.images_dir / f"citra_task_{task.id}_image_{image_index}.fits")
             filepaths.append(filepath)
 
             with open(filepath, "wb") as f:
