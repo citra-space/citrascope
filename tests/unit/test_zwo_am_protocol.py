@@ -275,6 +275,39 @@ class TestZwoAmResponseParser:
     def test_parse_dec_invalid(self):
         assert ZwoAmResponseParser.parse_dec("garbage") is None
 
+    def test_parse_dec_colon_only_positive(self):
+        result = ZwoAmResponseParser.parse_dec("2:45:40#")
+        assert result is not None
+        d, m, s = result
+        assert d == 2.0
+        assert m == 45
+        assert abs(s - 40.0) < 0.001
+
+    def test_parse_dec_colon_only_negative(self):
+        result = ZwoAmResponseParser.parse_dec("-15:30:00#")
+        assert result is not None
+        d, m, s = result
+        assert d == -15.0
+        assert m == 30
+        assert abs(s - 0.0) < 0.001
+
+    def test_parse_dec_colon_only_negative_zero(self):
+        result = ZwoAmResponseParser.parse_dec("-0:30:00#")
+        assert result is not None
+        d, m, s = result
+        assert d == -0.0
+        assert m == 30
+        recovered = ZwoAmResponseParser.dms_to_decimal_degrees(d, m, s)
+        assert recovered < 0
+
+    def test_parse_dec_colon_only_with_sign_prefix(self):
+        result = ZwoAmResponseParser.parse_dec("+45:15:30#")
+        assert result is not None
+        d, m, s = result
+        assert d == 45.0
+        assert m == 15
+        assert abs(s - 30.0) < 0.001
+
     # --- azimuth ---
 
     def test_parse_azimuth(self):
@@ -304,6 +337,17 @@ class TestZwoAmResponseParser:
         result = ZwoAmResponseParser.parse_goto_response("e7#")
         assert result is not None
         assert "pier" in result.lower()
+
+    def test_parse_goto_e6_outside_limits(self):
+        result = ZwoAmResponseParser.parse_goto_response("e6#")
+        assert result is not None
+        assert "outside" in result.lower() or "limits" in result.lower()
+
+    def test_parse_goto_e_prefixed_codes(self):
+        assert ZwoAmResponseParser.parse_goto_response("e1#") is not None
+        assert "horizon" in ZwoAmResponseParser.parse_goto_response("e1#").lower()  # type: ignore[union-attr]
+        assert ZwoAmResponseParser.parse_goto_response("e5#") is not None
+        assert "aligned" in ZwoAmResponseParser.parse_goto_response("e5#").lower()  # type: ignore[union-attr]
 
     def test_parse_goto_unknown(self):
         result = ZwoAmResponseParser.parse_goto_response("99#")

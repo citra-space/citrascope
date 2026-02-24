@@ -27,9 +27,8 @@ class StaticTelescopeTask(AbstractBaseTelescopeTask):
                 self.task.set_status_msg("Running observation sequence...")
                 filepaths = self.hardware_adapter.perform_observation_sequence(self.task, satellite_data)
         except RuntimeError as e:
-            # Filter errors and other hardware errors
             self.logger.error(f"Observation failed for task {self.task.id}: {e}")
-            raise
+            return False
 
         # Take the image
         return self.upload_image_and_mark_complete(filepaths)

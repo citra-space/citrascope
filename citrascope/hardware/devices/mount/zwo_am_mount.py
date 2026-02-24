@@ -34,6 +34,16 @@ _TRACKING_RATE_MAP: dict[str, TrackingRate] = {
     "solar": TrackingRate.SOLAR,
 }
 
+_ZWO_USB_VID = 0x03C3
+
+_KNOWN_USB_VENDORS: dict[int, str] = {
+    _ZWO_USB_VID: "ZWO",
+    0x0403: "FTDI",
+    0x067B: "Prolific",
+    0x10C4: "Silicon Labs",
+    0x1A86: "QinHeng",
+}
+
 
 class ZwoAmMount(AbstractMount):
     """ZWO AM3/AM5/AM7 mount controlled via serial (USB) or TCP (WiFi).
@@ -47,6 +57,62 @@ class ZwoAmMount(AbstractMount):
         timeout:         Command timeout in seconds (default 2.0)
         retry_count:     Retries per command (default 3)
     """
+
+    _port_cache: list[dict[str, str]] | None = None
+    _port_cache_timestamp: float = 0
+    _port_cache_ttl: float = 1.0
+
+    @classmethod
+    def _detect_serial_ports(cls) -> list[dict[str, str]]:
+        """Enumerate serial ports with friendly labels.
+
+        ZWO devices (VID 0x03C3) are labelled with their USB product name.
+        Other common astronomy USB-serial adapters get vendor-tagged labels.
+        Results are cached briefly to avoid repeated USB enumeration.
+        """
+        import time
+
+        cache_age = time.time() - cls._port_cache_timestamp
+        if cls._port_cache is not None and cache_age < cls._port_cache_ttl:
+            return cls._port_cache
+
+        ports: list[dict[str, str]] = []
+        try:
+            from serial.tools.list_ports import comports  # type: ignore[reportMissingImports]
+
+            for info in sorted(comports()):
+                vendor = _KNOWN_USB_VENDORS.get(info.vid) if info.vid else None
+                product = info.product or ""
+
+                if info.vid == _ZWO_USB_VID:
+                    if product and not product.upper().startswith("ZWO"):
+                        label = f"ZWO {product} ({info.device})"
+                    elif product:
+                        label = f"{product} ({info.device})"
+                    else:
+                        label = f"ZWO Device ({info.device})"
+                elif vendor and product:
+                    label = f"{product} ({info.device})"
+                elif vendor:
+                    label = f"{vendor} Adapter ({info.device})"
+                elif info.description and info.description != "n/a":
+                    label = f"{info.description} ({info.device})"
+                else:
+                    label = info.device
+
+                ports.append({"value": info.device, "label": label})
+
+        except ImportError:
+            pass
+        except Exception:
+            pass
+
+        if not ports:
+            ports.append({"value": "/dev/ttyUSB0", "label": "/dev/ttyUSB0 (default)"})
+
+        cls._port_cache = ports
+        cls._port_cache_timestamp = time.time()
+        return ports
 
     def __init__(self, logger: logging.Logger, **kwargs) -> None:
         super().__init__(logger=logger, **kwargs)
@@ -103,9 +169,10 @@ class ZwoAmMount(AbstractMount):
                 "name": "port",
                 "friendly_name": "Serial Port",
                 "type": "str",
-                "default": "/dev/ttyUSB0",
-                "description": "Serial port path (e.g. /dev/ttyUSB0, /dev/ttyACM0, COM3)",
+                "default": cls._detect_serial_ports()[0]["value"],
+                "description": "Serial port for the mount",
                 "required": False,
+                "options": cls._detect_serial_ports(),
                 "group": "Mount",
                 "visible_when": {"field": "connection_type", "value": "serial"},
             },

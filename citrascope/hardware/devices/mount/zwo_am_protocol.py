@@ -396,7 +396,10 @@ class ZwoAmResponseParser:
 
     @staticmethod
     def parse_dec(response: str) -> tuple[float, int, float] | None:
-        """Parse ``sDD*MM:SS#`` → (signed_degrees, minutes, seconds).
+        """Parse Dec response → (signed_degrees, minutes, seconds).
+
+        Accepts both ``sDD*MM:SS#`` (standard LX200) and ``sDD:MM:SS#``
+        (colon-only variant seen on some ZWO firmware versions).
 
         Degrees is a float so the sign survives even when degrees == 0
         (e.g. ``-00*30:00`` → ``-0.0, 30, 0.0``).
@@ -413,16 +416,27 @@ class ZwoAmResponseParser:
 
         rest = rest.replace("°", "*")
         star_parts = rest.split("*")
-        if len(star_parts) < 2:
-            return None
-        try:
-            degrees = int(star_parts[0])
-            min_sec = star_parts[1].split(":")
-            minutes = int(min_sec[0])
-            seconds = float(min_sec[1]) if len(min_sec) > 1 else 0.0
-            return sign * float(degrees), minutes, seconds
-        except (ValueError, IndexError):
-            return None
+        if len(star_parts) >= 2:
+            try:
+                degrees = int(star_parts[0])
+                min_sec = star_parts[1].split(":")
+                minutes = int(min_sec[0])
+                seconds = float(min_sec[1]) if len(min_sec) > 1 else 0.0
+                return sign * float(degrees), minutes, seconds
+            except (ValueError, IndexError):
+                return None
+
+        colon_parts = rest.split(":")
+        if len(colon_parts) >= 2:
+            try:
+                degrees = int(colon_parts[0])
+                minutes = int(colon_parts[1])
+                seconds = float(colon_parts[2]) if len(colon_parts) > 2 else 0.0
+                return sign * float(degrees), minutes, seconds
+            except (ValueError, IndexError):
+                return None
+
+        return None
 
     @staticmethod
     def parse_azimuth(response: str) -> tuple[int, int, float] | None:
@@ -452,6 +466,11 @@ class ZwoAmResponseParser:
             "5": "Not aligned",
             "6": "Outside limits",
             "7": "Pier side limit",
+            "e1": "Object below horizon",
+            "e2": "Object below minimum elevation",
+            "e4": "Position unreachable",
+            "e5": "Not aligned",
+            "e6": "Outside limits",
             "e7": "Pier side limit",
         }
         return _errors.get(trimmed, f"Unknown goto error: {trimmed}")
