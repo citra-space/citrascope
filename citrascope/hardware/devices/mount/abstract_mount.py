@@ -9,7 +9,12 @@ class AbstractMount(AbstractHardwareDevice):
     """Abstract base class for telescope mount devices.
 
     Provides a common interface for controlling equatorial and alt-az mounts.
+    All RA/Dec coordinates are in **degrees** (project convention).
     """
+
+    # ------------------------------------------------------------------
+    # Core abstract methods — every mount must implement these
+    # ------------------------------------------------------------------
 
     @abstractmethod
     def slew_to_radec(self, ra: float, dec: float) -> bool:
@@ -112,3 +117,68 @@ class AbstractMount(AbstractHardwareDevice):
             Dictionary containing mount specs and capabilities
         """
         pass
+
+    # ------------------------------------------------------------------
+    # Optional capability methods — concrete defaults so subclasses only
+    # override what they support.
+    # ------------------------------------------------------------------
+
+    def sync_to_radec(self, ra: float, dec: float) -> bool:
+        """Sync the mount's internal model to the given coordinates.
+
+        Tells the mount that it is currently pointing at (ra, dec).
+        Used after plate-solving to correct pointing errors.
+
+        Args:
+            ra: Right Ascension in degrees
+            dec: Declination in degrees
+
+        Returns:
+            True if sync accepted, False otherwise
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not support sync")
+
+    def set_custom_tracking_rates(self, ra_rate: float, dec_rate: float) -> bool:
+        """Set custom tracking rates for satellite or non-sidereal tracking.
+
+        Args:
+            ra_rate: RA tracking rate offset in arcseconds per second
+            dec_rate: Dec tracking rate offset in arcseconds per second
+
+        Returns:
+            True if rates accepted, False if unsupported
+        """
+        return False
+
+    def guide_pulse(self, direction: str, duration_ms: int) -> bool:
+        """Send an autoguiding correction pulse.
+
+        Args:
+            direction: One of "north", "south", "east", "west"
+            duration_ms: Pulse duration in milliseconds (typically 0-9999)
+
+        Returns:
+            True if pulse sent, False if unsupported
+        """
+        return False
+
+    def set_site_location(self, latitude: float, longitude: float, altitude: float) -> bool:
+        """Set the observing site location on the mount.
+
+        Args:
+            latitude: Latitude in decimal degrees (positive = North)
+            longitude: Longitude in decimal degrees (positive = East)
+            altitude: Altitude in metres above sea level
+
+        Returns:
+            True if accepted, False if unsupported
+        """
+        return False
+
+    def get_site_location(self) -> tuple[float, float, float] | None:
+        """Get the observing site location stored on the mount.
+
+        Returns:
+            (latitude, longitude, altitude) or None if unsupported
+        """
+        return None

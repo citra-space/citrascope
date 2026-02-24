@@ -267,38 +267,32 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                 }
             )
 
+        def _prefix_schema(entries: list, prefix: str) -> None:
+            for entry in entries:
+                prefixed_entry = dict(entry)
+                prefixed_entry["name"] = f"{prefix}{entry['name']}"
+                if "visible_when" in entry:
+                    vw = dict(entry["visible_when"])
+                    vw["field"] = f"{prefix}{vw['field']}"
+                    prefixed_entry["visible_when"] = vw
+                schema.append(prefixed_entry)
+
         # Dynamically add device-specific settings if device types are provided
         camera_type = kwargs.get("camera_type")
         if camera_type and camera_type in camera_devices:
-            camera_schema = get_device_schema("camera", camera_type)
-            for entry in camera_schema:
-                prefixed_entry = dict(entry)
-                prefixed_entry["name"] = f"camera_{entry['name']}"
-                schema.append(prefixed_entry)
+            _prefix_schema(get_device_schema("camera", camera_type), "camera_")
 
         mount_type = kwargs.get("mount_type")
         if mount_type and mount_type in mount_devices:
-            mount_schema = get_device_schema("mount", mount_type)
-            for entry in mount_schema:
-                prefixed_entry = dict(entry)
-                prefixed_entry["name"] = f"mount_{entry['name']}"
-                schema.append(prefixed_entry)
+            _prefix_schema(get_device_schema("mount", mount_type), "mount_")
 
         filter_wheel_type = kwargs.get("filter_wheel_type")
         if filter_wheel_type and filter_wheel_type in filter_wheel_devices:
-            fw_schema = get_device_schema("filter_wheel", filter_wheel_type)
-            for entry in fw_schema:
-                prefixed_entry = dict(entry)
-                prefixed_entry["name"] = f"filter_wheel_{entry['name']}"
-                schema.append(prefixed_entry)
+            _prefix_schema(get_device_schema("filter_wheel", filter_wheel_type), "filter_wheel_")
 
         focuser_type = kwargs.get("focuser_type")
         if focuser_type and focuser_type in focuser_devices:
-            focuser_schema = get_device_schema("focuser", focuser_type)
-            for entry in focuser_schema:
-                prefixed_entry = dict(entry)
-                prefixed_entry["name"] = f"focuser_{entry['name']}"
-                schema.append(prefixed_entry)
+            _prefix_schema(get_device_schema("focuser", focuser_type), "focuser_")
         return cast(list[SettingSchemaEntry], schema)
 
     def get_observation_strategy(self) -> ObservationStrategy:

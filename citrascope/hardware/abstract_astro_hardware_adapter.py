@@ -20,6 +20,7 @@ class SettingSchemaEntry(TypedDict, total=False):
     pattern: str  # Regex pattern for string validation
     options: list[str]  # List of valid options for select/dropdown inputs
     group: str  # Group name for organizing settings in UI (e.g., 'Camera', 'Mount', 'Advanced')
+    visible_when: dict[str, str]  # Conditional visibility: {"field": "other_field_name", "value": "expected_value"}
 
 
 class FilterConfig(TypedDict):

@@ -38,7 +38,7 @@
                                                     <div class="row g-3">
                                                         <template x-for="field in fields" :key="field.name">
                                                             <div x-data="adapterField(field)"
-                                                                 class="col-12 col-md-4" x-show="field && field.name">
+                                                                 class="col-12 col-md-4" x-show="field && field.name && isVisible">
                                                                 <label :for="inputId" class="form-label">
                                                                     <span x-text="field.friendly_name || field.name"></span>
                                                                     <span class="text-danger" x-show="field.required">*</span>
