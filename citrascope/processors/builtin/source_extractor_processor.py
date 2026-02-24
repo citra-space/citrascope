@@ -144,8 +144,8 @@ class SourceExtractorProcessor(AbstractImageProcessor):
                 cmd[0] = "source-extractor"
                 try:
                     result = subprocess.run(cmd, capture_output=True, text=True, check=False, cwd=str(working_dir))
-                except FileNotFoundError:
-                    raise RuntimeError("SExtractor not found. Install with: brew install sextractor")
+                except FileNotFoundError as e:
+                    raise RuntimeError("SExtractor not found. Install with: brew install sextractor") from e
 
             if result.returncode != 0:
                 raise RuntimeError(f"SExtractor failed: {result.stderr}")
@@ -232,7 +232,7 @@ class SourceExtractorProcessor(AbstractImageProcessor):
                 should_upload=True,
                 extracted_data={},
                 confidence=0.0,
-                reason=f"Source extraction failed: {str(e)}",
+                reason=f"Source extraction failed: {e!s}",
                 processing_time_seconds=time.time() - start_time,
                 processor_name=self.name,
             )

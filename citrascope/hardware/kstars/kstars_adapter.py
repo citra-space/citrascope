@@ -225,7 +225,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
 
         except Exception as e:
             self.logger.error(f"Failed to slew telescope: {e}")
-            raise RuntimeError(f"Telescope slew failed: {e}")
+            raise RuntimeError(f"Telescope slew failed: {e}") from e
 
     def get_observation_strategy(self) -> ObservationStrategy:
         return ObservationStrategy.SEQUENCE_TO_CONTROLLER
@@ -632,7 +632,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
             self.logger.debug(f"loadScheduler() returned: {success}")
         except Exception as dbus_error:
             self.logger.error(f"DBus error calling loadScheduler: {dbus_error}")
-            raise RuntimeError(f"DBus error loading scheduler job: {dbus_error}")
+            raise RuntimeError(f"DBus error loading scheduler job: {dbus_error}") from dbus_error
 
         if not success:
             # Log file contents for debugging
@@ -986,7 +986,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
 
         except Exception as e:
             self.logger.error(f"Failed to get telescope position: {e}")
-            raise RuntimeError(f"Failed to get telescope position: {e}")
+            raise RuntimeError(f"Failed to get telescope position: {e}") from e
 
     def telescope_is_moving(self) -> bool:
         """
@@ -1019,7 +1019,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
 
         except Exception as e:
             self.logger.error(f"Failed to get telescope slew status: {e}")
-            raise RuntimeError(f"Failed to get telescope slew status: {e}")
+            raise RuntimeError(f"Failed to get telescope slew status: {e}") from e
 
     def select_camera(self, device_name: str) -> bool:
         raise NotImplementedError

@@ -14,8 +14,8 @@ from citrascope.processors.processor_result import (
 
 __all__ = [
     "AbstractImageProcessor",
-    "ProcessorResult",
-    "ProcessingContext",
     "AggregatedResult",
+    "ProcessingContext",
     "ProcessorRegistry",
+    "ProcessorResult",
 ]

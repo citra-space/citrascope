@@ -315,7 +315,7 @@ class UsbCamera(AbstractCamera):
 
         except Exception as e:
             self.logger.error(f"Failed to capture image: {e}")
-            raise RuntimeError(f"Image capture failed: {e}")
+            raise RuntimeError(f"Image capture failed: {e}") from e
 
     def abort_exposure(self):
         """Abort current exposure.

@@ -132,10 +132,10 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             response.raise_for_status()
             mount_status = response.json()
             self.logger.info(f"Mount {mount_status['Response']}")
-        except requests.Timeout:
-            raise RuntimeError("Mount slew request timed out")
+        except requests.Timeout as e:
+            raise RuntimeError("Mount slew request timed out") from e
         except requests.RequestException as e:
-            raise RuntimeError(f"Mount slew failed: {e}")
+            raise RuntimeError(f"Mount slew failed: {e}") from e
 
         while self.telescope_is_moving():
             self.logger.info("Waiting for mount to finish slewing...")

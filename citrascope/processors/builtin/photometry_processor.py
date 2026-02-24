@@ -56,7 +56,7 @@ class PhotometryProcessor(AbstractImageProcessor):
             response = requests.post(url, data=form_data, timeout=30)
             response.raise_for_status()
         except Exception as e:
-            raise RuntimeError(f"APASS query failed: {e}")
+            raise RuntimeError(f"APASS query failed: {e}") from e
 
         # Parse CSV response
         try:
@@ -70,7 +70,7 @@ class PhotometryProcessor(AbstractImageProcessor):
             return apass_df
 
         except Exception as e:
-            raise RuntimeError(f"Failed to parse APASS response: {e}")
+            raise RuntimeError(f"Failed to parse APASS response: {e}") from e
 
     def _cross_match_catalogs(
         self, sources: pd.DataFrame, catalog: pd.DataFrame, max_separation: float
@@ -219,7 +219,7 @@ class PhotometryProcessor(AbstractImageProcessor):
                 should_upload=True,
                 extracted_data={},
                 confidence=0.0,
-                reason=f"Photometry failed: {str(e)}",
+                reason=f"Photometry failed: {e!s}",
                 processing_time_seconds=time.time() - start_time,
                 processor_name=self.name,
             )

@@ -306,8 +306,8 @@ class XimeaHyperspectralCamera(AbstractCamera):
 
         try:
             from ximea import xiapi
-        except ImportError:
-            raise RuntimeError("ximea-api package not installed")
+        except ImportError as e:
+            raise RuntimeError("ximea-api package not installed") from e
 
         self.logger.info(
             f"Starting hyperspectral exposure: {duration}s, "

@@ -25,7 +25,7 @@ class ExcludeWebLogsFilter(logging.Filter):
 
 
 class ColoredFormatter(logging.Formatter):
-    COLORS = {
+    COLORS = {  # noqa: RUF012
         "DEBUG": "\033[94m",  # Blue
         "INFO": "\033[92m",  # Green
         "WARNING": "\033[93m",  # Yellow

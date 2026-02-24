@@ -163,7 +163,7 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
         for b in bp:
             with open("image.fits", "wb") as f:
                 f.write(b.getblob())
-                print("Saved image.fits")
+                self.logger.info("Saved image.fits")
 
     # ========================= AstroHardwareAdapter Methods =========================
 
@@ -238,7 +238,7 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
             device_name = device.getDeviceName()
             # Check if device has EQUATORIAL_EOD_COORD property (indicates it's a telescope)
             # We need to wait a bit for properties to be available
-            for attempt in range(5):
+            for _ in range(5):
                 telescope_radec = device.getNumber("EQUATORIAL_EOD_COORD")
                 if telescope_radec:
                     self.logger.info(f"Auto-detected telescope device: {device_name}")
@@ -261,7 +261,7 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
             device_name = device.getDeviceName()
             # Check if device has CCD_EXPOSURE property (indicates it's a camera)
             # We need to wait a bit for properties to be available
-            for attempt in range(5):
+            for _ in range(5):
                 ccd_exposure = device.getNumber("CCD_EXPOSURE")
                 if ccd_exposure:
                     self.logger.info(f"Auto-detected camera device: {device_name}")

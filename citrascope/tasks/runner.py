@@ -293,7 +293,7 @@ class TaskManager:
                         if not (self.task_heap and self.task_heap[0][0] <= now):
                             break
                         # Pop task from heap BEFORE starting execution
-                        start_time, stop_time, tid, task = heapq.heappop(self.task_heap)
+                        _, _, tid, task = heapq.heappop(self.task_heap)
                         self.task_ids.discard(tid)
 
                         self.logger.info(f"Starting task {tid} at {datetime.now().isoformat()}: {task}")

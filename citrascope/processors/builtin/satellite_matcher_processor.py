@@ -74,7 +74,7 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
             location = context.location_service.get_current_location()
             obs = Observatory(location["latitude"], location["longitude"], location.get("altitude", 0) / 1000.0)
         except Exception as e:
-            raise RuntimeError(f"Failed to get observer location: {e}")
+            raise RuntimeError(f"Failed to get observer location: {e}") from e
 
         # Image metadata from FITS header
         with fits.open(context.working_image_path) as hdul:
@@ -239,7 +239,7 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
                 should_upload=True,
                 extracted_data={},
                 confidence=0.0,
-                reason=f"Satellite matching failed: {str(e)}",
+                reason=f"Satellite matching failed: {e!s}",
                 processing_time_seconds=time.time() - start_time,
                 processor_name=self.name,
             )

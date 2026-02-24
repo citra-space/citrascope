@@ -11,7 +11,7 @@ def extract_enabled_filter_names(filter_config: dict) -> list[str]:
         List of filter names where enabled=True
     """
     enabled_names = []
-    for filter_id, config in filter_config.items():
+    for _, config in filter_config.items():
         if config.get("enabled", False):
             enabled_names.append(config["name"])
     return enabled_names

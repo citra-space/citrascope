@@ -5,10 +5,10 @@ from citrascope.time.time_monitor import TimeMonitor
 from citrascope.time.time_sources import AbstractTimeSource, ChronyTimeSource, NTPTimeSource
 
 __all__ = [
-    "TimeHealth",
-    "TimeStatus",
-    "TimeMonitor",
     "AbstractTimeSource",
     "ChronyTimeSource",
     "NTPTimeSource",
+    "TimeHealth",
+    "TimeMonitor",
+    "TimeStatus",
 ]

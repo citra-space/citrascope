@@ -272,7 +272,7 @@ class PlateSolverProcessor(AbstractImageProcessor):
                 should_upload=True,
                 extracted_data={"plate_solved": False},
                 confidence=0.0,
-                reason=f"Plate solving failed: {str(e)}",
+                reason=f"Plate solving failed: {e!s}",
                 processing_time_seconds=time.time() - start_time,
                 processor_name=self.name,
             )

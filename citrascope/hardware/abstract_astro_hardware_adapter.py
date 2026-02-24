@@ -207,7 +207,7 @@ class AbstractAstroHardwareAdapter(ABC):
         """
         pass
 
-    def update_from_plate_solve(
+    def update_from_plate_solve(  # noqa: B027
         self,
         solved_ra_deg: float,
         solved_dec_deg: float,
@@ -283,7 +283,7 @@ class AbstractAstroHardwareAdapter(ABC):
             return False
 
         # MANUAL adapters might - check for the method
-        return hasattr(self, "expose_camera") and callable(getattr(self, "expose_camera"))
+        return hasattr(self, "expose_camera") and callable(self.expose_camera)
 
     def is_hyperspectral(self) -> bool:
         """Indicates whether this adapter uses a hyperspectral camera.

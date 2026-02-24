@@ -95,7 +95,7 @@ class BaseWorkQueue(ABC):
         """
         pass
 
-    def _set_retry_scheduled_time(self, item: dict[str, Any], scheduled_time: float = None):
+    def _set_retry_scheduled_time(self, item: dict[str, Any], scheduled_time: float | None = None):
         """Set the retry scheduled time on the task."""
         task = self._get_task_from_item(item)
         if task:

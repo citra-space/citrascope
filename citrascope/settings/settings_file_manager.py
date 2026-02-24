@@ -12,6 +12,7 @@ from typing import Any
 
 import platformdirs
 
+from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.settings.citrascope_settings import APP_AUTHOR, APP_NAME
 
 
@@ -46,7 +47,7 @@ class SettingsFileManager:
                 return json.load(f)
         except (OSError, json.JSONDecodeError) as e:
             # Log error but return empty config to allow recovery
-            print(f"Error loading config file: {e}")
+            CITRASCOPE_LOGGER.error("Error loading config file: %s", e)
             return {}
 
     def save_config(self, config: dict[str, Any]) -> None:
@@ -69,7 +70,7 @@ class SettingsFileManager:
             # Clean up temp file on error
             if temp_file.exists():
                 temp_file.unlink()
-            raise OSError(f"Failed to save config: {e}")
+            raise OSError(f"Failed to save config: {e}") from e
 
     def get_config_path(self) -> Path:
         """Get the path to the config file.

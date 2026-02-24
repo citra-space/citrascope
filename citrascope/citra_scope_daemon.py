@@ -197,7 +197,7 @@ class CitraScopeDaemon:
                 return False, error
 
         except Exception as e:
-            error_msg = f"Failed to initialize components: {str(e)}"
+            error_msg = f"Failed to initialize components: {e!s}"
             CITRASCOPE_LOGGER.error(error_msg, exc_info=True)
             self.configuration_error = error_msg
             return False, error_msg
@@ -304,7 +304,7 @@ class CitraScopeDaemon:
             return True, None
 
         except Exception as e:
-            error_msg = f"Error initializing telescope: {str(e)}"
+            error_msg = f"Error initializing telescope: {e!s}"
             CITRASCOPE_LOGGER.error(error_msg, exc_info=True)
             return False, error_msg
 
