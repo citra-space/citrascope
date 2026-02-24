@@ -8,7 +8,7 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import platformdirs
 
@@ -32,7 +32,7 @@ class SettingsFileManager:
             # Ensure proper permissions on existing directory
             os.chmod(self.config_dir, 0o700)
 
-    def load_config(self) -> Dict[str, Any]:
+    def load_config(self) -> dict[str, Any]:
         """Load configuration from JSON file.
 
         Returns:
@@ -42,14 +42,14 @@ class SettingsFileManager:
             return {}
 
         try:
-            with open(self.config_file, "r") as f:
+            with open(self.config_file) as f:
                 return json.load(f)
-        except (json.JSONDecodeError, IOError) as e:
+        except (OSError, json.JSONDecodeError) as e:
             # Log error but return empty config to allow recovery
             print(f"Error loading config file: {e}")
             return {}
 
-    def save_config(self, config: Dict[str, Any]) -> None:
+    def save_config(self, config: dict[str, Any]) -> None:
         """Save configuration to JSON file with proper permissions.
 
         Args:
@@ -69,7 +69,7 @@ class SettingsFileManager:
             # Clean up temp file on error
             if temp_file.exists():
                 temp_file.unlink()
-            raise IOError(f"Failed to save config: {e}")
+            raise OSError(f"Failed to save config: {e}")
 
     def get_config_path(self) -> Path:
         """Get the path to the config file.
@@ -87,7 +87,7 @@ class SettingsFileManager:
         """
         return self.config_file.exists()
 
-    def validate_config(self, config: Dict[str, Any]) -> tuple[bool, Optional[str]]:
+    def validate_config(self, config: dict[str, Any]) -> tuple[bool, str | None]:
         """Validate configuration structure.
 
         Args:

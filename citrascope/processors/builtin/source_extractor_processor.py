@@ -46,7 +46,7 @@ class SourceExtractorProcessor(AbstractImageProcessor):
         """
         sources = []
 
-        with open(catalog_path, "r") as f:
+        with open(catalog_path) as f:
             for line in f:
                 # Skip comment lines
                 if line.startswith("#"):
@@ -126,7 +126,7 @@ class SourceExtractorProcessor(AbstractImageProcessor):
 
             # Debug logging to diagnose path issues
             logger.info(f"Running SExtractor from cwd: {working_dir}")
-            logger.info(f"Config files copied to working_dir (default.sex, default.param, default.conv, default.nnw)")
+            logger.info("Config files copied to working_dir (default.sex, default.param, default.conv, default.nnw)")
             logger.info(f"SExtractor command: {' '.join(cmd)}")
             logger.info(f"Image symlink: {image_symlink} -> {image_path}")
             logger.info(f"Catalog path: {catalog_path}")

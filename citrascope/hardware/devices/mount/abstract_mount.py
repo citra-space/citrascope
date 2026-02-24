@@ -1,7 +1,6 @@
 """Abstract mount device interface."""
 
 from abc import abstractmethod
-from typing import Optional, Tuple
 
 from citrascope.hardware.devices.abstract_hardware_device import AbstractHardwareDevice
 
@@ -40,7 +39,7 @@ class AbstractMount(AbstractHardwareDevice):
         pass
 
     @abstractmethod
-    def get_radec(self) -> Tuple[float, float]:
+    def get_radec(self) -> tuple[float, float]:
         """Get current mount RA/Dec position.
 
         Returns:
@@ -49,7 +48,7 @@ class AbstractMount(AbstractHardwareDevice):
         pass
 
     @abstractmethod
-    def start_tracking(self, rate: Optional[str] = "sidereal") -> bool:
+    def start_tracking(self, rate: str | None = "sidereal") -> bool:
         """Start tracking at specified rate.
 
         Args:

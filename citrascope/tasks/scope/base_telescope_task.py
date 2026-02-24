@@ -1,10 +1,9 @@
-import os
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 
 from dateutil import parser as dtparser
-from skyfield.api import Angle, EarthSatellite, load, wgs84
+from skyfield.api import EarthSatellite, load, wgs84
 
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
 from citrascope.tasks.fits_enrichment import enrich_fits_metadata
@@ -223,7 +222,7 @@ class AbstractBaseTelescopeTask(ABC):
         current_scope_ra, current_scope_dec = self.hardware_adapter.get_telescope_direction()
         current_target_ra, current_target_dec, _, _ = self.get_target_radec_and_rates(satellite_data, seconds_from_now)
 
-        ra_diff_deg = abs((current_target_ra.degrees - current_scope_ra))  # type: ignore
+        ra_diff_deg = abs(current_target_ra.degrees - current_scope_ra)  # type: ignore
         dec_diff_deg = abs(current_target_dec.degrees - current_scope_dec)  # type: ignore
 
         if ra_diff_deg > dec_diff_deg:
@@ -243,7 +242,8 @@ class AbstractBaseTelescopeTask(ABC):
             # Estimate lead position and slew time
             lead_ra, lead_dec, est_slew_time = self.estimate_lead_position(satellite_data)
             self.logger.info(
-                f"Pointing ahead to RA: {lead_ra.degrees:.4f}°, DEC: {lead_dec.degrees:.4f}°, estimated slew time: {est_slew_time:.1f}s"
+                f"Pointing ahead to RA: {lead_ra.degrees:.4f}°, DEC: {lead_dec.degrees:.4f}°, "
+                f"estimated slew time: {est_slew_time:.1f}s"
             )
 
             # Move the scope
@@ -255,7 +255,8 @@ class AbstractBaseTelescopeTask(ABC):
 
             slew_duration = time.time() - slew_start_time
             self.logger.info(
-                f"Telescope slew done, took {slew_duration:.1f} sec, off by {abs(slew_duration - est_slew_time):.1f} sec."
+                f"Telescope slew done, took {slew_duration:.1f} sec, "
+                f"off by {abs(slew_duration - est_slew_time):.1f} sec."
             )
 
             # check our alignment against the starfield

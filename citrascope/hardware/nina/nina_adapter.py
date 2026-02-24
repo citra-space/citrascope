@@ -6,14 +6,12 @@ import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 
 import requests
 
 from citrascope.constants import AUTOFOCUS_TARGET_PRESETS
 from citrascope.hardware.abstract_astro_hardware_adapter import (
     AbstractAstroHardwareAdapter,
-    FilterConfig,
     ObservationStrategy,
     SettingSchemaEntry,
 )
@@ -21,7 +19,8 @@ from citrascope.hardware.nina.nina_event_listener import NinaEventListener, deri
 
 
 class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
-    """HTTP adapter for controlling astronomical equipment through N.I.N.A. (Nighttime Imaging 'N' Astronomy) Advanced API.
+    """HTTP adapter for controlling astronomical equipment through N.I.N.A.
+    (Nighttime Imaging 'N' Astronomy) Advanced API.
     https://bump.sh/christian-photo/doc/advanced-api/"""
 
     DEFAULT_FOCUS_POSITION = 9000
@@ -270,7 +269,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             if not cam_status["Success"]:
                 self.logger.error(f"Failed to connect camera: {cam_status.get('Error')}")
                 return False
-            self.logger.info(f"Camera Connected!")
+            self.logger.info("Camera Connected!")
 
             self.logger.info("Starting camera cooling ...")
             cool_status = requests.get(self.nina_api_path + self.CAM_URL + "cool", timeout=5).json()
@@ -284,28 +283,28 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             if not filterwheel_status["Success"]:
                 self.logger.warning(f"Failed to connect filterwheel: {filterwheel_status.get('Error')}")
             else:
-                self.logger.info(f"Filterwheel Connected!")
+                self.logger.info("Filterwheel Connected!")
 
             self.logger.info("Connecting focuser ...")
             focuser_status = requests.get(self.nina_api_path + self.FOCUSER_URL + "connect", timeout=5).json()
             if not focuser_status["Success"]:
                 self.logger.warning(f"Failed to connect focuser: {focuser_status.get('Error')}")
             else:
-                self.logger.info(f"Focuser Connected!")
+                self.logger.info("Focuser Connected!")
 
             self.logger.info("Connecting mount ...")
             mount_status = requests.get(self.nina_api_path + self.MOUNT_URL + "connect", timeout=5).json()
             if not mount_status["Success"]:
                 self.logger.error(f"Failed to connect mount: {mount_status.get('Error')}")
                 return False
-            self.logger.info(f"Mount Connected!")
+            self.logger.info("Mount Connected!")
 
             self.logger.info("Unparking mount ...")
             mount_status = requests.get(self.nina_api_path + self.MOUNT_URL + "unpark", timeout=5).json()
             if not mount_status["Success"]:
                 self.logger.error(f"Failed to unpark mount: {mount_status.get('Error')}")
                 return False
-            self.logger.info(f"Mount Unparked!")
+            self.logger.info("Mount Unparked!")
 
             # Discover available filters (focus positions loaded from saved settings)
             self.discover_filters()
@@ -336,13 +335,15 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
                 focus_position = self.filter_map[filter_id].get("focus_position", self.DEFAULT_FOCUS_POSITION)
                 enabled = self.filter_map[filter_id].get("enabled", True)
                 self.logger.info(
-                    f"Discovered filter: {filter_name} with ID: {filter_id}, using saved focus position: {focus_position}, enabled: {enabled}"
+                    f"Discovered filter: {filter_name} with ID: {filter_id}, "
+                    f"using saved focus position: {focus_position}, enabled: {enabled}"
                 )
             else:
                 focus_position = self.DEFAULT_FOCUS_POSITION
                 enabled = True  # Default new filters to enabled
                 self.logger.info(
-                    f"Discovered new filter: {filter_name} with ID: {filter_id}, using default focus position: {focus_position}"
+                    f"Discovered new filter: {filter_name} with ID: {filter_id}, "
+                    f"using default focus position: {focus_position}"
                 )
 
             self.filter_map[filter_id] = {"name": filter_name, "focus_position": focus_position, "enabled": enabled}
@@ -420,7 +421,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
     def _get_sequence_template(self) -> str:
         """Load the sequence template as a string for placeholder replacement."""
         template_path = os.path.join(os.path.dirname(__file__), "survey_template.json")
-        with open(template_path, "r") as f:
+        with open(template_path) as f:
             return f.read()
 
     def get_observation_strategy(self) -> ObservationStrategy:
@@ -583,13 +584,13 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
         # POST the sequence
 
-        self.logger.info(f"Posting NINA sequence")
+        self.logger.info("Posting NINA sequence")
         post_response = requests.post(f"{self.nina_api_path}{self.SEQUENCE_URL}load", json=sequence_json).json()
         if not post_response.get("Success"):
             self.logger.error(f"Failed to post sequence: {post_response.get('Error')}")
             raise RuntimeError("Failed to post NINA sequence")
 
-        self.logger.info(f"Loaded sequence to NINA, starting sequence...")
+        self.logger.info("Loaded sequence to NINA, starting sequence...")
 
         timeout_minutes = 60
 
@@ -655,7 +656,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
         filepaths = []
         for image_index in images_to_download:
-            self.logger.debug(f"Retrieving image from NINA...")
+            self.logger.debug("Retrieving image from NINA...")
             image_response = requests.get(
                 f"{self.nina_api_path}/image/{image_index}",
                 params={"raw_fits": "true"},

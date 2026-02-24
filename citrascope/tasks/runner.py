@@ -1,5 +1,4 @@
 import heapq
-import os
 import threading
 import time
 from datetime import datetime, timezone
@@ -9,7 +8,6 @@ from dateutil import parser as dtparser
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
 from citrascope.tasks.autofocus_manager import AutofocusManager
 from citrascope.tasks.scope.static_telescope_task import StaticTelescopeTask
-from citrascope.tasks.scope.tracking_telescope_task import TrackingTelescopeTask
 from citrascope.tasks.task import Task
 
 # Task polling interval in seconds

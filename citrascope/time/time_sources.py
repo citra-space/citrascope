@@ -1,20 +1,16 @@
 """Time source implementations for CitraScope."""
 
 import subprocess
-import time
 from abc import ABC, abstractmethod
-from typing import Optional
 
 import ntplib
-
-from citrascope.logging import CITRASCOPE_LOGGER
 
 
 class AbstractTimeSource(ABC):
     """Abstract base class for time sources."""
 
     @abstractmethod
-    def get_offset_ms(self) -> Optional[float]:
+    def get_offset_ms(self) -> float | None:
         """
         Get the clock offset in milliseconds.
 
@@ -28,7 +24,7 @@ class AbstractTimeSource(ABC):
         """Get the name of this time source."""
         pass
 
-    def get_metadata(self) -> Optional[dict]:
+    def get_metadata(self) -> dict | None:
         """
         Get optional metadata about the time source.
 
@@ -53,7 +49,7 @@ class NTPTimeSource(AbstractTimeSource):
         self.timeout = timeout
         self.client = ntplib.NTPClient()
 
-    def get_offset_ms(self) -> Optional[float]:
+    def get_offset_ms(self) -> float | None:
         """
         Query NTP server for clock offset.
 
@@ -104,7 +100,7 @@ class ChronyTimeSource(AbstractTimeSource):
         except Exception:
             return False
 
-    def get_offset_ms(self) -> Optional[float]:
+    def get_offset_ms(self) -> float | None:
         """
         Query chrony for clock offset.
 

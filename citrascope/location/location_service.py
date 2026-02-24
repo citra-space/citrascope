@@ -49,7 +49,7 @@ class LocationService:
         """
         self.api_client = api_client
         self.settings = settings
-        self._ground_station_ref: Optional[dict] = None
+        self._ground_station_ref: dict | None = None
         self._lock = threading.Lock()  # Protect _ground_station_ref access
         self._last_server_update = 0.0  # Track last server update for rate limiting
 
@@ -138,7 +138,7 @@ class LocationService:
                         f"lat={fix.latitude:.6f}, lon={fix.longitude:.6f}, alt={fix.altitude:.1f}m"
                     )
 
-    def get_current_location(self) -> Optional[dict]:
+    def get_current_location(self) -> dict | None:
         """
         Location service - returns best available location.
 

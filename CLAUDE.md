@@ -159,7 +159,7 @@ After imaging completes, a task is in-flight through processing and upload queue
 - **Astropy**: FITS file I/O, WCS, coordinate transforms
 - **Alpine.js**: Reactive frontend (loaded via CDN, no build step)
 
-Dev tools: **Black** (formatter), **isort** (imports), **mypy** (type checking), **pytest** + **pytest-cov** (testing). Pre-commit hooks run these automatically.
+Dev tools: **ruff** (linter + import sorting), **Black** (formatter), **mypy** (type checking), **pytest** + **pytest-cov** (testing). Pre-commit hooks run ruff and black automatically. CI runs ruff as a separate lint job.
 
 Full dependency list in `pyproject.toml`.
 

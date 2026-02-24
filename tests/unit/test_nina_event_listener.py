@@ -1,6 +1,5 @@
 """Unit tests for NinaEventListener."""
 
-import json
 import threading
 import time
 from unittest.mock import MagicMock, patch

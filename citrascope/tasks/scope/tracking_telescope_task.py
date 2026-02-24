@@ -1,5 +1,3 @@
-import time
-
 from citrascope.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
 
 

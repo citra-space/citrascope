@@ -1,10 +1,7 @@
 """Unit tests for elset cache (hot list)."""
 
 import json
-from pathlib import Path
 from unittest.mock import MagicMock
-
-import pytest
 
 from citrascope.elset_cache import ElsetCache
 

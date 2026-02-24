@@ -4,7 +4,7 @@ import queue
 import threading
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Dict
+from typing import Any
 
 
 class BaseWorkQueue(ABC):
@@ -27,8 +27,8 @@ class BaseWorkQueue(ABC):
         self.running = False
 
         # Retry tracking (per-stage)
-        self.retry_counts: Dict[str, int] = {}
-        self.last_failure: Dict[str, float] = {}
+        self.retry_counts: dict[str, int] = {}
+        self.last_failure: dict[str, float] = {}
 
         # Lifetime counters — increments are GIL-safe for simple int in CPython;
         # the lock exists to give atomic multi-field snapshots in get_stats().
@@ -38,7 +38,7 @@ class BaseWorkQueue(ABC):
         self.total_permanent_failures: int = 0
 
     @abstractmethod
-    def _execute_work(self, item: Dict[str, Any]) -> tuple[bool, Any]:
+    def _execute_work(self, item: dict[str, Any]) -> tuple[bool, Any]:
         """
         Execute stage-specific work. Must be implemented by subclasses.
 
@@ -51,7 +51,7 @@ class BaseWorkQueue(ABC):
         pass
 
     @abstractmethod
-    def _on_success(self, item: Dict[str, Any], result: Any):
+    def _on_success(self, item: dict[str, Any], result: Any):
         """
         Handle successful work completion.
 
@@ -62,7 +62,7 @@ class BaseWorkQueue(ABC):
         pass
 
     @abstractmethod
-    def _on_permanent_failure(self, item: Dict[str, Any]):
+    def _on_permanent_failure(self, item: dict[str, Any]):
         """
         Handle permanent failure after max retries.
 
@@ -71,7 +71,7 @@ class BaseWorkQueue(ABC):
         """
         pass
 
-    def _update_retry_status(self, item: Dict[str, Any], backoff: float, retry_count: int, max_retries: int):
+    def _update_retry_status(self, item: dict[str, Any], backoff: float, retry_count: int, max_retries: int):
         """Update task status message for retry."""
         task = self._get_task_from_item(item)
         if task:
@@ -82,7 +82,7 @@ class BaseWorkQueue(ABC):
             )
 
     @abstractmethod
-    def _get_task_from_item(self, item: Dict[str, Any]):
+    def _get_task_from_item(self, item: dict[str, Any]):
         """
         Get the Task object from the work item dictionary.
         Must be implemented by subclasses since item structure varies.
@@ -95,13 +95,13 @@ class BaseWorkQueue(ABC):
         """
         pass
 
-    def _set_retry_scheduled_time(self, item: Dict[str, Any], scheduled_time: float = None):
+    def _set_retry_scheduled_time(self, item: dict[str, Any], scheduled_time: float = None):
         """Set the retry scheduled time on the task."""
         task = self._get_task_from_item(item)
         if task:
             task.set_retry_time(scheduled_time)
 
-    def _update_status_on_resubmit(self, item: Dict[str, Any]):
+    def _update_status_on_resubmit(self, item: dict[str, Any]):
         """Update status when retry timer fires and task is resubmitted."""
         task = self._get_task_from_item(item)
         if task:
@@ -109,7 +109,7 @@ class BaseWorkQueue(ABC):
             stage_name = self.__class__.__name__.replace("Queue", "").lower()
             task.set_status_msg(f"Retrying {stage_name}...")
 
-    def _set_executing(self, item: Dict[str, Any], executing: bool):
+    def _set_executing(self, item: dict[str, Any], executing: bool):
         """Set whether task is being actively executed."""
         task = self._get_task_from_item(item)
         if task:
@@ -126,7 +126,7 @@ class BaseWorkQueue(ABC):
         """Check if task should be retried."""
         return self.retry_counts.get(task_id, 0) < self.settings.max_task_retries
 
-    def _schedule_retry(self, item: Dict[str, Any]):
+    def _schedule_retry(self, item: dict[str, Any]):
         """Schedule a retry with exponential backoff."""
         task_id = item["task_id"]
         self.retry_counts[task_id] = self.retry_counts.get(task_id, 0) + 1

@@ -1,5 +1,3 @@
-import time
-
 from citrascope.hardware.abstract_astro_hardware_adapter import ObservationStrategy
 from citrascope.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
 
@@ -12,7 +10,6 @@ class StaticTelescopeTask(AbstractBaseTelescopeTask):
         if not satellite_data or satellite_data.get("most_recent_elset") is None:
             raise ValueError("Could not fetch valid satellite data or TLE.")
 
-        filepath = None
         try:
             if self.hardware_adapter.get_observation_strategy() == ObservationStrategy.MANUAL:
                 self.task.set_status_msg("Slewing to target...")

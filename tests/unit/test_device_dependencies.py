@@ -30,9 +30,12 @@ class TestDeviceRegistryStructure:
             )
 
             # Check values are non-empty strings
-            assert isinstance(camera_info["module"], str) and camera_info["module"]
-            assert isinstance(camera_info["class_name"], str) and camera_info["class_name"]
-            assert isinstance(camera_info["description"], str) and camera_info["description"]
+            assert isinstance(camera_info["module"], str)
+            assert camera_info["module"]
+            assert isinstance(camera_info["class_name"], str)
+            assert camera_info["class_name"]
+            assert isinstance(camera_info["description"], str)
+            assert camera_info["description"]
 
     def test_mount_registry_structure(self):
         """Verify all mount registry entries have required keys."""
@@ -43,9 +46,12 @@ class TestDeviceRegistryStructure:
 
         for mount_name, mount_info in MOUNT_DEVICES.items():
             assert required_keys.issubset(mount_info.keys()), f"Mount '{mount_name}' missing required keys"
-            assert isinstance(mount_info["module"], str) and mount_info["module"]
-            assert isinstance(mount_info["class_name"], str) and mount_info["class_name"]
-            assert isinstance(mount_info["description"], str) and mount_info["description"]
+            assert isinstance(mount_info["module"], str)
+            assert mount_info["module"]
+            assert isinstance(mount_info["class_name"], str)
+            assert mount_info["class_name"]
+            assert isinstance(mount_info["description"], str)
+            assert mount_info["description"]
 
     def test_filter_wheel_registry_structure(self):
         """Verify all filter wheel registry entries have required keys."""
@@ -56,9 +62,12 @@ class TestDeviceRegistryStructure:
 
         for fw_name, fw_info in FILTER_WHEEL_DEVICES.items():
             assert required_keys.issubset(fw_info.keys()), f"Filter wheel '{fw_name}' missing required keys"
-            assert isinstance(fw_info["module"], str) and fw_info["module"]
-            assert isinstance(fw_info["class_name"], str) and fw_info["class_name"]
-            assert isinstance(fw_info["description"], str) and fw_info["description"]
+            assert isinstance(fw_info["module"], str)
+            assert fw_info["module"]
+            assert isinstance(fw_info["class_name"], str)
+            assert fw_info["class_name"]
+            assert isinstance(fw_info["description"], str)
+            assert fw_info["description"]
 
     def test_focuser_registry_structure(self):
         """Verify all focuser registry entries have required keys."""
@@ -69,9 +78,12 @@ class TestDeviceRegistryStructure:
 
         for focuser_name, focuser_info in FOCUSER_DEVICES.items():
             assert required_keys.issubset(focuser_info.keys()), f"Focuser '{focuser_name}' missing required keys"
-            assert isinstance(focuser_info["module"], str) and focuser_info["module"]
-            assert isinstance(focuser_info["class_name"], str) and focuser_info["class_name"]
-            assert isinstance(focuser_info["description"], str) and focuser_info["description"]
+            assert isinstance(focuser_info["module"], str)
+            assert focuser_info["module"]
+            assert isinstance(focuser_info["class_name"], str)
+            assert focuser_info["class_name"]
+            assert isinstance(focuser_info["description"], str)
+            assert focuser_info["description"]
 
 
 class TestDeviceDependencies:
@@ -172,7 +184,7 @@ class TestDeviceDependencies:
         assert ximea_deps["install_extra"] == "ximea"
 
     @pytest.mark.parametrize(
-        "device_registry,get_class_func",
+        ("device_registry", "get_class_func"),
         [
             (MOUNT_DEVICES, get_mount_class),
             (FILTER_WHEEL_DEVICES, get_filter_wheel_class),

@@ -3,7 +3,6 @@ import logging
 import shutil
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
 
 import dbus
 from platformdirs import user_cache_dir, user_data_dir
@@ -104,7 +103,10 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                 "friendly_name": "Camera/CCD Device Name",
                 "type": "str",
                 "default": "CCD Simulator",
-                "description": "Name of the camera device in your Ekos profile (check Ekos logs on connect for available devices)",
+                "description": (
+                    "Name of the camera device in your Ekos profile "
+                    "(check Ekos logs on connect for available devices)"
+                ),
                 "required": False,
                 "placeholder": "CCD Simulator",
                 "group": "Devices",
@@ -124,7 +126,10 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                 "friendly_name": "Optical Train Name",
                 "type": "str",
                 "default": "Primary",
-                "description": "Name of the optical train in your Ekos profile (check Ekos logs on connect for available trains)",
+                "description": (
+                    "Name of the optical train in your Ekos profile "
+                    "(check Ekos logs on connect for available trains)"
+                ),
                 "required": False,
                 "placeholder": "Primary",
                 "group": "Devices",
@@ -402,9 +407,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         self.logger.info(f"Created scheduler job: {job_file}")
         return job_file
 
-    def _wait_for_job_completion(
-        self, timeout: int = 300, task_id: str = "", output_dir: Optional[Path] = None
-    ) -> bool:
+    def _wait_for_job_completion(self, timeout: int = 300, task_id: str = "", output_dir: Path | None = None) -> bool:
         """
         Poll the scheduler status until job completes or times out.
         With Loop completion, we poll for images and stop when we have all expected images.
@@ -511,7 +514,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
 
         if not task_dir.exists():
             self.logger.error(f"Task directory does not exist: {task_dir}")
-            self.logger.error(f"This likely indicates Ekos failed to create the capture directory")
+            self.logger.error("This likely indicates Ekos failed to create the capture directory")
             self.logger.error(f"Expected directory structure: {output_dir}/{task_id}/")
             raise RuntimeError(
                 f"Task-specific capture directory not found: {task_dir}. "
@@ -633,7 +636,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
 
         if not success:
             # Log file contents for debugging
-            self.logger.error(f"Scheduler rejected job file. Contents:")
+            self.logger.error("Scheduler rejected job file. Contents:")
             self.logger.error(job_file.read_text()[:500])  # First 500 chars
             raise RuntimeError(f"Ekos Scheduler rejected job file: {job_file}")
 
@@ -864,7 +867,8 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
                         focus_position = self.filter_map[filter_idx].get("focus_position", 0)
                         enabled = self.filter_map[filter_idx].get("enabled", True)
                         self.logger.debug(
-                            f"Filter slot {slot_num} ({filter_name}): using saved focus position {focus_position}, enabled: {enabled}"
+                            f"Filter slot {slot_num} ({filter_name}): using saved focus "
+                            f"position {focus_position}, enabled: {enabled}"
                         )
                     else:
                         focus_position = 0

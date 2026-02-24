@@ -1,13 +1,11 @@
 """FastAPI web application for CitraScope monitoring and configuration."""
 
-import asyncio
 import json
-import os
 import time
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,7 +18,6 @@ from citrascope.constants import (
     AUTOFOCUS_TARGET_PRESETS,
     DEV_API_HOST,
     DEV_APP_URL,
-    PROD_API_HOST,
     PROD_APP_URL,
 )
 from citrascope.hardware.adapter_registry import get_adapter_schema as get_schema
@@ -34,46 +31,46 @@ class SystemStatus(BaseModel):
     telescope_connected: bool = False
     camera_connected: bool = False
     supports_direct_camera_control: bool = False
-    current_task: Optional[str] = None
+    current_task: str | None = None
     tasks_pending: int = 0
     processing_active: bool = True
     automated_scheduling: bool = False
     hardware_adapter: str = "unknown"
-    telescope_ra: Optional[float] = None
-    telescope_dec: Optional[float] = None
-    ground_station_id: Optional[str] = None
-    ground_station_name: Optional[str] = None
-    ground_station_url: Optional[str] = None
+    telescope_ra: float | None = None
+    telescope_dec: float | None = None
+    ground_station_id: str | None = None
+    ground_station_name: str | None = None
+    ground_station_url: str | None = None
     autofocus_requested: bool = False
     autofocus_running: bool = False
     autofocus_progress: str = ""
-    last_autofocus_timestamp: Optional[int] = None
-    next_autofocus_minutes: Optional[int] = None
-    time_health: Optional[Dict[str, Any]] = None
-    gps_location: Optional[Dict[str, Any]] = None
+    last_autofocus_timestamp: int | None = None
+    next_autofocus_minutes: int | None = None
+    time_health: dict[str, Any] | None = None
+    gps_location: dict[str, Any] | None = None
     last_update: str = ""
-    missing_dependencies: List[Dict[str, str]] = []  # List of {device, packages, install_cmd}
-    active_processors: List[str] = []  # Names of enabled image processors
-    tasks_by_stage: Optional[Dict[str, List[Dict]]] = None  # Tasks in each pipeline stage
-    pipeline_stats: Optional[Dict[str, Any]] = None  # Lifetime counters for queues, processors, and tasks
+    missing_dependencies: list[dict[str, str]] = []  # List of {device, packages, install_cmd}
+    active_processors: list[str] = []  # Names of enabled image processors
+    tasks_by_stage: dict[str, list[dict]] | None = None  # Tasks in each pipeline stage
+    pipeline_stats: dict[str, Any] | None = None  # Lifetime counters for queues, processors, and tasks
 
 
 class HardwareConfig(BaseModel):
     """Hardware configuration settings."""
 
     adapter: str
-    indi_server_url: Optional[str] = None
-    indi_server_port: Optional[int] = None
-    indi_telescope_name: Optional[str] = None
-    indi_camera_name: Optional[str] = None
-    nina_url_prefix: Optional[str] = None
+    indi_server_url: str | None = None
+    indi_server_port: int | None = None
+    indi_telescope_name: str | None = None
+    indi_camera_name: str | None = None
+    nina_url_prefix: str | None = None
 
 
 class ConnectionManager:
     """Manages WebSocket connections for real-time updates."""
 
     def __init__(self):
-        self.active_connections: List[WebSocket] = []
+        self.active_connections: list[WebSocket] = []
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
@@ -285,7 +282,7 @@ class CitraScopeWebApp:
                 return JSONResponse({"error": str(e)}, status_code=500)
 
         @self.app.post("/api/config")
-        async def update_config(config: Dict[str, Any]):
+        async def update_config(config: dict[str, Any]):
             """Update configuration and trigger hot-reload."""
             try:
                 if not self.daemon:
@@ -487,7 +484,7 @@ class CitraScopeWebApp:
             return {"status": "active", "message": "Task processing resumed"}
 
         @self.app.patch("/api/telescope/automated-scheduling")
-        async def update_automated_scheduling(request: Dict[str, bool]):
+        async def update_automated_scheduling(request: dict[str, bool]):
             """Toggle automated scheduling on/off."""
             if not self.daemon or not self.daemon.task_manager:
                 return JSONResponse({"error": "Task manager not available"}, status_code=503)
@@ -536,7 +533,7 @@ class CitraScopeWebApp:
                 return JSONResponse({"error": str(e)}, status_code=500)
 
         @self.app.post("/api/adapter/filters/batch")
-        async def update_filters_batch(updates: List[Dict[str, Any]]):
+        async def update_filters_batch(updates: list[dict[str, Any]]):
             """Update multiple filters atomically with single disk write.
 
             Args:
@@ -701,7 +698,7 @@ class CitraScopeWebApp:
             return {"presets": presets}
 
         @self.app.post("/api/camera/capture")
-        async def camera_capture(request: Dict[str, Any]):
+        async def camera_capture(request: dict[str, Any]):
             """Trigger a test camera capture."""
             if not self.daemon:
                 return JSONResponse({"error": "Daemon not available"}, status_code=503)

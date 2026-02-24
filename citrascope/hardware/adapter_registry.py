@@ -12,12 +12,11 @@ Third-party adapters can be added by modifying this registry.
 """
 
 import importlib
-from typing import Any, Dict, List, Type
 
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
 
 # Central registry of all available hardware adapters
-REGISTERED_ADAPTERS: Dict[str, Dict[str, str]] = {
+REGISTERED_ADAPTERS: dict[str, dict[str, str]] = {
     "indi": {
         "module": "citrascope.hardware.indi.indi_adapter",
         "class_name": "IndiAdapter",
@@ -46,7 +45,7 @@ REGISTERED_ADAPTERS: Dict[str, Dict[str, str]] = {
 }
 
 
-def get_adapter_class(adapter_name: str) -> Type[AbstractAstroHardwareAdapter]:
+def get_adapter_class(adapter_name: str) -> type[AbstractAstroHardwareAdapter]:
     """Get the adapter class for the given adapter name.
 
     Args:
@@ -70,7 +69,7 @@ def get_adapter_class(adapter_name: str) -> Type[AbstractAstroHardwareAdapter]:
     return adapter_class
 
 
-def list_adapters() -> Dict[str, Dict[str, str]]:
+def list_adapters() -> dict[str, dict[str, str]]:
     """Get a dictionary of all registered adapters with their descriptions.
 
     Returns:

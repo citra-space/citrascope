@@ -1,6 +1,6 @@
 """Background imaging queue for telescope operations."""
 
-from typing import Callable
+from collections.abc import Callable
 
 from citrascope.tasks.base_work_queue import BaseWorkQueue
 

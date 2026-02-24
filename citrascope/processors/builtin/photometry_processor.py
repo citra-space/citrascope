@@ -3,7 +3,6 @@
 import time
 from io import StringIO
 from pathlib import Path
-from typing import Tuple
 
 import numpy as np
 import pandas as pd
@@ -108,7 +107,7 @@ class PhotometryProcessor(AbstractImageProcessor):
 
         return matched
 
-    def _calibrate_photometry(self, sources: pd.DataFrame, image_path: Path, filter_name: str) -> Tuple[float, int]:
+    def _calibrate_photometry(self, sources: pd.DataFrame, image_path: Path, filter_name: str) -> tuple[float, int]:
         """Query APASS catalog and calculate magnitude zero point.
 
         Args:

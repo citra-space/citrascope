@@ -5,7 +5,7 @@ Similar to the hardware adapter registry, but for individual device types.
 """
 
 import importlib
-from typing import Any, Dict, Type
+from typing import Any
 
 from citrascope.hardware.devices.camera import AbstractCamera
 from citrascope.hardware.devices.filter_wheel import AbstractFilterWheel
@@ -13,7 +13,7 @@ from citrascope.hardware.devices.focuser import AbstractFocuser
 from citrascope.hardware.devices.mount import AbstractMount
 
 # Registry of available camera devices
-CAMERA_DEVICES: Dict[str, Dict[str, str]] = {
+CAMERA_DEVICES: dict[str, dict[str, str]] = {
     "ximea": {
         "module": "citrascope.hardware.devices.camera.ximea_camera",
         "class_name": "XimeaHyperspectralCamera",
@@ -36,7 +36,7 @@ CAMERA_DEVICES: Dict[str, Dict[str, str]] = {
 }
 
 # Registry of available mount devices
-MOUNT_DEVICES: Dict[str, Dict[str, str]] = {
+MOUNT_DEVICES: dict[str, dict[str, str]] = {
     # Future mounts:
     # "celestron": {...},
     # "skywatcher": {...},
@@ -44,21 +44,21 @@ MOUNT_DEVICES: Dict[str, Dict[str, str]] = {
 }
 
 # Registry of available filter wheel devices
-FILTER_WHEEL_DEVICES: Dict[str, Dict[str, str]] = {
+FILTER_WHEEL_DEVICES: dict[str, dict[str, str]] = {
     # Future filter wheels:
     # "zwo": {...},
     # "ascom": {...},
 }
 
 # Registry of available focuser devices
-FOCUSER_DEVICES: Dict[str, Dict[str, str]] = {
+FOCUSER_DEVICES: dict[str, dict[str, str]] = {
     # Future focusers:
     # "moonlite": {...},
     # "ascom": {...},
 }
 
 
-def get_camera_class(camera_type: str) -> Type[AbstractCamera]:
+def get_camera_class(camera_type: str) -> type[AbstractCamera]:
     """Get the camera class for the given camera type.
 
     Args:
@@ -82,7 +82,7 @@ def get_camera_class(camera_type: str) -> Type[AbstractCamera]:
     return device_class
 
 
-def get_mount_class(mount_type: str) -> Type[AbstractMount]:
+def get_mount_class(mount_type: str) -> type[AbstractMount]:
     """Get the mount class for the given mount type.
 
     Args:
@@ -106,7 +106,7 @@ def get_mount_class(mount_type: str) -> Type[AbstractMount]:
     return device_class
 
 
-def get_filter_wheel_class(filter_wheel_type: str) -> Type[AbstractFilterWheel]:
+def get_filter_wheel_class(filter_wheel_type: str) -> type[AbstractFilterWheel]:
     """Get the filter wheel class for the given filter wheel type.
 
     Args:
@@ -130,7 +130,7 @@ def get_filter_wheel_class(filter_wheel_type: str) -> Type[AbstractFilterWheel]:
     return device_class
 
 
-def get_focuser_class(focuser_type: str) -> Type[AbstractFocuser]:
+def get_focuser_class(focuser_type: str) -> type[AbstractFocuser]:
     """Get the focuser class for the given focuser type.
 
     Args:
@@ -154,7 +154,7 @@ def get_focuser_class(focuser_type: str) -> Type[AbstractFocuser]:
     return device_class
 
 
-def list_devices(device_type: str) -> Dict[str, Dict[str, str]]:
+def list_devices(device_type: str) -> dict[str, dict[str, str]]:
     """Get a dictionary of all registered devices of a specific type.
 
     Args:
@@ -230,7 +230,7 @@ def get_device_schema(device_type: str, device_name: str) -> list:
     return device_class.get_settings_schema()
 
 
-def check_dependencies(device_class: Type[Any]) -> dict[str, Any]:
+def check_dependencies(device_class: type[Any]) -> dict[str, Any]:
     """Check if dependencies for a device are available.
 
     Args:

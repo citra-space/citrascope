@@ -3,7 +3,7 @@
 import math
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any
 
 import astropy.units as u
 import pandas as pd
@@ -53,7 +53,7 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
 
     def _match_satellites(
         self, sources: pd.DataFrame, context: ProcessingContext, tracking_mode: str = "rate"
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Propagate TLEs and match detected sources with predicted satellite positions.
 
         Prefers the elset cache when populated; falls back to the single TLE on the task.

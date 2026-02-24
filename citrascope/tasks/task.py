@@ -1,6 +1,5 @@
 import threading
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 @dataclass
@@ -20,11 +19,11 @@ class Task:
     telescopeName: str
     groundStationId: str
     groundStationName: str
-    assigned_filter_name: Optional[str] = None
+    assigned_filter_name: str | None = None
 
     # Local execution state (not from API, never sent to server)
-    local_status_msg: Optional[str] = None
-    retry_scheduled_time: Optional[float] = None  # Unix timestamp when retry will execute (None if not retrying)
+    local_status_msg: str | None = None
+    retry_scheduled_time: float | None = None  # Unix timestamp when retry will execute (None if not retrying)
     is_being_executed: bool = False  # True when a worker is actively executing this task
 
     # Thread safety for status fields (not included in __init__)
@@ -51,22 +50,22 @@ class Task:
             assigned_filter_name=data.get("assignedFilterName"),
         )
 
-    def set_status_msg(self, msg: Optional[str]):
+    def set_status_msg(self, msg: str | None):
         """Thread-safe setter for local_status_msg."""
         with self._status_lock:
             self.local_status_msg = msg
 
-    def get_status_msg(self) -> Optional[str]:
+    def get_status_msg(self) -> str | None:
         """Thread-safe getter for local_status_msg."""
         with self._status_lock:
             return self.local_status_msg
 
-    def set_retry_time(self, timestamp: Optional[float]):
+    def set_retry_time(self, timestamp: float | None):
         """Thread-safe setter for retry_scheduled_time."""
         with self._status_lock:
             self.retry_scheduled_time = timestamp
 
-    def get_retry_time(self) -> Optional[float]:
+    def get_retry_time(self) -> float | None:
         """Thread-safe getter for retry_scheduled_time."""
         with self._status_lock:
             return self.retry_scheduled_time
@@ -81,7 +80,7 @@ class Task:
         with self._status_lock:
             return self.is_being_executed
 
-    def get_status_info(self) -> tuple[Optional[str], Optional[float], bool]:
+    def get_status_info(self) -> tuple[str | None, float | None, bool]:
         """Thread-safe getter for all status fields at once."""
         with self._status_lock:
             return (self.local_status_msg, self.retry_scheduled_time, self.is_being_executed)

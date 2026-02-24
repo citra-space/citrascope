@@ -1,8 +1,6 @@
 import logging
-import os
 import time
 from pathlib import Path
-from typing import Optional
 
 import PyIndi
 
@@ -427,7 +425,8 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
             return (0.0, 0.0)
 
         self.logger.debug(
-            f"Telescope currently pointed to RA: {telescope_radec[0].value * 15.0} degrees, DEC: {telescope_radec[1].value} degrees"
+            f"Telescope currently pointed to RA: {telescope_radec[0].value * 15.0} degrees, "
+            f"DEC: {telescope_radec[1].value} degrees"
         )
         return telescope_radec[0].value * 15.0, telescope_radec[1].value
 
@@ -542,8 +541,7 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
         if not matched:
             return False
 
-        # Send updated vector
-        result = self.sendNewSwitch(svp)
+        self.sendNewSwitch(svp)
         return True
 
     def _set_numbers(self, device, property_name: str, values: dict) -> bool:
@@ -566,8 +564,7 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
         for name, val in values.items():
             items[name].setValue(float(val))
 
-        # Send once
-        result = self.sendNewNumber(nvp)
+        self.sendNewNumber(nvp)
         return True
 
     def take_image(self, task_id: str, exposure_duration_seconds=1.0):
@@ -687,8 +684,8 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
         self,
         solved_ra_deg: float,
         solved_dec_deg: float,
-        expected_ra_deg: Optional[float] = None,
-        expected_dec_deg: Optional[float] = None,
+        expected_ra_deg: float | None = None,
+        expected_dec_deg: float | None = None,
     ) -> None:
         """Update alignment offsets from pipeline plate solve result."""
         if expected_ra_deg is not None and expected_dec_deg is not None:

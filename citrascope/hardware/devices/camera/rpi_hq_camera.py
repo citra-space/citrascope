@@ -3,7 +3,7 @@
 import logging
 import time
 from pathlib import Path
-from typing import Optional, cast
+from typing import cast
 
 from citrascope.hardware.abstract_astro_hardware_adapter import SettingSchemaEntry
 from citrascope.hardware.devices.camera import AbstractCamera
@@ -175,10 +175,10 @@ class RaspberryPiHQCamera(AbstractCamera):
     def take_exposure(
         self,
         duration: float,
-        gain: Optional[int] = None,
-        offset: Optional[int] = None,
+        gain: int | None = None,
+        offset: int | None = None,
         binning: int = 1,
-        save_path: Optional[Path] = None,
+        save_path: Path | None = None,
     ) -> Path:
         """Capture an exposure.
 
@@ -255,7 +255,7 @@ class RaspberryPiHQCamera(AbstractCamera):
         """
         self.logger.warning("Raspberry Pi camera does not support aborting exposures")
 
-    def get_temperature(self) -> Optional[float]:
+    def get_temperature(self) -> float | None:
         """Get camera sensor temperature.
 
         Returns:
@@ -275,7 +275,6 @@ class RaspberryPiHQCamera(AbstractCamera):
         Returns:
             Binned image array
         """
-        import numpy as np
 
         if binning == 1:
             return image_data

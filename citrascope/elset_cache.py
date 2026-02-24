@@ -4,14 +4,14 @@ import json
 import threading
 import time
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 
 import platformdirs
 
 from citrascope.settings.citrascope_settings import APP_AUTHOR, APP_NAME
 
 
-def _normalize_api_response(raw_list: List[Any]) -> List[dict]:
+def _normalize_api_response(raw_list: list[Any]) -> list[dict]:
     """Map API response to processor-ready list of { satellite_id, name, tle }.
 
     API items have satelliteId, satelliteName, tle (list of 2 strings).
@@ -59,11 +59,11 @@ class ElsetCache:
             self._cache_path = Path(cache_path)
         else:
             self._cache_path = _default_cache_path()
-        self._list: List[dict] = []
+        self._list: list[dict] = []
         self._lock = threading.Lock()
         self._last_refresh_epoch: float = 0.0
 
-    def get_elsets(self) -> List[dict]:
+    def get_elsets(self) -> list[dict]:
         """Return current list of processor-ready elsets (thread-safe)."""
         with self._lock:
             return list(self._list)
@@ -77,7 +77,7 @@ class ElsetCache:
         if not p or not Path(p).exists():
             return
         try:
-            with open(p, "r") as f:
+            with open(p) as f:
                 data = json.load(f)
             if isinstance(data, list):
                 with self._lock:
