@@ -6,7 +6,6 @@ on capture-time intrinsic metadata (DATE-OBS, EXPTIME, etc.).
 """
 
 from pathlib import Path
-from typing import Optional
 
 from citrascope.logging import CITRASCOPE_LOGGER
 
@@ -93,7 +92,7 @@ def enrich_fits_metadata(
         CITRASCOPE_LOGGER.warning(f"Failed to enrich FITS metadata for {filepath}: {e}")
 
 
-def _add_location_metadata(header, daemon, ground_station_record: Optional[dict]) -> None:
+def _add_location_metadata(header, daemon, ground_station_record: dict | None) -> None:
     """
     Add observatory location metadata to FITS header.
 
@@ -128,8 +127,8 @@ def _add_location_metadata(header, daemon, ground_station_record: Optional[dict]
 def _add_task_metadata(
     header,
     task,
-    telescope_record: Optional[dict],
-    ground_station_record: Optional[dict],
+    telescope_record: dict | None,
+    ground_station_record: dict | None,
 ) -> None:
     """
     Add task-related observation context to FITS header.

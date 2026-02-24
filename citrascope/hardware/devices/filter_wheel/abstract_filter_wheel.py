@@ -1,7 +1,6 @@
 """Abstract filter wheel device interface."""
 
 from abc import abstractmethod
-from typing import Optional
 
 from citrascope.hardware.devices.abstract_hardware_device import AbstractHardwareDevice
 
@@ -25,7 +24,7 @@ class AbstractFilterWheel(AbstractHardwareDevice):
         pass
 
     @abstractmethod
-    def get_filter_position(self) -> Optional[int]:
+    def get_filter_position(self) -> int | None:
         """Get current filter position.
 
         Returns:

@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 
 class TimeStatus(str, Enum):
@@ -17,7 +16,7 @@ class TimeStatus(str, Enum):
 class TimeHealth:
     """Time synchronization health status."""
 
-    offset_ms: Optional[float]
+    offset_ms: float | None
     """Clock offset in milliseconds (positive = system clock ahead)."""
 
     status: TimeStatus
@@ -26,15 +25,15 @@ class TimeHealth:
     source: str
     """Time source used (ntp, gps, chrony, unknown)."""
 
-    message: Optional[str] = None
+    message: str | None = None
     """Optional status message or error description."""
 
-    metadata: Optional[dict] = None
+    metadata: dict | None = None
     """Optional metadata (e.g., GPS satellite count, fix mode)."""
 
     @staticmethod
     def calculate_status(
-        offset_ms: Optional[float],
+        offset_ms: float | None,
         pause_threshold: float,
     ) -> TimeStatus:
         """
@@ -60,11 +59,11 @@ class TimeHealth:
     @classmethod
     def from_offset(
         cls,
-        offset_ms: Optional[float],
+        offset_ms: float | None,
         source: str,
         pause_threshold: float,
-        message: Optional[str] = None,
-        metadata: Optional[dict] = None,
+        message: str | None = None,
+        metadata: dict | None = None,
     ) -> "TimeHealth":
         """
         Create TimeHealth from offset and pause threshold.

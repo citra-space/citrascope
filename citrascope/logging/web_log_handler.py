@@ -3,7 +3,6 @@
 import asyncio
 import logging
 from collections import deque
-from typing import Optional
 
 
 class WebLogHandler(logging.Handler):
@@ -68,7 +67,7 @@ class WebLogHandler(logging.Handler):
 
         return datetime.fromtimestamp(record.created).isoformat()
 
-    def get_recent_logs(self, limit: Optional[int] = None):
+    def get_recent_logs(self, limit: int | None = None):
         """Get recent log entries."""
         if limit:
             return list(self.log_buffer)[-limit:]

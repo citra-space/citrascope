@@ -176,7 +176,7 @@ class AutofocusManager:
 
             self.logger.info("Autofocus routine completed successfully")
         except Exception as e:
-            self.logger.error(f"Autofocus failed: {str(e)}", exc_info=True)
+            self.logger.error(f"Autofocus failed: {e!s}", exc_info=True)
         finally:
             with self._lock:
                 self._running = False

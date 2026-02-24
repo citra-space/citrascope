@@ -98,7 +98,8 @@ def _fits_has_observer_location(header: fits.Header) -> bool:
 
 
 def _ensure_fits_has_observer_location(image_path: Path, context: ProcessingContext, working_dir: Path) -> Path:
-    """If FITS lacks observer location and context has it, write a copy with SITELAT/SITELONG/SITEALT. Return path to use."""
+    """If FITS lacks observer location and context has it, write a copy with
+    SITELAT/SITELONG/SITEALT. Return path to use."""
     with fits.open(image_path) as hdul:
         header = hdul[0].header
         if _fits_has_observer_location(header):
@@ -147,7 +148,7 @@ class PlateSolverProcessor(AbstractImageProcessor):
     friendly_name = "Plate Solver"
     description = "Astrometric calibration via Pixelemon/Tetra3 (determines exact pointing and WCS)"
 
-    def _solve_with_pixelemon(self, image_path: Path, context: Optional[ProcessingContext] = None) -> Path:
+    def _solve_with_pixelemon(self, image_path: Path, context: ProcessingContext | None = None) -> Path:
         """Run Pixelemon (Tetra3) plate solve and write WCS to a .new file.
 
         Pixelemon internally fits a full 5th-degree SIP WCS from matched star centroids
@@ -271,7 +272,7 @@ class PlateSolverProcessor(AbstractImageProcessor):
                 should_upload=True,
                 extracted_data={"plate_solved": False},
                 confidence=0.0,
-                reason=f"Plate solving failed: {str(e)}",
+                reason=f"Plate solving failed: {e!s}",
                 processing_time_seconds=time.time() - start_time,
                 processor_name=self.name,
             )

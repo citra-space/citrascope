@@ -2,11 +2,9 @@
 
 import json
 import os
-import time
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
-import numpy as np
 import pandas as pd
 import pytest
 
@@ -485,7 +483,8 @@ class TestFullPipelineDemoFits:
         assert context.working_image_path.exists()
 
     def test_full_pipeline_with_elset_cache_uses_multi_tle(self, tmp_path, run_from_repo_root):
-        """Run full pipeline with daemon.elset_cache populated; matcher uses multi-TLE path, observations match elsets."""
+        """Run full pipeline with daemon.elset_cache populated; matcher uses
+        multi-TLE path, observations match elsets."""
         if not self.DEMO_FITS.exists():
             pytest.skip("Demo FITS not found")
         if not self.TLE_FILE.exists():

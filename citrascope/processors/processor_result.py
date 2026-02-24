@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any
 
 import numpy as np
 
@@ -27,9 +27,9 @@ class AggregatedResult:
 
     should_upload: bool  # AND of all processor results
     extracted_data: dict  # Merged extracted data
-    all_results: List[ProcessorResult]  # Individual results
+    all_results: list[ProcessorResult]  # Individual results
     total_time: float  # Total processing time
-    skip_reason: Optional[str]  # Why upload was skipped (if any)
+    skip_reason: str | None  # Why upload was skipped (if any)
 
 
 @dataclass
@@ -40,21 +40,21 @@ class ProcessingContext:
     image_path: Path  # Original captured image
     working_image_path: Path  # Current working image (processors can update this)
     working_dir: Path  # Task-specific temp directory for intermediate files
-    image_data: Optional[np.ndarray]  # Pre-loaded for performance
+    image_data: np.ndarray | None  # Pre-loaded for performance
 
     # Task context (None for manual captures)
-    task: Optional[Task]
+    task: Task | None
 
     # Observatory context
-    telescope_record: Optional[dict]
-    ground_station_record: Optional[dict]
+    telescope_record: dict | None
+    ground_station_record: dict | None
 
     # Settings
-    settings: Optional[Any]  # CitraScopeSettings instance
+    settings: Any | None  # CitraScopeSettings instance
 
     # Services injected by ProcessingQueue (None when not available or in tests)
-    location_service: Optional[Any] = None  # LocationService instance
-    elset_cache: Optional[Any] = None  # ElsetCache instance
+    location_service: Any | None = None  # LocationService instance
+    elset_cache: Any | None = None  # ElsetCache instance
 
     # Logging
-    logger: Optional[Any] = None  # Logger instance for debugging
+    logger: Any | None = None  # Logger instance for debugging

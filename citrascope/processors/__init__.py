@@ -5,17 +5,17 @@ Processors can extract readings, check quality, and decide whether to upload ima
 """
 
 from citrascope.processors.abstract_processor import AbstractImageProcessor
+from citrascope.processors.processor_registry import ProcessorRegistry
 from citrascope.processors.processor_result import (
     AggregatedResult,
     ProcessingContext,
     ProcessorResult,
 )
-from citrascope.processors.processor_registry import ProcessorRegistry
 
 __all__ = [
     "AbstractImageProcessor",
-    "ProcessorResult",
-    "ProcessingContext",
     "AggregatedResult",
+    "ProcessingContext",
     "ProcessorRegistry",
+    "ProcessorResult",
 ]

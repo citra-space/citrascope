@@ -4,7 +4,6 @@ import copy
 import threading
 import time
 from pathlib import Path
-from typing import List
 
 import numpy as np
 from astropy.io import fits
@@ -31,7 +30,7 @@ class ProcessorRegistry:
         self.logger = logger
 
         # Hardcode processor list (simple, explicit)
-        self.processors: List[AbstractImageProcessor] = [
+        self.processors: list[AbstractImageProcessor] = [
             PlateSolverProcessor(),  # MSI step 1: 30-40s
             SourceExtractorProcessor(),  # MSI step 2: 2-5s (requires plate solver)
             PhotometryProcessor(),  # MSI step 3: 2-5s (requires source extractor)
@@ -53,7 +52,7 @@ class ProcessorRegistry:
         with self._stats_lock:
             return copy.deepcopy(self._processor_stats)
 
-    def get_all_processors(self) -> List[dict]:
+    def get_all_processors(self) -> list[dict]:
         """Get metadata for all processors (enabled and disabled).
 
         Returns:
@@ -143,7 +142,7 @@ class ProcessorRegistry:
         )
         return aggregated
 
-    def _aggregate_results(self, results: List[ProcessorResult], total_time: float) -> AggregatedResult:
+    def _aggregate_results(self, results: list[ProcessorResult], total_time: float) -> AggregatedResult:
         """Combine processor results into upload decision.
 
         Logic:

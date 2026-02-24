@@ -11,7 +11,7 @@ from citrascope.hardware.devices.mount import AbstractMount
 
 __all__ = [
     "AbstractCamera",
-    "AbstractMount",
     "AbstractFilterWheel",
     "AbstractFocuser",
+    "AbstractMount",
 ]

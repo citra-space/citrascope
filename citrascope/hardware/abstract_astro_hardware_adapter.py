@@ -4,14 +4,14 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional, TypedDict
+from typing import Any, TypedDict
 
 
 class SettingSchemaEntry(TypedDict, total=False):
     name: str
     friendly_name: str  # Human-readable display name for UI
     type: str  # e.g., 'float', 'int', 'str', 'bool'
-    default: Optional[Any]
+    default: Any | None
     description: str
     required: bool  # Whether this field is required
     placeholder: str  # Placeholder text for UI inputs
@@ -207,12 +207,12 @@ class AbstractAstroHardwareAdapter(ABC):
         """
         pass
 
-    def update_from_plate_solve(
+    def update_from_plate_solve(  # noqa: B027
         self,
         solved_ra_deg: float,
         solved_dec_deg: float,
-        expected_ra_deg: Optional[float] = None,
-        expected_dec_deg: Optional[float] = None,
+        expected_ra_deg: float | None = None,
+        expected_dec_deg: float | None = None,
     ) -> None:
         """Update mount model from a plate solve result (pipeline → adapter).
 
@@ -283,7 +283,7 @@ class AbstractAstroHardwareAdapter(ABC):
             return False
 
         # MANUAL adapters might - check for the method
-        return hasattr(self, "expose_camera") and callable(getattr(self, "expose_camera"))
+        return hasattr(self, "expose_camera") and callable(self.expose_camera)
 
     def is_hyperspectral(self) -> bool:
         """Indicates whether this adapter uses a hyperspectral camera.

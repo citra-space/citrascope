@@ -1,6 +1,4 @@
-import threading
 import time
-from typing import Optional
 
 from citrascope.api.citra_api_client import AbstractCitraApiClient, CitraApiClient
 from citrascope.api.dummy_api_client import DummyApiClient
@@ -23,8 +21,8 @@ class CitraScopeDaemon:
     def __init__(
         self,
         settings: CitraScopeSettings,
-        api_client: Optional[AbstractCitraApiClient] = None,
-        hardware_adapter: Optional[AbstractAstroHardwareAdapter] = None,
+        api_client: AbstractCitraApiClient | None = None,
+        hardware_adapter: AbstractAstroHardwareAdapter | None = None,
     ):
         self.settings = settings
         CITRASCOPE_LOGGER.setLevel(self.settings.log_level)
@@ -44,7 +42,7 @@ class CitraScopeDaemon:
         self.location_service = None
         self.ground_station = None
         self.telescope_record = None
-        self.configuration_error: Optional[str] = None
+        self.configuration_error: str | None = None
 
         # Initialize processor registry
         self.processor_registry = ProcessorRegistry(settings=self.settings, logger=CITRASCOPE_LOGGER)
@@ -75,7 +73,7 @@ class CitraScopeDaemon:
                 f"Check documentation for installation instructions."
             ) from e
 
-    def _initialize_components(self, reload_settings: bool = False) -> tuple[bool, Optional[str]]:
+    def _initialize_components(self, reload_settings: bool = False) -> tuple[bool, str | None]:
         """Initialize or reinitialize all components.
 
         Args:
@@ -162,8 +160,8 @@ class CitraScopeDaemon:
                 if missing_deps:
                     for dep in missing_deps:
                         CITRASCOPE_LOGGER.warning(
-                            f"{dep['device_type']} '{dep['device_name']}' missing dependencies: {dep['missing_packages']}. "
-                            f"Install with: {dep['install_cmd']}"
+                            f"{dep['device_type']} '{dep['device_name']}' missing dependencies: "
+                            f"{dep['missing_packages']}. Install with: {dep['install_cmd']}"
                         )
 
             # Initialize location service (manages GPS internally)
@@ -199,12 +197,12 @@ class CitraScopeDaemon:
                 return False, error
 
         except Exception as e:
-            error_msg = f"Failed to initialize components: {str(e)}"
+            error_msg = f"Failed to initialize components: {e!s}"
             CITRASCOPE_LOGGER.error(error_msg, exc_info=True)
             self.configuration_error = error_msg
             return False, error_msg
 
-    def reload_configuration(self) -> tuple[bool, Optional[str]]:
+    def reload_configuration(self) -> tuple[bool, str | None]:
         """Reload configuration from file and reinitialize all components."""
         return self._initialize_components(reload_settings=True)
 
@@ -214,7 +212,7 @@ class CitraScopeDaemon:
         old_imaging_tasks: dict | None = None,
         old_processing_tasks: dict | None = None,
         old_uploading_tasks: dict | None = None,
-    ) -> tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """Initialize telescope connection and task manager.
 
         Args:
@@ -306,7 +304,7 @@ class CitraScopeDaemon:
             return True, None
 
         except Exception as e:
-            error_msg = f"Error initializing telescope: {str(e)}"
+            error_msg = f"Error initializing telescope: {e!s}"
             CITRASCOPE_LOGGER.error(error_msg, exc_info=True)
             return False, error_msg
 
@@ -352,7 +350,7 @@ class CitraScopeDaemon:
         except Exception as e:
             CITRASCOPE_LOGGER.warning(f"Failed to sync filters to backend: {e}", exc_info=True)
 
-    def trigger_autofocus(self) -> tuple[bool, Optional[str]]:
+    def trigger_autofocus(self) -> tuple[bool, str | None]:
         """Request autofocus to run at next safe point between tasks.
 
         Returns:

@@ -3,7 +3,7 @@
 import logging
 import time
 from pathlib import Path
-from typing import Optional, cast
+from typing import cast
 
 from citrascope.hardware.abstract_astro_hardware_adapter import SettingSchemaEntry
 from citrascope.hardware.devices.camera import AbstractCamera
@@ -256,10 +256,10 @@ class UsbCamera(AbstractCamera):
     def take_exposure(
         self,
         duration: float,
-        gain: Optional[int] = None,
-        offset: Optional[int] = None,
+        gain: int | None = None,
+        offset: int | None = None,
         binning: int = 1,
-        save_path: Optional[Path] = None,
+        save_path: Path | None = None,
     ) -> Path:
         """Capture an exposure (frame).
 
@@ -315,7 +315,7 @@ class UsbCamera(AbstractCamera):
 
         except Exception as e:
             self.logger.error(f"Failed to capture image: {e}")
-            raise RuntimeError(f"Image capture failed: {e}")
+            raise RuntimeError(f"Image capture failed: {e}") from e
 
     def abort_exposure(self):
         """Abort current exposure.
@@ -324,7 +324,7 @@ class UsbCamera(AbstractCamera):
         """
         self.logger.debug("USB camera captures are instantaneous - nothing to abort")
 
-    def get_temperature(self) -> Optional[float]:
+    def get_temperature(self) -> float | None:
         """Get camera sensor temperature.
 
         Returns:

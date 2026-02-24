@@ -1,5 +1,4 @@
 import heapq
-import os
 import threading
 import time
 from datetime import datetime, timezone
@@ -9,7 +8,6 @@ from dateutil import parser as dtparser
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
 from citrascope.tasks.autofocus_manager import AutofocusManager
 from citrascope.tasks.scope.static_telescope_task import StaticTelescopeTask
-from citrascope.tasks.scope.tracking_telescope_task import TrackingTelescopeTask
 from citrascope.tasks.task import Task
 
 # Task polling interval in seconds
@@ -295,7 +293,7 @@ class TaskManager:
                         if not (self.task_heap and self.task_heap[0][0] <= now):
                             break
                         # Pop task from heap BEFORE starting execution
-                        start_time, stop_time, tid, task = heapq.heappop(self.task_heap)
+                        _, _, tid, task = heapq.heappop(self.task_heap)
                         self.task_ids.discard(tid)
 
                         self.logger.info(f"Starting task {tid} at {datetime.now().isoformat()}: {task}")

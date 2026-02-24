@@ -2,7 +2,6 @@
 
 from abc import abstractmethod
 from pathlib import Path
-from typing import Optional
 
 from citrascope.hardware.devices.abstract_hardware_device import AbstractHardwareDevice
 
@@ -18,10 +17,10 @@ class AbstractCamera(AbstractHardwareDevice):
     def take_exposure(
         self,
         duration: float,
-        gain: Optional[int] = None,
-        offset: Optional[int] = None,
+        gain: int | None = None,
+        offset: int | None = None,
         binning: int = 1,
-        save_path: Optional[Path] = None,
+        save_path: Path | None = None,
     ) -> Path:
         """Capture an image exposure.
 
@@ -43,7 +42,7 @@ class AbstractCamera(AbstractHardwareDevice):
         pass
 
     @abstractmethod
-    def get_temperature(self) -> Optional[float]:
+    def get_temperature(self) -> float | None:
         """Get the current camera sensor temperature.
 
         Returns:

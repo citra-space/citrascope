@@ -1,7 +1,6 @@
 import logging
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
-from typing import Optional
 
 
 class ExcludeHttpRequestFilter(logging.Filter):
@@ -26,7 +25,7 @@ class ExcludeWebLogsFilter(logging.Filter):
 
 
 class ColoredFormatter(logging.Formatter):
-    COLORS = {
+    COLORS = {  # noqa: RUF012
         "DEBUG": "\033[94m",  # Blue
         "INFO": "\033[92m",  # Green
         "WARNING": "\033[93m",  # Yellow
@@ -76,7 +75,7 @@ for _noisy_logger in ("pixelemon", "httpx", "httpcore"):
     _lib_log.setLevel(logging.WARNING)
 
 # File handler will be added by setup_file_logging()
-_file_handler: Optional[TimedRotatingFileHandler] = None
+_file_handler: TimedRotatingFileHandler | None = None
 
 
 def setup_file_logging(log_file_path: Path, backup_count: int = 30) -> None:
@@ -115,7 +114,7 @@ def setup_file_logging(log_file_path: Path, backup_count: int = 30) -> None:
     CITRASCOPE_LOGGER.addHandler(_file_handler)
 
 
-def get_file_handler() -> Optional[TimedRotatingFileHandler]:
+def get_file_handler() -> TimedRotatingFileHandler | None:
     """Get the current file handler.
 
     Returns:

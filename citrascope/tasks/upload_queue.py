@@ -1,7 +1,7 @@
 """Background upload queue for uploading images and marking tasks complete."""
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Optional
 
 from citrascope.tasks.base_work_queue import BaseWorkQueue
 
@@ -30,12 +30,12 @@ class UploadQueue(BaseWorkQueue):
         task_id: str,
         task,
         image_path: str,
-        processing_result: Optional[dict],
+        processing_result: dict | None,
         api_client,
         telescope_record: dict,
         settings,
         on_complete: Callable,
-        sensor_location: Optional[dict] = None,
+        sensor_location: dict | None = None,
     ):
         """
         Submit image for upload.

@@ -11,8 +11,7 @@ Tests that:
 """
 
 from dataclasses import dataclass, field
-from typing import Optional
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock
 
 # ---------------------------------------------------------------------------
 # Minimal stubs so we can instantiate UploadQueue without a full daemon
@@ -25,7 +24,7 @@ class _FakeAggregatedResult:
     extracted_data: dict = field(default_factory=dict)
     all_results: list = field(default_factory=list)
     total_time: float = 0.0
-    skip_reason: Optional[str] = None
+    skip_reason: str | None = None
 
 
 _TELESCOPE_RECORD = {

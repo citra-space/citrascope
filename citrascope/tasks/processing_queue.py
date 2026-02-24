@@ -2,8 +2,8 @@
 
 import shutil
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from citrascope.processors.processor_result import ProcessingContext
 from citrascope.tasks.base_work_queue import BaseWorkQueue

@@ -2,7 +2,8 @@
 
 import threading
 import time
-from typing import TYPE_CHECKING, Callable, Optional
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Optional
 
 from citrascope.logging import CITRASCOPE_LOGGER
 from citrascope.time.time_health import TimeHealth, TimeStatus
@@ -25,7 +26,7 @@ class TimeMonitor:
         self,
         check_interval_minutes: int = 5,
         pause_threshold_ms: float = 500.0,
-        pause_callback: Optional[Callable[[TimeHealth], None]] = None,
+        pause_callback: Callable[[TimeHealth], None] | None = None,
         gps_monitor: Optional["GPSMonitor"] = None,
     ):
         """
@@ -47,11 +48,11 @@ class TimeMonitor:
 
         # Thread control
         self._stop_event = threading.Event()
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
 
         # Current health status
-        self._current_health: Optional[TimeHealth] = None
+        self._current_health: TimeHealth | None = None
         self._last_critical_notification = 0.0
 
     def start(self) -> None:
@@ -76,7 +77,7 @@ class TimeMonitor:
         self._thread = None
         CITRASCOPE_LOGGER.info("Time monitor stopped")
 
-    def get_current_health(self) -> Optional[TimeHealth]:
+    def get_current_health(self) -> TimeHealth | None:
         """Get the current time health status (thread-safe)."""
         with self._lock:
             return self._current_health

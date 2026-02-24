@@ -1,7 +1,6 @@
 """Abstract focuser device interface."""
 
 from abc import abstractmethod
-from typing import Optional
 
 from citrascope.hardware.devices.abstract_hardware_device import AbstractHardwareDevice
 
@@ -37,7 +36,7 @@ class AbstractFocuser(AbstractHardwareDevice):
         pass
 
     @abstractmethod
-    def get_position(self) -> Optional[int]:
+    def get_position(self) -> int | None:
         """Get current focuser position.
 
         Returns:
@@ -60,7 +59,7 @@ class AbstractFocuser(AbstractHardwareDevice):
         pass
 
     @abstractmethod
-    def get_max_position(self) -> Optional[int]:
+    def get_max_position(self) -> int | None:
         """Get the maximum focuser position.
 
         Returns:
@@ -69,7 +68,7 @@ class AbstractFocuser(AbstractHardwareDevice):
         pass
 
     @abstractmethod
-    def get_temperature(self) -> Optional[float]:
+    def get_temperature(self) -> float | None:
         """Get focuser temperature reading if available.
 
         Returns:

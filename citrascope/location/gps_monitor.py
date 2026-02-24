@@ -7,8 +7,8 @@ import json
 import subprocess
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
 
 from citrascope.logging import CITRASCOPE_LOGGER
 
@@ -17,14 +17,14 @@ from citrascope.logging import CITRASCOPE_LOGGER
 class GPSFix:
     """GPS fix information."""
 
-    latitude: Optional[float] = None  # degrees
-    longitude: Optional[float] = None  # degrees
-    altitude: Optional[float] = None  # meters
+    latitude: float | None = None  # degrees
+    longitude: float | None = None  # degrees
+    altitude: float | None = None  # meters
     fix_mode: int = 0  # 0=no fix, 2=2D, 3=3D
     satellites: int = 0  # number of satellites used
     timestamp: float = 0.0  # time.time() when fix was obtained
-    eph: Optional[float] = None  # estimated horizontal position error (meters)
-    sep: Optional[float] = None  # spherical error probable (meters)
+    eph: float | None = None  # estimated horizontal position error (meters)
+    sep: float | None = None  # spherical error probable (meters)
 
     @property
     def is_strong_fix(self) -> bool:
@@ -56,7 +56,7 @@ class GPSMonitor:
     def __init__(
         self,
         check_interval_minutes: int = 5,
-        fix_callback: Optional[Callable[[GPSFix], None]] = None,
+        fix_callback: Callable[[GPSFix], None] | None = None,
     ):
         """
         Initialize GPS monitor.
@@ -70,15 +70,15 @@ class GPSMonitor:
 
         # Thread control
         self._stop_event = threading.Event()
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
 
         # Current fix status
-        self._current_fix: Optional[GPSFix] = None
+        self._current_fix: GPSFix | None = None
         self._last_fix_mode = 0
 
         # Cache for get_current_fix() to avoid repeated subprocess calls
-        self._cached_fix: Optional[GPSFix] = None
+        self._cached_fix: GPSFix | None = None
         self._cache_timestamp: float = 0.0
 
     def is_available(self) -> bool:
@@ -133,7 +133,7 @@ class GPSMonitor:
         self._thread = None
         CITRASCOPE_LOGGER.info("GPS monitor stopped")
 
-    def get_current_fix(self, allow_blocking: bool = True) -> Optional[GPSFix]:
+    def get_current_fix(self, allow_blocking: bool = True) -> GPSFix | None:
         """
         Get current GPS fix with smart caching.
 
@@ -222,7 +222,7 @@ class GPSMonitor:
             with self._lock:
                 self._current_fix = None
 
-    def _query_gpsd(self) -> Optional[GPSFix]:
+    def _query_gpsd(self) -> GPSFix | None:
         """
         Query gpsd for GPS fix information using gpspipe.
 

@@ -1,7 +1,6 @@
 """Unit tests for image processor framework."""
 
 import time
-from pathlib import Path
 from unittest.mock import Mock
 
 import numpy as np

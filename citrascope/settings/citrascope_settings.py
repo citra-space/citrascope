@@ -1,7 +1,7 @@
 """CitraScope settings class using JSON-based configuration."""
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import platformdirs
 
@@ -45,10 +45,10 @@ class CitraScopeSettings:
 
         # Hardware adapter-specific settings stored as nested dict per adapter
         # Format: {"adapter_name": {"setting_key": value, ...}, ...}
-        self._all_adapter_settings: Dict[str, Dict[str, Any]] = config.get("adapter_settings", {})
+        self._all_adapter_settings: dict[str, dict[str, Any]] = config.get("adapter_settings", {})
 
         # Current adapter's settings slice
-        self.adapter_settings: Dict[str, Any] = self._all_adapter_settings.get(self.hardware_adapter, {})
+        self.adapter_settings: dict[str, Any] = self._all_adapter_settings.get(self.hardware_adapter, {})
 
         # Runtime settings (all loaded from config file, configurable via web UI)
         self.log_level: str = config.get("log_level", "INFO")
@@ -56,7 +56,7 @@ class CitraScopeSettings:
 
         # Processor configuration
         self.processors_enabled: bool = config.get("processors_enabled", True)
-        self.enabled_processors: Dict[str, bool] = config.get("enabled_processors", {})
+        self.enabled_processors: dict[str, bool] = config.get("enabled_processors", {})
 
         # Web port: CLI-only, never loaded from or saved to config file
         self.web_port: int = web_port
@@ -73,10 +73,10 @@ class CitraScopeSettings:
         # Autofocus configuration (top-level/global settings)
         self.scheduled_autofocus_enabled: bool = config.get("scheduled_autofocus_enabled", False)
         self.autofocus_interval_minutes: int = config.get("autofocus_interval_minutes", 60)
-        self.last_autofocus_timestamp: Optional[int] = config.get("last_autofocus_timestamp")
+        self.last_autofocus_timestamp: int | None = config.get("last_autofocus_timestamp")
         self.autofocus_target_preset: str = config.get("autofocus_target_preset", "mirach")
-        self.autofocus_target_custom_ra: Optional[float] = config.get("autofocus_target_custom_ra")
-        self.autofocus_target_custom_dec: Optional[float] = config.get("autofocus_target_custom_dec")
+        self.autofocus_target_custom_ra: float | None = config.get("autofocus_target_custom_ra")
+        self.autofocus_target_custom_dec: float | None = config.get("autofocus_target_custom_dec")
 
         # Validate custom RA/Dec ranges
         if self.autofocus_target_custom_ra is not None:
@@ -99,7 +99,8 @@ class CitraScopeSettings:
             or self.autofocus_interval_minutes > 1439
         ):
             CITRASCOPE_LOGGER.warning(
-                f"Invalid autofocus_interval_minutes ({self.autofocus_interval_minutes}). Setting to default 60 minutes."
+                f"Invalid autofocus_interval_minutes ({self.autofocus_interval_minutes}). "
+                "Setting to default 60 minutes."
             )
             self.autofocus_interval_minutes = 60
 
@@ -136,7 +137,7 @@ class CitraScopeSettings:
         """
         return bool(self.personal_access_token and self.telescope_id and self.hardware_adapter)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert settings to dictionary for serialization.
 
         Returns:
@@ -182,7 +183,7 @@ class CitraScopeSettings:
         self.config_manager.save_config(self.to_dict())
         CITRASCOPE_LOGGER.info(f"Configuration saved to {self.config_manager.get_config_path()}")
 
-    def update_and_save(self, config: Dict[str, Any]) -> None:
+    def update_and_save(self, config: dict[str, Any]) -> None:
         """Update settings from dict and save, preserving other adapters' settings.
 
         Args:

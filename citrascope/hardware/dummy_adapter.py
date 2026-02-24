@@ -272,11 +272,11 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         star_mags = star_mags[valid]
 
         n_rendered = 0
-        for (xp, yp), mag in zip(pixel_coords, star_mags):
+        for (xp, yp), mag in zip(pixel_coords, star_mags, strict=False):
             flux_e = 10.0 ** ((_DUMMY_MAG_ZERO - mag) / 2.5) * exptime
             total_adu = flux_e / _DUMMY_GAIN
 
-            xi, yi = int(round(xp)), int(round(yp))
+            xi, yi = round(xp), round(yp)
 
             # Build a small stamp and blur it to the PSF shape
             stamp = np.zeros((2 * stamp_r + 1, 2 * stamp_r + 1))

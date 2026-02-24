@@ -3,7 +3,7 @@
 import logging
 import time
 from pathlib import Path
-from typing import Optional, cast
+from typing import cast
 
 from citrascope.hardware.abstract_astro_hardware_adapter import SettingSchemaEntry
 from citrascope.hardware.devices.camera import AbstractCamera
@@ -132,7 +132,9 @@ class XimeaHyperspectralCamera(AbstractCamera):
                 "friendly_name": "Wavelength Calibration (nm)",
                 "type": "str",
                 "default": "",
-                "description": "Comma-separated wavelengths in nanometers for each spectral band (e.g., 470,520,570,620)",
+                "description": (
+                    "Comma-separated wavelengths in nanometers for each spectral band " "(e.g., 470,520,570,620)"
+                ),
                 "required": False,
                 "placeholder": "Leave empty if not calibrated",
                 "group": "Camera",
@@ -149,7 +151,7 @@ class XimeaHyperspectralCamera(AbstractCamera):
         """
         super().__init__(logger, **kwargs)
 
-        self.serial_number: Optional[str] = kwargs.get("serial_number")
+        self.serial_number: str | None = kwargs.get("serial_number")
         self.default_gain: float = kwargs.get("default_gain", 0.0)
         self.default_exposure_ms: float = kwargs.get("default_exposure_ms", 100.0)
         self.spectral_bands: int = kwargs.get("spectral_bands", 25)
@@ -282,10 +284,10 @@ class XimeaHyperspectralCamera(AbstractCamera):
     def take_exposure(
         self,
         duration: float,
-        gain: Optional[int] = None,
-        offset: Optional[int] = None,
+        gain: int | None = None,
+        offset: int | None = None,
         binning: int = 1,
-        save_path: Optional[Path] = None,
+        save_path: Path | None = None,
     ) -> Path:
         """Capture a hyperspectral image exposure.
 
@@ -304,8 +306,8 @@ class XimeaHyperspectralCamera(AbstractCamera):
 
         try:
             from ximea import xiapi
-        except ImportError:
-            raise RuntimeError("ximea-api package not installed")
+        except ImportError as e:
+            raise RuntimeError("ximea-api package not installed") from e
 
         self.logger.info(
             f"Starting hyperspectral exposure: {duration}s, "
@@ -404,7 +406,7 @@ class XimeaHyperspectralCamera(AbstractCamera):
             except Exception as e:
                 self.logger.error(f"Error aborting exposure: {e}")
 
-    def get_temperature(self) -> Optional[float]:
+    def get_temperature(self) -> float | None:
         """Get the current camera sensor temperature.
 
         Returns:
@@ -732,7 +734,7 @@ class XimeaHyperspectralCamera(AbstractCamera):
                 f"Nearest valid values: {(pattern_size)**2} ({pattern_size}×{pattern_size}) "
                 f"or {(pattern_size+1)**2} ({pattern_size+1}×{pattern_size+1})."
             )
-        # Calculate output dimensions (spatial resolution reduced by pattern size)
+        height, width = mosaic_data.shape[:2]
         out_height = height // pattern_size
         out_width = width // pattern_size
         num_bands = pattern_size * pattern_size

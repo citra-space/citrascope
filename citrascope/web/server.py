@@ -21,6 +21,7 @@ class CitraScopeWebServer:
         self.port = port
         self.web_app = None
         self.web_log_handler = None
+        self._broadcast_task = None
 
         # Set up web log handler
         self._setup_log_handler()
@@ -98,7 +99,7 @@ class CitraScopeWebServer:
             server = uvicorn.Server(config)
 
             # Start status broadcast loop
-            asyncio.create_task(self._status_broadcast_loop())
+            self._broadcast_task = asyncio.create_task(self._status_broadcast_loop())
 
             await server.serve()
         except OSError as e:

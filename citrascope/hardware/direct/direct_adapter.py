@@ -3,7 +3,7 @@
 import logging
 import time
 from pathlib import Path
-from typing import Any, Optional, cast
+from typing import Any, cast
 
 from citrascope.hardware.abstract_astro_hardware_adapter import (
     AbstractAstroHardwareAdapter,
@@ -78,7 +78,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         camera_class = get_camera_class(camera_type)
         camera_deps = check_dependencies(camera_class)
 
-        self.camera: Optional[AbstractCamera] = None
+        self.camera: AbstractCamera | None = None
         if not camera_deps["available"]:
             self.logger.warning(
                 f"Camera '{camera_type}' missing dependencies: {', '.join(camera_deps['missing'])}. "
@@ -97,7 +97,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             self.camera = camera_class(logger=self.logger, **camera_settings)
 
         # Check and instantiate mount (optional)
-        self.mount: Optional[AbstractMount] = None
+        self.mount: AbstractMount | None = None
         if mount_type:
             self.logger.info(f"Checking mount dependencies: {mount_type}")
             mount_class = get_mount_class(mount_type)
@@ -121,7 +121,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                 self.mount = mount_class(logger=self.logger, **mount_settings)
 
         # Check and instantiate filter wheel (optional)
-        self.filter_wheel: Optional[AbstractFilterWheel] = None
+        self.filter_wheel: AbstractFilterWheel | None = None
         if filter_wheel_type:
             self.logger.info(f"Checking filter wheel dependencies: {filter_wheel_type}")
             filter_wheel_class = get_filter_wheel_class(filter_wheel_type)
@@ -145,7 +145,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                 self.filter_wheel = filter_wheel_class(logger=self.logger, **filter_wheel_settings)
 
         # Check and instantiate focuser (optional)
-        self.focuser: Optional[AbstractFocuser] = None
+        self.focuser: AbstractFocuser | None = None
         if focuser_type:
             self.logger.info(f"Checking focuser dependencies: {focuser_type}")
             focuser_class = get_focuser_class(focuser_type)
@@ -169,15 +169,15 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                 self.focuser = focuser_class(logger=self.logger, **focuser_settings)
 
         # State tracking
-        self._current_filter_position: Optional[int] = None
-        self._current_focus_position: Optional[int] = None
+        self._current_filter_position: int | None = None
+        self._current_focus_position: int | None = None
 
         self.logger.info("DirectHardwareAdapter initialized with:")
         self.logger.info(f"  Camera: {camera_type}")
         if mount_type:
             self.logger.info(f"  Mount: {mount_type}")
         else:
-            self.logger.info(f"  Mount: None (static camera)")
+            self.logger.info("  Mount: None (static camera)")
         if filter_wheel_type:
             self.logger.info(f"  Filter Wheel: {filter_wheel_type}")
         if focuser_type:
@@ -462,8 +462,8 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
     def expose_camera(
         self,
         exposure_time: float,
-        gain: Optional[int] = None,
-        offset: Optional[int] = None,
+        gain: int | None = None,
+        offset: int | None = None,
         count: int = 1,
     ) -> str:
         """Take camera exposure(s).
@@ -547,7 +547,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         self.logger.info(f"Filter change complete: position {filter_position}")
         return True
 
-    def get_filter_position(self) -> Optional[int]:
+    def get_filter_position(self) -> int | None:
         """Get current filter position.
 
         Returns:
@@ -590,7 +590,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         self.logger.info(f"Focus move complete: position {position}")
         return True
 
-    def get_focus_position(self) -> Optional[int]:
+    def get_focus_position(self) -> int | None:
         """Get current focuser position.
 
         Returns:
@@ -600,7 +600,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             return None
         return self.focuser.get_position()
 
-    def get_sensor_temperature(self) -> Optional[float]:
+    def get_sensor_temperature(self) -> float | None:
         """Get camera sensor temperature.
 
         Returns:
