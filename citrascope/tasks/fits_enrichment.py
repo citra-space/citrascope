@@ -64,8 +64,9 @@ def enrich_fits_metadata(
     try:
         # Open FITS file in update mode
         with fits.open(filepath, mode="update") as hdul:
-            # Get primary header (works for both single HDU and multi-HDU files)
-            header = hdul[0].header
+            primary = hdul[0]
+            assert isinstance(primary, fits.PrimaryHDU)
+            header = primary.header
 
             # Check if already enriched (idempotency)
             if task and hasattr(task, "id") and task.id:

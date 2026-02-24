@@ -550,8 +550,9 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
         id_counter = [base_id]  # Use list so it can be modified in nested function
 
-        # Select filters to use for this task
+        # select_filters_for_task raises RuntimeError when allow_no_filter=False and no filter found
         filters_to_use = self.select_filters_for_task(task, allow_no_filter=False)
+        assert filters_to_use is not None
 
         for filter_id, filter_info in filters_to_use.items():
             filter_name = filter_info["name"]

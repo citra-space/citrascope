@@ -47,6 +47,7 @@ class AbstractAstroHardwareAdapter(ABC):
 
     _slew_min_distance_deg: float = 2.0
     scope_slew_rate_degrees_per_second: float = 0.0
+    telescope_record: dict | None = None
     DEFAULT_FOCUS_POSITION: int = 0  # Default focus position, can be overridden by subclasses
 
     def __init__(self, images_dir: Path, **kwargs):
@@ -268,22 +269,42 @@ class AbstractAstroHardwareAdapter(ABC):
         """
         return False
 
+    def expose_camera(self, exposure_time: float, **kwargs) -> str:
+        """Capture a single exposure with direct camera control.
+
+        Override in adapters that support manual camera operation (direct hardware).
+        Default raises NotImplementedError.
+
+        Args:
+            exposure_time: Exposure duration in seconds
+            **kwargs: Adapter-specific options (gain, offset, count, etc.)
+
+        Returns:
+            str: File path of the saved image
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} does not support direct camera control")
+
+    def get_missing_dependencies(self) -> list[dict[str, str]]:
+        """Check for missing optional dependencies required by this adapter.
+
+        Returns:
+            list: List of dicts with keys device_type, device_name, missing_packages, install_cmd.
+                  Empty list if all dependencies are met.
+        """
+        return []
+
     def supports_direct_camera_control(self) -> bool:
         """Indicates whether this adapter supports direct camera control.
 
         Direct camera control allows manual test captures and camera operations
         from the UI. Remote scheduler adapters (NINA, KStars) typically do not
         support this, as camera control is managed by the external software.
+        Override to return True in adapters that implement expose_camera().
 
         Returns:
             bool: True if the adapter supports expose_camera() and manual captures
         """
-        # Remote schedulers never support direct control
-        if self.get_observation_strategy() == ObservationStrategy.SEQUENCE_TO_CONTROLLER:
-            return False
-
-        # MANUAL adapters might - check for the method
-        return hasattr(self, "expose_camera") and callable(self.expose_camera)
+        return False
 
     def is_hyperspectral(self) -> bool:
         """Indicates whether this adapter uses a hyperspectral camera.

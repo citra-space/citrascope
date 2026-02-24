@@ -55,7 +55,7 @@ class GPSMonitor:
 
     def __init__(
         self,
-        check_interval_minutes: int = 5,
+        check_interval_minutes: float = 5,
         fix_callback: Callable[[GPSFix], None] | None = None,
     ):
         """

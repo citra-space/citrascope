@@ -132,6 +132,30 @@ After imaging completes, a task is in-flight through processing and upload queue
 - **Tests**: `pytest`, files named `test_*.py` in `tests/unit/` or `tests/integration/`. Mark integration tests with `@pytest.mark.integration`.
 - Run tests: `pytest -m "not integration"`
 
+### Static analysis — keep it green
+
+The full stack runs at three layers. New code must pass all three cleanly.
+
+| Layer | Formatting | Linting | Type Checking |
+|---|---|---|---|
+| **Editor (save)** | Black | Ruff | Pyright (Pylance) |
+| **Pre-commit** | Black | Ruff | Pyright |
+| **CI** | — | Ruff | Pyright |
+
+**Ruff** handles linting and import sorting. Auto-fixes run on save (`.vscode/settings.json`) and at pre-commit (`ruff --fix`). Config is in `pyproject.toml` under `[tool.ruff]`.
+
+**Black** handles formatting. Runs on save and at pre-commit. Config is in `pyproject.toml` under `[tool.black]`.
+
+**Pyright** (basic mode) handles type checking. Config is in `pyrightconfig.json`. The same engine powers Pylance in the editor, so red squiggles in Cursor match what CI enforces.
+
+Common type-checking patterns used in this codebase:
+
+- `assert self.x is not None` — narrow `T | None` attrs that are guaranteed set after initialization (e.g., after `connect()`, after `_initialize_components()`). Preferred over `if` guards when the None case is a programming error.
+- `# type: ignore[reportMissingImports]` — only for platform-specific SDK imports (`PyIndi`, `dbus`, `cv2`, `ximea`) that aren't installed everywhere.
+- `# type: ignore[attr-defined]` / `# type: ignore[arg-type]` — only for third-party library stub gaps (astroquery, astropy.units, FITS header values). Never use these to silence errors in our own code.
+- `assert isinstance(hdul[0], fits.PrimaryHDU)` — narrow opaque `HDUList.__getitem__` returns for FITS processing.
+- `from __future__ import annotations` + `if TYPE_CHECKING:` — for circular import avoidance only.
+
 ## Common pitfalls
 
 - **DummyApiClient** returns snake_case keys (matching the real Citra API), not camelCase. The NINA API uses camelCase — don't confuse the two.
@@ -159,7 +183,7 @@ After imaging completes, a task is in-flight through processing and upload queue
 - **Astropy**: FITS file I/O, WCS, coordinate transforms
 - **Alpine.js**: Reactive frontend (loaded via CDN, no build step)
 
-Dev tools: **ruff** (linter + import sorting), **Black** (formatter), **mypy** (type checking), **pytest** + **pytest-cov** (testing). Pre-commit hooks run ruff and black automatically. CI runs ruff as a separate lint job.
+Dev tools: **ruff** (linter + import sorting), **Black** (formatter), **pyright** (type checking, basic mode), **pytest** + **pytest-cov** (testing). Pre-commit hooks run ruff, black, and pyright automatically. CI runs ruff and pyright as separate jobs.
 
 Full dependency list in `pyproject.toml`.
 

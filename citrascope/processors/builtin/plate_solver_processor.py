@@ -56,9 +56,11 @@ def _build_telescope_for_image(image_path: Path, context: Optional["ProcessingCo
     v_px = int(telescope_record["verticalPixelCount"])
 
     with fits.open(image_path) as hdul:
-        header = hdul[0].header
-        x_binning = int(header.get("XBINNING", 1))
-        y_binning = int(header.get("YBINNING", 1))
+        primary = hdul[0]
+        assert isinstance(primary, fits.PrimaryHDU)
+        header = primary.header
+        x_binning = int(header.get("XBINNING", 1))  # type: ignore[arg-type]
+        y_binning = int(header.get("YBINNING", 1))  # type: ignore[arg-type]
 
     effective_pixel_w_um = pixel_size_um * x_binning
     effective_pixel_h_um = pixel_size_um * y_binning
@@ -101,7 +103,9 @@ def _ensure_fits_has_observer_location(image_path: Path, context: ProcessingCont
     """If FITS lacks observer location and context has it, write a copy with
     SITELAT/SITELONG/SITEALT. Return path to use."""
     with fits.open(image_path) as hdul:
-        header = hdul[0].header
+        primary = hdul[0]
+        assert isinstance(primary, fits.PrimaryHDU)
+        header = primary.header
         if _fits_has_observer_location(header):
             return image_path
         location = None
@@ -128,9 +132,9 @@ def _ensure_fits_has_observer_location(image_path: Path, context: ProcessingCont
         # Pixelemon parses DATE-OBS internally via fromisoformat(); normalize to
         # 6 fractional digits so it works on Python 3.10 as well as 3.11+.
         if "DATE-OBS" in new_header:
-            new_header["DATE-OBS"] = normalize_fits_timestamp(new_header["DATE-OBS"])
+            new_header["DATE-OBS"] = normalize_fits_timestamp(str(new_header["DATE-OBS"]))
 
-        fits.writeto(out_path, hdul[0].data, new_header, overwrite=True)
+        fits.writeto(out_path, primary.data, new_header, overwrite=True)
         return out_path
 
 
@@ -177,12 +181,14 @@ class PlateSolverProcessor(AbstractImageProcessor):
             raise RuntimeError("Pixelemon plate solving returned no solution")
 
         with fits.open(image_path) as hdul:
-            naxis1 = hdul[0].header.get("NAXIS1", 0)
-            naxis2 = hdul[0].header.get("NAXIS2", 0)
+            primary = hdul[0]
+            assert isinstance(primary, fits.PrimaryHDU)
+            naxis1 = int(primary.header.get("NAXIS1", 0))  # type: ignore[arg-type]
+            naxis2 = int(primary.header.get("NAXIS2", 0))  # type: ignore[arg-type]
             if naxis1 <= 0 or naxis2 <= 0:
                 raise RuntimeError("FITS image has invalid dimensions")
 
-            new_header = hdul[0].header.copy()
+            new_header = primary.header.copy()
             # Clear any legacy WCS scale/rotation keys from the original FITS before
             # applying Pixelemon's new solution.  This prevents ambiguous headers where
             # both a CD matrix and CDELT+PC keywords coexist.  The update() call below
@@ -209,7 +215,7 @@ class PlateSolverProcessor(AbstractImageProcessor):
                 raise RuntimeError("Pixelemon _wcs not available after successful plate solve")
             new_header.update(image._wcs.to_header(relax=True))
             new_file = image_path.with_suffix(".new")
-            fits.writeto(new_file, hdul[0].data, new_header, overwrite=True)
+            fits.writeto(new_file, primary.data, new_header, overwrite=True)
 
         return new_file
 
@@ -241,7 +247,9 @@ class PlateSolverProcessor(AbstractImageProcessor):
             context.working_image_path = wcs_image_path
 
             with fits.open(wcs_image_path) as hdul:
-                header = hdul[0].header
+                primary = hdul[0]
+                assert isinstance(primary, fits.PrimaryHDU)
+                header = primary.header
                 ra_center = header.get("CRVAL1")
                 dec_center = header.get("CRVAL2")
                 # proj_plane_pixel_scales handles both CDELT and CD-matrix WCS conventions

@@ -4,7 +4,7 @@ import shutil
 import time
 from pathlib import Path
 
-import dbus
+import dbus  # type: ignore[reportMissingImports]
 from platformdirs import user_cache_dir, user_data_dir
 
 from citrascope.hardware.abstract_astro_hardware_adapter import (
@@ -716,6 +716,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
             # Connect to the session bus
             self.logger.info("Connecting to DBus session bus...")
             self.bus = dbus.SessionBus()
+            assert self.bus is not None
 
             # Get the KStars service
             try:
@@ -738,6 +739,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
 
                 # Try to start Ekos if it's not running
                 try:
+                    assert self.kstars is not None
                     self.kstars.startEkos()
                     time.sleep(2)  # Give Ekos time to start
                     ekos_obj = self.bus.get_object(self.bus_name, "/KStars/Ekos")

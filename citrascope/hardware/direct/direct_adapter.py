@@ -459,6 +459,9 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         # Let the camera decide its preferred file extension
         return self.camera.get_preferred_file_extension()
 
+    def supports_direct_camera_control(self) -> bool:
+        return True
+
     def expose_camera(
         self,
         exposure_time: float,

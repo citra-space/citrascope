@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pandas as pd
 import pytest
+from astropy.io import fits
 
 # CitraScope repo root (tests/unit -> tests -> root). Used so demo-FITS tests run with stable cwd.
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -155,13 +156,15 @@ class TestPlateSolverProcessor:
         new_file = tmp_path / "test_image.new"
         mock_solve.return_value = new_file
 
-        mock_hdul = MagicMock()
+        mock_primary = MagicMock(spec=fits.PrimaryHDU)
         mock_header = {
             "CRVAL1": 120.5,
             "CRVAL2": 45.3,
             "CDELT1": 0.001,
         }
-        mock_hdul[0].header = mock_header
+        mock_primary.header = mock_header
+        mock_hdul = MagicMock()
+        mock_hdul.__getitem__ = MagicMock(return_value=mock_primary)
         mock_fits_open.return_value.__enter__.return_value = mock_hdul
 
         processor = PlateSolverProcessor()
@@ -202,9 +205,10 @@ class TestSourceExtractorProcessor:
     @patch("astropy.io.fits.open")
     def test_missing_wcs(self, mock_fits_open, mock_context):
         """Test processor fails gracefully when WCS missing."""
-        # Mock FITS header without WCS
+        mock_primary = MagicMock(spec=fits.PrimaryHDU)
+        mock_primary.header = {}  # No CRVAL1
         mock_hdul = MagicMock()
-        mock_hdul[0].header = {}  # No CRVAL1
+        mock_hdul.__getitem__ = MagicMock(return_value=mock_primary)
         mock_fits_open.return_value.__enter__.return_value = mock_hdul
 
         processor = SourceExtractorProcessor()
@@ -218,9 +222,10 @@ class TestSourceExtractorProcessor:
     @patch("citrascope.processors.builtin.source_extractor_processor.check_sextractor")
     def test_sextractor_not_installed(self, mock_check, mock_fits_open, mock_context):
         """Test processor fails gracefully when SExtractor not installed."""
-        # Mock FITS with WCS
+        mock_primary = MagicMock(spec=fits.PrimaryHDU)
+        mock_primary.header = {"CRVAL1": 120.0}
         mock_hdul = MagicMock()
-        mock_hdul[0].header = {"CRVAL1": 120.0}
+        mock_hdul.__getitem__ = MagicMock(return_value=mock_primary)
         mock_fits_open.return_value.__enter__.return_value = mock_hdul
 
         mock_check.return_value = False
@@ -237,9 +242,10 @@ class TestSourceExtractorProcessor:
     @patch("citrascope.processors.builtin.source_extractor_processor.SourceExtractorProcessor._extract_sources")
     def test_successful_extraction(self, mock_extract, mock_check, mock_fits_open, mock_context, tmp_path):
         """Test successful source extraction."""
-        # Mock FITS with WCS
+        mock_primary = MagicMock(spec=fits.PrimaryHDU)
+        mock_primary.header = {"CRVAL1": 120.0}
         mock_hdul = MagicMock()
-        mock_hdul[0].header = {"CRVAL1": 120.0}
+        mock_hdul.__getitem__ = MagicMock(return_value=mock_primary)
         mock_fits_open.return_value.__enter__.return_value = mock_hdul
 
         mock_check.return_value = True

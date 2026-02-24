@@ -323,10 +323,10 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         from astroquery.vizier import Vizier  # type: ignore[import-untyped]
 
         v = Vizier(columns=["RAmdeg", "DEmdeg", "VTmag"], row_limit=5000)
-        result = v.query_region(
+        result = v.query_region(  # type: ignore[attr-defined]
             SkyCoord(ra=ra, dec=dec, unit="deg"),
-            width=fov_deg * u.deg,
-            height=fov_deg * u.deg,
+            width=fov_deg * u.deg,  # type: ignore[attr-defined]
+            height=fov_deg * u.deg,  # type: ignore[attr-defined]
             catalog="I/259/tyc2",
         )
         if not result:

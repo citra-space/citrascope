@@ -189,4 +189,5 @@ class ProcessorRegistry:
         Returns:
             Numpy array with image data
         """
-        return fits.getdata(image_path)
+        data = fits.getdata(image_path)
+        return np.asarray(data)

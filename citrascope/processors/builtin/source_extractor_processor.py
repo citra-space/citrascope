@@ -177,7 +177,9 @@ class SourceExtractorProcessor(AbstractImageProcessor):
         # Check if image has WCS (requires plate solver to have run)
         try:
             with fits.open(context.working_image_path) as hdul:
-                if "CRVAL1" not in hdul[0].header:
+                primary = hdul[0]
+                assert isinstance(primary, fits.PrimaryHDU)
+                if "CRVAL1" not in primary.header:
                     return ProcessorResult(
                         should_upload=True,
                         extracted_data={},

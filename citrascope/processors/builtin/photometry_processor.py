@@ -100,8 +100,9 @@ class PhotometryProcessor(AbstractImageProcessor):
             return pd.DataFrame()
 
         # Concatenate matched rows
+        matched_indices = np.asarray(indices)[valid]
         matched = pd.concat(
-            [sources.iloc[valid].reset_index(drop=True), catalog.iloc[indices[valid]].reset_index(drop=True)],
+            [sources.iloc[valid].reset_index(drop=True), catalog.iloc[matched_indices].reset_index(drop=True)],
             axis=1,
         )
 
@@ -123,11 +124,15 @@ class PhotometryProcessor(AbstractImageProcessor):
         """
         # Get field center from WCS
         with fits.open(image_path) as hdul:
-            wcs = WCS(hdul[0].header)
-            header = hdul[0].header
-            nx, ny = header["NAXIS1"], header["NAXIS2"]
+            primary = hdul[0]
+            assert isinstance(primary, fits.PrimaryHDU)
+            wcs = WCS(primary.header)
+            header = primary.header
+            nx = int(header["NAXIS1"])  # type: ignore[arg-type]
+            ny = int(header["NAXIS2"])  # type: ignore[arg-type]
             center = wcs.pixel_to_world(nx / 2, ny / 2)
-            ra_center, dec_center = center.ra.deg, center.dec.deg
+            ra_center = float(center.ra.deg)  # type: ignore[union-attr]
+            dec_center = float(center.dec.deg)  # type: ignore[union-attr]
 
         # Query APASS catalog
         apass_stars = self._query_apass(ra_center, dec_center, radius=2.0)
@@ -155,7 +160,7 @@ class PhotometryProcessor(AbstractImageProcessor):
             raise RuntimeError(f"Insufficient valid stars after cleaning: {len(matched_clean)}")
 
         # Calculate zero point (median difference between catalog and instrumental mags)
-        zero_point = np.nanmedian(matched_clean[filter_col] - matched_clean["mag"])
+        zero_point = float(np.nanmedian(matched_clean[filter_col] - matched_clean["mag"]))
 
         return zero_point, len(matched_clean)
 
@@ -194,10 +199,12 @@ class PhotometryProcessor(AbstractImageProcessor):
             )
 
             # Get filter name
-            filter_name = context.task.assigned_filter_name if context.task else "Clear"
+            filter_name = context.task.assigned_filter_name if context.task else None
 
             # Calibrate
-            zero_point, num_matched = self._calibrate_photometry(sources_df, context.working_image_path, filter_name)
+            zero_point, num_matched = self._calibrate_photometry(
+                sources_df, context.working_image_path, filter_name or "Clear"
+            )
 
             elapsed = time.time() - start_time
 

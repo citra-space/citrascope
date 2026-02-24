@@ -2,7 +2,7 @@ import logging
 import time
 from pathlib import Path
 
-import PyIndi
+import PyIndi  # type: ignore[reportMissingImports]
 
 from citrascope.hardware.abstract_astro_hardware_adapter import (
     AbstractAstroHardwareAdapter,

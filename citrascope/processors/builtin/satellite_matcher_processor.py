@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import astropy.units as u
+import numpy as np
 import pandas as pd
 from astropy.coordinates import get_body_barycentric_posvel
 from astropy.io import fits
@@ -78,19 +79,21 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
 
         # Image metadata from FITS header
         with fits.open(context.working_image_path) as hdul:
-            header = hdul[0].header
+            primary = hdul[0]
+            assert isinstance(primary, fits.PrimaryHDU)
+            header = primary.header
             timestamp_str = header.get("DATE-OBS")
             if not timestamp_str:
                 raise RuntimeError("No DATE-OBS in FITS header")
-            ra_center = float(header.get("CRVAL1", 0.0))
-            dec_center = float(header.get("CRVAL2", 0.0))
-        epoch = self._parse_fits_timestamp(timestamp_str)
+            ra_center = float(header.get("CRVAL1", 0.0))  # type: ignore[arg-type]
+            dec_center = float(header.get("CRVAL2", 0.0))  # type: ignore[arg-type]
+        epoch = self._parse_fits_timestamp(str(timestamp_str))
 
         # Sun position (km, J2000/ECI) via astropy ERFA — no external ephemeris file required
         _t = AstropyTime(epoch.to_datetime())
         _sun_bary, _ = get_body_barycentric_posvel("sun", _t)
         _earth_bary, _ = get_body_barycentric_posvel("earth", _t)
-        sun_pos_km = (_sun_bary.xyz - _earth_bary.xyz).to(u.km).value
+        sun_pos_km = (_sun_bary.xyz - _earth_bary.xyz).to(u.km).value  # type: ignore[union-attr]
 
         # Observer position (km, J2000)
         obs_state = obs.get_state_at_epoch(epoch).to_frame(ReferenceFrame.J2000)
@@ -161,7 +164,7 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
         for i in range(len(potential_sats)):
             if not valid_mask[i]:
                 continue
-            idx = int(indices[i]) if hasattr(indices[i], "__int__") else indices[i]
+            idx = int(np.asarray(indices)[i])
             if idx < 0 or idx >= len(predictions):
                 continue
             p = predictions[idx]

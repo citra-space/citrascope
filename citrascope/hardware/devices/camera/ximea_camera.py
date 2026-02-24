@@ -191,7 +191,7 @@ class XimeaHyperspectralCamera(AbstractCamera):
         try:
             # Import ximea API (lazy import to avoid hard dependency)
             try:
-                from ximea import xiapi
+                from ximea import xiapi  # type: ignore[reportMissingImports]
             except ImportError:
                 self.logger.error(
                     "XIMEA Python bindings not found. Installation instructions:\n"
@@ -305,9 +305,11 @@ class XimeaHyperspectralCamera(AbstractCamera):
             raise RuntimeError("Camera not connected")
 
         try:
-            from ximea import xiapi
+            from ximea import xiapi  # type: ignore[reportMissingImports]
         except ImportError as e:
             raise RuntimeError("ximea-api package not installed") from e
+
+        assert self._camera is not None
 
         self.logger.info(
             f"Starting hyperspectral exposure: {duration}s, "
@@ -414,6 +416,8 @@ class XimeaHyperspectralCamera(AbstractCamera):
         """
         if not self.is_connected():
             return None
+
+        assert self._camera is not None
 
         try:
             # Ximea cameras report temperature in Celsius
@@ -615,7 +619,7 @@ class XimeaHyperspectralCamera(AbstractCamera):
                         band_hdu.header["WAVELENG"] = self.wavelength_calibration[i]
                         band_hdu.header["WAVEUNIT"] = "nm"
 
-                    hdu_list.append(band_hdu)
+                    hdu_list.append(band_hdu)  # type: ignore[reportArgumentType]
 
                 hdul = fits.HDUList(hdu_list)
                 hdul.writeto(save_path, overwrite=True)

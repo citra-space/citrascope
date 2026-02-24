@@ -32,9 +32,9 @@ class Task:
     @classmethod
     def from_dict(cls, data: dict) -> "Task":
         return cls(
-            id=data.get("id"),
+            id=str(data.get("id", "")),
             type=data.get("type", ""),
-            status=data.get("status"),
+            status=str(data.get("status", "")),
             creationEpoch=data.get("creationEpoch", ""),
             updateEpoch=data.get("updateEpoch", ""),
             taskStart=data.get("taskStart", ""),
