@@ -76,7 +76,7 @@ def test_execute_work_fits_path(uq):
         "settings": MagicMock(keep_images=True),
         "on_complete": MagicMock(),
     }
-    success, result = uq._execute_work(item)
+    success, _result = uq._execute_work(item)
     assert success is True
     mock_api.upload_image.assert_called_once()
 

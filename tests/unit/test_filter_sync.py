@@ -49,7 +49,7 @@ class TestBuildSpectralConfigFromExpanded:
         expanded = [
             {"name": "CustomBand", "central_wavelength_nm": 550.0, "bandwidth_nm": 100.0, "is_known": False},
         ]
-        config, unknown = build_spectral_config_from_expanded(expanded)
+        _, unknown = build_spectral_config_from_expanded(expanded)
         assert unknown == ["CustomBand"]
 
     def test_mixed_known_unknown(self):

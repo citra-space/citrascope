@@ -6,8 +6,8 @@
   "[python]": {
     "editor.defaultFormatter": "ms-python.black-formatter",
     "editor.codeActionsOnSave": {
-      "source.organizeImports.ruff": "explicit",
-      "source.fixAll.ruff": "explicit"
+      "source.organizeImports.ruff": "always",
+      "source.fixAll.ruff": "always"
     }
   }
 }

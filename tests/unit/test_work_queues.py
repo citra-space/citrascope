@@ -299,7 +299,7 @@ def test_processing_queue_execute_exception(tmp_path):
         "context": {"task": MagicMock(), "settings": mock_settings, "daemon": mock_daemon},
         "on_complete": MagicMock(),
     }
-    success, result = pq._execute_work(item)
+    success, _result = pq._execute_work(item)
     assert success is False
 
 
