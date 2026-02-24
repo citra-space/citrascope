@@ -42,7 +42,7 @@ dependencies = [
   "platformdirs>=4.0.0",
   "jinja2>=3.1.0",
   "ntplib>=0.4.0",
-  "numpy>=1.21.1,<2",  # cedar-solve (pixelemon) requires numpy<2; opencv-python wants numpy>=2 — use separate envs if you need both
+  "numpy>=1.21.1,<3",  # cedar-solve (pixelemon) requires numpy<2; opencv-python wants numpy>=2 — use separate envs if you need both
   "astropy>=5.0.0",
   "pandas>=2.0.0",
   "scipy>=1.11.0",
