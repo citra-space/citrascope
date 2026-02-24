@@ -1,12 +1,139 @@
-"""Dummy API client for local testing without real server."""
+"""Dummy API client for local testing without real server.
 
+On first init, fetches fresh TLEs from CelesTrak for a mix of LEO (Starlink, ISS)
+and GEO (DirecTV) satellites. Results are cached to disk so subsequent runs work
+offline. The task scheduler uses Skyfield pass prediction to only generate tasks
+when satellites are actually visible from the ground station.
+"""
+
+import json
+import logging
 import random
 import threading
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import platformdirs
+import requests
+from skyfield.api import EarthSatellite, load, wgs84
 
 from .abstract_api_client import AbstractCitraApiClient
+
+logger = logging.getLogger(__name__)
+
+_APP_NAME = "citrascope"
+_APP_AUTHOR = "citrascope"
+_CACHE_FILE = "dummy_tle_cache.json"
+_CACHE_MAX_AGE_HOURS = 24
+
+# CelesTrak endpoints
+_CELESTRAK_BASE = "https://celestrak.org/NORAD/elements/gp.php"
+_TLE_SOURCES: list[dict[str, str | int]] = [
+    {"url": f"{_CELESTRAK_BASE}?NAME=DIRECTV&FORMAT=tle", "label": "DirecTV", "limit": 0},
+]
+
+MIN_ELEVATION_DEG = 15.0
+PASS_SEARCH_HOURS = 12
+
+
+def _parse_3le_text(text: str) -> list[dict[str, str]]:
+    """Parse CelesTrak 3LE format (name / line1 / line2) into dicts."""
+    lines = [ln.rstrip() for ln in text.strip().splitlines() if ln.strip()]
+    results: list[dict[str, str]] = []
+    i = 0
+    while i + 2 < len(lines):
+        if lines[i + 1].startswith("1 ") and lines[i + 2].startswith("2 "):
+            results.append({"name": lines[i].strip(), "tle_line1": lines[i + 1], "tle_line2": lines[i + 2]})
+            i += 3
+        else:
+            i += 1
+    return results
+
+
+def _get_cache_path() -> Path:
+    return Path(platformdirs.user_data_dir(_APP_NAME, appauthor=_APP_AUTHOR)) / _CACHE_FILE
+
+
+def _fetch_tles_from_celestrak() -> dict[str, dict[str, str]]:
+    """Fetch TLEs from CelesTrak, returning a sat_id -> {name, tle_line1, tle_line2} dict."""
+    catalog: dict[str, dict[str, str]] = {}
+    for source in _TLE_SOURCES:
+        try:
+            resp = requests.get(str(source["url"]), timeout=15)
+            resp.raise_for_status()
+            parsed = _parse_3le_text(resp.text)
+            limit = int(source.get("limit", 0))
+            if limit > 0:
+                parsed = parsed[:limit]
+            for entry in parsed:
+                norad_id = entry["tle_line1"].split()[1].rstrip("U")
+                sat_id = f"sat-{norad_id}"
+                catalog[sat_id] = entry
+            logger.info("CelesTrak: fetched %d %s TLEs", len(parsed), source["label"])
+        except Exception as exc:
+            logger.warning("CelesTrak fetch failed for %s: %s", source["label"], exc)
+    return catalog
+
+
+def _load_cached_tles() -> dict[str, dict[str, str]] | None:
+    """Load TLEs from disk cache. Returns None if stale or missing."""
+    cache_path = _get_cache_path()
+    if not cache_path.exists():
+        return None
+    try:
+        data = json.loads(cache_path.read_text())
+        cached_at = datetime.fromisoformat(data["cached_at"])
+        if (datetime.now(timezone.utc) - cached_at).total_seconds() > _CACHE_MAX_AGE_HOURS * 3600:
+            logger.info("TLE cache is stale (older than %dh), will re-fetch", _CACHE_MAX_AGE_HOURS)
+            return None
+        return data["satellites"]
+    except Exception as exc:
+        logger.warning("Failed to load TLE cache: %s", exc)
+        return None
+
+
+def _save_cached_tles(catalog: dict[str, dict[str, str]]) -> None:
+    cache_path = _get_cache_path()
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(
+        json.dumps({"cached_at": datetime.now(timezone.utc).isoformat(), "satellites": catalog}, indent=2)
+    )
+    logger.info("Cached %d TLEs to %s", len(catalog), cache_path)
+
+
+def _load_forced_cache() -> dict[str, dict[str, str]] | None:
+    """Last-resort: load cache ignoring staleness."""
+    cache_path = _get_cache_path()
+    if not cache_path.exists():
+        return None
+    try:
+        data = json.loads(cache_path.read_text())
+        logger.info("Using stale TLE cache as fallback (%d sats)", len(data["satellites"]))
+        return data["satellites"]
+    except Exception:
+        return None
+
+
+def load_satellite_catalog() -> dict[str, dict[str, str]]:
+    """Load satellite catalog: fresh from CelesTrak > disk cache > empty."""
+    cached = _load_cached_tles()
+    if cached:
+        logger.info("Loaded %d TLEs from cache", len(cached))
+        return cached
+
+    fetched = _fetch_tles_from_celestrak()
+    if fetched:
+        _save_cached_tles(fetched)
+        return fetched
+
+    stale = _load_forced_cache()
+    if stale:
+        return stale
+
+    logger.warning("No TLE data available (network down, no cache). DummyApiClient will have no satellites.")
+    return {}
 
 
 class DummyApiClient(AbstractCitraApiClient):
@@ -34,20 +161,32 @@ class DummyApiClient(AbstractCitraApiClient):
             self.logger.info("DummyApiClient initialized (in-memory mode)")
 
     def _initialize_data(self):
-        """Initialize in-memory data structures."""
-        now = datetime.now(timezone.utc)
+        """Initialize in-memory data structures with fresh TLEs from CelesTrak."""
+        self._satellite_catalog = load_satellite_catalog()
+        now_iso = datetime.now(timezone.utc).isoformat()
 
-        self.data = {
+        satellites: dict[str, dict] = {}
+        for sat_id, cat in self._satellite_catalog.items():
+            satellites[sat_id] = {
+                "id": sat_id,
+                "name": cat["name"],
+                "elsets": [
+                    {
+                        "tle": [cat["tle_line1"], cat["tle_line2"]],
+                        "tle_line1": cat["tle_line1"],
+                        "tle_line2": cat["tle_line2"],
+                        "creationEpoch": now_iso,
+                    }
+                ],
+            }
+
+        self.data: dict = {
             "telescope": {
                 "id": "dummy-telescope-001",
                 "name": "Dummy Telescope",
                 "groundStationId": "dummy-gs-001",
                 "automatedScheduling": True,
-                "maxSlewRate": 5.0,  # degrees per second
-                # Sensor specs matching the DummyAdapter's synthetic camera constants
-                # (1024×1024 px @ ~6 arcsec/px → pixel_size / focal_length * 206.265 ≈ 6.04
-                #  → using pixel_size=5.86 μm and focal_length=200 mm)
-                # Wide FOV (~1.7°) ensures enough V≤10 stars for Tetra3 plate solving.
+                "maxSlewRate": 5.0,
                 "pixelSize": 5.86,
                 "focalLength": 200.0,
                 "focalRatio": 3.4,
@@ -65,107 +204,14 @@ class DummyApiClient(AbstractCitraApiClient):
                 "longitude": -122.4194,
                 "altitude": 100,
             },
-            "tasks": [
-                {
-                    "id": str(uuid.uuid4()),
-                    "type": "Track",
-                    "status": "Pending",
-                    "creationEpoch": now.isoformat(),
-                    "updateEpoch": now.isoformat(),
-                    "satelliteId": "sat-iss",
-                    "satelliteName": "ISS",
-                    "taskStart": (now + timedelta(seconds=10)).isoformat(),
-                    "taskStop": (now + timedelta(seconds=15)).isoformat(),
-                    "telescopeId": "dummy-telescope-001",
-                    "telescopeName": "Dummy Telescope",
-                    "groundStationId": "dummy-gs-001",
-                    "groundStationName": "Test Ground Station",
-                    "userId": "dummy-user",
-                    "username": "Test User",
-                },
-                {
-                    "id": str(uuid.uuid4()),
-                    "type": "Track",
-                    "status": "Pending",
-                    "creationEpoch": now.isoformat(),
-                    "updateEpoch": now.isoformat(),
-                    "satelliteId": "sat-starlink",
-                    "satelliteName": "STARLINK-1234",
-                    "taskStart": (now + timedelta(seconds=20)).isoformat(),
-                    "taskStop": (now + timedelta(seconds=25)).isoformat(),
-                    "telescopeId": "dummy-telescope-001",
-                    "telescopeName": "Dummy Telescope",
-                    "groundStationId": "dummy-gs-001",
-                    "groundStationName": "Test Ground Station",
-                    "userId": "dummy-user",
-                    "username": "Test User",
-                },
-                {
-                    "id": str(uuid.uuid4()),
-                    "type": "Track",
-                    "status": "Pending",
-                    "creationEpoch": now.isoformat(),
-                    "updateEpoch": now.isoformat(),
-                    "satelliteId": "sat-noaa18",
-                    "satelliteName": "NOAA-18",
-                    "taskStart": (now + timedelta(seconds=30)).isoformat(),
-                    "taskStop": (now + timedelta(seconds=35)).isoformat(),
-                    "telescopeId": "dummy-telescope-001",
-                    "telescopeName": "Dummy Telescope",
-                    "groundStationId": "dummy-gs-001",
-                    "groundStationName": "Test Ground Station",
-                    "userId": "dummy-user",
-                    "username": "Test User",
-                },
-            ],
-            "satellites": {
-                "sat-iss": {
-                    "id": "sat-iss",
-                    "name": "ISS",
-                    "elsets": [
-                        {
-                            "tle": [
-                                "1 25544U 98067A   24043.12345678  .00002182  00000+0  41420-4 0  9990",
-                                "2 25544  51.6461 208.9163 0001567  96.4656 263.6710 15.54225995123456",
-                            ],
-                            "tle_line1": "1 25544U 98067A   24043.12345678  .00002182  00000+0  41420-4 0  9990",
-                            "tle_line2": "2 25544  51.6461 208.9163 0001567  96.4656 263.6710 15.54225995123456",
-                            "creationEpoch": now.isoformat(),
-                        }
-                    ],
-                },
-                "sat-starlink": {
-                    "id": "sat-starlink",
-                    "name": "STARLINK-1234",
-                    "elsets": [
-                        {
-                            "tle": [
-                                "1 44713U 19074A   24043.12345678  .00001234  00000+0  12345-4 0  9998",
-                                "2 44713  53.0000 123.4567 0001234  90.0000 270.0000 15.06000000123456",
-                            ],
-                            "tle_line1": "1 44713U 19074A   24043.12345678  .00001234  00000+0  12345-4 0  9998",
-                            "tle_line2": "2 44713  53.0000 123.4567 0001234  90.0000 270.0000 15.06000000123456",
-                            "creationEpoch": now.isoformat(),
-                        }
-                    ],
-                },
-                "sat-noaa18": {
-                    "id": "sat-noaa18",
-                    "name": "NOAA-18",
-                    "elsets": [
-                        {
-                            "tle": [
-                                "1 28654U 05018A   24043.12345678  .00000123  00000+0  12345-5 0  9999",
-                                "2 28654  98.7000 234.5678 0012345  45.6789 314.5432 14.12345678987654",
-                            ],
-                            "tle_line1": "1 28654U 05018A   24043.12345678  .00000123  00000+0  12345-5 0  9999",
-                            "tle_line2": "2 28654  98.7000 234.5678 0012345  45.6789 314.5432 14.12345678987654",
-                            "creationEpoch": now.isoformat(),
-                        }
-                    ],
-                },
-            },
+            "tasks": [],
+            "satellites": satellites,
         }
+
+        self._ts = load.timescale()
+        self._skyfield_sats: dict[str, EarthSatellite] = {}
+        for sat_id, cat in self._satellite_catalog.items():
+            self._skyfield_sats[sat_id] = EarthSatellite(cat["tle_line1"], cat["tle_line2"], cat["name"], self._ts)
 
     # Abstract methods implementation
 
@@ -193,103 +239,34 @@ class DummyApiClient(AbstractCitraApiClient):
     def get_satellite(self, satellite_id):
         """Fetch satellite details including TLE.
 
-        Auto-populates missing satellites with default TLE data.
+        Auto-populates missing satellites from the fetched catalog.
         """
         with self._data_lock:
             satellites = self.data.get("satellites", {})
 
-            # Auto-populate missing satellites
             if satellite_id not in satellites:
-                # Default satellite data with realistic TLEs
-                # Note: Must have "elsets" array for compatibility with task execution code
-                now_iso = datetime.now(timezone.utc).isoformat()
-                default_satellites = {
-                    "sat-iss": {
-                        "id": "sat-iss",
-                        "name": "ISS",
-                        "elsets": [
-                            {
-                                "tle": [
-                                    "1 25544U 98067A   24043.12345678  .00002182  00000+0  41420-4 0  9990",
-                                    "2 25544  51.6461 208.9163 0001567  96.4656 263.6710 15.54225995123456",
-                                ],
-                                "tle_line1": "1 25544U 98067A   24043.12345678  .00002182  00000+0  41420-4 0  9990",
-                                "tle_line2": "2 25544  51.6461 208.9163 0001567  96.4656 263.6710 15.54225995123456",
-                                "creationEpoch": now_iso,
-                            }
-                        ],
-                    },
-                    "sat-starlink": {
-                        "id": "sat-starlink",
-                        "name": "STARLINK-1234",
-                        "elsets": [
-                            {
-                                "tle": [
-                                    "1 44713U 19074A   24043.12345678  .00001234  00000+0  12345-4 0  9998",
-                                    "2 44713  53.0000 123.4567 0001234  90.0000 270.0000 15.06000000123456",
-                                ],
-                                "tle_line1": "1 44713U 19074A   24043.12345678  .00001234  00000+0  12345-4 0  9998",
-                                "tle_line2": "2 44713  53.0000 123.4567 0001234  90.0000 270.0000 15.06000000123456",
-                                "creationEpoch": now_iso,
-                            }
-                        ],
-                    },
-                    "sat-noaa18": {
-                        "id": "sat-noaa18",
-                        "name": "NOAA-18",
-                        "elsets": [
-                            {
-                                "tle": [
-                                    "1 28654U 05018A   24043.12345678  .00000123  00000+0  12345-5 0  9999",
-                                    "2 28654  98.7000 234.5678 0012345  45.6789 314.5432 14.12345678987654",
-                                ],
-                                "tle_line1": "1 28654U 05018A   24043.12345678  .00000123  00000+0  12345-5 0  9999",
-                                "tle_line2": "2 28654  98.7000 234.5678 0012345  45.6789 314.5432 14.12345678987654",
-                                "creationEpoch": now_iso,
-                            }
-                        ],
-                    },
-                    "sat-hubble": {
-                        "id": "sat-hubble",
-                        "name": "HST",
-                        "elsets": [
-                            {
-                                "tle": [
-                                    "1 20580U 90037B   24043.12345678  .00001234  00000+0  12345-4 0  9998",
-                                    "2 20580  28.4700 123.4567 0002345  45.6789 314.5432 15.09876543123456",
-                                ],
-                                "tle_line1": "1 20580U 90037B   24043.12345678  .00001234  00000+0  12345-4 0  9998",
-                                "tle_line2": "2 20580  28.4700 123.4567 0002345  45.6789 314.5432 15.09876543123456",
-                                "creationEpoch": now_iso,
-                            }
-                        ],
-                    },
-                    "sat-sentinel": {
-                        "id": "sat-sentinel",
-                        "name": "SENTINEL-2A",
-                        "elsets": [
-                            {
-                                "tle": [
-                                    "1 40697U 15028A   24043.12345678  .00000123  00000+0  12345-5 0  9999",
-                                    "2 40697  98.5700 234.5678 0001234  90.0000 270.0000 14.30987654123456",
-                                ],
-                                "tle_line1": "1 40697U 15028A   24043.12345678  .00000123  00000+0  12345-5 0  9999",
-                                "tle_line2": "2 40697  98.5700 234.5678 0001234  90.0000 270.0000 14.30987654123456",
-                                "creationEpoch": now_iso,
-                            }
-                        ],
-                    },
-                }
-
-                if satellite_id in default_satellites:
-                    satellite = default_satellites[satellite_id]
-                    satellites[satellite_id] = satellite
-                    if self.logger:
-                        self.logger.info(f"DummyApiClient: Auto-populated satellite {satellite_id}")
-                else:
+                if satellite_id not in self._satellite_catalog:
                     if self.logger:
                         self.logger.warning(f"DummyApiClient: Unknown satellite {satellite_id}")
                     return None
+
+                cat = self._satellite_catalog[satellite_id]
+                line1, line2 = cat["tle_line1"], cat["tle_line2"]
+                satellite = {
+                    "id": satellite_id,
+                    "name": cat["name"],
+                    "elsets": [
+                        {
+                            "tle": [line1, line2],
+                            "tle_line1": line1,
+                            "tle_line2": line2,
+                            "creationEpoch": datetime.now(timezone.utc).isoformat(),
+                        }
+                    ],
+                }
+                satellites[satellite_id] = satellite
+                if self.logger:
+                    self.logger.info(f"DummyApiClient: Auto-populated satellite {satellite_id}")
             else:
                 satellite = satellites[satellite_id]
 
@@ -327,84 +304,162 @@ class DummyApiClient(AbstractCitraApiClient):
                 else:
                     completed_tasks.append(task)
 
-            # Keep only last 20 completed tasks to prevent memory bloat
             completed_tasks = completed_tasks[-20:] if len(completed_tasks) > 20 else completed_tasks
 
-            # Auto-generate new tasks if we have fewer than 10 pending
-            # and automated scheduling is enabled on the telescope
             telescope = self.data.get("telescope", {})
             scheduling_enabled = telescope.get("automatedScheduling", True)
             target_task_count = 10
             if scheduling_enabled and len(active_tasks) < target_task_count:
-                num_to_generate = target_task_count - len(active_tasks)
-
-                # Get telescope and ground station info
-                telescope = self.data.get("telescope", {})
                 ground_station = self.data.get("ground_station", {})
-
-                # Satellite list to cycle through
-                satellite_names = [
-                    ("sat-iss", "ISS"),
-                    ("sat-starlink", "STARLINK-1234"),
-                    ("sat-noaa18", "NOAA-18"),
-                    ("sat-hubble", "HST"),
-                    ("sat-sentinel", "SENTINEL-2A"),
-                ]
-
-                # Find the latest task start time to continue from there
-                latest_time = now
-                # Also track which satellite was used last to continue the cycle
-                last_satellite_index = 0
-                if active_tasks:
-                    for task in active_tasks:
-                        try:
-                            task_start = datetime.fromisoformat(task.get("taskStart", "").replace("Z", "+00:00"))
-                            if task_start > latest_time:
-                                latest_time = task_start
-                            # Track which satellite this was
-                            sat_id = task.get("satelliteId")
-                            for idx, (sid, _) in enumerate(satellite_names):
-                                if sid == sat_id:
-                                    last_satellite_index = idx
-                                    break
-                        except Exception:
-                            pass
-
-                # Generate new tasks starting 30 seconds apart, continuing satellite cycle
-                for i in range(num_to_generate):
-                    sat_index = (last_satellite_index + i + 1) % len(satellite_names)
-                    sat_id, sat_name = satellite_names[sat_index]
-                    task_start = latest_time + timedelta(seconds=30 * (i + 1))
-                    task_stop = task_start + timedelta(seconds=5)
-
-                    new_task = {
-                        "id": str(uuid.uuid4()),
-                        "type": "Track",
-                        "status": "Pending",
-                        "creationEpoch": now.isoformat(),
-                        "updateEpoch": now.isoformat(),
-                        "satelliteId": sat_id,
-                        "satelliteName": sat_name,
-                        "taskStart": task_start.isoformat(),
-                        "taskStop": task_stop.isoformat(),
-                        "telescopeId": telescope.get("id", "dummy-telescope-001"),
-                        "telescopeName": telescope.get("name", "Dummy Telescope"),
-                        "groundStationId": ground_station.get("id", "dummy-gs-001"),
-                        "groundStationName": ground_station.get("name", "Test Ground Station"),
-                        "userId": "dummy-user",
-                        "username": "Test User",
-                    }
-                    active_tasks.append(new_task)
-
-                # Update in-memory task list
+                new_tasks = self._find_upcoming_passes(
+                    ground_station, telescope, target_task_count - len(active_tasks), active_tasks
+                )
+                active_tasks.extend(new_tasks)
                 self.data["tasks"] = active_tasks + completed_tasks
 
-                if self.logger:
-                    self.logger.info(f"DummyApiClient: Auto-generated {num_to_generate} new tasks")
+                if new_tasks and self.logger:
+                    self.logger.info(f"DummyApiClient: Auto-generated {len(new_tasks)} new tasks")
 
             if self.logger:
                 self.logger.debug(f"DummyApiClient: get_telescope_tasks({telescope_id}) -> {len(active_tasks)} tasks")
             return active_tasks
+
+    def _make_task(
+        self,
+        sat_id: str,
+        start: datetime,
+        stop: datetime,
+        telescope: dict,
+        ground_station: dict,
+    ) -> dict:
+        cat = self._satellite_catalog.get(sat_id, {})
+        now_iso = datetime.now(timezone.utc).isoformat()
+        return {
+            "id": str(uuid.uuid4()),
+            "type": "Track",
+            "status": "Pending",
+            "creationEpoch": now_iso,
+            "updateEpoch": now_iso,
+            "satelliteId": sat_id,
+            "satelliteName": cat.get("name", sat_id),
+            "taskStart": start.isoformat(),
+            "taskStop": stop.isoformat(),
+            "telescopeId": telescope.get("id", "dummy-telescope-001"),
+            "telescopeName": telescope.get("name", "Dummy Telescope"),
+            "groundStationId": ground_station.get("id", "dummy-gs-001"),
+            "groundStationName": ground_station.get("name", "Test Ground Station"),
+            "userId": "dummy-user",
+            "username": "Test User",
+        }
+
+    def _find_upcoming_passes(
+        self,
+        ground_station: dict,
+        telescope: dict,
+        max_tasks: int,
+        existing_tasks: list[dict],
+    ) -> list[dict]:
+        """Find satellites visible now and upcoming passes, prioritizing immediate targets."""
+        observer = wgs84.latlon(
+            ground_station.get("latitude", 37.7749),
+            ground_station.get("longitude", -122.4194),
+            elevation_m=ground_station.get("altitude", 100),
+        )
+
+        now = datetime.now(timezone.utc)
+        t_now = self._ts.from_datetime(now)
+        t_end = self._ts.from_datetime(now + timedelta(hours=PASS_SEARCH_HOURS))
+
+        scheduled_sat_ids = {t.get("satelliteId") for t in existing_tasks}
+        immediate_sats: list[tuple[str, float]] = []
+        future_passes: list[tuple[datetime, str, datetime, datetime]] = []
+
+        for sat_id, sat in self._skyfield_sats.items():
+            if sat_id in scheduled_sat_ids:
+                continue
+
+            cat = self._satellite_catalog.get(sat_id, {})
+
+            # Check if satellite is visible RIGHT NOW (handles GEO + mid-pass LEO)
+            try:
+                topo = (sat - observer).at(t_now)
+                alt_deg = float(topo.altaz()[0].degrees)  # type: ignore[arg-type]
+            except Exception:
+                alt_deg = -1.0
+
+            if alt_deg > MIN_ELEVATION_DEG:
+                immediate_sats.append((sat_id, alt_deg))
+                scheduled_sat_ids.add(sat_id)
+                if self.logger:
+                    self.logger.info(
+                        "DummyApiClient: %s visible now at %.1f° — immediate task",
+                        cat.get("name", sat_id),
+                        alt_deg,
+                    )
+                continue
+
+            # Not visible now — find next pass
+            try:
+                t_events, events = sat.find_events(observer, t_now, t_end, altitude_degrees=MIN_ELEVATION_DEG)
+            except Exception:
+                continue
+
+            for i, event_type in enumerate(events):
+                if event_type != 1:
+                    continue
+
+                culm_dt = t_events[i].utc_datetime()
+                if culm_dt < now + timedelta(seconds=10):
+                    continue
+
+                rise_dt = culm_dt - timedelta(seconds=30)
+                set_dt = culm_dt + timedelta(seconds=30)
+                for j in range(i - 1, -1, -1):
+                    if events[j] == 0:
+                        rise_dt = t_events[j].utc_datetime()
+                        break
+                for j in range(i + 1, len(events)):
+                    if events[j] == 2:
+                        set_dt = t_events[j].utc_datetime()
+                        break
+
+                future_passes.append((rise_dt, sat_id, rise_dt, set_dt))
+                break
+
+        # Build immediate tasks staggered 60s apart so they don't all image at once
+        immediate_tasks: list[dict] = []
+        for idx, (sat_id, alt_deg) in enumerate(immediate_sats):
+            task_start = now + timedelta(seconds=60 * idx)
+            task_stop = task_start + timedelta(seconds=60)
+            immediate_tasks.append(self._make_task(sat_id, task_start, task_stop, telescope, ground_station))
+            cat = self._satellite_catalog.get(sat_id, {})
+            if self.logger:
+                self.logger.info(
+                    "DummyApiClient: %s visible now at %.1f° — task in %ds",
+                    cat.get("name", sat_id),
+                    alt_deg,
+                    60 * idx,
+                )
+
+        # Immediate tasks first, then future passes sorted by start time
+        future_passes.sort(key=lambda x: x[0])
+        new_tasks = immediate_tasks[:max_tasks]
+        remaining = max_tasks - len(new_tasks)
+
+        for _, sat_id, rise_dt, set_dt in future_passes[:remaining]:
+            cat = self._satellite_catalog.get(sat_id, {})
+            new_tasks.append(self._make_task(sat_id, rise_dt, set_dt, telescope, ground_station))
+            if self.logger:
+                duration = (set_dt - rise_dt).total_seconds()
+                self.logger.info(
+                    "DummyApiClient: Scheduled %s pass at %s (%.0fs, above %d°)",
+                    cat.get("name", sat_id),
+                    rise_dt.strftime("%H:%M:%S UTC"),
+                    duration,
+                    MIN_ELEVATION_DEG,
+                )
+
+        return new_tasks
 
     def get_ground_station(self, ground_station_id):
         """Fetch ground station details."""
@@ -471,29 +526,19 @@ class DummyApiClient(AbstractCitraApiClient):
     def get_elsets_latest(self, days: int = 14):
         """Return stub list of elsets (same shape as real API: satelliteId, satelliteName, tle)."""
         now_iso = datetime.now(timezone.utc).isoformat()
-        stub = [
-            {
-                "satelliteId": "sat-iss",
-                "satelliteName": "ISS",
-                "tle": [
-                    "1 25544U 98067A   24043.12345678  .00002182  00000+0  41420-4 0  9990",
-                    "2 25544  51.6461 208.9163 0001567  96.4656 263.6710 15.54225995123456",
-                ],
-                "creationEpoch": now_iso,
-            },
-            {
-                "satelliteId": "sat-starlink",
-                "satelliteName": "STARLINK-1234",
-                "tle": [
-                    "1 44713U 19074A   24043.12345678  .00001234  00000+0  12345-4 0  9998",
-                    "2 44713  53.0000 123.4567 0001234  90.0000 270.0000 15.06000000123456",
-                ],
-                "creationEpoch": now_iso,
-            },
-        ]
+        result = []
+        for sat_id, cat in self._satellite_catalog.items():
+            result.append(
+                {
+                    "satelliteId": sat_id,
+                    "satelliteName": cat["name"],
+                    "tle": [str(cat["tle_line1"]), str(cat["tle_line2"])],
+                    "creationEpoch": now_iso,
+                }
+            )
         if self.logger:
-            self.logger.debug(f"DummyApiClient: get_elsets_latest(days={days}) -> {len(stub)} items")
-        return stub
+            self.logger.debug(f"DummyApiClient: get_elsets_latest(days={days}) -> {len(result)} items")
+        return result
 
     def update_telescope_automated_scheduling(self, telescope_id: str, enabled: bool) -> bool:
         with self._data_lock:
