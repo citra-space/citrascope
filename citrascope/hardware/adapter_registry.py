@@ -19,22 +19,22 @@ from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHar
 # Central registry of all available hardware adapters
 REGISTERED_ADAPTERS: Dict[str, Dict[str, str]] = {
     "indi": {
-        "module": "citrascope.hardware.indi_adapter",
+        "module": "citrascope.hardware.indi.indi_adapter",
         "class_name": "IndiAdapter",
         "description": "INDI Protocol - Universal astronomy device control",
     },
     "nina": {
-        "module": "citrascope.hardware.nina_adv_http_adapter",
+        "module": "citrascope.hardware.nina.nina_adapter",
         "class_name": "NinaAdvancedHttpAdapter",
         "description": "N.I.N.A. Advanced HTTP API - Windows-based astronomy imaging",
     },
     "kstars": {
-        "module": "citrascope.hardware.kstars_dbus_adapter",
+        "module": "citrascope.hardware.kstars.kstars_adapter",
         "class_name": "KStarsDBusAdapter",
         "description": "KStars/Ekos via D-Bus - Linux astronomy suite",
     },
     "direct": {
-        "module": "citrascope.hardware.direct_hardware_adapter",
+        "module": "citrascope.hardware.direct.direct_adapter",
         "class_name": "DirectHardwareAdapter",
         "description": "Direct Hardware Control - Composable device adapters for cameras, mounts, etc.",
     },

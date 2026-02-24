@@ -245,7 +245,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         Returns:
             Path to the created sequence file
         """
-        template = self._load_template("kstars_sequence_template.esq")
+        template = self._load_template("sequence_template.esq")
 
         # Extract target info
         target_name = satellite_data.get("name", "Unknown").replace(" ", "_")
@@ -373,7 +373,7 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         Returns:
             Path to the created scheduler job file
         """
-        template = self._load_template("kstars_scheduler_template.esl")
+        template = self._load_template("scheduler_template.esl")
 
         # Extract target info
         target_name = satellite_data.get("name", "Unknown")

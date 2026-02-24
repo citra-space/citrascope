@@ -25,13 +25,14 @@ __main__.py (CLI via Click)
   └─ citra_scope_daemon.py (lifecycle, main loop)
        ├─ api/ (CitraApiClient, DummyApiClient for local testing)
        ├─ hardware/ (adapter pattern — abstract base + concrete implementations)
-       │    ├─ adapter_registry.py (add new adapters here)
        │    ├─ abstract_astro_hardware_adapter.py (the contract)
-       │    ├─ nina_adv_http_adapter.py + nina_event_listener.py (NINA via REST + WebSocket)
-       │    ├─ indi_adapter.py (INDI protocol)
-       │    ├─ kstars_dbus_adapter.py (KStars via D-Bus)
-       │    ├─ dummy_adapter.py (mock for testing without hardware)
-       │    └─ direct_hardware_adapter.py + devices/ (direct USB/RPi/Ximea cameras)
+       │    ├─ adapter_registry.py (add new adapters here)
+       │    ├─ filter_sync.py, dummy_adapter.py (shared utilities)
+       │    ├─ nina/ (adapter, event_listener, survey_template)
+       │    ├─ kstars/ (adapter, scheduler_template, sequence_template)
+       │    ├─ indi/ (adapter)
+       │    ├─ direct/ (adapter)
+       │    └─ devices/ (direct USB/RPi/Ximea cameras)
        ├─ tasks/
        │    ├─ runner.py (TaskManager — orchestrates the main loop)
        │    ├─ autofocus_manager.py (dedicated autofocus scheduling/execution)
@@ -65,7 +66,7 @@ All adapters implement `AbstractAstroHardwareAdapter`. Key methods:
 
 To add a new adapter: create the class in `citrascope/hardware/`, register it in `adapter_registry.py`.
 
-The NINA adapter uses a **WebSocket event listener** (`nina_event_listener.py`) for reactive hardware control instead of polling. The pattern is: `event.clear()` → issue command via REST → `event.wait(timeout=...)`. Key events: `SEQUENCE-FINISHED`, `IMAGE-SAVE`, `FILTERWHEEL-CHANGED`, `AUTOFOCUS-FINISHED`.
+The NINA adapter uses a **WebSocket event listener** (`nina/event_listener.py`) for reactive hardware control instead of polling. The pattern is: `event.clear()` → issue command via REST → `event.wait(timeout=...)`. Key events: `SEQUENCE-FINISHED`, `IMAGE-SAVE`, `FILTERWHEEL-CHANGED`, `AUTOFOCUS-FINISHED`.
 
 ### Work queues
 

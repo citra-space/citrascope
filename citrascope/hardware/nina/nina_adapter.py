@@ -17,7 +17,7 @@ from citrascope.hardware.abstract_astro_hardware_adapter import (
     ObservationStrategy,
     SettingSchemaEntry,
 )
-from citrascope.hardware.nina_event_listener import NinaEventListener, derive_ws_url
+from citrascope.hardware.nina.nina_event_listener import NinaEventListener, derive_ws_url
 
 
 class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
@@ -419,7 +419,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
     def _get_sequence_template(self) -> str:
         """Load the sequence template as a string for placeholder replacement."""
-        template_path = os.path.join(os.path.dirname(__file__), "nina_adv_http_survey_template.json")
+        template_path = os.path.join(os.path.dirname(__file__), "survey_template.json")
         with open(template_path, "r") as f:
             return f.read()
 
