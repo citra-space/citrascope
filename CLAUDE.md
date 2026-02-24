@@ -129,8 +129,9 @@ After imaging completes, a task is in-flight through processing and upload queue
 - Use `from __future__ import annotations` + `if TYPE_CHECKING:` to avoid circular imports with type hints.
 - Use `assert self.thing is not None` to satisfy type checkers when an attribute is guaranteed set after `connect()`.
 - **Logging**: use the project logger (`self.logger`), never `print()`.
-- **Tests**: `pytest`, files named `test_*.py` in `tests/unit/` or `tests/integration/`. Mark integration tests with `@pytest.mark.integration`.
-- Run tests: `pytest -m "not integration"`
+- **Tests**: `pytest`, files named `test_*.py` in `tests/unit/` or `tests/integration/`.
+- Run tests: `pytest` (slow tests auto-skipped locally via `addopts`; CI runs everything)
+- Run slow tests too: `pytest -m ""` or `pytest --override-ini="addopts="`
 
 ### Static analysis — keep it green
 
@@ -155,6 +156,40 @@ Common type-checking patterns used in this codebase:
 - `# type: ignore[attr-defined]` / `# type: ignore[arg-type]` — only for third-party library stub gaps (astroquery, astropy.units, FITS header values). Never use these to silence errors in our own code.
 - `assert isinstance(hdul[0], fits.PrimaryHDU)` — narrow opaque `HDUList.__getitem__` returns for FITS processing.
 - `from __future__ import annotations` + `if TYPE_CHECKING:` — for circular import avoidance only.
+
+## Testing philosophy
+
+### Markers
+
+| Marker | Meaning | Runs locally | Runs in CI |
+|---|---|---|---|
+| *(none)* | Normal unit test | Yes | Yes |
+| `@pytest.mark.slow` | Expensive tests (Tetra3 plate solving, real FITS processing) | **No** (skipped by default) | Yes |
+| `@pytest.mark.integration` | Requires live hardware or services | No | No (opt-in) |
+
+Slow tests are skipped locally via `addopts = ["-m", "not slow"]` in `pyproject.toml`. CI overrides this with `--override-ini="addopts="` to run the full suite.
+
+### What makes a good test here
+
+**Write tests that validate real logic** — math, parsing, state machines, file I/O, retry behavior. These catch real bugs.
+
+**Don't write mock theater.** If a test assembles 6 MagicMocks, calls one method, and asserts that mock #3 was called with the right argument — that's testing your mocks, not your code. Orchestration code (daemon init, task runner loops) is better served by integration tests.
+
+Good test targets in this codebase:
+- Pure functions (`filter_sync.py`, `elset_cache._normalize_api_response`)
+- Math/science (`angular_distance`, time health thresholds, GPS parsing)
+- Stateful logic with real side effects (`BaseWorkQueue` retry/backoff, settings file round-tripping)
+- API contract validation (FastAPI `TestClient` route tests — response shapes and status codes)
+- Pipeline processing (real FITS through plate solver → source extractor → photometry, marked `@pytest.mark.slow`)
+
+Bad test targets:
+- Testing test doubles (DummyApiClient is itself a fake)
+- Daemon/runner lifecycle with fully mocked dependencies
+- Trivial assertions like "abstract method raises NotImplementedError"
+
+### Test-to-source ratio
+
+Aim for tests that are roughly 1:1 or shorter than the code they test. If you need 300 lines of test setup to exercise 50 lines of source, the test is probably mock wiring — consider an integration test instead.
 
 ## Common pitfalls
 

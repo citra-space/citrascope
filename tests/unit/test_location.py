@@ -1,0 +1,257 @@
+"""Unit tests for GPSMonitor and LocationService."""
+
+import time
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from citrascope.location.gps_monitor import GPSFix, GPSMonitor
+
+# ---------------------------------------------------------------------------
+# GPSFix dataclass
+# ---------------------------------------------------------------------------
+
+
+def test_gps_fix_defaults():
+    fix = GPSFix()
+    assert fix.latitude is None
+    assert fix.longitude is None
+    assert fix.altitude is None
+    assert fix.fix_mode == 0
+    assert fix.satellites == 0
+
+
+def test_gps_fix_strong_fix():
+    fix = GPSFix(latitude=40.0, longitude=-74.0, altitude=100.0, fix_mode=3, satellites=8)
+    assert fix.is_strong_fix is True
+
+
+def test_gps_fix_weak_2d():
+    fix = GPSFix(latitude=40.0, longitude=-74.0, altitude=None, fix_mode=2, satellites=3)
+    assert fix.is_strong_fix is False
+
+
+def test_gps_fix_no_coords():
+    fix = GPSFix(fix_mode=3, satellites=8)
+    assert fix.is_strong_fix is False
+
+
+def test_gps_fix_few_sats():
+    fix = GPSFix(latitude=40.0, longitude=-74.0, altitude=100.0, fix_mode=3, satellites=2)
+    assert fix.is_strong_fix is False
+
+
+# ---------------------------------------------------------------------------
+# GPSMonitor
+# ---------------------------------------------------------------------------
+
+
+def test_gps_monitor_is_available_false():
+    gm = GPSMonitor()
+    with patch("subprocess.run", side_effect=FileNotFoundError):
+        assert gm.is_available() is False
+
+
+def test_gps_monitor_is_available_true():
+    gm = GPSMonitor()
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    with patch("subprocess.run", return_value=mock_result):
+        assert gm.is_available() is True
+
+
+def test_gps_monitor_query_gpsd_parses_tpv():
+    gm = GPSMonitor()
+    gpsd_output = (
+        '{"class":"VERSION"}\n'
+        '{"class":"TPV","mode":3,"lat":40.123,"lon":-74.456,"alt":50.0,"eph":5.0,"sep":8.0}\n'
+        '{"class":"SKY","uSat":10}\n'
+    )
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = gpsd_output
+
+    with patch("subprocess.run", return_value=mock_result):
+        fix = gm._query_gpsd()
+
+    assert fix is not None
+    assert fix.latitude == pytest.approx(40.123)
+    assert fix.longitude == pytest.approx(-74.456)
+    assert fix.altitude == pytest.approx(50.0)
+    assert fix.satellites == 10
+    assert fix.fix_mode == 3
+    assert fix.eph == pytest.approx(5.0)
+
+
+def test_gps_monitor_query_gpsd_no_position():
+    gm = GPSMonitor()
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = '{"class":"VERSION"}\n'
+
+    with patch("subprocess.run", return_value=mock_result):
+        assert gm._query_gpsd() is None
+
+
+def test_gps_monitor_query_gpsd_subprocess_error():
+    gm = GPSMonitor()
+    with patch("subprocess.run", side_effect=FileNotFoundError):
+        assert gm._query_gpsd() is None
+
+
+def test_gps_monitor_get_current_fix_cache():
+    gm = GPSMonitor()
+    cached = GPSFix(latitude=1.0, longitude=2.0, timestamp=time.time())
+    gm._cached_fix = cached
+    gm._cache_timestamp = time.time()
+    assert gm.get_current_fix() is cached
+
+
+def test_gps_monitor_get_current_fix_stale_nonblocking():
+    gm = GPSMonitor()
+    old_fix = GPSFix(latitude=1.0, longitude=2.0, timestamp=time.time() - 600)
+    gm._current_fix = old_fix
+    gm._cached_fix = old_fix
+    gm._cache_timestamp = time.time() - 60
+
+    result = gm.get_current_fix(allow_blocking=False)
+    assert result is old_fix
+
+
+def test_gps_monitor_check_gps_calls_callback():
+    callback = MagicMock()
+    gm = GPSMonitor(fix_callback=callback)
+    fix = GPSFix(latitude=1.0, longitude=2.0, altitude=100.0, fix_mode=3, satellites=8, timestamp=time.time())
+    with patch.object(gm, "_query_gpsd", return_value=fix):
+        gm._check_gps()
+    callback.assert_called_once_with(fix)
+
+
+def test_gps_monitor_check_gps_no_fix():
+    gm = GPSMonitor()
+    with patch.object(gm, "_query_gpsd", return_value=None):
+        gm._check_gps()
+    assert gm._current_fix is None
+
+
+def test_gps_monitor_log_fix_strong(caplog):
+    gm = GPSMonitor()
+    fix = GPSFix(latitude=40.0, longitude=-74.0, altitude=50.0, fix_mode=3, satellites=8)
+    gm._log_fix_status(fix, fix_mode_changed=True)
+
+
+def test_gps_monitor_log_fix_weak(caplog):
+    gm = GPSMonitor()
+    fix = GPSFix(latitude=40.0, longitude=-74.0, altitude=50.0, fix_mode=2, satellites=3)
+    gm._log_fix_status(fix, fix_mode_changed=False)
+
+
+def test_gps_monitor_log_no_fix():
+    gm = GPSMonitor()
+    fix = GPSFix(fix_mode=0, satellites=0)
+    gm._log_fix_status(fix)
+
+
+def test_gps_monitor_satellite_count_fallback():
+    gm = GPSMonitor()
+    gpsd_output = (
+        '{"class":"TPV","mode":3,"lat":40.0,"lon":-74.0,"alt":50.0}\n'
+        '{"class":"SKY","satellites":[{"used":true},{"used":true},{"used":false}]}\n'
+    )
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = gpsd_output
+
+    with patch("subprocess.run", return_value=mock_result):
+        fix = gm._query_gpsd()
+
+    assert fix.satellites == 2
+
+
+# ---------------------------------------------------------------------------
+# LocationService
+# ---------------------------------------------------------------------------
+
+
+def test_location_service_gps_unavailable():
+    with patch.object(GPSMonitor, "is_available", return_value=False):
+        from citrascope.location.location_service import LocationService
+
+        ls = LocationService()
+    assert ls.gps_monitor is None
+
+
+def test_location_service_get_current_location_from_ground_station():
+    with patch.object(GPSMonitor, "is_available", return_value=False):
+        from citrascope.location.location_service import LocationService
+
+        ls = LocationService()
+    ls.set_ground_station({"id": "gs1", "latitude": 40.0, "longitude": -74.0, "altitude": 100.0})
+    loc = ls.get_current_location()
+    assert loc["source"] == "ground_station"
+    assert loc["latitude"] == 40.0
+
+
+def test_location_service_get_current_location_none():
+    with patch.object(GPSMonitor, "is_available", return_value=False):
+        from citrascope.location.location_service import LocationService
+
+        ls = LocationService()
+    assert ls.get_current_location() is None
+
+
+def test_location_service_on_gps_fix_no_settings():
+    with patch.object(GPSMonitor, "is_available", return_value=False):
+        from citrascope.location.location_service import LocationService
+
+        ls = LocationService()
+    ls.settings = None
+    fix = GPSFix(latitude=40.0, longitude=-74.0, altitude=100.0, fix_mode=3, satellites=8)
+    ls.on_gps_fix_changed(fix)
+
+
+def test_location_service_on_gps_fix_updates_server():
+    mock_api = MagicMock()
+    mock_api.update_ground_station_location.return_value = True
+    mock_settings = MagicMock()
+    mock_settings.gps_location_updates_enabled = True
+    mock_settings.gps_update_interval_minutes = 0
+
+    with patch.object(GPSMonitor, "is_available", return_value=False):
+        from citrascope.location.location_service import LocationService
+
+        ls = LocationService(api_client=mock_api, settings=mock_settings)
+
+    ls.set_ground_station({"id": "gs1", "latitude": 0.0, "longitude": 0.0, "altitude": 0.0})
+    fix = GPSFix(latitude=41.0, longitude=-75.0, altitude=200.0, fix_mode=3, satellites=8)
+    ls.on_gps_fix_changed(fix)
+
+    mock_api.update_ground_station_location.assert_called_once_with("gs1", 41.0, -75.0, 200.0)
+
+
+def test_location_service_on_gps_fix_rate_limited():
+    mock_api = MagicMock()
+    mock_settings = MagicMock()
+    mock_settings.gps_location_updates_enabled = True
+    mock_settings.gps_update_interval_minutes = 999
+
+    with patch.object(GPSMonitor, "is_available", return_value=False):
+        from citrascope.location.location_service import LocationService
+
+        ls = LocationService(api_client=mock_api, settings=mock_settings)
+
+    ls.set_ground_station({"id": "gs1", "latitude": 0.0, "longitude": 0.0, "altitude": 0.0})
+    ls._last_server_update = time.time()
+    fix = GPSFix(latitude=41.0, longitude=-75.0, altitude=200.0, fix_mode=3, satellites=8)
+    ls.on_gps_fix_changed(fix)
+
+    mock_api.update_ground_station_location.assert_not_called()
+
+
+def test_location_service_stop():
+    with patch.object(GPSMonitor, "is_available", return_value=False):
+        from citrascope.location.location_service import LocationService
+
+        ls = LocationService()
+    ls.stop()
+    assert ls.gps_monitor is None

@@ -1,106 +1,116 @@
-"""Unit tests for elset cache (hot list)."""
+"""Unit tests for ElsetCache."""
 
 import json
 from unittest.mock import MagicMock
 
-from citrascope.elset_cache import ElsetCache
+from citrascope.elset_cache import ElsetCache, _normalize_api_response
+
+# ---------------------------------------------------------------------------
+# _normalize_api_response
+# ---------------------------------------------------------------------------
 
 
-def test_refresh_updates_get_elsets():
-    """Refresh with mocked API client updates get_elsets() with normalized list."""
+def test_normalize_basic():
     raw = [
         {
-            "satelliteId": "12345",
+            "satelliteId": "25544",
             "satelliteName": "ISS",
             "tle": [
-                "1 25544U 98067A  12345.67890123  .00012345  00000-0  12345-3 0  1234",
-                "2 25544  51.6400 123.4567 0001234  0.0000  0.0000 15.12345678901234",
+                "1 25544U 98067A   24001.50000000  .00016717  00000-0  10270-3 0  9993",
+                "2 25544  51.6416 208.5340 0001234 123.4567 236.5433 15.50000000999999",
             ],
-        },
+        }
+    ]
+    result = _normalize_api_response(raw)
+    assert len(result) == 1
+    assert result[0]["satellite_id"] == "25544"
+    assert result[0]["name"] == "ISS"
+    assert len(result[0]["tle"]) == 2
+
+
+def test_normalize_missing_fields():
+    raw = [
         {
-            "satelliteId": "99999",
-            "satelliteName": "TEST-SAT",
             "tle": [
-                "1 99999U 99001A  12345.67890123  .00000000  00000-0  00000-0 0  0000",
-                "2 99999  55.0000 100.0000 0000000  0.0000  0.0000 12.34567890123456",
+                "1 25544U 98067A   24001.50000000  .00016717  00000-0  10270-3 0  9993",
+                "2 25544  51.6416 208.5340 0001234 123.4567 236.5433 15.50000000999999",
             ],
-        },
+        }
     ]
-    api_client = MagicMock()
-    api_client.get_elsets_latest.return_value = raw
-    logger = MagicMock()
+    result = _normalize_api_response(raw)
+    assert len(result) == 1
+    assert result[0]["satellite_id"] == "25544"
 
-    cache = ElsetCache(cache_path=None)  # no file
+
+def test_normalize_bad_tle():
+    raw = [{"satelliteId": "1", "tle": ["only one line"]}]
+    assert _normalize_api_response(raw) == []
+
+
+def test_normalize_non_dict_items():
+    assert _normalize_api_response([42, "str", None]) == []
+
+
+def test_normalize_none():
+    assert _normalize_api_response(None) == []
+
+
+# ---------------------------------------------------------------------------
+# ElsetCache lifecycle
+# ---------------------------------------------------------------------------
+
+
+def test_cache_empty_initially(tmp_path):
+    cache = ElsetCache(cache_path=tmp_path / "elsets.json")
     assert cache.get_elsets() == []
 
-    ok = cache.refresh(api_client, logger=logger, days=14)
-    assert ok is True
-    api_client.get_elsets_latest.assert_called_once_with(days=14)
 
-    elsets = cache.get_elsets()
-    assert len(elsets) == 2
-    assert elsets[0]["satellite_id"] == "12345"
-    assert elsets[0]["name"] == "ISS"
-    assert len(elsets[0]["tle"]) == 2
-    assert elsets[1]["satellite_id"] == "99999"
-    assert elsets[1]["name"] == "TEST-SAT"
-
-
-def test_refresh_returns_false_when_api_returns_none():
-    """When get_elsets_latest returns None, refresh returns False and list is unchanged."""
-    api_client = MagicMock()
-    api_client.get_elsets_latest.return_value = None
-    logger = MagicMock()
-
-    cache = ElsetCache(cache_path=None)
-    cache._list = [{"satellite_id": "1", "name": "Old", "tle": ["l1", "l2"]}]
-
-    ok = cache.refresh(api_client, logger=logger)
-    assert ok is False
-    assert cache.get_elsets() == [{"satellite_id": "1", "name": "Old", "tle": ["l1", "l2"]}]
-
-
-def test_load_from_file_restores_list(tmp_path):
-    """load_from_file() restores in-memory list from processor-ready JSON."""
-    cache_file = tmp_path / "elset_cache.json"
-    stored = [
-        {"satellite_id": "111", "name": "Sat A", "tle": ["line1", "line2"]},
-        {"satellite_id": "222", "name": "Sat B", "tle": ["line1b", "line2b"]},
+def test_cache_refresh_success(tmp_path):
+    cache = ElsetCache(cache_path=tmp_path / "elsets.json")
+    mock_api = MagicMock()
+    mock_api.get_elsets_latest.return_value = [
+        {
+            "satelliteId": "25544",
+            "satelliteName": "ISS",
+            "tle": ["1 25544U ...", "2 25544 ..."],
+        }
     ]
-    cache_file.write_text(json.dumps(stored), encoding="utf-8")
-
-    cache = ElsetCache(cache_path=cache_file)
-    assert cache.get_elsets() == []
-    cache.load_from_file()
-    assert cache.get_elsets() == stored
+    assert cache.refresh(mock_api, logger=MagicMock()) is True
+    assert len(cache.get_elsets()) == 1
+    assert (tmp_path / "elsets.json").exists()
 
 
-def test_load_from_file_no_op_when_file_missing(tmp_path):
-    """load_from_file() does nothing when file does not exist."""
-    cache = ElsetCache(cache_path=tmp_path / "nonexistent.json")
-    cache._list = [{"satellite_id": "1", "name": "X", "tle": ["a", "b"]}]
+def test_cache_refresh_failure(tmp_path):
+    cache = ElsetCache(cache_path=tmp_path / "elsets.json")
+    mock_api = MagicMock()
+    mock_api.get_elsets_latest.return_value = None
+    assert cache.refresh(mock_api, logger=MagicMock()) is False
+
+
+def test_cache_load_from_file(tmp_path):
+    data = [{"satellite_id": "25544", "name": "ISS", "tle": ["l1", "l2"]}]
+    cache_path = tmp_path / "elsets.json"
+    cache_path.write_text(json.dumps(data))
+
+    cache = ElsetCache(cache_path=cache_path)
     cache.load_from_file()
     assert len(cache.get_elsets()) == 1
 
 
-def test_refresh_writes_cache_file(tmp_path):
-    """refresh() writes normalized list to cache_path when set."""
-    api_client = MagicMock()
-    api_client.get_elsets_latest.return_value = [
-        {
-            "satelliteId": "1",
-            "satelliteName": "One",
-            "tle": [
-                "1 1U 00000A  00000.0  00000-0  00000-0 0  000",
-                "2 1  00.0000 000.0000 0000000  00.0000  00.0000 00.00000000000000",
-            ],
-        },
-    ]
-    cache_path = tmp_path / "processing" / "elset_cache.json"
-    cache = ElsetCache(cache_path=cache_path)
-    cache.refresh(api_client, logger=MagicMock())
-    assert cache_path.exists()
-    loaded = json.loads(cache_path.read_text(encoding="utf-8"))
-    assert len(loaded) == 1
-    assert loaded[0]["satellite_id"] == "1"
-    assert loaded[0]["name"] == "One"
+def test_cache_load_from_missing_file(tmp_path):
+    cache = ElsetCache(cache_path=tmp_path / "nope.json")
+    cache.load_from_file()
+    assert cache.get_elsets() == []
+
+
+def test_cache_refresh_if_stale(tmp_path):
+    cache = ElsetCache(cache_path=tmp_path / "elsets.json")
+    mock_api = MagicMock()
+    mock_api.get_elsets_latest.return_value = []
+
+    assert cache.refresh_if_stale(mock_api, interval_hours=0.001) is True
+    mock_api.get_elsets_latest.assert_called_once()
+
+    mock_api.reset_mock()
+    assert cache.refresh_if_stale(mock_api, interval_hours=24) is False
+    mock_api.get_elsets_latest.assert_not_called()

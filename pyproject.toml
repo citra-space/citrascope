@@ -145,6 +145,11 @@ addopts = [
   "--cov-report=xml",
   "--cov-branch",
   "--import-mode=importlib",
+  "-m", "not slow",
+]
+markers = [
+  "slow: expensive tests (Tetra3 plate solving, etc.) — skipped locally, run in CI",
+  "integration: requires live hardware or services",
 ]
 
 [tool.coverage.run]

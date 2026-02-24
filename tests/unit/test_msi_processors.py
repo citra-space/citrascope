@@ -353,6 +353,7 @@ class TestDependencyChecks:
         assert check_sextractor() is False
 
 
+@pytest.mark.slow
 class TestPixelemonDemoFits:
     """Run the real PlateSolverProcessor on the demo FITS (no mocks). Skips only if file missing."""
 
@@ -414,6 +415,7 @@ class TestPixelemonDemoFits:
         assert -90 <= dec <= 90
 
 
+@pytest.mark.slow
 class TestFullPipelineDemoFits:
     """Run the full MSI pipeline (plate solve → source extract → photometry → satellite match) on the demo FITS."""
 
