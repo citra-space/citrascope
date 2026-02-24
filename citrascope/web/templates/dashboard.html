@@ -100,7 +100,7 @@
                                 <span>
                                     <span class="log-timestamp" x-text="new Date($store.citrascope.latestLog.timestamp).toLocaleTimeString()"></span>
                                     <span class="log-level" :class="'log-level-' + $store.citrascope.latestLog.level" x-text="$store.citrascope.latestLog.level"></span>
-                                    <span x-text="($store.citrascope.stripAnsiCodes($store.citrascope.latestLog.message) || '').substring(0, 150) + (($store.citrascope.latestLog.message || '').length > 150 ? '...' : '')"></span>
+                                    <span x-text="$store.citrascope.stripAnsiCodes($store.citrascope.latestLog.message) || ''"></span>
                                 </span>
                             </template>
                         </span>

@@ -107,6 +107,7 @@ body {
 .log-accordion-button {
     border-bottom: 1px solid #444 !important;
     position: relative;
+    padding: 0.4rem 1rem !important;
 }
 
 .accordion-social-links {
@@ -143,15 +144,14 @@ body {
 
 .log-latest-line {
     font-family: monospace;
+    font-size: 0.75rem;
     color: #e2e8f0;
     display: block;
     overflow: hidden;
     text-overflow: ellipsis;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
+    white-space: nowrap;
     line-height: 1.4em;
-    max-height: 2.8em;
+    max-height: 1.4em;
     padding-right: 130px; /* Make room for 3 social icons and accordion arrow */
 }
 
@@ -178,7 +178,8 @@ body {
 
 /* Log entry components */
 .log-entry {
-    margin-bottom: 4px;
+    margin-bottom: 2px;
+    font-size: 0.75rem;
 }
 
 .log-timestamp {
@@ -187,7 +188,7 @@ body {
 
 .log-level {
     font-weight: bold;
-    margin: 0 8px;
+    margin: 0 6px;
 }
 
 .log-level-DEBUG { color: #a0aec0; }

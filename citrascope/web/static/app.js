@@ -38,9 +38,12 @@ function updateStoreFromTasks(tasks) {
     }
 }
 
+const MAX_CLIENT_LOGS = 500;
+
 function appendLogToStore(log) {
     const store = Alpine.store('citrascope');
-    store.logs = [...store.logs, log];
+    const logs = [...store.logs, log];
+    store.logs = logs.length > MAX_CLIENT_LOGS ? logs.slice(-MAX_CLIENT_LOGS) : logs;
     store.latestLog = log;
 }
 
