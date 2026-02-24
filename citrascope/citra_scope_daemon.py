@@ -155,14 +155,13 @@ class CitraScopeDaemon:
             self.hardware_adapter = self._create_hardware_adapter()
 
             # Check for missing dependencies (non-fatal, just warn)
-            if hasattr(self.hardware_adapter, "get_missing_dependencies"):
-                missing_deps = self.hardware_adapter.get_missing_dependencies()
-                if missing_deps:
-                    for dep in missing_deps:
-                        CITRASCOPE_LOGGER.warning(
-                            f"{dep['device_type']} '{dep['device_name']}' missing dependencies: "
-                            f"{dep['missing_packages']}. Install with: {dep['install_cmd']}"
-                        )
+            missing_deps = self.hardware_adapter.get_missing_dependencies()
+            if missing_deps:
+                for dep in missing_deps:
+                    CITRASCOPE_LOGGER.warning(
+                        f"{dep['device_type']} '{dep['device_name']}' missing dependencies: "
+                        f"{dep['missing_packages']}. Install with: {dep['install_cmd']}"
+                    )
 
             # Initialize location service (manages GPS internally)
             self.location_service = LocationService(
@@ -228,6 +227,8 @@ class CitraScopeDaemon:
         old_imaging_tasks = old_imaging_tasks or {}
         old_processing_tasks = old_processing_tasks or {}
         old_uploading_tasks = old_uploading_tasks or {}
+        assert self.api_client is not None
+        assert self.hardware_adapter is not None
         try:
             CITRASCOPE_LOGGER.info(f"CitraAPISettings host is {self.settings.host}")
             CITRASCOPE_LOGGER.info(f"CitraAPISettings telescope_id is {self.settings.telescope_id}")
@@ -415,6 +416,7 @@ class CitraScopeDaemon:
         )
 
     def run(self):
+        assert self.web_server is not None
         # Start web server FIRST, so users can monitor/configure
         # The web interface will remain available even if configuration is incomplete
         self.web_server.start()

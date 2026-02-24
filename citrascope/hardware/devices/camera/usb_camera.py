@@ -112,11 +112,11 @@ class UsbCamera(AbstractCamera):
 
         cameras = []
         try:
-            import cv2
+            import cv2  # type: ignore[reportMissingImports]
 
             # Try to use cv2-enumerate-cameras for rich camera names
             try:
-                from cv2_enumerate_cameras import enumerate_cameras
+                from cv2_enumerate_cameras import enumerate_cameras  # type: ignore[reportMissingImports]
 
                 # Get fancy camera names from enumerate_cameras
                 # Assumption: enumerate_cameras() returns cameras in the same order as OpenCV detection
@@ -205,7 +205,7 @@ class UsbCamera(AbstractCamera):
         try:
             # Lazy import
             if self._cv2_module is None:
-                import cv2
+                import cv2  # type: ignore[reportMissingImports]
 
                 self._cv2_module = cv2
 
@@ -278,6 +278,9 @@ class UsbCamera(AbstractCamera):
         """
         if not self.is_connected():
             raise RuntimeError("Camera not connected")
+
+        assert self._camera is not None
+        assert self._cv2_module is not None
 
         if save_path is None:
             timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -377,6 +380,7 @@ class UsbCamera(AbstractCamera):
         }
 
         if self.is_connected() and self._camera:
+            assert self._cv2_module is not None
             info["width"] = int(self._camera.get(self._cv2_module.CAP_PROP_FRAME_WIDTH))
             info["height"] = int(self._camera.get(self._cv2_module.CAP_PROP_FRAME_HEIGHT))
             info["fps"] = int(self._camera.get(self._cv2_module.CAP_PROP_FPS))
@@ -390,11 +394,12 @@ class UsbCamera(AbstractCamera):
             frame: OpenCV BGR frame
             save_path: Path to save FITS file
         """
+        assert self._cv2_module is not None
+
         try:
             import numpy as np
             from astropy.io import fits
 
-            # Convert BGR to grayscale for astronomy (luminance)
             gray = self._cv2_module.cvtColor(frame, self._cv2_module.COLOR_BGR2GRAY)
 
             hdu = fits.PrimaryHDU(gray.astype(np.uint16))
