@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import socket
+import threading
 import time
 from abc import ABC, abstractmethod
 from typing import Any
@@ -32,6 +33,7 @@ class ZwoAmTransport(ABC):
     def __init__(self, timeout_s: float = DEFAULT_TIMEOUT_S, retry_count: int = DEFAULT_RETRY_COUNT) -> None:
         self.timeout_s = timeout_s
         self.retry_count = retry_count
+        self._lock = threading.RLock()
 
     @abstractmethod
     def open(self) -> None:
@@ -59,28 +61,35 @@ class ZwoAmTransport(ABC):
 
     def send_command(self, command: str) -> str:
         """Send *command* and return the ``#``-terminated response string."""
-        self._clear_input()
-        self._write(command.encode("ascii"))
-        response = self._read_until_hash()
-        logger.debug("TX %s  RX %s", command, response)
-        return response
+        with self._lock:
+            self._clear_input()
+            self._write(command.encode("ascii"))
+            response = self._read_until_hash()
+            logger.debug("TX %s  RX %s", command, response)
+            return response
 
     def send_command_with_retry(self, command: str) -> str:
-        last_error: Exception | None = None
-        for attempt in range(self.retry_count):
-            try:
-                return self.send_command(command)
-            except Exception as exc:
-                logger.warning("Command %r failed (attempt %d/%d): %s", command, attempt + 1, self.retry_count, exc)
-                last_error = exc
-                time.sleep(0.1)
-        raise last_error  # type: ignore[misc]
+        with self._lock:
+            last_error: Exception | None = None
+            for attempt in range(self.retry_count):
+                try:
+                    self._clear_input()
+                    self._write(command.encode("ascii"))
+                    response = self._read_until_hash()
+                    logger.debug("TX %s  RX %s", command, response)
+                    return response
+                except Exception as exc:
+                    logger.warning("Command %r failed (attempt %d/%d): %s", command, attempt + 1, self.retry_count, exc)
+                    last_error = exc
+                    time.sleep(0.1)
+            raise last_error  # type: ignore[misc]
 
     def send_command_no_response(self, command: str) -> None:
         """Send a fire-and-forget command (no response expected)."""
-        self._write(command.encode("ascii"))
-        logger.debug("TX %s  (no response)", command)
-        time.sleep(_FIRE_AND_FORGET_DELAY_S)
+        with self._lock:
+            self._write(command.encode("ascii"))
+            logger.debug("TX %s  (no response)", command)
+            time.sleep(_FIRE_AND_FORGET_DELAY_S)
 
     def send_command_bool(self, command: str) -> bool:
         """Send a command that returns ``1`` / ``0`` (possibly without ``#``).
@@ -88,41 +97,66 @@ class ZwoAmTransport(ABC):
         ZWO firmware is inconsistent — some boolean replies omit the ``#``.
         This method tolerates both forms with a short post-read wait.
         """
-        self._clear_input()
-        self._write(command.encode("ascii"))
+        with self._lock:
+            self._clear_input()
+            self._write(command.encode("ascii"))
 
-        buf = ""
-        deadline = time.monotonic() + self.timeout_s
-        while time.monotonic() < deadline:
-            ch = self._try_read_one()
-            if ch is None:
-                if buf in ("1", "0"):
-                    time.sleep(0.05)
-                    extra = self._try_read_one()
-                    if extra and extra != "#":
-                        buf += extra
+            buf = ""
+            deadline = time.monotonic() + self.timeout_s
+            while time.monotonic() < deadline:
+                ch = self._try_read_one()
+                if ch is None:
+                    if buf in ("1", "0"):
+                        time.sleep(0.05)
+                        extra = self._try_read_one()
+                        if extra and extra != "#":
+                            buf += extra
+                        break
+                    time.sleep(0.01)
+                    continue
+                if ch == "#":
                     break
-                time.sleep(0.01)
-                continue
-            if ch == "#":
-                break
-            buf += ch
-            if buf in ("1", "0"):
-                time.sleep(0.1)
+                buf += ch
+                if buf in ("1", "0"):
+                    time.sleep(0.1)
 
-        logger.debug("TX %s  RX(bool) %s", command, buf)
-        return buf == "1"
+            logger.debug("TX %s  RX(bool) %s", command, buf)
+            return buf == "1"
 
     def send_command_bool_with_retry(self, command: str) -> bool:
-        last_error: Exception | None = None
-        for attempt in range(self.retry_count):
-            try:
-                return self.send_command_bool(command)
-            except Exception as exc:
-                logger.warning("Bool cmd %r failed (%d/%d): %s", command, attempt + 1, self.retry_count, exc)
-                last_error = exc
-                time.sleep(0.1)
-        raise last_error  # type: ignore[misc]
+        with self._lock:
+            last_error: Exception | None = None
+            for attempt in range(self.retry_count):
+                try:
+                    self._clear_input()
+                    self._write(command.encode("ascii"))
+
+                    buf = ""
+                    deadline = time.monotonic() + self.timeout_s
+                    while time.monotonic() < deadline:
+                        ch = self._try_read_one()
+                        if ch is None:
+                            if buf in ("1", "0"):
+                                time.sleep(0.05)
+                                extra = self._try_read_one()
+                                if extra and extra != "#":
+                                    buf += extra
+                                break
+                            time.sleep(0.01)
+                            continue
+                        if ch == "#":
+                            break
+                        buf += ch
+                        if buf in ("1", "0"):
+                            time.sleep(0.1)
+
+                    logger.debug("TX %s  RX(bool) %s", command, buf)
+                    return buf == "1"
+                except Exception as exc:
+                    logger.warning("Bool cmd %r failed (%d/%d): %s", command, attempt + 1, self.retry_count, exc)
+                    last_error = exc
+                    time.sleep(0.1)
+            raise last_error  # type: ignore[misc]
 
     @abstractmethod
     def _try_read_one(self) -> str | None:
@@ -152,21 +186,23 @@ class SerialTransport(ZwoAmTransport):
     def open(self) -> None:
         import serial as _serial  # type: ignore[reportMissingImports]
 
-        self._serial = _serial.Serial(
-            port=self.port_path,
-            baudrate=self.baud_rate,
-            bytesize=_serial.EIGHTBITS,
-            parity=_serial.PARITY_NONE,
-            stopbits=_serial.STOPBITS_ONE,
-            timeout=self.timeout_s,
-            write_timeout=self.timeout_s,
-        )
-        time.sleep(0.1)
+        with self._lock:
+            self._serial = _serial.Serial(
+                port=self.port_path,
+                baudrate=self.baud_rate,
+                bytesize=_serial.EIGHTBITS,
+                parity=_serial.PARITY_NONE,
+                stopbits=_serial.STOPBITS_ONE,
+                timeout=self.timeout_s,
+                write_timeout=self.timeout_s,
+            )
+            time.sleep(0.1)
 
     def close(self) -> None:
-        if self._serial and self._serial.is_open:
-            self._serial.close()
-        self._serial = None
+        with self._lock:
+            if self._serial and self._serial.is_open:
+                self._serial.close()
+            self._serial = None
 
     def __del__(self) -> None:
         self.close()
@@ -228,19 +264,21 @@ class TcpTransport(ZwoAmTransport):
         self._sock: socket.socket | None = None
 
     def open(self) -> None:
-        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._sock.settimeout(self.timeout_s)
-        self._sock.connect((self.host, self.tcp_port))
-        time.sleep(0.1)
+        with self._lock:
+            self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self._sock.settimeout(self.timeout_s)
+            self._sock.connect((self.host, self.tcp_port))
+            time.sleep(0.1)
 
     def close(self) -> None:
-        if self._sock:
-            try:
-                self._sock.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
-            self._sock.close()
-        self._sock = None
+        with self._lock:
+            if self._sock:
+                try:
+                    self._sock.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+                self._sock.close()
+            self._sock = None
 
     def __del__(self) -> None:
         self.close()

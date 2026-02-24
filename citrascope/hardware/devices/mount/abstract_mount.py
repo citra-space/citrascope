@@ -182,3 +182,14 @@ class AbstractMount(AbstractHardwareDevice):
             (latitude, longitude, altitude) or None if unsupported
         """
         return None
+
+    def sync_datetime(self) -> bool:
+        """Sync the system clock to the mount's internal clock.
+
+        Pushes the current UTC date/time so the mount can compute
+        sidereal time, horizon limits, and meridian flips.
+
+        Returns:
+            True if accepted, False if unsupported
+        """
+        return False

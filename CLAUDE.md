@@ -149,6 +149,8 @@ The full stack runs at three layers. New code must pass all three cleanly.
 
 **Pyright** (basic mode) handles type checking. Config is in `pyrightconfig.json`. The same engine powers Pylance in the editor, so red squiggles in Cursor match what CI enforces.
 
+**After editing, run `pyright` via the shell** on changed files (e.g., `pyright citrascope/foo.py`). The editor's Pylance can lag behind on cross-file type changes, but the pre-commit hook runs the CLI `pyright` which always catches errors. Running it yourself before committing avoids surprises.
+
 Common type-checking patterns used in this codebase:
 
 - `assert self.x is not None` — narrow `T | None` attrs that are guaranteed set after initialization (e.g., after `connect()`, after `_initialize_components()`). Preferred over `if` guards when the None case is a programming error.

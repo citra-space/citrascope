@@ -259,6 +259,12 @@ class CitraScopeDaemon:
             if self.location_service:
                 self.location_service.set_ground_station(self.ground_station)
 
+            # Pass location service so the adapter can sync site coordinates to the mount
+            from citrascope.hardware.direct.direct_adapter import DirectHardwareAdapter as _DirectAdapter
+
+            if self.location_service and isinstance(self.hardware_adapter, _DirectAdapter):
+                self.hardware_adapter.location_service = self.location_service
+
             # connect to hardware server
             CITRASCOPE_LOGGER.info(f"Connecting to hardware with {type(self.hardware_adapter).__name__}...")
             if not self.hardware_adapter.connect():

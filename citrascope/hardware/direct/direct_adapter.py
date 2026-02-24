@@ -54,6 +54,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         """
         super().__init__(images_dir, **kwargs)
         self.logger = logger
+        self.location_service: Any | None = None
 
         # Track dependency issues for reporting
         self._dependency_issues: list[dict[str, str]] = []
@@ -332,6 +333,8 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             if not self.mount.connect():
                 self.logger.error("Failed to connect to mount")
                 success = False
+            else:
+                self._sync_mount_site_and_time()
         else:
             self.logger.info("No mount configured (static camera mode)")
 
@@ -354,6 +357,29 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             self.logger.info("All required devices connected successfully")
 
         return success
+
+    def _sync_mount_site_and_time(self) -> None:
+        """Push site location and UTC time to the mount after a successful handshake.
+
+        Best-effort: logs warnings on failure but never blocks connect().
+        """
+        assert self.mount is not None
+
+        # Sync site location from LocationService (GPS-first, ground station fallback)
+        if self.location_service:
+            location = self.location_service.get_current_location()
+            if location:
+                ok = self.mount.set_site_location(location["latitude"], location["longitude"], location["altitude"])
+                if not ok:
+                    self.logger.warning("Mount rejected site location")
+            else:
+                self.logger.warning("No location available — mount site not set")
+        else:
+            self.logger.warning("No LocationService — mount site not set")
+
+        # Sync system UTC clock to mount
+        if not self.mount.sync_datetime():
+            self.logger.warning("Mount time sync not supported or failed")
 
     def disconnect(self):
         """Disconnect from all hardware devices."""

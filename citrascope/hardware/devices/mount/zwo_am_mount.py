@@ -8,6 +8,7 @@ the RA hours ↔ degrees conversion happens at this boundary.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 from citrascope.hardware.abstract_astro_hardware_adapter import SettingSchemaEntry
@@ -392,6 +393,25 @@ class ZwoAmMount(AbstractMount):
             return False
 
         self.logger.info("Site location set: lat=%.4f° lon=%.4f° alt=%.0fm", latitude, longitude, altitude)
+        return True
+
+    def sync_datetime(self) -> bool:
+        now = datetime.now(timezone.utc)
+
+        tz_ok = self._transport.send_command_bool_with_retry(ZwoAmCommands.set_timezone(0))
+        time_ok = self._transport.send_command_bool_with_retry(ZwoAmCommands.set_time(now.hour, now.minute, now.second))
+        # :SC (set date) goes last because some LX200 firmware sends extra
+        # #-terminated strings after the ack, which corrupt subsequent reads.
+        date_ok = self._transport.send_command_bool_with_retry(ZwoAmCommands.set_date(now.month, now.day, now.year))
+        # Drain any extra :SC response data so it doesn't corrupt the next
+        # command from any caller (web UI status polling, slew, etc.)
+        self._transport._clear_input()
+
+        if not (tz_ok and date_ok and time_ok):
+            self.logger.warning("Mount time sync partially failed (tz=%s date=%s time=%s)", tz_ok, date_ok, time_ok)
+            return False
+
+        self.logger.info("Mount time synced to UTC: %s", now.strftime("%Y-%m-%d %H:%M:%S"))
         return True
 
     # ------------------------------------------------------------------
