@@ -331,8 +331,11 @@ class DummyApiClient(AbstractCitraApiClient):
             completed_tasks = completed_tasks[-20:] if len(completed_tasks) > 20 else completed_tasks
 
             # Auto-generate new tasks if we have fewer than 10 pending
+            # and automated scheduling is enabled on the telescope
+            telescope = self.data.get("telescope", {})
+            scheduling_enabled = telescope.get("automatedScheduling", True)
             target_task_count = 10
-            if len(active_tasks) < target_task_count:
+            if scheduling_enabled and len(active_tasks) < target_task_count:
                 num_to_generate = target_task_count - len(active_tasks)
 
                 # Get telescope and ground station info
@@ -491,6 +494,14 @@ class DummyApiClient(AbstractCitraApiClient):
         if self.logger:
             self.logger.debug(f"DummyApiClient: get_elsets_latest(days={days}) -> {len(stub)} items")
         return stub
+
+    def update_telescope_automated_scheduling(self, telescope_id: str, enabled: bool) -> bool:
+        with self._data_lock:
+            telescope = self.data.get("telescope", {})
+            telescope["automatedScheduling"] = enabled
+        if self.logger:
+            self.logger.info(f"DummyApiClient: automated scheduling {'enabled' if enabled else 'disabled'}")
+        return True
 
     def upload_optical_observations(
         self,

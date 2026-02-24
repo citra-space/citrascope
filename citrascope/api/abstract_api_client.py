@@ -59,6 +59,11 @@ class AbstractCitraApiClient(ABC):
         pass
 
     @abstractmethod
+    def update_telescope_automated_scheduling(self, telescope_id: str, enabled: bool) -> bool:
+        """PATCH /telescopes to toggle automated scheduling on/off."""
+        pass
+
+    @abstractmethod
     def upload_optical_observations(
         self,
         observations: list,

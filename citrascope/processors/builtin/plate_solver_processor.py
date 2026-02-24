@@ -1,9 +1,11 @@
 """Plate solving processor using Pixelemon (Tetra3)."""
 
+import logging
 import math
+import tempfile
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from astropy.io import fits
 from astropy.wcs import WCS
@@ -151,6 +153,41 @@ class PlateSolverProcessor(AbstractImageProcessor):
     name = "plate_solver"
     friendly_name = "Plate Solver"
     description = "Astrometric calibration via Pixelemon/Tetra3 (determines exact pointing and WCS)"
+
+    @classmethod
+    def solve(
+        cls,
+        image_path: Path,
+        telescope_record: dict,
+        location_service: Any | None = None,
+    ) -> tuple[float, float] | None:
+        """Plate solve an image and return ``(ra_deg, dec_deg)`` or ``None``.
+
+        Convenience method for callers outside the processing pipeline
+        (e.g. alignment manager, manual solve requests).
+        """
+        logger = logging.getLogger("citrascope.plate_solver")
+        with tempfile.TemporaryDirectory(prefix="alignment_") as tmp:
+            working_dir = Path(tmp)
+            context = ProcessingContext(
+                image_path=image_path,
+                working_image_path=image_path,
+                working_dir=working_dir,
+                image_data=None,
+                task=None,
+                telescope_record=telescope_record,
+                ground_station_record=None,
+                settings=None,
+                location_service=location_service,
+                logger=logger,
+            )
+            result = cls().process(context)
+            if result.extracted_data.get("plate_solved"):
+                ra = result.extracted_data.get("ra_center")
+                dec = result.extracted_data.get("dec_center")
+                if ra is not None and dec is not None:
+                    return float(ra), float(dec)
+        return None
 
     def _solve_with_pixelemon(self, image_path: Path, context: ProcessingContext | None = None) -> Path:
         """Run Pixelemon (Tetra3) plate solve and write WCS to a .new file.

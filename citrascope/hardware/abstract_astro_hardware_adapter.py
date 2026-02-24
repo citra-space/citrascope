@@ -195,19 +195,21 @@ class AbstractAstroHardwareAdapter(ABC):
         """Get the current tracking rate for the telescope in RA and Dec (arcseconds per second)."""
         pass
 
-    @abstractmethod
     def perform_alignment(self, target_ra: float, target_dec: float) -> bool:
-        """
-        Perform plate-solving-based alignment to adjust the telescope's position.
+        """Perform plate-solve alignment to correct the mount's pointing model.
+
+        Optional capability — override in adapters that manage alignment directly
+        (e.g. direct hardware control).  Adapters that delegate to external
+        software (NINA, KStars) can inherit this default which returns ``True``.
 
         Args:
-            target_ra (float): The target Right Ascension (RA) in degrees.
-            target_dec (float): The target Declination (Dec) in degrees.
+            target_ra: Target Right Ascension in degrees.
+            target_dec: Target Declination in degrees.
 
         Returns:
-            bool: True if alignment was successful, False otherwise.
+            True if alignment succeeded or is not applicable.
         """
-        pass
+        return True
 
     def update_from_plate_solve(  # noqa: B027
         self,

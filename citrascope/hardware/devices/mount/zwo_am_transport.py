@@ -168,6 +168,9 @@ class SerialTransport(ZwoAmTransport):
             self._serial.close()
         self._serial = None
 
+    def __del__(self) -> None:
+        self.close()
+
     def is_open(self) -> bool:
         return self._serial is not None and self._serial.is_open
 
@@ -238,6 +241,9 @@ class TcpTransport(ZwoAmTransport):
                 pass
             self._sock.close()
         self._sock = None
+
+    def __del__(self) -> None:
+        self.close()
 
     def is_open(self) -> bool:
         return self._sock is not None

@@ -83,8 +83,15 @@ export function formatMinutes(minutes) {
  */
 export function formatLastAutofocus(status) {
     if (!status || !status.last_autofocus_timestamp) return 'Never';
-    const ts = status.last_autofocus_timestamp;
-    if (ts < 1577836800) return 'Never'; // 2020-01-01T00:00:00Z
+    return formatTimestamp(status.last_autofocus_timestamp);
+}
+
+/**
+ * Format a Unix timestamp (seconds) as a relative elapsed time string.
+ * Returns "Never" for missing/invalid timestamps.
+ */
+export function formatTimestamp(ts) {
+    if (!ts || ts < 1577836800) return 'Never'; // 2020-01-01T00:00:00Z
     const elapsed = Date.now() - ts * 1000;
     if (elapsed < 0) return 'Never';
     return formatElapsedTime(elapsed);

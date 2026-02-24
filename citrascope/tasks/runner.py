@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from dateutil import parser as dtparser
 
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
+from citrascope.tasks.alignment_manager import AlignmentManager
 from citrascope.tasks.autofocus_manager import AutofocusManager
 from citrascope.tasks.scope.static_telescope_task import StaticTelescopeTask
 from citrascope.tasks.task import Task
@@ -71,6 +72,12 @@ class TaskManager:
         self._processing_active = True
         self._processing_lock = threading.Lock()
         self.autofocus_manager = AutofocusManager(
+            self.logger,
+            self.hardware_adapter,
+            self.daemon,
+            imaging_queue=self.imaging_queue,
+        )
+        self.alignment_manager = AlignmentManager(
             self.logger,
             self.hardware_adapter,
             self.daemon,
@@ -272,68 +279,57 @@ class TaskManager:
 
     def task_runner(self):
         while not self._stop_event.is_set():
-            # Check if task processing is paused
+            # Alignment and autofocus run regardless of pause state —
+            # they're operator-requested maintenance, not scheduled tasks.
+            self.alignment_manager.check_and_execute()
+            self.autofocus_manager.check_and_execute()
+
             with self._processing_lock:
                 is_paused = not self._processing_active
 
-            if is_paused:
-                self._stop_event.wait(1)
-                continue
+            if not is_paused:
+                try:
+                    now = int(time.time())
+                    completed = 0
+                    while True:
+                        with self._processing_lock:
+                            if not self._processing_active:
+                                break
 
-            try:
-                now = int(time.time())
-                completed = 0
-                while True:
-                    # Check pause status before starting each task
-                    with self._processing_lock:
-                        if not self._processing_active:
-                            break
+                        with self.heap_lock:
+                            if not (self.task_heap and self.task_heap[0][0] <= now):
+                                break
+                            _, _, tid, task = heapq.heappop(self.task_heap)
+                            self.task_ids.discard(tid)
 
-                    with self.heap_lock:
-                        if not (self.task_heap and self.task_heap[0][0] <= now):
-                            break
-                        # Pop task from heap BEFORE starting execution
-                        _, _, tid, task = heapq.heappop(self.task_heap)
-                        self.task_ids.discard(tid)
+                            self.logger.info(f"Starting task {tid} at {datetime.now().isoformat()}: {task}")
+                            self.current_task_id = tid
 
-                        self.logger.info(f"Starting task {tid} at {datetime.now().isoformat()}: {task}")
-                        self.current_task_id = tid  # Mark as in-flight
+                        self.update_task_stage(tid, "imaging")
+                        task.set_status_msg("Queued for imaging...")
+                        telescope_task = self._create_telescope_task(task)
 
-                    # Mark task as entering imaging stage (uses stage tracking)
-                    self.update_task_stage(tid, "imaging")
+                        def on_imaging_complete(task_id, success):
+                            """Callback when imaging completes or permanently fails."""
+                            if success:
+                                with self.heap_lock:
+                                    self.current_task_id = None
+                                self.logger.info(f"Completed imaging task {task_id} successfully.")
+                            else:
+                                self.logger.error(f"Imaging task {task_id} permanently failed.")
+                                with self.heap_lock:
+                                    self.current_task_id = None
+                                self.total_tasks_failed += 1
+                                self.remove_task_from_all_stages(task_id)
 
-                    # Set initial status message
-                    task.set_status_msg("Queued for imaging...")
+                        self.imaging_queue.submit(tid, task, telescope_task, on_imaging_complete)
+                        completed += 1
 
-                    # Create telescope task instance
-                    telescope_task = self._create_telescope_task(task)
-
-                    # Submit to imaging queue (handles retries)
-                    def on_imaging_complete(task_id, success):
-                        """Callback when imaging completes or permanently fails."""
-                        if success:
-                            with self.heap_lock:
-                                self.current_task_id = None  # Clear after done
-                            self.logger.info(f"Completed imaging task {task_id} successfully.")
-                            # Task stays in stage tracking and task_dict for processing/upload stages
-                        else:
-                            # Permanent failure - remove from tracking
-                            self.logger.error(f"Imaging task {task_id} permanently failed.")
-                            with self.heap_lock:
-                                self.current_task_id = None  # Clear after done
-                            self.total_tasks_failed += 1
-                            self.remove_task_from_all_stages(task_id)
-
-                    self.imaging_queue.submit(tid, task, telescope_task, on_imaging_complete)
-                    completed += 1
-
-                if completed > 0:
-                    self.logger.info(self._heap_summary("Completed tasks"))
-            except Exception as e:
-                self.logger.error(f"Exception in task_runner loop: {e}", exc_info=True)
-                time.sleep(5)  # avoid tight error loop
-
-            self.autofocus_manager.check_and_execute()
+                    if completed > 0:
+                        self.logger.info(self._heap_summary("Completed tasks"))
+                except Exception as e:
+                    self.logger.error(f"Exception in task_runner loop: {e}", exc_info=True)
+                    time.sleep(5)
 
             self._stop_event.wait(1)
 

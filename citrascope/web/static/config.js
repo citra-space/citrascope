@@ -308,6 +308,8 @@ async function saveConfiguration(event) {
         autofocus_target_preset: store.config.autofocus_target_preset || 'mirach',
         autofocus_target_custom_ra: store.config.autofocus_target_custom_ra,
         autofocus_target_custom_dec: store.config.autofocus_target_custom_dec,
+        alignment_exposure_seconds: store.config.alignment_exposure_seconds || 2.0,
+        align_on_startup: store.config.align_on_startup || false,
     };
 
     try {
@@ -680,13 +682,71 @@ export async function initFilterConfig() {
     await loadFilterConfig();
 }
 
+async function triggerAlignment() {
+    const store = Alpine.store('citrascope');
+    const isCancel = store.status?.alignment_requested;
+
+    if (isCancel) {
+        try {
+            const response = await fetch('/api/adapter/alignment/cancel', { method: 'POST' });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                showToast('Alignment cancelled', 'info');
+            } else {
+                showToast('Nothing to cancel', 'warning');
+            }
+        } catch (error) {
+            console.error('Error cancelling alignment:', error);
+            showToast('Failed to cancel alignment', 'error');
+        }
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/adapter/alignment', { method: 'POST' });
+        const data = await response.json();
+        if (response.ok) {
+            showToast('Alignment queued', 'success');
+        } else {
+            showToast(data.error || 'Alignment request failed', 'error');
+        }
+    } catch (error) {
+        console.error('Error triggering alignment:', error);
+        showToast('Failed to trigger alignment', 'error');
+    }
+}
+
+async function manualSync(ra, dec) {
+    if (ra === '' || ra == null || dec === '' || dec == null) {
+        showToast('Enter RA and Dec values before syncing', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/adapter/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ra: parseFloat(ra), dec: parseFloat(dec) }),
+        });
+        const data = await response.json();
+        if (response.ok && data.success) {
+            showToast(data.message || 'Mount synced', 'success');
+        } else {
+            showToast(data.error || 'Sync failed', 'error');
+        }
+    } catch (error) {
+        console.error('Error syncing mount:', error);
+        showToast('Failed to sync mount', 'error');
+    }
+}
+
 /**
- * Setup autofocus button event listener (call once during init)
+ * Setup autofocus/alignment button event listeners (call once during init)
  */
-// Autofocus button now uses Alpine @click directive in template
-// Expose triggerAutofocus for template access
 export function setupAutofocusButton() {
     window.triggerAutofocus = triggerAutofocus;
+    window.triggerAlignment = triggerAlignment;
+    window.manualSync = manualSync;
 }
 
 /**

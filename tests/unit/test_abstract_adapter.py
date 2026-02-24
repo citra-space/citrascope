@@ -64,9 +64,6 @@ class StubAdapter(AbstractAstroHardwareAdapter):
     def get_tracking_rate(self):
         return (15.0, 0.0)
 
-    def perform_alignment(self, target_ra, target_dec):
-        return True
-
 
 @pytest.fixture
 def adapter(tmp_path):

@@ -121,130 +121,214 @@
                                 </template>
                             </div>
 
-                            <!-- Filter Configuration Section (shown when adapter supports filters) -->
-                            <div id="filterConfigSection" x-show="$store.citrascope.filterConfigVisible" style="margin-top: 1.5rem;">
-                                <hr class="border-secondary">
-                                <h5 class="mb-3">Filter Configuration</h5>
-                                <p class="text-muted mb-3" x-show="$store.citrascope.filterAdapterChangeMessageVisible">
-                                    Save configuration to edit filter settings for this adapter
-                                </p>
-                                <div class="row">
-                                    <!-- Filter List Column -->
-                                    <div class="col-12 col-md-6">
-                                        <h6 class="mb-2">Filters</h6>
-                                        <div id="filterTableContainer">
-                                            <table class="table table-dark table-sm">
-                                                <thead>
-                                                    <tr>
-                                                        <th>Enabled</th>
-                                                        <th>Name</th>
-                                                        <th>Focus Position</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    <template x-for="[filterId, filter] in Object.entries($store.citrascope.filters || {})" :key="filterId">
-                                                        <tr x-data="filterRow(filter, filterId)">
-                                                            <td>
-                                                                <input type="checkbox" class="form-check-input filter-enabled-checkbox"
-                                                                    :data-filter-id="filterId" x-model="$store.citrascope.filters[filterId].enabled">
-                                                            </td>
-                                                            <td>
-                                                                <span class="badge" :style="badgeStyle" x-text="filter.name"></span>
-                                                            </td>
-                                                            <td>
-                                                                <input type="number" class="form-control form-control-sm filter-focus-input"
-                                                                    :data-filter-id="filterId" x-model.number="$store.citrascope.filters[filterId].focus_position" min="0" step="1">
-                                                            </td>
+                            <!-- Filter Configuration Card -->
+                            <div x-show="$store.citrascope.filterConfigVisible" class="card bg-dark border-secondary mb-3 mt-3">
+                                <div class="card-header">
+                                    <h6 class="mb-0">Filter Configuration</h6>
+                                </div>
+                                <div class="card-body">
+                                    <p class="text-muted mb-3" x-show="$store.citrascope.filterAdapterChangeMessageVisible">
+                                        Save configuration to edit filter settings for this adapter
+                                    </p>
+                                    <div class="row">
+                                        <!-- Filter List Column -->
+                                        <div class="col-12" :class="$store.citrascope.status?.supports_autofocus ? 'col-md-6' : ''">
+                                            <h6 class="mb-2">Filters</h6>
+                                            <div id="filterTableContainer">
+                                                <table class="table table-dark table-sm">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Enabled</th>
+                                                            <th>Name</th>
+                                                            <th>Focus Position</th>
                                                         </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <template x-for="[filterId, filter] in Object.entries($store.citrascope.filters || {})" :key="filterId">
+                                                            <tr x-data="filterRow(filter, filterId)">
+                                                                <td>
+                                                                    <input type="checkbox" class="form-check-input filter-enabled-checkbox"
+                                                                        :data-filter-id="filterId" x-model="$store.citrascope.filters[filterId].enabled">
+                                                                </td>
+                                                                <td>
+                                                                    <span class="badge" :style="badgeStyle" x-text="filter.name"></span>
+                                                                </td>
+                                                                <td>
+                                                                    <input type="number" class="form-control form-control-sm filter-focus-input"
+                                                                        :data-filter-id="filterId" x-model.number="$store.citrascope.filters[filterId].focus_position" min="0" step="1">
+                                                                </td>
+                                                            </tr>
+                                                        </template>
+                                                    </tbody>
+                                                </table>
+                                                <div class="text-muted small" x-show="Object.keys($store.citrascope.filters || {}).length === 0">
+                                                    No filters configured. Connect to hardware to discover filters.
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Autofocus Column -->
+                                        <div class="col-12 col-md-6" x-show="$store.citrascope.status?.supports_autofocus">
+                                            <h6 class="mb-2">Autofocus</h6>
+                                            <div class="mb-3">
+                                                <button type="button" class="btn btn-sm w-100"
+                                                    :class="$store.citrascope.status?.autofocus_running ? 'btn-outline-info' : ($store.citrascope.status?.autofocus_requested ? 'btn-outline-warning' : 'btn-outline-primary')"
+                                                    :disabled="$store.citrascope.status?.autofocus_running"
+                                                    @click="window.triggerAutofocus()">
+                                                    <template x-if="$store.citrascope.status?.autofocus_running">
+                                                        <span>
+                                                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                                            Autofocusing...
+                                                        </span>
                                                     </template>
-                                                </tbody>
-                                            </table>
-                                            <div class="text-muted small" x-show="Object.keys($store.citrascope.filters || {}).length === 0">
-                                                No filters configured. Connect to hardware to discover filters.
+                                                    <template x-if="!$store.citrascope.status?.autofocus_running">
+                                                        <span x-text="$store.citrascope.status?.autofocus_requested ? 'Cancel Autofocus' : 'Run Autofocus'">Run Autofocus</span>
+                                                    </template>
+                                                </button>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label small text-muted">Last Autofocus</label>
+                                                <div x-show="$store.citrascope.status?.autofocus_running" class="text-info"
+                                                     x-text="$store.citrascope.status?.autofocus_progress || 'In progress...'"></div>
+                                                <div x-show="!$store.citrascope.status?.autofocus_running" class="text-light" x-text="$store.citrascope.formatLastAutofocus($store.citrascope.status)">Never</div>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label for="autofocus_target_preset" class="form-label small">Focus Target</label>
+                                                <select id="autofocus_target_preset" class="form-select form-select-sm"
+                                                    x-model="$store.citrascope.config.autofocus_target_preset">
+                                                    <template x-for="preset in $store.citrascope.autofocusPresets" :key="preset.key">
+                                                        <option :value="preset.key"
+                                                            x-text="preset.name + ' (' + preset.designation + ', mag ' + preset.mag.toFixed(1) + ')'"></option>
+                                                    </template>
+                                                    <option value="custom">Custom RA/Dec</option>
+                                                </select>
+                                                <template x-if="$store.citrascope.config.autofocus_target_preset && $store.citrascope.config.autofocus_target_preset !== 'custom'">
+                                                    <div class="form-text small"
+                                                        x-text="(() => { const p = $store.citrascope.autofocusPresets.find(pr => pr.key === $store.citrascope.config.autofocus_target_preset); return p ? p.description : ''; })()">
+                                                    </div>
+                                                </template>
+                                            </div>
+                                            <template x-if="$store.citrascope.config.autofocus_target_preset === 'custom'">
+                                                <div class="mb-3">
+                                                    <div class="row g-2">
+                                                        <div class="col-6">
+                                                            <label for="autofocus_custom_ra" class="form-label small">RA (degrees)</label>
+                                                            <input type="number" id="autofocus_custom_ra" class="form-control form-control-sm"
+                                                                step="any" min="0" max="360" placeholder="0 - 360"
+                                                                x-model.number="$store.citrascope.config.autofocus_target_custom_ra">
+                                                        </div>
+                                                        <div class="col-6">
+                                                            <label for="autofocus_custom_dec" class="form-label small">Dec (degrees)</label>
+                                                            <input type="number" id="autofocus_custom_dec" class="form-control form-control-sm"
+                                                                step="any" min="-90" max="90" placeholder="-90 - 90"
+                                                                x-model.number="$store.citrascope.config.autofocus_target_custom_dec">
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                            <div class="mb-3">
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <div class="form-check mb-0">
+                                                        <input class="form-check-input" type="checkbox" id="scheduled_autofocus_enabled" x-model="$store.citrascope.config.scheduled_autofocus_enabled">
+                                                        <label class="form-check-label text-nowrap" for="scheduled_autofocus_enabled">
+                                                            Scheduled
+                                                        </label>
+                                                    </div>
+                                                    <select id="autofocus_interval_minutes" class="form-select form-select-sm"
+                                                        style="width: auto;"
+                                                        x-model.number="$store.citrascope.config.autofocus_interval_minutes"
+                                                        :disabled="!$store.citrascope.config.scheduled_autofocus_enabled">
+                                                        <option value="30">every 30m</option>
+                                                        <option value="60">every 1h</option>
+                                                        <option value="120">every 2h</option>
+                                                        <option value="180">every 3h</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="small text-muted" x-show="$store.citrascope.status?.next_autofocus_minutes != null">
+                                                Next autofocus in: <span x-text="$store.citrascope.status?.next_autofocus_minutes === 0 ? 'now (overdue)' : $store.citrascope.formatMinutes($store.citrascope.status?.next_autofocus_minutes || 0)">--</span>
                                             </div>
                                         </div>
                                     </div>
+                                </div>
+                            </div>
 
-                                    <!-- Autofocus Column -->
-                                    <div class="col-12 col-md-6">
-                                        <h6 class="mb-2">Autofocus</h6>
-                                        <div class="mb-3">
-                                            <button type="button" class="btn btn-sm w-100"
-                                                :class="$store.citrascope.status?.autofocus_running ? 'btn-outline-info' : ($store.citrascope.status?.autofocus_requested ? 'btn-outline-warning' : 'btn-outline-primary')"
-                                                :disabled="$store.citrascope.status?.autofocus_running"
-                                                @click="window.triggerAutofocus()">
-                                                <template x-if="$store.citrascope.status?.autofocus_running">
-                                                    <span>
-                                                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                                                        Autofocusing...
-                                                    </span>
-                                                </template>
-                                                <template x-if="!$store.citrascope.status?.autofocus_running">
-                                                    <span x-text="$store.citrascope.status?.autofocus_requested ? 'Cancel Autofocus' : 'Run Autofocus'">Run Autofocus</span>
-                                                </template>
-                                            </button>
-                                        </div>
-                                        <div class="mb-3">
-                                            <label class="form-label small text-muted">Last Autofocus</label>
-                                            <div x-show="$store.citrascope.status?.autofocus_running" class="text-info"
-                                                 x-text="$store.citrascope.status?.autofocus_progress || 'In progress...'"></div>
-                                            <div x-show="!$store.citrascope.status?.autofocus_running" class="text-light" x-text="$store.citrascope.formatLastAutofocus($store.citrascope.status)">Never</div>
-                                        </div>
-                                        <div class="mb-3">
-                                            <label for="autofocus_target_preset" class="form-label small">Focus Target</label>
-                                            <select id="autofocus_target_preset" class="form-select form-select-sm"
-                                                x-model="$store.citrascope.config.autofocus_target_preset">
-                                                <template x-for="preset in $store.citrascope.autofocusPresets" :key="preset.key">
-                                                    <option :value="preset.key"
-                                                        x-text="preset.name + ' (' + preset.designation + ', mag ' + preset.mag.toFixed(1) + ')'"></option>
-                                                </template>
-                                                <option value="custom">Custom RA/Dec</option>
-                                            </select>
-                                            <template x-if="$store.citrascope.config.autofocus_target_preset && $store.citrascope.config.autofocus_target_preset !== 'custom'">
-                                                <div class="form-text small"
-                                                    x-text="(() => { const p = $store.citrascope.autofocusPresets.find(pr => pr.key === $store.citrascope.config.autofocus_target_preset); return p ? p.description : ''; })()">
-                                                </div>
-                                            </template>
-                                        </div>
-                                        <template x-if="$store.citrascope.config.autofocus_target_preset === 'custom'">
+                            <!-- Mount Alignment Card -->
+                            <div x-show="$store.citrascope.status?.supports_alignment || $store.citrascope.status?.supports_manual_sync"
+                                 class="card bg-dark border-secondary mb-3"
+                                 x-data="{ syncRa: $store.citrascope.status?.telescope_ra ?? '', syncDec: $store.citrascope.status?.telescope_dec ?? '' }">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <h6 class="mb-0">Mount Alignment</h6>
+                                    <small class="text-muted font-monospace"
+                                        x-show="$store.citrascope.status?.telescope_ra != null"
+                                        x-text="'Position: RA ' + ($store.citrascope.status?.telescope_ra?.toFixed(4) ?? '—') + '°  Dec ' + ($store.citrascope.status?.telescope_dec?.toFixed(4) ?? '—') + '°'">
+                                    </small>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <!-- Alignment Controls Column -->
+                                        <div class="col-12 col-md-6" x-show="$store.citrascope.status?.supports_alignment">
+                                            <h6 class="mb-2">Plate-Solve Alignment</h6>
                                             <div class="mb-3">
-                                                <div class="row g-2">
-                                                    <div class="col-6">
-                                                        <label for="autofocus_custom_ra" class="form-label small">RA (degrees)</label>
-                                                        <input type="number" id="autofocus_custom_ra" class="form-control form-control-sm"
-                                                            step="any" min="0" max="360" placeholder="0 - 360"
-                                                            x-model.number="$store.citrascope.config.autofocus_target_custom_ra">
-                                                    </div>
-                                                    <div class="col-6">
-                                                        <label for="autofocus_custom_dec" class="form-label small">Dec (degrees)</label>
-                                                        <input type="number" id="autofocus_custom_dec" class="form-control form-control-sm"
-                                                            step="any" min="-90" max="90" placeholder="-90 - 90"
-                                                            x-model.number="$store.citrascope.config.autofocus_target_custom_dec">
-                                                    </div>
-                                                </div>
+                                                <button type="button" class="btn btn-sm w-100"
+                                                    :class="$store.citrascope.status?.alignment_running ? 'btn-outline-info' : ($store.citrascope.status?.alignment_requested ? 'btn-outline-warning' : 'btn-outline-primary')"
+                                                    :disabled="$store.citrascope.status?.alignment_running"
+                                                    @click="window.triggerAlignment()">
+                                                    <template x-if="$store.citrascope.status?.alignment_running">
+                                                        <span>
+                                                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                                            Aligning...
+                                                        </span>
+                                                    </template>
+                                                    <template x-if="!$store.citrascope.status?.alignment_running">
+                                                        <span x-text="$store.citrascope.status?.alignment_requested ? 'Cancel Alignment' : 'Align Now'">Align Now</span>
+                                                    </template>
+                                                </button>
                                             </div>
-                                        </template>
-                                        <div class="mb-3">
-                                            <div class="d-flex align-items-center gap-2">
-                                                <div class="form-check mb-0">
-                                                    <input class="form-check-input" type="checkbox" id="scheduled_autofocus_enabled" x-model="$store.citrascope.config.scheduled_autofocus_enabled">
-                                                    <label class="form-check-label text-nowrap" for="scheduled_autofocus_enabled">
-                                                        Scheduled
-                                                    </label>
-                                                </div>
-                                                <select id="autofocus_interval_minutes" class="form-select form-select-sm"
-                                                    style="width: auto;"
-                                                    x-model.number="$store.citrascope.config.autofocus_interval_minutes"
-                                                    :disabled="!$store.citrascope.config.scheduled_autofocus_enabled">
-                                                    <option value="30">every 30m</option>
-                                                    <option value="60">every 1h</option>
-                                                    <option value="120">every 2h</option>
-                                                    <option value="180">every 3h</option>
-                                                </select>
+                                            <div class="mb-3">
+                                                <label class="form-label small text-muted">Last Alignment</label>
+                                                <div x-show="$store.citrascope.status?.alignment_running" class="text-info"
+                                                     x-text="$store.citrascope.status?.alignment_progress || 'In progress...'"></div>
+                                                <div x-show="!$store.citrascope.status?.alignment_running" class="text-light"
+                                                     x-text="$store.citrascope.formatTimestamp($store.citrascope.status?.last_alignment_timestamp)">Never</div>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label for="alignment_exposure_seconds" class="form-label small">Alignment Exposure (seconds)</label>
+                                                <input type="number" id="alignment_exposure_seconds" class="form-control form-control-sm"
+                                                    step="0.5" min="0.5" max="30"
+                                                    x-model.number="$store.citrascope.config.alignment_exposure_seconds">
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" id="align_on_startup"
+                                                    x-model="$store.citrascope.config.align_on_startup">
+                                                <label class="form-check-label" for="align_on_startup">
+                                                    Align on startup
+                                                </label>
                                             </div>
                                         </div>
-                                        <div class="small text-muted" x-show="$store.citrascope.status?.next_autofocus_minutes != null">
-                                            Next autofocus in: <span x-text="$store.citrascope.status?.next_autofocus_minutes === 0 ? 'now (overdue)' : $store.citrascope.formatMinutes($store.citrascope.status?.next_autofocus_minutes || 0)">--</span>
+
+                                        <!-- Manual Sync Column -->
+                                        <div class="col-12 col-md-6" x-show="$store.citrascope.status?.supports_manual_sync">
+                                            <h6 class="mb-2">Manual Sync</h6>
+                                            <p class="text-muted small mb-2">Tell the mount where it's currently pointing (no camera needed)</p>
+                                            <div class="row g-2 mb-3">
+                                                <div class="col-6">
+                                                    <label for="sync_ra" class="form-label small">RA (degrees)</label>
+                                                    <input type="number" id="sync_ra" class="form-control form-control-sm"
+                                                        step="any" min="0" max="360" placeholder="0 - 360"
+                                                        x-model.number="syncRa">
+                                                </div>
+                                                <div class="col-6">
+                                                    <label for="sync_dec" class="form-label small">Dec (degrees)</label>
+                                                    <input type="number" id="sync_dec" class="form-control form-control-sm"
+                                                        step="any" min="-90" max="90" placeholder="-90 - 90"
+                                                        x-model.number="syncDec">
+                                                </div>
+                                            </div>
+                                            <button type="button" class="btn btn-sm btn-outline-primary w-100"
+                                                @click="window.manualSync(syncRa, syncDec)">
+                                                <i class="bi bi-crosshair me-1"></i> Manually Sync Mount
+                                            </button>
                                         </div>
                                     </div>
                                 </div>

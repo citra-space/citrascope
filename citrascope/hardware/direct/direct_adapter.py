@@ -773,30 +773,71 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             return self.mount.get_tracking_rate()  # type: ignore
         return (0.0, 0.0)
 
+    def update_from_plate_solve(
+        self,
+        solved_ra_deg: float,
+        solved_dec_deg: float,
+        expected_ra_deg: float | None = None,
+        expected_dec_deg: float | None = None,
+    ) -> None:
+        if not self.mount:
+            return
+        self.mount.sync_to_radec(solved_ra_deg, solved_dec_deg)
+        if expected_ra_deg is not None and expected_dec_deg is not None:
+            error = self.angular_distance(solved_ra_deg, solved_dec_deg, expected_ra_deg, expected_dec_deg)
+            self.logger.info(f"Mount synced from plate solve (pointing error: {error * 60:.1f} arcmin)")
+        else:
+            self.logger.info(f"Mount synced from plate solve to RA={solved_ra_deg:.4f}°, Dec={solved_dec_deg:.4f}°")
+
     def perform_alignment(self, target_ra: float, target_dec: float) -> bool:
-        """Perform plate-solving alignment.
+        """Plate-solve at the current position and sync the mount.
+
+        Takes a short exposure, plate-solves it, and syncs the mount to the
+        solved coordinates.  Retries with increasing exposure if the solve fails.
 
         Args:
-            target_ra: Target RA in degrees
-            target_dec: Target Dec in degrees
+            target_ra: Expected RA in degrees (for logging/error reporting).
+            target_dec: Expected Dec in degrees (for logging/error reporting).
 
         Returns:
-            True if alignment successful
-
-        Note:
-            Basic implementation - subclasses can override with plate-solving
+            True if plate solve + sync succeeded.
         """
         if not self.mount:
-            self.logger.warning("No mount configured - cannot perform alignment")
+            self.logger.warning("No mount configured — cannot perform alignment")
+            return False
+        if not self.camera:
+            self.logger.warning("No camera configured — cannot perform alignment")
+            return False
+        if not self.telescope_record:
+            self.logger.warning("No telescope_record available — cannot plate-solve for alignment")
             return False
 
-        # Basic alignment: just slew to position
-        # TODO: Add plate-solving support
-        self.logger.info(f"Performing basic alignment to RA={target_ra:.4f}°, Dec={target_dec:.4f}°")
+        from citrascope.processors.builtin.plate_solver_processor import PlateSolverProcessor
 
-        try:
-            self._do_point_telescope(target_ra, target_dec)
-            return True
-        except Exception as e:
-            self.logger.error(f"Alignment failed: {e}")
-            return False
+        exposure_attempts = [2.0, 4.0, 8.0]
+        for exposure_s in exposure_attempts:
+            self.logger.info(f"Alignment: taking {exposure_s:.0f}s exposure for plate solve...")
+            try:
+                image_path = self.take_image("alignment", exposure_s)
+            except Exception as exc:
+                self.logger.error(f"Alignment exposure failed: {exc}")
+                continue
+
+            result = PlateSolverProcessor.solve(
+                Path(image_path),
+                self.telescope_record,
+            )
+            if result is not None:
+                solved_ra, solved_dec = result
+                self.mount.sync_to_radec(solved_ra, solved_dec)
+                error = self.angular_distance(solved_ra, solved_dec, target_ra, target_dec)
+                self.logger.info(
+                    f"Alignment successful: solved RA={solved_ra:.4f}°, Dec={solved_dec:.4f}° "
+                    f"(error from target: {error * 60:.1f} arcmin)"
+                )
+                return True
+
+            self.logger.warning(f"Plate solve failed with {exposure_s:.0f}s exposure, retrying...")
+
+        self.logger.error("Alignment failed: plate solve did not converge after all attempts")
+        return False
