@@ -37,6 +37,10 @@ _TLE_SOURCES: list[dict[str, str | int]] = [
 MIN_ELEVATION_DEG = 15.0
 PASS_SEARCH_HOURS = 12
 
+_DEFAULT_STATION_LAT = 38.8409
+_DEFAULT_STATION_LON = -105.0423
+_DEFAULT_STATION_ALT = 4302  # metres, summit of Pikes Peak
+
 
 def _parse_3le_text(text: str) -> list[dict[str, str]]:
     """Parse CelesTrak 3LE format (-name / line1 / line2) into dicts."""
@@ -199,10 +203,10 @@ class DummyApiClient(AbstractCitraApiClient):
             },
             "ground_station": {
                 "id": "dummy-gs-001",
-                "name": "Test Ground Station",
-                "latitude": 37.7749,
-                "longitude": -122.4194,
-                "altitude": 100,
+                "name": "Pikes Peak Observatory",
+                "latitude": _DEFAULT_STATION_LAT,
+                "longitude": _DEFAULT_STATION_LON,
+                "altitude": _DEFAULT_STATION_ALT,
             },
             "tasks": [],
             "satellites": satellites,
@@ -361,9 +365,9 @@ class DummyApiClient(AbstractCitraApiClient):
     ) -> list[dict]:
         """Find satellites visible now and upcoming passes, prioritizing immediate targets."""
         observer = wgs84.latlon(
-            ground_station.get("latitude", 37.7749),
-            ground_station.get("longitude", -122.4194),
-            elevation_m=ground_station.get("altitude", 100),
+            ground_station.get("latitude", _DEFAULT_STATION_LAT),
+            ground_station.get("longitude", _DEFAULT_STATION_LON),
+            elevation_m=ground_station.get("altitude", _DEFAULT_STATION_ALT),
         )
 
         now = datetime.now(timezone.utc)
