@@ -30,6 +30,7 @@ Authoritative references (in order):
      https://github.com/hjd1964/OnStepX/tree/main/src/telescope/mount
 
   3. **jmcguigs/zwo-control-rs** — Rust reference implementation.
+   https://raw.githubusercontent.com/jmcguigs/zwo-control-rs/refs/heads/master/src/protocol.rs
 
   4. **ZWO Mount Serial Communication Protocol v2.1** — official but incomplete.
 
@@ -415,18 +416,27 @@ class ZwoAmCommands:
     @staticmethod
     def set_latitude(latitude: float) -> str:
         sign = "+" if latitude >= 0.0 else "-"
-        total_arcmin = round(abs(latitude) * 60.0)
-        d = total_arcmin // 60
-        m = total_arcmin % 60
-        return f":St{sign}{d}*{m:02d}#"
+        total_arcsec = round(abs(latitude) * 3600.0)
+        d = total_arcsec // 3600
+        m = (total_arcsec % 3600) // 60
+        s = total_arcsec % 60
+        return f":St{sign}{d:02d}*{m:02d}:{s:02d}#"
 
     @staticmethod
     def set_longitude(longitude: float) -> str:
-        lon = longitude + 360.0 if longitude < 0.0 else longitude
-        total_arcmin = round(lon * 60.0)
-        d = total_arcmin // 60
-        m = total_arcmin % 60
-        return f":Sg{d:03d}*{m:02d}#"
+        """Build ``:Sg`` from east-positive decimal degrees.
+
+        The AM5 (like all Meade LX200 variants) uses west-positive
+        longitude: the input is negated and a ``+``/``-`` sign is
+        prepended.  Matches the INDI ``lx200am5`` driver.
+        """
+        meade_lon = -longitude
+        sign = "+" if meade_lon >= 0.0 else "-"
+        total_arcsec = round(abs(meade_lon) * 3600.0)
+        d = total_arcsec // 3600
+        m = (total_arcsec % 3600) // 60
+        s = total_arcsec % 60
+        return f":Sg{sign}{d:03d}*{m:02d}:{s:02d}#"
 
     @staticmethod
     def set_date(month: int, day: int, year: int) -> str:
@@ -581,13 +591,15 @@ class ZwoAmResponseParser:
         _errors = {
             "0": None,
             "1": "Object below horizon",
-            "2": "Object below minimum elevation",
+            "2": "Above overhead limit",
+            "3": "Mount busy",
             "4": "Position unreachable",
             "5": "Not aligned",
             "6": "Outside limits",
             "7": "Pier side limit",
             "e1": "Object below horizon",
-            "e2": "Object below minimum elevation",
+            "e2": "Above overhead limit",
+            "e3": "Mount busy",
             "e4": "Position unreachable",
             "e5": "Not aligned",
             "e6": "Outside limits",

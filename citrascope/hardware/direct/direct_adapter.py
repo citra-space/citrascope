@@ -416,13 +416,15 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             self.logger.info("Mount already homed")
 
         # Configure altitude limits for full-sky access.
-        # On firmware 1.1.2 the :GL/:SL limit commands collide with
-        # Get/Set Local Time and silently fail — that's expected.
+        # Set values BEFORE enabling so we don't accidentally enforce
+        # restrictive defaults.  On firmware 1.1.2 the :GL/:SL limit
+        # commands collide with Get/Set Local Time and silently fail.
         try:
-            self.mount.set_altitude_limits_enabled(True)
             upper_ok = self.mount.set_overhead_limit(90)
             lower_ok = self.mount.set_horizon_limit(0)
-            if not (upper_ok and lower_ok):
+            if upper_ok and lower_ok:
+                self.mount.set_altitude_limits_enabled(True)
+            else:
                 self.logger.info("Altitude limit commands not supported on this firmware — using mount defaults")
         except Exception:
             self.logger.debug("Altitude limit configuration not supported", exc_info=True)

@@ -297,7 +297,8 @@ class ZwoAmMount(AbstractMount):
         response = self._transport.send_goto_command(ZwoAmCommands.goto())
         error = ZwoAmResponseParser.parse_goto_response(response)
         if error is not None:
-            self.logger.error("GoTo failed: %s", error)
+            self.logger.error("GoTo failed: %s (raw response: %r)", error, response)
+            self._log_goto_diagnostics(ra, dec)
             return False
 
         self.logger.info("Slewing to RA=%.4f° Dec=%.4f°", ra, dec)
@@ -519,6 +520,27 @@ class ZwoAmMount(AbstractMount):
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
+
+    def _log_goto_diagnostics(self, ra: float, dec: float) -> None:
+        """Log mount state to help diagnose GoTo rejections."""
+        try:
+            _, _, at_home, parked, mode = self._get_status_flags()
+            limits_on = self.get_altitude_limits_enabled()
+            lower, upper = self.get_limits()
+            self.logger.warning(
+                "GoTo diagnostic — target RA=%.4f° Dec=%.4f° | mode=%s home=%s parked=%s "
+                "| limits_enabled=%s lower=%s° upper=%s°",
+                ra,
+                dec,
+                mode.value,
+                at_home,
+                parked,
+                limits_on,
+                lower,
+                upper,
+            )
+        except Exception:
+            self.logger.debug("Could not read mount state for GoTo diagnostics", exc_info=True)
 
     def _get_status_flags(self) -> tuple[bool, bool, bool, bool, MountMode]:
         resp = self._transport.send_command_with_retry(ZwoAmCommands.get_status())

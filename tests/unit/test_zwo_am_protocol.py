@@ -115,16 +115,30 @@ class TestZwoAmCommands:
     # --- site location ---
 
     def test_set_latitude_positive(self):
-        assert ZwoAmCommands.set_latitude(46.5) == ":St+46*30#"
+        assert ZwoAmCommands.set_latitude(46.5) == ":St+46*30:00#"
 
     def test_set_latitude_negative(self):
-        assert ZwoAmCommands.set_latitude(-33.75) == ":St-33*45#"
+        assert ZwoAmCommands.set_latitude(-33.75) == ":St-33*45:00#"
 
-    def test_set_longitude_positive(self):
-        assert ZwoAmCommands.set_longitude(6.25) == ":Sg006*15#"
+    def test_set_latitude_san_francisco(self):
+        cmd = ZwoAmCommands.set_latitude(37.7749)
+        assert cmd == ":St+37*46:30#"
 
-    def test_set_longitude_negative_wraps(self):
-        assert ZwoAmCommands.set_longitude(-118.5) == ":Sg241*30#"
+    def test_set_longitude_east_positive(self):
+        # East-positive input (e.g. Zurich at 6.25°E) becomes Meade west-negative
+        assert ZwoAmCommands.set_longitude(6.25) == ":Sg-006*15:00#"
+
+    def test_set_longitude_west_negative(self):
+        # West longitude (e.g. Los Angeles at -118.5°) becomes Meade west-positive
+        assert ZwoAmCommands.set_longitude(-118.5) == ":Sg+118*30:00#"
+
+    def test_set_longitude_san_francisco(self):
+        # Matches INDI lx200am5 driver output for SF
+        cmd = ZwoAmCommands.set_longitude(-122.4194)
+        assert cmd.startswith(":Sg+122*25:")
+
+    def test_set_longitude_greenwich(self):
+        assert ZwoAmCommands.set_longitude(0.0) == ":Sg+000*00:00#"
 
     # --- guide rate ---
 
@@ -392,6 +406,21 @@ class TestZwoAmResponseParser:
         assert result is not None
         assert "pier" in result.lower()
 
+    def test_parse_goto_above_overhead(self):
+        result = ZwoAmResponseParser.parse_goto_response("2#")
+        assert result is not None
+        assert "overhead" in result.lower()
+
+    def test_parse_goto_mount_busy(self):
+        result = ZwoAmResponseParser.parse_goto_response("3#")
+        assert result is not None
+        assert "busy" in result.lower()
+
+    def test_parse_goto_e3_mount_busy(self):
+        result = ZwoAmResponseParser.parse_goto_response("e3#")
+        assert result is not None
+        assert "busy" in result.lower()
+
     def test_parse_goto_e6_outside_limits(self):
         result = ZwoAmResponseParser.parse_goto_response("e6#")
         assert result is not None
@@ -400,6 +429,10 @@ class TestZwoAmResponseParser:
     def test_parse_goto_e_prefixed_codes(self):
         assert ZwoAmResponseParser.parse_goto_response("e1#") is not None
         assert "horizon" in ZwoAmResponseParser.parse_goto_response("e1#").lower()  # type: ignore[union-attr]
+        assert ZwoAmResponseParser.parse_goto_response("e2#") is not None
+        assert "overhead" in ZwoAmResponseParser.parse_goto_response("e2#").lower()  # type: ignore[union-attr]
+        assert ZwoAmResponseParser.parse_goto_response("e3#") is not None
+        assert "busy" in ZwoAmResponseParser.parse_goto_response("e3#").lower()  # type: ignore[union-attr]
         assert ZwoAmResponseParser.parse_goto_response("e5#") is not None
         assert "aligned" in ZwoAmResponseParser.parse_goto_response("e5#").lower()  # type: ignore[union-attr]
 
