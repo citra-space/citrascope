@@ -243,6 +243,7 @@ class CitraScopeWebApp:
                 "time_offset_pause_ms": settings.time_offset_pause_ms,
                 "gps_location_updates_enabled": settings.gps_location_updates_enabled,
                 "gps_update_interval_minutes": settings.gps_update_interval_minutes,
+                "task_processing_paused": settings.task_processing_paused,
                 "processors_enabled": settings.processors_enabled,
                 "enabled_processors": settings.enabled_processors,
                 "app_url": app_url,
@@ -494,6 +495,8 @@ class CitraScopeWebApp:
                 return JSONResponse({"error": "Task manager not available"}, status_code=503)
 
             self.daemon.task_manager.pause()
+            self.daemon.settings.task_processing_paused = True
+            self.daemon.settings.save()
             await self.broadcast_status()
 
             return {"status": "paused", "message": "Task processing paused"}
@@ -505,6 +508,8 @@ class CitraScopeWebApp:
                 return JSONResponse({"error": "Task manager not available"}, status_code=503)
 
             self.daemon.task_manager.resume()
+            self.daemon.settings.task_processing_paused = False
+            self.daemon.settings.save()
             await self.broadcast_status()
 
             return {"status": "active", "message": "Task processing resumed"}

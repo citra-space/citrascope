@@ -69,8 +69,8 @@ class TaskManager:
         self.heap_lock = threading.RLock()
         self._stop_event = threading.Event()
         self.current_task_id = None  # Track currently executing task
-        # Task processing control (always starts active)
-        self._processing_active = True
+        # Task processing control (restored from settings)
+        self._processing_active = not settings.task_processing_paused
         self._processing_lock = threading.Lock()
         self.autofocus_manager = AutofocusManager(
             self.logger,

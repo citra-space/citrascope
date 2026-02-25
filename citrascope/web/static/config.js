@@ -294,6 +294,7 @@ async function saveConfiguration(event) {
         time_offset_pause_ms: parseFloat(formConfig.time_offset_pause_ms || 500),
         gps_location_updates_enabled: formConfig.gps_location_updates_enabled !== undefined ? formConfig.gps_location_updates_enabled : true,
         gps_update_interval_minutes: parseInt(formConfig.gps_update_interval_minutes || 5, 10),
+        task_processing_paused: formConfig.task_processing_paused !== undefined ? formConfig.task_processing_paused : false,
         processors_enabled: formConfig.processors_enabled !== undefined ? formConfig.processors_enabled : true,
         enabled_processors: formConfig.enabled_processors || {},
         host,
