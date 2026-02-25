@@ -7,7 +7,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from citrascope.safety.cable_wrap_check import (
-    _SLEW_BLOCK_MARGIN_DEG,
     HARD_LIMIT_DEG,
     SOFT_LIMIT_DEG,
     CableWrapCheck,
@@ -170,19 +169,11 @@ class TestCableWrapCheckProposedAction:
         check._cumulative_deg = SOFT_LIMIT_DEG
         assert check.check_proposed_action("slew") is False
 
-    def test_slew_blocked_within_margin_of_soft_limit(self):
-        """Slew blocked when headroom < margin, even if below soft limit."""
+    def test_slew_allowed_just_below_soft_limit(self):
         mount = _make_mount(azimuths=[0.0])
         check = CableWrapCheck(MagicMock(), mount)
         check.check()
-        check._cumulative_deg = SOFT_LIMIT_DEG - _SLEW_BLOCK_MARGIN_DEG + 1
-        assert check.check_proposed_action("slew") is False
-
-    def test_slew_allowed_just_outside_margin(self):
-        mount = _make_mount(azimuths=[0.0])
-        check = CableWrapCheck(MagicMock(), mount)
-        check.check()
-        check._cumulative_deg = SOFT_LIMIT_DEG - _SLEW_BLOCK_MARGIN_DEG - 1
+        check._cumulative_deg = SOFT_LIMIT_DEG - 1
         assert check.check_proposed_action("slew") is True
 
     def test_slew_blocked_during_unwind(self):

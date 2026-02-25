@@ -18,9 +18,8 @@ from citrascope.safety.safety_monitor import SafetyAction, SafetyCheck
 if TYPE_CHECKING:
     from citrascope.hardware.devices.mount.abstract_mount import AbstractMount
 
-SOFT_LIMIT_DEG = 180.0
+SOFT_LIMIT_DEG = 240.0
 HARD_LIMIT_DEG = 270.0
-_SLEW_BLOCK_MARGIN_DEG = 10.0
 
 _UNWIND_POLL_INTERVAL_S = 0.5
 _STALL_THRESHOLD_DEG = 1.0
@@ -116,20 +115,7 @@ class CableWrapCheck(SafetyCheck):
             if self._unwinding:
                 return False
             if action_type == "slew":
-                abs_cumulative = abs(self._cumulative_deg)
-                if abs_cumulative >= SOFT_LIMIT_DEG:
-                    return False
-                # Block slews that could plausibly push cumulative past the
-                # soft limit during transit.  We don't know the exact target
-                # azimuth here, but any slew can add up to ~180° of wrap.
-                # Block when remaining headroom is less than the margin.
-                headroom = SOFT_LIMIT_DEG - abs_cumulative
-                if headroom < _SLEW_BLOCK_MARGIN_DEG:
-                    self._logger.warning(
-                        "Slew blocked: only %.0f° headroom before soft limit " "(need %.0f° margin)",
-                        headroom,
-                        _SLEW_BLOCK_MARGIN_DEG,
-                    )
+                if abs(self._cumulative_deg) >= SOFT_LIMIT_DEG:
                     return False
             return True
 
