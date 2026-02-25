@@ -91,6 +91,33 @@ class ZwoAmTransport(ABC):
             logger.debug("TX %s  (no response)", command)
             time.sleep(_FIRE_AND_FORGET_DELAY_S)
 
+    def _read_bool_response(self) -> str:
+        """Read a ``1``/``0`` boolean response, tolerating missing ``#``.
+
+        Must be called while ``_lock`` is already held and after the
+        command bytes have been written.  Returns the raw buffer string
+        (``"1"`` or ``"0"``).
+        """
+        buf = ""
+        deadline = time.monotonic() + self.timeout_s
+        while time.monotonic() < deadline:
+            ch = self._try_read_one()
+            if ch is None:
+                if buf in ("1", "0"):
+                    time.sleep(0.05)
+                    extra = self._try_read_one()
+                    if extra and extra != "#":
+                        buf += extra
+                    break
+                time.sleep(0.01)
+                continue
+            if ch == "#":
+                break
+            buf += ch
+            if buf in ("1", "0"):
+                time.sleep(0.1)
+        return buf
+
     def send_command_bool(self, command: str) -> bool:
         """Send a command that returns ``1`` / ``0`` (possibly without ``#``).
 
@@ -100,26 +127,7 @@ class ZwoAmTransport(ABC):
         with self._lock:
             self._clear_input()
             self._write(command.encode("ascii"))
-
-            buf = ""
-            deadline = time.monotonic() + self.timeout_s
-            while time.monotonic() < deadline:
-                ch = self._try_read_one()
-                if ch is None:
-                    if buf in ("1", "0"):
-                        time.sleep(0.05)
-                        extra = self._try_read_one()
-                        if extra and extra != "#":
-                            buf += extra
-                        break
-                    time.sleep(0.01)
-                    continue
-                if ch == "#":
-                    break
-                buf += ch
-                if buf in ("1", "0"):
-                    time.sleep(0.1)
-
+            buf = self._read_bool_response()
             logger.debug("TX %s  RX(bool) %s", command, buf)
             return buf == "1"
 
@@ -130,26 +138,7 @@ class ZwoAmTransport(ABC):
                 try:
                     self._clear_input()
                     self._write(command.encode("ascii"))
-
-                    buf = ""
-                    deadline = time.monotonic() + self.timeout_s
-                    while time.monotonic() < deadline:
-                        ch = self._try_read_one()
-                        if ch is None:
-                            if buf in ("1", "0"):
-                                time.sleep(0.05)
-                                extra = self._try_read_one()
-                                if extra and extra != "#":
-                                    buf += extra
-                                break
-                            time.sleep(0.01)
-                            continue
-                        if ch == "#":
-                            break
-                        buf += ch
-                        if buf in ("1", "0"):
-                            time.sleep(0.1)
-
+                    buf = self._read_bool_response()
                     logger.debug("TX %s  RX(bool) %s", command, buf)
                     return buf == "1"
                 except Exception as exc:

@@ -127,6 +127,18 @@ class TaskManager:
         with self.heap_lock:
             self.task_dict.pop(task_id, None)
 
+    def record_task_started(self) -> None:
+        with self._task_stats_lock:
+            self.total_tasks_started += 1
+
+    def record_task_succeeded(self) -> None:
+        with self._task_stats_lock:
+            self.total_tasks_succeeded += 1
+
+    def record_task_failed(self) -> None:
+        with self._task_stats_lock:
+            self.total_tasks_failed += 1
+
     def get_task_stats(self) -> dict:
         """Return a consistent snapshot of lifetime task counters."""
         with self._task_stats_lock:
@@ -330,7 +342,7 @@ class TaskManager:
                                 self.logger.error(f"Imaging task {task_id} permanently failed.")
                                 with self.heap_lock:
                                     self.current_task_id = None
-                                self.total_tasks_failed += 1
+                                self.record_task_failed()
                                 self.remove_task_from_all_stages(task_id)
 
                         self.imaging_queue.submit(tid, task, telescope_task, on_imaging_complete)
@@ -355,24 +367,6 @@ class TaskManager:
             task,
             self.daemon,
         )
-
-    def _observe_satellite(self, task: Task):
-        """Legacy method - now handled by ImagingQueue. Kept for reference."""
-        # stake a still
-        static_task = StaticTelescopeTask(
-            self.api_client,
-            self.hardware_adapter,
-            self.logger,
-            task,
-            self.daemon,
-        )
-        return static_task.execute()
-
-        # track the sat for a while with longer exposure
-        # tracking_task = TrackingTelescopeTask(
-        #     self.api_client, self.hardware_adapter, self.logger, task, self.daemon
-        # )
-        # return tracking_task.execute()
 
     def get_task_by_id(self, task_id: str):
         """Get a task by ID. Thread-safe."""

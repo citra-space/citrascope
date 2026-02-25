@@ -296,6 +296,9 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             _prefix_schema(get_device_schema("focuser", focuser_type), "focuser_")
         return cast(list[SettingSchemaEntry], schema)
 
+    def set_location_service(self, location_service) -> None:
+        self.location_service = location_service
+
     def get_observation_strategy(self) -> ObservationStrategy:
         """Get the observation strategy for direct control.
 
@@ -516,6 +519,11 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             self.logger.warning("No mount connected — cannot home")
             return False
         return self.mount.find_home()
+
+    def is_mount_homed(self) -> bool:
+        if not self.mount or not self.mount.is_connected():
+            return False
+        return self.mount.is_home()
 
     def get_mount_limits(self) -> tuple[int | None, int | None]:
         if not self.mount or not self.mount.is_connected():

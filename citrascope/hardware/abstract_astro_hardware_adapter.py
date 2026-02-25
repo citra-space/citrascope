@@ -135,6 +135,14 @@ class AbstractAstroHardwareAdapter(ABC):
         """For hardware driven by sequences, perform the observation sequence and return image path."""
         pass
 
+    def set_location_service(self, location_service) -> None:  # noqa: B027
+        """Provide a location service for site-coordinate synchronisation.
+
+        Called by the daemon after creating the adapter but before ``connect()``.
+        Adapters that need site location (e.g. for mount initialisation) should
+        store the reference; the default implementation is a no-op.
+        """
+
     @abstractmethod
     def connect(self) -> bool:
         """Connect to the hardware server."""
@@ -244,6 +252,14 @@ class AbstractAstroHardwareAdapter(ABC):
             True if homing was initiated successfully.
         """
         raise NotImplementedError(f"{self.__class__.__name__} does not support mount homing")
+
+    def is_mount_homed(self) -> bool:
+        """Check whether the mount has been homed.
+
+        Returns:
+            True if the mount is at its home/calibrated position.
+        """
+        return False
 
     def get_mount_limits(self) -> tuple[int | None, int | None]:
         """Get the mount's altitude limits.

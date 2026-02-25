@@ -30,9 +30,9 @@ def _make_daemon():
         "altitude": 100.0,
     }
     daemon.task_manager = MagicMock()
-    daemon.task_manager.total_tasks_started = 0
-    daemon.task_manager.total_tasks_succeeded = 0
-    daemon.task_manager.total_tasks_failed = 0
+    daemon.task_manager.record_task_started = MagicMock()
+    daemon.task_manager.record_task_succeeded = MagicMock()
+    daemon.task_manager.record_task_failed = MagicMock()
     daemon.hardware_adapter = MagicMock()
     return daemon
 
@@ -168,7 +168,7 @@ class TestUploadImageAndMarkComplete:
             result = ct.upload_image_and_mark_complete("/path/to/img.fits")
 
         assert result is True
-        assert daemon.task_manager.total_tasks_started == 1
+        daemon.task_manager.record_task_started.assert_called_once()
 
     def test_multiple_filepaths(self):
         from citrascope.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
@@ -303,9 +303,9 @@ class TestOnUploadComplete:
     def test_success(self):
         ct = self._make_concrete()
         ct._on_upload_complete("task-1", True)
-        assert ct.daemon.task_manager.total_tasks_succeeded == 1
+        ct.daemon.task_manager.record_task_succeeded.assert_called_once()
 
     def test_failure(self):
         ct = self._make_concrete()
         ct._on_upload_complete("task-1", False)
-        assert ct.daemon.task_manager.total_tasks_failed == 1
+        ct.daemon.task_manager.record_task_failed.assert_called_once()

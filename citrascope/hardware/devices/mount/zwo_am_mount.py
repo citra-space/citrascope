@@ -391,10 +391,14 @@ class ZwoAmMount(AbstractMount):
         ra_hours = ra / 15.0
 
         ra_cmd = ZwoAmCommands.set_target_ra_decimal(ra_hours)
-        self._transport.send_command_bool_with_retry(ra_cmd)
+        if not self._transport.send_command_bool_with_retry(ra_cmd):
+            self.logger.error("Mount rejected sync RA target %.4f°", ra)
+            return False
 
         dec_cmd = ZwoAmCommands.set_target_dec_decimal(dec)
-        self._transport.send_command_bool_with_retry(dec_cmd)
+        if not self._transport.send_command_bool_with_retry(dec_cmd):
+            self.logger.error("Mount rejected sync Dec target %.4f°", dec)
+            return False
 
         self._transport.send_command_with_retry(ZwoAmCommands.sync())
         self.logger.info("Synced to RA=%.4f° Dec=%.4f°", ra, dec)

@@ -66,7 +66,7 @@ class AbstractBaseTelescopeTask(ABC):
             filepaths = filepath
 
         # Count this as a started task (one increment regardless of image count)
-        self.daemon.task_manager.total_tasks_started += 1
+        self.daemon.task_manager.record_task_started()
 
         # Update status message and stage ONCE before processing loop
         if self.daemon.settings.processors_enabled:
@@ -164,10 +164,10 @@ class AbstractBaseTelescopeTask(ABC):
     def _on_upload_complete(self, task_id: str, success: bool):
         """Called by background worker when upload finishes."""
         if success:
-            self.daemon.task_manager.total_tasks_succeeded += 1
+            self.daemon.task_manager.record_task_succeeded()
             self.logger.info(f"Task {task_id} fully complete (uploaded)")
         else:
-            self.daemon.task_manager.total_tasks_failed += 1
+            self.daemon.task_manager.record_task_failed()
             self.logger.error(f"Task {task_id} upload failed - not retrying")
         self.daemon.task_manager.remove_task_from_all_stages(task_id)
 

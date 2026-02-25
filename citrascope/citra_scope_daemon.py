@@ -45,6 +45,8 @@ class CitraScopeDaemon:
         self.ground_station = None
         self.telescope_record = None
         self.configuration_error: str | None = None
+        self._stop_requested = False
+        self._shutdown_done = False
 
         # Initialize processor registry
         self.processor_registry = ProcessorRegistry(settings=self.settings, logger=CITRASCOPE_LOGGER)
@@ -259,11 +261,9 @@ class CitraScopeDaemon:
             if self.location_service:
                 self.location_service.set_ground_station(self.ground_station)
 
-            # Pass location service so the adapter can sync site coordinates to the mount
-            from citrascope.hardware.direct.direct_adapter import DirectHardwareAdapter as _DirectAdapter
-
-            if self.location_service and isinstance(self.hardware_adapter, _DirectAdapter):
-                self.hardware_adapter.location_service = self.location_service
+            # Provide location service so the adapter can sync site coordinates to the mount
+            if self.location_service:
+                self.hardware_adapter.set_location_service(self.location_service)
 
             # connect to hardware server
             CITRASCOPE_LOGGER.info(f"Connecting to hardware with {type(self.hardware_adapter).__name__}...")
@@ -474,7 +474,7 @@ class CitraScopeDaemon:
     def _shutdown(self):
         """Clean up resources on shutdown.  Idempotent — safe to call multiple
         times (e.g. from both the ``finally`` block and ``atexit``)."""
-        if getattr(self, "_shutdown_done", False):
+        if self._shutdown_done:
             return
         self._shutdown_done = True
 

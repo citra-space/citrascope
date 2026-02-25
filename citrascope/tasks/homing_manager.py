@@ -110,10 +110,7 @@ class HomingManager:
             deadline = time.monotonic() + _HOME_TIMEOUT_S
             while time.monotonic() < deadline:
                 try:
-                    at_home = (
-                        self.hardware_adapter.is_telescope_connected()
-                        and getattr(getattr(self.hardware_adapter, "mount", None), "is_home", lambda: False)()
-                    )
+                    at_home = self.hardware_adapter.is_telescope_connected() and self.hardware_adapter.is_mount_homed()
                 except Exception:
                     at_home = False
                 if at_home:
