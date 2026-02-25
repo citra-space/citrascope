@@ -284,7 +284,7 @@ class ZwoAmCommands:
 
     @staticmethod
     def set_target_azimuth_decimal(az_degrees: float) -> str:
-        az = az_degrees % 360.0 if az_degrees >= 0 else (az_degrees + 360.0)
+        az = az_degrees % 360.0
         total_arcsec = round(az * 3600.0)
         d = (total_arcsec // 3600) % 360
         m = (total_arcsec % 3600) // 60

@@ -768,8 +768,8 @@ class CitraScopeWebApp:
                 return JSONResponse({"error": "RA and Dec must be numeric (degrees)"}, status_code=400)
 
             mount = getattr(self.daemon.hardware_adapter, "mount", None)
-            if not mount or not hasattr(mount, "sync_to_radec"):
-                return JSONResponse({"error": "Mount does not support sync"}, status_code=404)
+            if not mount:
+                return JSONResponse({"error": "No mount connected"}, status_code=404)
 
             try:
                 success = mount.sync_to_radec(ra_f, dec_f)
@@ -778,6 +778,8 @@ class CitraScopeWebApp:
                     return {"success": True, "message": f"Mount synced to RA={ra_f:.4f}°, Dec={dec_f:.4f}°"}
                 else:
                     return JSONResponse({"error": "Mount sync returned failure"}, status_code=500)
+            except NotImplementedError:
+                return JSONResponse({"error": "Mount does not support sync"}, status_code=404)
             except Exception as e:
                 CITRASCOPE_LOGGER.error(f"Manual sync failed: {e}", exc_info=True)
                 return JSONResponse({"error": str(e)}, status_code=500)
@@ -938,7 +940,10 @@ class CitraScopeWebApp:
                 mount = getattr(adapter, "mount", None)
                 has_mount = mount is not None
                 self.status.supports_alignment = has_camera and has_mount
-                self.status.supports_manual_sync = has_mount and hasattr(mount, "sync_to_radec")
+                try:
+                    self.status.supports_manual_sync = has_mount and mount.get_mount_info().get("supports_sync", False)
+                except Exception:
+                    self.status.supports_manual_sync = False
 
                 if self.status.telescope_connected:
                     try:

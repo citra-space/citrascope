@@ -181,7 +181,7 @@ class ZwoAmMount(AbstractMount):
                 "name": "baud_rate",
                 "friendly_name": "Baud Rate",
                 "type": "int",
-                "default": str(DEFAULT_BAUD_RATE),
+                "default": DEFAULT_BAUD_RATE,
                 "description": "Serial baud rate (ZWO default is 9600)",
                 "required": False,
                 "group": "Mount",
@@ -201,7 +201,7 @@ class ZwoAmMount(AbstractMount):
                 "name": "tcp_port",
                 "friendly_name": "WiFi Port",
                 "type": "int",
-                "default": "4030",
+                "default": 4030,
                 "description": "TCP port for WiFi serial bridge",
                 "required": False,
                 "group": "Mount",
@@ -211,7 +211,7 @@ class ZwoAmMount(AbstractMount):
                 "name": "timeout",
                 "friendly_name": "Command Timeout",
                 "type": "float",
-                "default": str(DEFAULT_TIMEOUT_S),
+                "default": DEFAULT_TIMEOUT_S,
                 "description": "Seconds to wait for a command response",
                 "required": False,
                 "group": "Mount",
@@ -220,7 +220,7 @@ class ZwoAmMount(AbstractMount):
                 "name": "retry_count",
                 "friendly_name": "Retry Count",
                 "type": "int",
-                "default": str(DEFAULT_RETRY_COUNT),
+                "default": DEFAULT_RETRY_COUNT,
                 "description": "Number of retries for failed commands",
                 "required": False,
                 "group": "Mount",
@@ -484,9 +484,9 @@ class ZwoAmMount(AbstractMount):
         self.logger.info("Sent :AP# (set equatorial mode) — requires mount restart to take effect")
         return True
 
-    def get_mount_mode(self) -> MountMode:
+    def get_mount_mode(self) -> str:
         _, _, _, _, mode = self._get_status_flags()
-        return mode
+        return mode.value
 
     def set_site_location(self, latitude: float, longitude: float, altitude: float) -> bool:
         lat_cmd = ZwoAmCommands.set_latitude(latitude)

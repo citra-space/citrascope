@@ -32,7 +32,7 @@ class ZwoAmTransport(ABC):
 
     def __init__(self, timeout_s: float = DEFAULT_TIMEOUT_S, retry_count: int = DEFAULT_RETRY_COUNT) -> None:
         self.timeout_s = timeout_s
-        self.retry_count = retry_count
+        self.retry_count = max(1, retry_count)
         self._lock = threading.RLock()
 
     @abstractmethod
