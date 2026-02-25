@@ -29,9 +29,9 @@ class DiskSpaceCheck(SafetyCheck):
             usage = shutil.disk_usage(self._images_dir)
             self._free_bytes = usage.free
         except Exception:
-            self._logger.debug("Could not read disk usage", exc_info=True)
+            self._logger.warning("Could not read disk usage — treating as WARN", exc_info=True)
             self._free_bytes = None
-            return SafetyAction.SAFE
+            return SafetyAction.WARN
 
         if self._free_bytes < CRITICAL_BYTES:
             self._logger.error(
@@ -46,7 +46,9 @@ class DiskSpaceCheck(SafetyCheck):
         return SafetyAction.SAFE
 
     def check_proposed_action(self, action_type: str, **kwargs) -> bool:
-        if action_type == "capture" and self._free_bytes is not None:
+        if action_type == "capture":
+            if self._free_bytes is None:
+                return False
             return self._free_bytes >= CRITICAL_BYTES
         return True
 

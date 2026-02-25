@@ -68,10 +68,11 @@ class TestCableWrapCheckBasics:
         check = CableWrapCheck(MagicMock(), mount)
         assert check.check() == SafetyAction.SAFE
 
-    def test_no_azimuth_always_safe(self):
+    def test_no_azimuth_warns_in_altaz(self):
+        """Lost azimuth in alt-az mode is WARN (fail-closed)."""
         mount = _make_mount(mode="altaz")
         check = CableWrapCheck(MagicMock(), mount)
-        assert check.check() == SafetyAction.SAFE
+        assert check.check() == SafetyAction.WARN
 
     def test_initial_reading_is_safe(self):
         mount = _make_mount(azimuths=[10.0])
@@ -137,6 +138,8 @@ class TestCableWrapCheckPersistence:
 
         check = CableWrapCheck(MagicMock(), mount, state_file=state_file)
         check.check()
+        # Force save timing so the second check() persists immediately
+        check._last_save_time = 0.0
         check.check()
         assert state_file.exists()
 
@@ -259,6 +262,62 @@ class TestCableWrapStallDetection:
         logger = check._logger
         for call in logger.error.call_args_list:
             assert "stall" not in str(call).lower()
+
+
+class TestCableWrapCheckUnwindReset:
+    """Unwind should only reset cumulative on convergence, not on failure."""
+
+    def test_convergence_resets_cumulative(self):
+        """When the unwind converges, cumulative is reset to 0."""
+        azimuths = [
+            10.0,  # baseline for check()
+            10.0,  # _do_unwind: start_az
+            10.0,  # poll 1
+            7.0,  # poll 2
+            4.0,  # poll 3 — cumulative drops below _CONVERGENCE_DEG
+            4.0,  # finally: end_az
+        ]
+        mount = _make_mount(azimuths=azimuths)
+        check = CableWrapCheck(MagicMock(), mount)
+        check.check()
+        check._cumulative_deg = 8.0
+
+        check.execute_action()
+        assert check._cumulative_deg == 0.0
+
+    def test_stall_preserves_cumulative(self):
+        """When unwind stalls, cumulative is NOT reset."""
+        azimuths = [
+            0.0,  # baseline for check()
+            0.0,  # _do_unwind: start_az
+            0.0,  # poll 1
+            0.0,  # poll 2
+            0.0,  # poll 3 — stall detected (0° max step over 3 readings)
+            0.0,  # finally: end_az
+        ]
+        mount = _make_mount(azimuths=azimuths)
+        check = CableWrapCheck(MagicMock(), mount)
+        check.check()
+        check._cumulative_deg = 250.0
+
+        check.execute_action()
+        assert check._cumulative_deg == pytest.approx(250.0)
+
+    def test_lost_azimuth_preserves_cumulative(self):
+        """When azimuth reading is lost during unwind, cumulative is preserved."""
+        azimuths = [
+            10.0,  # baseline for check()
+            10.0,  # _do_unwind: start_az
+            None,  # poll 1 — lost azimuth
+            None,  # finally: end_az
+        ]
+        mount = _make_mount(azimuths=azimuths)
+        check = CableWrapCheck(MagicMock(), mount)
+        check.check()
+        check._cumulative_deg = 250.0
+
+        check.execute_action()
+        assert check._cumulative_deg == pytest.approx(250.0)
 
 
 class TestCableWrapCheckStatus:

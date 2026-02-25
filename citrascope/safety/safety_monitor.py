@@ -40,6 +40,8 @@ class SafetyError(RuntimeError):
 class SafetyCheck(ABC):
     """Abstract base for a single safety check."""
 
+    _last_action: SafetyAction = SafetyAction.SAFE
+
     @property
     @abstractmethod
     def name(self) -> str: ...
@@ -89,29 +91,43 @@ class SafetyMonitor:
     # ------------------------------------------------------------------
 
     def evaluate(self) -> tuple[SafetyAction, SafetyCheck | None]:
-        """Run all checks, return the most severe action and its trigger."""
+        """Run all checks, return the most severe action and its trigger.
+
+        Fail-closed: a check that raises is treated as QUEUE_STOP so new work
+        is blocked until the check recovers.  We don't escalate to EMERGENCY
+        because a code bug shouldn't trigger abort_slew.
+        """
         worst_action = SafetyAction.SAFE
         worst_check: SafetyCheck | None = None
         for chk in self._checks:
             try:
                 action = chk.check()
             except Exception:
-                self._logger.error("Safety check %r raised an exception", chk.name, exc_info=True)
-                continue
+                self._logger.error(
+                    "Safety check %r raised an exception — treating as QUEUE_STOP", chk.name, exc_info=True
+                )
+                action = SafetyAction.QUEUE_STOP
+            chk._last_action = action
             if _ACTION_SEVERITY[action] > _ACTION_SEVERITY[worst_action]:
                 worst_action = action
                 worst_check = chk
         return worst_action, worst_check
 
     def is_action_safe(self, action_type: str, **kwargs) -> bool:
-        """Pre-action gate: ask every check whether *action_type* is safe."""
+        """Pre-action gate: ask every check whether *action_type* is safe.
+
+        Fail-closed: if a check raises, the action is blocked.
+        """
         for chk in self._checks:
             try:
                 if not chk.check_proposed_action(action_type, **kwargs):
                     self._logger.warning("Safety check %r blocked action %r", chk.name, action_type)
                     return False
             except Exception:
-                self._logger.error("Safety check %r raised during pre-action gate", chk.name, exc_info=True)
+                self._logger.error(
+                    "Safety check %r raised during pre-action gate — blocking %r", chk.name, action_type, exc_info=True
+                )
+                return False
         return True
 
     # ------------------------------------------------------------------
@@ -161,16 +177,32 @@ class SafetyMonitor:
             self._watchdog_stop.wait(self._watchdog_interval)
 
     # ------------------------------------------------------------------
+    # Check lookup
+    # ------------------------------------------------------------------
+
+    def get_check(self, name: str) -> SafetyCheck | None:
+        """Find a registered check by name."""
+        for chk in self._checks:
+            if chk.name == name:
+                return chk
+        return None
+
+    # ------------------------------------------------------------------
     # Status reporting
     # ------------------------------------------------------------------
 
     def get_status(self) -> dict:
-        """Return status of all checks for the web UI."""
+        """Return status of all checks for the web UI.
+
+        Uses the cached ``_last_action`` from the most recent ``evaluate()``
+        call instead of calling ``check()`` again, because some checks (e.g.
+        CableWrapCheck) have side effects in ``check()``.
+        """
         check_statuses = []
         for chk in self._checks:
             try:
                 status = chk.get_status()
-                status["action"] = chk.check().value
+                status["action"] = chk._last_action.value
             except Exception:
                 status = {"name": chk.name, "action": "error"}
             check_statuses.append(status)

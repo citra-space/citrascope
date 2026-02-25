@@ -530,6 +530,11 @@ class CitraScopeDaemon:
         CITRASCOPE_LOGGER.info("Shutting down...")
         if self.safety_monitor:
             self.safety_monitor.stop_watchdog()
+            from citrascope.safety.cable_wrap_check import CableWrapCheck
+
+            cable_check = self.safety_monitor.get_check("cable_wrap")
+            if isinstance(cable_check, CableWrapCheck):
+                cable_check.join_unwind(timeout=10.0)
         if self.task_manager:
             self.task_manager.stop()
         if self.time_monitor:

@@ -840,13 +840,13 @@ class CitraScopeWebApp:
 
             from citrascope.safety.cable_wrap_check import CableWrapCheck
 
-            for chk in self.daemon.safety_monitor._checks:
-                if isinstance(chk, CableWrapCheck):
-                    if chk._unwinding:
-                        return JSONResponse({"error": "Unwind already in progress"}, status_code=409)
-                    threading.Thread(target=chk.execute_action, daemon=True, name="cable-unwind").start()
-                    return JSONResponse({"success": True, "message": "Cable unwind started"}, status_code=202)
-            return JSONResponse({"error": "No cable wrap check configured"}, status_code=404)
+            chk = self.daemon.safety_monitor.get_check("cable_wrap")
+            if not isinstance(chk, CableWrapCheck):
+                return JSONResponse({"error": "No cable wrap check configured"}, status_code=404)
+            if chk.is_unwinding:
+                return JSONResponse({"error": "Unwind already in progress"}, status_code=409)
+            threading.Thread(target=chk.execute_action, daemon=True, name="cable-unwind").start()
+            return JSONResponse({"success": True, "message": "Cable unwind started"}, status_code=202)
 
         @self.app.post("/api/safety/cable-wrap/reset")
         async def reset_cable_wrap():
@@ -856,14 +856,14 @@ class CitraScopeWebApp:
 
             from citrascope.safety.cable_wrap_check import CableWrapCheck
 
-            for chk in self.daemon.safety_monitor._checks:
-                if isinstance(chk, CableWrapCheck):
-                    if chk._unwinding:
-                        return JSONResponse({"error": "Cannot reset during unwind"}, status_code=409)
-                    chk.reset()
-                    CITRASCOPE_LOGGER.info("Cable wrap counter reset by operator")
-                    return {"success": True, "message": "Cable wrap counter reset to 0°"}
-            return JSONResponse({"error": "No cable wrap check configured"}, status_code=404)
+            chk = self.daemon.safety_monitor.get_check("cable_wrap")
+            if not isinstance(chk, CableWrapCheck):
+                return JSONResponse({"error": "No cable wrap check configured"}, status_code=404)
+            if chk.is_unwinding:
+                return JSONResponse({"error": "Cannot reset during unwind"}, status_code=409)
+            chk.reset()
+            CITRASCOPE_LOGGER.info("Cable wrap counter reset by operator")
+            return {"success": True, "message": "Cable wrap counter reset to 0°"}
 
         @self.app.post("/api/mount/limits")
         async def set_mount_limits(request: dict[str, Any]):

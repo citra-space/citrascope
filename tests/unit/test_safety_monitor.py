@@ -34,13 +34,16 @@ class _BlockingCheck(SafetyCheck):
 
 
 class _ExplodingCheck(SafetyCheck):
-    """Check that raises on every call."""
+    """Check that raises on every call (both check and pre-action gate)."""
 
     @property
     def name(self) -> str:
         return "exploding"
 
     def check(self) -> SafetyAction:
+        raise RuntimeError("boom")
+
+    def check_proposed_action(self, action_type: str, **kwargs) -> bool:
         raise RuntimeError("boom")
 
 
@@ -80,11 +83,18 @@ class TestSafetyMonitorEvaluate:
         assert action == SafetyAction.EMERGENCY
         assert check.name == "emergency"
 
-    def test_exploding_check_does_not_crash(self):
+    def test_exploding_check_treated_as_queue_stop(self):
+        """A check that raises is treated as QUEUE_STOP (fail-closed)."""
         checks = [_ExplodingCheck(), _StubCheck("ok", SafetyAction.WARN)]
         monitor = SafetyMonitor(MagicMock(), checks)
         action, check = monitor.evaluate()
-        assert action == SafetyAction.WARN
+        assert action == SafetyAction.QUEUE_STOP
+
+    def test_exploding_check_alone_is_queue_stop(self):
+        checks = [_ExplodingCheck()]
+        monitor = SafetyMonitor(MagicMock(), checks)
+        action, check = monitor.evaluate()
+        assert action == SafetyAction.QUEUE_STOP
 
 
 class TestSafetyMonitorPreActionGate:
@@ -99,10 +109,11 @@ class TestSafetyMonitorPreActionGate:
         assert monitor.is_action_safe("slew") is False
         assert monitor.is_action_safe("capture") is True
 
-    def test_exploding_check_allows_action(self):
+    def test_exploding_check_blocks_action(self):
+        """A check that raises during pre-action gate blocks the action (fail-closed)."""
         checks = [_ExplodingCheck()]
         monitor = SafetyMonitor(MagicMock(), checks)
-        assert monitor.is_action_safe("slew") is True
+        assert monitor.is_action_safe("slew") is False
 
 
 class TestSafetyMonitorWatchdog:
@@ -133,3 +144,44 @@ class TestSafetyMonitorWatchdog:
     def test_watchdog_healthy_false_before_start(self):
         monitor = SafetyMonitor(MagicMock(), [])
         assert monitor.watchdog_healthy is False
+
+
+class TestSafetyMonitorGetStatus:
+    def test_get_status_uses_cached_action(self):
+        """get_status() must use _last_action from evaluate(), not call check() again."""
+        call_count = 0
+
+        class _CountingCheck(SafetyCheck):
+            @property
+            def name(self) -> str:
+                return "counting"
+
+            def check(self) -> SafetyAction:
+                nonlocal call_count
+                call_count += 1
+                return SafetyAction.WARN
+
+        checks = [_CountingCheck()]
+        monitor = SafetyMonitor(MagicMock(), checks)
+        monitor.evaluate()
+        assert call_count == 1
+        status = monitor.get_status()
+        assert call_count == 1
+        assert status["checks"][0]["action"] == "warn"
+
+    def test_get_status_before_evaluate_defaults_safe(self):
+        checks = [_StubCheck("a", SafetyAction.EMERGENCY)]
+        monitor = SafetyMonitor(MagicMock(), checks)
+        status = monitor.get_status()
+        assert status["checks"][0]["action"] == "safe"
+
+
+class TestSafetyMonitorGetCheck:
+    def test_get_check_found(self):
+        checks = [_StubCheck("a"), _StubCheck("b")]
+        monitor = SafetyMonitor(MagicMock(), checks)
+        assert monitor.get_check("b") is checks[1]
+
+    def test_get_check_not_found(self):
+        monitor = SafetyMonitor(MagicMock(), [_StubCheck("a")])
+        assert monitor.get_check("missing") is None

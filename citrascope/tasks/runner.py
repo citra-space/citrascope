@@ -372,8 +372,8 @@ class TaskManager:
         try:
             action, triggered_check = safety_monitor.evaluate()
         except Exception:
-            self.logger.error("Safety monitor evaluation failed", exc_info=True)
-            return False
+            self.logger.error("Safety monitor evaluation failed — yielding task loop", exc_info=True)
+            return True
 
         if action == SafetyAction.EMERGENCY:
             try:

@@ -27,6 +27,8 @@ _STALL_READINGS = 3
 _TRAVEL_BUDGET_DEG = 360.0
 _CONVERGENCE_DEG = 5.0
 _UNWIND_RATE = 7
+_UNWIND_TIMEOUT_S = 300.0
+_SAVE_INTERVAL_S = 10.0
 
 
 def _shortest_arc(from_deg: float, to_deg: float) -> float:
@@ -62,7 +64,9 @@ class CableWrapCheck(SafetyCheck):
         self._cumulative_deg: float = 0.0
         self._last_az: float | None = None
         self._unwinding: bool = False
+        self._unwind_thread: threading.Thread | None = None
         self._lock = threading.Lock()
+        self._last_save_time: float = 0.0
 
         self._load_state()
 
@@ -84,16 +88,20 @@ class CableWrapCheck(SafetyCheck):
 
             az = self._mount.get_azimuth()
             if az is None:
-                return SafetyAction.SAFE
+                self._logger.warning("Cannot read mount azimuth in alt-az mode — treating as WARN")
+                return SafetyAction.WARN
 
             if self._last_az is not None:
                 delta = _shortest_arc(self._last_az, az)
                 self._cumulative_deg += delta
             self._last_az = az
 
-            self._save_state()
-
             abs_cumulative = abs(self._cumulative_deg)
+
+            now = time.monotonic()
+            if now - self._last_save_time >= _SAVE_INTERVAL_S or abs_cumulative >= SOFT_LIMIT_DEG:
+                self._save_state()
+                self._last_save_time = now
             if abs_cumulative >= HARD_LIMIT_DEG:
                 self._logger.critical(
                     "Cable wrap HARD LIMIT: %.1f° cumulative (limit %.1f°)",
@@ -125,17 +133,31 @@ class CableWrapCheck(SafetyCheck):
             if self._unwinding:
                 return
             self._unwinding = True
+            self._unwind_thread = threading.current_thread()
         try:
             self._do_unwind()
         finally:
             with self._lock:
                 self._unwinding = False
+                self._unwind_thread = None
+
+    def join_unwind(self, timeout: float = 10.0) -> None:
+        """Block until any in-progress unwind completes (for clean shutdown)."""
+        with self._lock:
+            thread = self._unwind_thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=timeout)
 
     def reset(self) -> None:
         with self._lock:
             self._cumulative_deg = 0.0
             self._last_az = None
             self._save_state()
+
+    @property
+    def is_unwinding(self) -> bool:
+        with self._lock:
+            return self._unwinding
 
     def get_status(self) -> dict:
         with self._lock:
@@ -180,11 +202,20 @@ class CableWrapCheck(SafetyCheck):
         recent_readings: list[float] = []
         travel = 0.0
         poll_count = 0
+        converged = False
+        deadline = time.monotonic() + _UNWIND_TIMEOUT_S
 
         try:
             while True:
                 time.sleep(_UNWIND_POLL_INTERVAL_S)
                 poll_count += 1
+
+                if time.monotonic() > deadline:
+                    self._logger.error(
+                        "Unwind wall-clock timeout (%.0fs) — stopping",
+                        _UNWIND_TIMEOUT_S,
+                    )
+                    break
 
                 az = self._mount.get_azimuth()
                 if az is None:
@@ -238,20 +269,34 @@ class CableWrapCheck(SafetyCheck):
                 # Convergence
                 if abs(self._cumulative_deg) < _CONVERGENCE_DEG:
                     self._logger.info("Cable unwind converged at %.1f° cumulative", self._cumulative_deg)
+                    converged = True
                     break
         finally:
             self._mount.stop_move(direction)
             end_az = self._mount.get_azimuth()
-            self._logger.info(
-                "Cable unwind complete: %d polls, %.1f° traveled, "
-                "az %.1f° → %.1f° | final ra/dec=%s | resetting cumulative to 0",
-                poll_count,
-                travel,
-                start_az or 0.0,
-                end_az or 0.0,
-                self._get_mount_radec(),
-            )
-            self.reset()
+            if converged:
+                self._logger.info(
+                    "Cable unwind complete: %d polls, %.1f° traveled, "
+                    "az %.1f° → %.1f° | final ra/dec=%s | resetting cumulative to 0",
+                    poll_count,
+                    travel,
+                    start_az or 0.0,
+                    end_az or 0.0,
+                    self._get_mount_radec(),
+                )
+                self.reset()
+            else:
+                self._logger.error(
+                    "Unwind did NOT converge: %d polls, %.1f° traveled, "
+                    "az %.1f° → %.1f° | %.1f° cumulative remaining | "
+                    "operator must verify cable state before resuming",
+                    poll_count,
+                    travel,
+                    start_az or 0.0,
+                    end_az or 0.0,
+                    self._cumulative_deg,
+                )
+                self._save_state()
 
     # ------------------------------------------------------------------
     # State persistence

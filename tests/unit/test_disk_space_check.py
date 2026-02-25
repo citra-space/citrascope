@@ -46,6 +46,18 @@ class TestDiskSpaceCheck:
             check.check()
         assert check.check_proposed_action("slew") is True
 
+    def test_disk_read_failure_warns(self):
+        """If disk_usage() raises, check returns WARN (fail-closed)."""
+        check = DiskSpaceCheck(MagicMock(), Path("/tmp"))
+        with patch("shutil.disk_usage", side_effect=OSError("permission denied")):
+            assert check.check() == SafetyAction.WARN
+
+    def test_capture_blocked_when_disk_unknown(self):
+        """Captures are blocked when disk state is unknown (fail-closed)."""
+        check = DiskSpaceCheck(MagicMock(), Path("/tmp"))
+        assert check._free_bytes is None
+        assert check.check_proposed_action("capture") is False
+
     def test_get_status(self):
         check = DiskSpaceCheck(MagicMock(), Path("/tmp"))
         with patch("shutil.disk_usage", return_value=_usage(5_000_000_000)):
