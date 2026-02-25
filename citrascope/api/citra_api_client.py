@@ -88,6 +88,11 @@ class CitraApiClient(AbstractCitraApiClient):
         """
         return self._request("GET", f"/elsets/latest?days={days}", timeout=300.0)
 
+    def update_telescope_automated_scheduling(self, telescope_id: str, enabled: bool) -> bool:
+        payload = [{"id": telescope_id, "automatedScheduling": enabled}]
+        response = self._request("PATCH", "/telescopes", json=payload)
+        return response is not None
+
     def upload_optical_observations(
         self,
         observations: list,

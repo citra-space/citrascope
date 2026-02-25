@@ -660,25 +660,12 @@ class IndiAdapter(PyIndi.BaseClient, AbstractAstroHardwareAdapter):
         return ra_rate, dec_rate
 
     def perform_alignment(self, target_ra: float, target_dec: float) -> bool:
-        """
-        Perform plate-solving-based alignment to adjust the telescope's position.
+        """Alignment is handled by INDI/KStars, not by CitraScope.
 
-        Args:
-            target_ra (float): The target Right Ascension (RA) in degrees.
-            target_dec (float): The target Declination (Dec) in degrees.
-
-        Returns:
-            bool: True if alignment was successful, False otherwise.
+        Pointing corrections come via ``update_from_plate_solve()`` after each
+        observation image is plate-solved in the processing pipeline.
         """
-        # Plate solving has been moved to the processor pipeline. Alignment offsets will be
-        # updated when the daemon feeds plate solve results back to the adapter (see plan:
-        # path to feed plate solving results back to hardware adapters). Until then,
-        # perform_alignment cannot complete alignment.
-        self.logger.warning(
-            "Alignment is temporarily disabled: plate solving now runs in the processor pipeline. "
-            "Alignment offsets will be updated when plate solve results are fed back to the adapter."
-        )
-        return False
+        return True
 
     def update_from_plate_solve(
         self,

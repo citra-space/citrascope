@@ -10,7 +10,11 @@ class TrackingTelescopeTask(AbstractBaseTelescopeTask):
             raise ValueError("Could not fetch valid satellite data or TLE.")
 
         self.task.set_status_msg("Slewing to target...")
-        self.point_to_lead_position(satellite_data)
+        try:
+            self.point_to_lead_position(satellite_data)
+        except RuntimeError as e:
+            self.logger.error(f"Observation failed for task {self.task.id}: {e}")
+            return False
 
         # determine appropriate tracking rates based on satellite motion
         _, _, target_ra_rate, target_dec_rate = self.get_target_radec_and_rates(satellite_data)

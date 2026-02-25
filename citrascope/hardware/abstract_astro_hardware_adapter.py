@@ -20,6 +20,7 @@ class SettingSchemaEntry(TypedDict, total=False):
     pattern: str  # Regex pattern for string validation
     options: list[str]  # List of valid options for select/dropdown inputs
     group: str  # Group name for organizing settings in UI (e.g., 'Camera', 'Mount', 'Advanced')
+    visible_when: dict[str, str]  # Conditional visibility: {"field": "other_field_name", "value": "expected_value"}
 
 
 class FilterConfig(TypedDict):
@@ -134,6 +135,14 @@ class AbstractAstroHardwareAdapter(ABC):
         """For hardware driven by sequences, perform the observation sequence and return image path."""
         pass
 
+    def set_location_service(self, location_service) -> None:  # noqa: B027
+        """Provide a location service for site-coordinate synchronisation.
+
+        Called by the daemon after creating the adapter but before ``connect()``.
+        Adapters that need site location (e.g. for mount initialisation) should
+        store the reference; the default implementation is a no-op.
+        """
+
     @abstractmethod
     def connect(self) -> bool:
         """Connect to the hardware server."""
@@ -194,19 +203,21 @@ class AbstractAstroHardwareAdapter(ABC):
         """Get the current tracking rate for the telescope in RA and Dec (arcseconds per second)."""
         pass
 
-    @abstractmethod
     def perform_alignment(self, target_ra: float, target_dec: float) -> bool:
-        """
-        Perform plate-solving-based alignment to adjust the telescope's position.
+        """Perform plate-solve alignment to correct the mount's pointing model.
+
+        Optional capability — override in adapters that manage alignment directly
+        (e.g. direct hardware control).  Adapters that delegate to external
+        software (NINA, KStars) can inherit this default which returns ``True``.
 
         Args:
-            target_ra (float): The target Right Ascension (RA) in degrees.
-            target_dec (float): The target Declination (Dec) in degrees.
+            target_ra: Target Right Ascension in degrees.
+            target_dec: Target Declination in degrees.
 
         Returns:
-            bool: True if alignment was successful, False otherwise.
+            True if alignment succeeded or is not applicable.
         """
-        pass
+        return True
 
     def update_from_plate_solve(  # noqa: B027
         self,
@@ -230,6 +241,49 @@ class AbstractAstroHardwareAdapter(ABC):
             expected_dec_deg: Optional target Dec in degrees.
         """
         pass
+
+    def home_mount(self) -> bool:
+        """Initiate the mount's homing routine.
+
+        Override in adapters that support mount homing. Default raises
+        NotImplementedError.
+
+        Returns:
+            True if homing was initiated successfully.
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} does not support mount homing")
+
+    def is_mount_homed(self) -> bool:
+        """Check whether the mount has been homed.
+
+        Returns:
+            True if the mount is at its home/calibrated position.
+        """
+        return False
+
+    def get_mount_limits(self) -> tuple[int | None, int | None]:
+        """Get the mount's altitude limits.
+
+        Returns:
+            (horizon_limit, overhead_limit) in integer degrees.
+        """
+        return None, None
+
+    def set_mount_horizon_limit(self, degrees: int) -> bool:
+        """Set the minimum altitude the mount will slew to.
+
+        Returns:
+            True if accepted, False if unsupported.
+        """
+        return False
+
+    def set_mount_overhead_limit(self, degrees: int) -> bool:
+        """Set the maximum altitude the mount will slew to.
+
+        Returns:
+            True if accepted, False if unsupported.
+        """
+        return False
 
     def do_autofocus(
         self,

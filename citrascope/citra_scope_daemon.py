@@ -1,3 +1,5 @@
+import atexit
+import signal
 import time
 
 from citrascope.api.citra_api_client import AbstractCitraApiClient, CitraApiClient
@@ -43,6 +45,8 @@ class CitraScopeDaemon:
         self.ground_station = None
         self.telescope_record = None
         self.configuration_error: str | None = None
+        self._stop_requested = False
+        self._shutdown_done = False
 
         # Initialize processor registry
         self.processor_registry = ProcessorRegistry(settings=self.settings, logger=CITRASCOPE_LOGGER)
@@ -257,6 +261,10 @@ class CitraScopeDaemon:
             if self.location_service:
                 self.location_service.set_ground_station(self.ground_station)
 
+            # Provide location service so the adapter can sync site coordinates to the mount
+            if self.location_service:
+                self.hardware_adapter.set_location_service(self.location_service)
+
             # connect to hardware server
             CITRASCOPE_LOGGER.info(f"Connecting to hardware with {type(self.hardware_adapter).__name__}...")
             if not self.hardware_adapter.connect():
@@ -300,6 +308,10 @@ class CitraScopeDaemon:
                 self.task_manager.uploading_tasks.update(old_uploading_tasks)
 
             self.task_manager.start()
+
+            if self.settings and self.settings.align_on_startup:
+                CITRASCOPE_LOGGER.info("Requesting startup alignment (align_on_startup=True)")
+                self.task_manager.alignment_manager.request()
 
             CITRASCOPE_LOGGER.info("Telescope initialized successfully!")
             return True, None
@@ -417,6 +429,11 @@ class CitraScopeDaemon:
 
     def run(self):
         assert self.web_server is not None
+        # atexit ensures cleanup runs even if the process is killed abruptly
+        # (e.g. debugger Stop button). _shutdown is idempotent so it's safe
+        # to fire from both atexit and the finally block.
+        atexit.register(self._shutdown)
+
         # Start web server FIRST, so users can monitor/configure
         # The web interface will remain available even if configuration is incomplete
         self.web_server.start()
@@ -437,20 +454,41 @@ class CitraScopeDaemon:
             self._shutdown()
 
     def _keep_running(self):
-        """Keep the daemon running until interrupted."""
+        """Keep the daemon running until interrupted by SIGINT/SIGTERM."""
+        self._stop_requested = False
+
+        def _signal_handler(signum, _frame):
+            sig_name = signal.Signals(signum).name
+            CITRASCOPE_LOGGER.info(f"Received {sig_name}, shutting down daemon.")
+            self._stop_requested = True
+
+        signal.signal(signal.SIGTERM, _signal_handler)
+        signal.signal(signal.SIGINT, _signal_handler)
+
         try:
-            while True:
+            while not self._stop_requested:
                 time.sleep(1)
         except KeyboardInterrupt:
             CITRASCOPE_LOGGER.info("Shutting down daemon.")
 
     def _shutdown(self):
-        """Clean up resources on shutdown."""
-        # TaskManager now handles stopping all work queues
+        """Clean up resources on shutdown.  Idempotent — safe to call multiple
+        times (e.g. from both the ``finally`` block and ``atexit``)."""
+        if self._shutdown_done:
+            return
+        self._shutdown_done = True
+
+        CITRASCOPE_LOGGER.info("Shutting down...")
         if self.task_manager:
             self.task_manager.stop()
         if self.time_monitor:
             self.time_monitor.stop()
+        if self.hardware_adapter:
+            try:
+                CITRASCOPE_LOGGER.info("Disconnecting hardware...")
+                self.hardware_adapter.disconnect()
+            except Exception as e:
+                CITRASCOPE_LOGGER.warning(f"Error disconnecting hardware: {e}")
         if self.web_server:
             CITRASCOPE_LOGGER.info("Stopping web server...")
             if self.web_server.web_log_handler:

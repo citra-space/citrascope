@@ -53,6 +53,16 @@ class SystemStatus(BaseModel):
     active_processors: list[str] = []  # Names of enabled image processors
     tasks_by_stage: dict[str, list[dict]] | None = None  # Tasks in each pipeline stage
     pipeline_stats: dict[str, Any] | None = None  # Lifetime counters for queues, processors, and tasks
+    supports_alignment: bool = False
+    supports_autofocus: bool = False
+    supports_manual_sync: bool = False
+    mount_homing: bool = False
+    mount_horizon_limit: int | None = None
+    mount_overhead_limit: int | None = None
+    alignment_requested: bool = False
+    alignment_running: bool = False
+    alignment_progress: str = ""
+    last_alignment_timestamp: int | None = None
 
 
 class HardwareConfig(BaseModel):
@@ -130,10 +140,19 @@ class CitraScopeWebApp:
             allow_headers=["*"],
         )
 
-        # Mount static files
+        # Mount static files with no-cache headers so browsers always
+        # pick up changes during development.  In production behind a
+        # reverse proxy, the proxy can add its own long-lived cache headers.
         static_dir = Path(__file__).parent / "static"
         if static_dir.exists():
             self.app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+            @self.app.middleware("http")
+            async def _no_cache_static(request: Request, call_next):
+                response = await call_next(request)
+                if request.url.path.startswith("/static/"):
+                    response.headers["Cache-Control"] = "no-cache, must-revalidate"
+                return response
 
         # Mount images directory for camera captures (read-only access)
         if daemon and hasattr(daemon, "settings"):
@@ -141,9 +160,12 @@ class CitraScopeWebApp:
             if images_dir.exists():
                 self.app.mount("/images", StaticFiles(directory=str(images_dir)), name="images")
 
-        # Initialize Jinja2 templates
+        # Initialize Jinja2 templates with a cache-buster so browsers pick up
+        # new static files after each daemon restart.
         templates_dir = Path(__file__).parent / "templates"
         self.templates = Jinja2Templates(directory=str(templates_dir))
+        self._cache_bust = str(int(time.time()))
+        self.templates.env.globals["cache_bust"] = self._cache_bust
 
         # Register routes
         self._setup_routes()
@@ -213,6 +235,9 @@ class CitraScopeWebApp:
                 "autofocus_target_preset": settings.autofocus_target_preset,
                 "autofocus_target_custom_ra": settings.autofocus_target_custom_ra,
                 "autofocus_target_custom_dec": settings.autofocus_target_custom_dec,
+                "alignment_exposure_seconds": settings.alignment_exposure_seconds,
+                "align_on_startup": settings.align_on_startup,
+                "last_alignment_timestamp": settings.last_alignment_timestamp,
                 "time_check_interval_minutes": settings.time_check_interval_minutes,
                 "time_offset_pause_ms": settings.time_offset_pause_ms,
                 "gps_location_updates_enabled": settings.gps_location_updates_enabled,
@@ -497,14 +522,10 @@ class CitraScopeWebApp:
                 return JSONResponse({"error": "Missing 'enabled' field in request body"}, status_code=400)
 
             try:
-                # Update server via Citra API
                 telescope_id = self.daemon.telescope_record["id"]
-                payload = [{"id": telescope_id, "automatedScheduling": enabled}]
+                success = self.daemon.api_client.update_telescope_automated_scheduling(telescope_id, enabled)
 
-                response = self.daemon.api_client._request("PATCH", "/telescopes", json=payload)
-
-                if response:
-                    # Update local cache
+                if success:
                     self.daemon.task_manager._automated_scheduling = enabled
                     CITRASCOPE_LOGGER.info(f"Automated scheduling set to {'enabled' if enabled else 'disabled'}")
                     await self.broadcast_status()
@@ -697,6 +718,118 @@ class CitraScopeWebApp:
             presets = [{"key": key, **preset} for key, preset in AUTOFOCUS_TARGET_PRESETS.items()]
             return {"presets": presets}
 
+        @self.app.post("/api/adapter/alignment")
+        async def trigger_alignment():
+            """Request plate-solve alignment to run between tasks."""
+            if not self.daemon:
+                return JSONResponse({"error": "Daemon not available"}, status_code=503)
+            if not self.daemon.task_manager:
+                return JSONResponse({"error": "Task manager not available"}, status_code=503)
+
+            try:
+                self.daemon.task_manager.alignment_manager.request()
+                return {"success": True, "message": "Alignment queued — will run between tasks"}
+            except Exception as e:
+                CITRASCOPE_LOGGER.error(f"Error queueing alignment: {e}", exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.post("/api/adapter/alignment/cancel")
+        async def cancel_alignment():
+            """Cancel pending alignment request."""
+            if not self.daemon:
+                return JSONResponse({"error": "Daemon not available"}, status_code=503)
+            if not self.daemon.task_manager:
+                return JSONResponse({"error": "Task manager not available"}, status_code=503)
+
+            try:
+                was_cancelled = self.daemon.task_manager.alignment_manager.cancel()
+                return {"success": was_cancelled}
+            except Exception as e:
+                CITRASCOPE_LOGGER.error(f"Error cancelling alignment: {e}", exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.post("/api/adapter/sync")
+        async def manual_sync(request: dict[str, Any]):
+            """Manually sync the mount to given RA/Dec coordinates."""
+            if not self.daemon:
+                return JSONResponse({"error": "Daemon not available"}, status_code=503)
+            if not self.daemon.hardware_adapter:
+                return JSONResponse({"error": "Hardware adapter not available"}, status_code=503)
+
+            ra = request.get("ra")
+            dec = request.get("dec")
+            if ra is None or dec is None:
+                return JSONResponse({"error": "Both 'ra' and 'dec' are required (degrees)"}, status_code=400)
+
+            try:
+                ra_f = float(ra)
+                dec_f = float(dec)
+            except (TypeError, ValueError):
+                return JSONResponse({"error": "RA and Dec must be numeric (degrees)"}, status_code=400)
+
+            mount = getattr(self.daemon.hardware_adapter, "mount", None)
+            if not mount:
+                return JSONResponse({"error": "No mount connected"}, status_code=404)
+
+            try:
+                success = mount.sync_to_radec(ra_f, dec_f)
+                if success:
+                    CITRASCOPE_LOGGER.info(f"Manual mount sync to RA={ra_f:.4f}°, Dec={dec_f:.4f}°")
+                    return {"success": True, "message": f"Mount synced to RA={ra_f:.4f}°, Dec={dec_f:.4f}°"}
+                else:
+                    return JSONResponse({"error": "Mount sync returned failure"}, status_code=500)
+            except NotImplementedError:
+                return JSONResponse({"error": "Mount does not support sync"}, status_code=404)
+            except Exception as e:
+                CITRASCOPE_LOGGER.error(f"Manual sync failed: {e}", exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.post("/api/mount/home")
+        async def trigger_mount_home():
+            """Request mount homing — queued to run when imaging is idle."""
+            if not self.daemon:
+                return JSONResponse({"error": "Daemon not available"}, status_code=503)
+            if not self.daemon.task_manager:
+                return JSONResponse({"error": "Task manager not available"}, status_code=503)
+
+            try:
+                success = self.daemon.task_manager.homing_manager.request()
+                if success:
+                    return {"success": True, "message": "Mount homing queued — will run when imaging is idle"}
+                else:
+                    return JSONResponse({"error": "Homing already in progress"}, status_code=409)
+            except Exception as e:
+                CITRASCOPE_LOGGER.error(f"Error requesting mount homing: {e}", exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.get("/api/mount/limits")
+        async def get_mount_limits():
+            """Get the mount's altitude limits."""
+            if not self.daemon or not self.daemon.hardware_adapter:
+                return JSONResponse({"error": "Hardware not available"}, status_code=503)
+            try:
+                h_limit, o_limit = self.daemon.hardware_adapter.get_mount_limits()
+                return {"horizon_limit": h_limit, "overhead_limit": o_limit}
+            except Exception as e:
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.post("/api/mount/limits")
+        async def set_mount_limits(request: dict[str, Any]):
+            """Set the mount's altitude limits."""
+            if not self.daemon or not self.daemon.hardware_adapter:
+                return JSONResponse({"error": "Hardware not available"}, status_code=503)
+            adapter = self.daemon.hardware_adapter
+            results: dict[str, Any] = {}
+            try:
+                if "horizon_limit" in request:
+                    results["horizon_ok"] = adapter.set_mount_horizon_limit(int(request["horizon_limit"]))
+                if "overhead_limit" in request:
+                    results["overhead_ok"] = adapter.set_mount_overhead_limit(int(request["overhead_limit"]))
+                return {"success": True, **results}
+            except Exception as e:
+                CITRASCOPE_LOGGER.error("Error setting mount limits: %s", e, exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
         @self.app.post("/api/camera/capture")
         async def camera_capture(request: dict[str, Any]):
             """Trigger a test camera capture."""
@@ -800,12 +933,38 @@ class CitraScopeWebApp:
                 except Exception:
                     self.status.supports_direct_camera_control = False
 
+                self.status.supports_autofocus = self.daemon.hardware_adapter.supports_autofocus()
+
+                adapter = self.daemon.hardware_adapter
+                has_camera = getattr(adapter, "camera", None) is not None
+                mount = getattr(adapter, "mount", None)
+                has_mount = mount is not None
+                self.status.supports_alignment = has_camera and has_mount
+                try:
+                    self.status.supports_manual_sync = has_mount and mount.get_mount_info().get("supports_sync", False)
+                except Exception:
+                    self.status.supports_manual_sync = False
+
+                if self.status.telescope_connected:
+                    try:
+                        h_limit, o_limit = adapter.get_mount_limits()
+                        self.status.mount_horizon_limit = h_limit
+                        self.status.mount_overhead_limit = o_limit
+                    except Exception:
+                        pass
+
             if hasattr(self.daemon, "task_manager") and self.daemon.task_manager:
                 task_manager = self.daemon.task_manager
                 self.status.current_task = task_manager.current_task_id
+                self.status.mount_homing = (
+                    task_manager.homing_manager.is_running() or task_manager.homing_manager.is_requested()
+                )
                 self.status.autofocus_requested = task_manager.autofocus_manager.is_requested()
                 self.status.autofocus_running = task_manager.autofocus_manager.is_running()
                 self.status.autofocus_progress = task_manager.autofocus_manager.progress
+                self.status.alignment_requested = task_manager.alignment_manager.is_requested()
+                self.status.alignment_running = task_manager.alignment_manager.is_running()
+                self.status.alignment_progress = task_manager.alignment_manager.progress
                 with task_manager.heap_lock:
                     self.status.tasks_pending = len(task_manager.task_heap)
 
@@ -813,6 +972,7 @@ class CitraScopeWebApp:
             if self.daemon.settings:
                 settings = self.daemon.settings
                 self.status.last_autofocus_timestamp = settings.last_autofocus_timestamp
+                self.status.last_alignment_timestamp = settings.last_alignment_timestamp
 
                 # Calculate next autofocus time if scheduled is enabled
                 if settings.scheduled_autofocus_enabled:

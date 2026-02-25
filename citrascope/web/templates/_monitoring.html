@@ -210,6 +210,26 @@
                                 <div class="col-6 fw-semibold">RA / DEC</div>
                                 <div class="col-6" x-text="($store.citrascope.status?.telescope_ra != null && $store.citrascope.status?.telescope_dec != null) ? ($store.citrascope.status.telescope_ra.toFixed(3) + '° / ' + $store.citrascope.status.telescope_dec.toFixed(3) + '°') : '-'"></div>
                             </div>
+                            <div class="row mb-2" x-show="$store.citrascope.status?.telescope_connected">
+                                <div class="col-6 fw-semibold">Mount Home</div>
+                                <div class="col-6 d-flex align-items-center gap-2">
+                                    <span class="badge rounded-pill bg-warning text-dark"
+                                        x-show="$store.citrascope.status?.mount_homing">Homing...</span>
+                                    <button class="btn btn-sm btn-outline-light"
+                                        x-show="!$store.citrascope.status?.mount_homing"
+                                        @click="homeMount()">
+                                        <i class="bi bi-house-door"></i> Home
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="row mb-2" x-show="$store.citrascope.status?.telescope_connected && ($store.citrascope.status?.mount_horizon_limit != null || $store.citrascope.status?.mount_overhead_limit != null)">
+                                <div class="col-6 fw-semibold">Alt Limits</div>
+                                <div class="col-6">
+                                    <span x-text="($store.citrascope.status?.mount_horizon_limit ?? '?') + '° min'"></span>
+                                    /
+                                    <span x-text="($store.citrascope.status?.mount_overhead_limit ?? '?') + '° max'"></span>
+                                </div>
+                            </div>
                             <div class="row mb-2">
                                 <div class="col-6 fw-semibold">Enabled Filters</div>
                                 <div class="col-6 d-flex flex-wrap gap-1">

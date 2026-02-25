@@ -1034,6 +1034,3 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
 
     def get_tracking_rate(self) -> tuple[float, float]:
         raise NotImplementedError
-
-    def perform_alignment(self, target_ra: float, target_dec: float) -> bool:
-        raise NotImplementedError

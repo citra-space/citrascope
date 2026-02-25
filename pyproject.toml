@@ -76,8 +76,11 @@ rpi = [
 ximea = [
   "ximea-api>=1.0.0",
 ]
+zwo-mount = [
+  "pyserial>=3.5",
+]
 all-hardware = [
-  "citrascope[indi]",
+  "citrascope[indi,zwo-mount]",
   "opencv-python>=4.8.0",
   "cv2-enumerate-cameras>=1.0.0",
   "picamera2>=0.3.12",

@@ -104,6 +104,11 @@ class CitraScopeSettings:
             )
             self.autofocus_interval_minutes = 60
 
+        # Alignment configuration
+        self.alignment_exposure_seconds: float = config.get("alignment_exposure_seconds", 2.0)
+        self.align_on_startup: bool = config.get("align_on_startup", False)
+        self.last_alignment_timestamp: int | None = config.get("last_alignment_timestamp")
+
         # Time synchronization monitoring configuration (always enabled)
         self.time_check_interval_minutes: int = config.get("time_check_interval_minutes", 5)
         self.time_offset_pause_ms: float = config.get("time_offset_pause_ms", 500.0)
@@ -165,6 +170,9 @@ class CitraScopeSettings:
             "autofocus_target_preset": self.autofocus_target_preset,
             "autofocus_target_custom_ra": self.autofocus_target_custom_ra,
             "autofocus_target_custom_dec": self.autofocus_target_custom_dec,
+            "alignment_exposure_seconds": self.alignment_exposure_seconds,
+            "align_on_startup": self.align_on_startup,
+            "last_alignment_timestamp": self.last_alignment_timestamp,
             "time_check_interval_minutes": self.time_check_interval_minutes,
             "time_offset_pause_ms": self.time_offset_pause_ms,
             "gps_location_updates_enabled": self.gps_location_updates_enabled,

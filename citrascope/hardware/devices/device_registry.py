@@ -37,6 +37,11 @@ CAMERA_DEVICES: dict[str, dict[str, str]] = {
 
 # Registry of available mount devices
 MOUNT_DEVICES: dict[str, dict[str, str]] = {
+    "zwo_am": {
+        "module": "citrascope.hardware.devices.mount.zwo_am_mount",
+        "class_name": "ZwoAmMount",
+        "description": "ZWO AM3/AM5/AM7 Mount (USB serial or WiFi TCP)",
+    },
     # Future mounts:
     # "celestron": {...},
     # "skywatcher": {...},

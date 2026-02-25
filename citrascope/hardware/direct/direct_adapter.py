@@ -54,6 +54,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         """
         super().__init__(images_dir, **kwargs)
         self.logger = logger
+        self.location_service: Any | None = None
 
         # Track dependency issues for reporting
         self._dependency_issues: list[dict[str, str]] = []
@@ -267,39 +268,36 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                 }
             )
 
+        def _prefix_schema(entries: list, prefix: str) -> None:
+            for entry in entries:
+                prefixed_entry = dict(entry)
+                prefixed_entry["name"] = f"{prefix}{entry['name']}"
+                if "visible_when" in entry:
+                    vw = dict(entry["visible_when"])
+                    vw["field"] = f"{prefix}{vw['field']}"
+                    prefixed_entry["visible_when"] = vw
+                schema.append(prefixed_entry)
+
         # Dynamically add device-specific settings if device types are provided
         camera_type = kwargs.get("camera_type")
         if camera_type and camera_type in camera_devices:
-            camera_schema = get_device_schema("camera", camera_type)
-            for entry in camera_schema:
-                prefixed_entry = dict(entry)
-                prefixed_entry["name"] = f"camera_{entry['name']}"
-                schema.append(prefixed_entry)
+            _prefix_schema(get_device_schema("camera", camera_type), "camera_")
 
         mount_type = kwargs.get("mount_type")
         if mount_type and mount_type in mount_devices:
-            mount_schema = get_device_schema("mount", mount_type)
-            for entry in mount_schema:
-                prefixed_entry = dict(entry)
-                prefixed_entry["name"] = f"mount_{entry['name']}"
-                schema.append(prefixed_entry)
+            _prefix_schema(get_device_schema("mount", mount_type), "mount_")
 
         filter_wheel_type = kwargs.get("filter_wheel_type")
         if filter_wheel_type and filter_wheel_type in filter_wheel_devices:
-            fw_schema = get_device_schema("filter_wheel", filter_wheel_type)
-            for entry in fw_schema:
-                prefixed_entry = dict(entry)
-                prefixed_entry["name"] = f"filter_wheel_{entry['name']}"
-                schema.append(prefixed_entry)
+            _prefix_schema(get_device_schema("filter_wheel", filter_wheel_type), "filter_wheel_")
 
         focuser_type = kwargs.get("focuser_type")
         if focuser_type and focuser_type in focuser_devices:
-            focuser_schema = get_device_schema("focuser", focuser_type)
-            for entry in focuser_schema:
-                prefixed_entry = dict(entry)
-                prefixed_entry["name"] = f"focuser_{entry['name']}"
-                schema.append(prefixed_entry)
+            _prefix_schema(get_device_schema("focuser", focuser_type), "focuser_")
         return cast(list[SettingSchemaEntry], schema)
+
+    def set_location_service(self, location_service) -> None:
+        self.location_service = location_service
 
     def get_observation_strategy(self) -> ObservationStrategy:
         """Get the observation strategy for direct control.
@@ -338,6 +336,8 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             if not self.mount.connect():
                 self.logger.error("Failed to connect to mount")
                 success = False
+            else:
+                self._sync_mount_site_and_time()
         else:
             self.logger.info("No mount configured (static camera mode)")
 
@@ -360,6 +360,87 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             self.logger.info("All required devices connected successfully")
 
         return success
+
+    def _sync_mount_site_and_time(self) -> None:
+        """Push site location, time, and operational config to the mount.
+
+        Called after a successful handshake.  All steps are best-effort:
+        logs warnings on failure but never blocks connect().
+
+        For satellite observation we keep the mount in **alt-az mode** —
+        no sidereal tracking needed, no meridian flip constraints, and
+        no polar alignment required.  Meridian flip config is only
+        relevant in equatorial mode so we skip it in alt-az.
+        """
+        assert self.mount is not None
+
+        # Log mount mode — alt-az is expected for satellite work
+        mode = self.mount.get_mount_mode()
+        self.logger.info("Mount operating mode: %s", mode)
+
+        # Sync site location from LocationService
+        if self.location_service:
+            location = self.location_service.get_current_location()
+            if location:
+                ok = self.mount.set_site_location(location["latitude"], location["longitude"], location["altitude"])
+                if not ok:
+                    self.logger.warning("Mount rejected site location")
+            else:
+                self.logger.warning("No location available — mount site not set")
+        else:
+            self.logger.warning("No LocationService — mount site not set")
+
+        # Sync system UTC clock to mount
+        if not self.mount.sync_datetime():
+            self.logger.warning("Mount time sync not supported or failed")
+
+        # Unpark if the mount is parked — GoTo is rejected while parked
+        if self.mount.is_parked():
+            self.mount.unpark()
+            self.logger.info("Mount was parked — unparked for operation")
+
+        # Home the mount if needed.  In alt-az mode the mount can't convert
+        # RA/Dec → Alt/Az without a calibrated azimuth reference, so every
+        # GoTo will fail with e6 ("Outside limits") until homing completes.
+        # The AM5 uses absolute encoders; :hC# triggers a physical slew to
+        # the home index — typically takes only a few seconds.
+        if not self.mount.is_home():
+            self.logger.info("Mount not homed — initiating find-home (required for GoTo)")
+            self.mount.find_home()
+            deadline = time.monotonic() + 60
+            while time.monotonic() < deadline:
+                time.sleep(1)
+                if self.mount.is_home():
+                    self.logger.info("Mount homed successfully")
+                    break
+            else:
+                self.logger.warning("Homing did not complete within 60 s — GoTo may fail")
+        else:
+            self.logger.info("Mount already homed")
+
+        # Configure altitude limits for full-sky access.
+        # Set values BEFORE enabling so we don't accidentally enforce
+        # restrictive defaults.  On firmware 1.1.2 the :GL/:SL limit
+        # commands collide with Get/Set Local Time and silently fail.
+        try:
+            upper_ok = self.mount.set_overhead_limit(90)
+            lower_ok = self.mount.set_horizon_limit(0)
+            if upper_ok and lower_ok:
+                self.mount.set_altitude_limits_enabled(True)
+            else:
+                self.logger.info("Altitude limit commands not supported on this firmware — using mount defaults")
+        except Exception:
+            self.logger.debug("Altitude limit configuration not supported", exc_info=True)
+
+        # Meridian flip is only relevant in equatorial mode.
+        # In alt-az (the default for satellite observation) there is no
+        # meridian concept, so we skip this entirely.
+        if mode == "equatorial":
+            try:
+                if self.mount.get_meridian_auto_flip() is not True:
+                    self.mount.set_meridian_auto_flip(True)
+            except Exception:
+                self.logger.debug("Meridian auto-flip not supported", exc_info=True)
 
     def disconnect(self):
         """Disconnect from all hardware devices."""
@@ -432,6 +513,32 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         if not self.mount.is_tracking():
             self.logger.info("Starting sidereal tracking")
             self.mount.start_tracking("sidereal")
+
+    def home_mount(self) -> bool:
+        if not self.mount or not self.mount.is_connected():
+            self.logger.warning("No mount connected — cannot home")
+            return False
+        return self.mount.find_home()
+
+    def is_mount_homed(self) -> bool:
+        if not self.mount or not self.mount.is_connected():
+            return False
+        return self.mount.is_home()
+
+    def get_mount_limits(self) -> tuple[int | None, int | None]:
+        if not self.mount or not self.mount.is_connected():
+            return None, None
+        return self.mount.get_limits()
+
+    def set_mount_horizon_limit(self, degrees: int) -> bool:
+        if not self.mount or not self.mount.is_connected():
+            return False
+        return self.mount.set_horizon_limit(degrees)
+
+    def set_mount_overhead_limit(self, degrees: int) -> bool:
+        if not self.mount or not self.mount.is_connected():
+            return False
+        return self.mount.set_overhead_limit(degrees)
 
     def get_scope_radec(self) -> tuple[float, float]:
         """Get current telescope RA/Dec position.
@@ -779,30 +886,71 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             return self.mount.get_tracking_rate()  # type: ignore
         return (0.0, 0.0)
 
+    def update_from_plate_solve(
+        self,
+        solved_ra_deg: float,
+        solved_dec_deg: float,
+        expected_ra_deg: float | None = None,
+        expected_dec_deg: float | None = None,
+    ) -> None:
+        if not self.mount:
+            return
+        self.mount.sync_to_radec(solved_ra_deg, solved_dec_deg)
+        if expected_ra_deg is not None and expected_dec_deg is not None:
+            error = self.angular_distance(solved_ra_deg, solved_dec_deg, expected_ra_deg, expected_dec_deg)
+            self.logger.info(f"Mount synced from plate solve (pointing error: {error * 60:.1f} arcmin)")
+        else:
+            self.logger.info(f"Mount synced from plate solve to RA={solved_ra_deg:.4f}°, Dec={solved_dec_deg:.4f}°")
+
     def perform_alignment(self, target_ra: float, target_dec: float) -> bool:
-        """Perform plate-solving alignment.
+        """Plate-solve at the current position and sync the mount.
+
+        Takes a short exposure, plate-solves it, and syncs the mount to the
+        solved coordinates.  Retries with increasing exposure if the solve fails.
 
         Args:
-            target_ra: Target RA in degrees
-            target_dec: Target Dec in degrees
+            target_ra: Expected RA in degrees (for logging/error reporting).
+            target_dec: Expected Dec in degrees (for logging/error reporting).
 
         Returns:
-            True if alignment successful
-
-        Note:
-            Basic implementation - subclasses can override with plate-solving
+            True if plate solve + sync succeeded.
         """
         if not self.mount:
-            self.logger.warning("No mount configured - cannot perform alignment")
+            self.logger.warning("No mount configured — cannot perform alignment")
+            return False
+        if not self.camera:
+            self.logger.warning("No camera configured — cannot perform alignment")
+            return False
+        if not self.telescope_record:
+            self.logger.warning("No telescope_record available — cannot plate-solve for alignment")
             return False
 
-        # Basic alignment: just slew to position
-        # TODO: Add plate-solving support
-        self.logger.info(f"Performing basic alignment to RA={target_ra:.4f}°, Dec={target_dec:.4f}°")
+        from citrascope.processors.builtin.plate_solver_processor import PlateSolverProcessor
 
-        try:
-            self._do_point_telescope(target_ra, target_dec)
-            return True
-        except Exception as e:
-            self.logger.error(f"Alignment failed: {e}")
-            return False
+        exposure_attempts = [2.0, 4.0, 8.0]
+        for exposure_s in exposure_attempts:
+            self.logger.info(f"Alignment: taking {exposure_s:.0f}s exposure for plate solve...")
+            try:
+                image_path = self.take_image("alignment", exposure_s)
+            except Exception as exc:
+                self.logger.error(f"Alignment exposure failed: {exc}")
+                continue
+
+            result = PlateSolverProcessor.solve(
+                Path(image_path),
+                self.telescope_record,
+            )
+            if result is not None:
+                solved_ra, solved_dec = result
+                self.mount.sync_to_radec(solved_ra, solved_dec)
+                error = self.angular_distance(solved_ra, solved_dec, target_ra, target_dec)
+                self.logger.info(
+                    f"Alignment successful: solved RA={solved_ra:.4f}°, Dec={solved_dec:.4f}° "
+                    f"(error from target: {error * 60:.1f} arcmin)"
+                )
+                return True
+
+            self.logger.warning(f"Plate solve failed with {exposure_s:.0f}s exposure, retrying...")
+
+        self.logger.error("Alignment failed: plate solve did not converge after all attempts")
+        return False

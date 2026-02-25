@@ -43,6 +43,14 @@ export function adapterField(field) {
             return !this.isBoolean && !this.isSelect && !this.isNumber;
         },
 
+        get isVisible() {
+            if (!this.field || !this.field.visible_when) return true;
+            const cond = this.field.visible_when;
+            const sibling = (this.$store.citrascope.adapterFields || [])
+                .find(f => f.name === cond.field);
+            return sibling ? String(sibling.value) === String(cond.value) : true;
+        },
+
         handleChange(event) {
             if (!this.field) return;
 

@@ -9,7 +9,12 @@ class AbstractMount(AbstractHardwareDevice):
     """Abstract base class for telescope mount devices.
 
     Provides a common interface for controlling equatorial and alt-az mounts.
+    All RA/Dec coordinates are in **degrees** (project convention).
     """
+
+    # ------------------------------------------------------------------
+    # Core abstract methods — every mount must implement these
+    # ------------------------------------------------------------------
 
     @abstractmethod
     def slew_to_radec(self, ra: float, dec: float) -> bool:
@@ -112,3 +117,177 @@ class AbstractMount(AbstractHardwareDevice):
             Dictionary containing mount specs and capabilities
         """
         pass
+
+    # ------------------------------------------------------------------
+    # Optional capability methods — concrete defaults so subclasses only
+    # override what they support.
+    # ------------------------------------------------------------------
+
+    def sync_to_radec(self, ra: float, dec: float) -> bool:
+        """Sync the mount's internal model to the given coordinates.
+
+        Tells the mount that it is currently pointing at (ra, dec).
+        Used after plate-solving to correct pointing errors.
+
+        Args:
+            ra: Right Ascension in degrees
+            dec: Declination in degrees
+
+        Returns:
+            True if sync accepted, False otherwise
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not support sync")
+
+    def set_custom_tracking_rates(self, ra_rate: float, dec_rate: float) -> bool:
+        """Set custom tracking rates for satellite or non-sidereal tracking.
+
+        Args:
+            ra_rate: RA tracking rate offset in arcseconds per second
+            dec_rate: Dec tracking rate offset in arcseconds per second
+
+        Returns:
+            True if rates accepted, False if unsupported
+        """
+        return False
+
+    def guide_pulse(self, direction: str, duration_ms: int) -> bool:
+        """Send an autoguiding correction pulse.
+
+        Args:
+            direction: One of "north", "south", "east", "west"
+            duration_ms: Pulse duration in milliseconds (typically 0-9999)
+
+        Returns:
+            True if pulse sent, False if unsupported
+        """
+        return False
+
+    def set_site_location(self, latitude: float, longitude: float, altitude: float) -> bool:
+        """Set the observing site location on the mount.
+
+        Args:
+            latitude: Latitude in decimal degrees (positive = North)
+            longitude: Longitude in decimal degrees (positive = East)
+            altitude: Altitude in metres above sea level
+
+        Returns:
+            True if accepted, False if unsupported
+        """
+        return False
+
+    def get_site_location(self) -> tuple[float, float, float] | None:
+        """Get the observing site location stored on the mount.
+
+        Returns:
+            (latitude, longitude, altitude) or None if unsupported
+        """
+        return None
+
+    def sync_datetime(self) -> bool:
+        """Sync the system clock to the mount's internal clock.
+
+        Pushes the current UTC date/time so the mount can compute
+        sidereal time, horizon limits, and meridian flips.
+
+        Returns:
+            True if accepted, False if unsupported
+        """
+        return False
+
+    def get_limits(self) -> tuple[int | None, int | None]:
+        """Get the mount's altitude limits.
+
+        Returns:
+            (horizon_limit, overhead_limit) in integer degrees.
+            Either value may be None if the mount doesn't report it.
+        """
+        return None, None
+
+    def set_horizon_limit(self, degrees: int) -> bool:
+        """Set the minimum altitude (horizon limit) the mount will slew to.
+
+        Args:
+            degrees: Minimum altitude in degrees (typically -30 to +30)
+
+        Returns:
+            True if accepted, False if unsupported
+        """
+        return False
+
+    def set_overhead_limit(self, degrees: int) -> bool:
+        """Set the maximum altitude (overhead limit) the mount will slew to.
+
+        Args:
+            degrees: Maximum altitude in degrees (typically 60 to 90)
+
+        Returns:
+            True if accepted, False if unsupported
+        """
+        return False
+
+    def get_meridian_auto_flip(self) -> bool | None:
+        """Query whether the mount will auto-flip at the meridian.
+
+        Returns:
+            True if flip enabled, False if stop-at-meridian, None if unsupported.
+        """
+        return None
+
+    def set_meridian_auto_flip(self, enabled: bool) -> bool:
+        """Enable or disable automatic meridian flip.
+
+        Returns:
+            True if accepted, False if unsupported.
+        """
+        return False
+
+    def set_equatorial_mode(self) -> bool:
+        """Switch the mount to equatorial (German EQ / polar-aligned) mode.
+
+        Some mounts boot in alt-az mode and need an explicit command to
+        switch to equatorial for proper RA/Dec tracking and meridian flips.
+
+        Returns:
+            True if accepted, False if unsupported
+        """
+        return False
+
+    def get_mount_mode(self) -> str:
+        """Get the mount's current operating mode.
+
+        Returns:
+            ``"equatorial"``, ``"altaz"``, or ``"unknown"``
+        """
+        return "unknown"
+
+    def get_altitude_limits_enabled(self) -> bool | None:
+        """Query whether altitude limits are enforced.
+
+        Returns:
+            True/False, or None if unsupported.
+        """
+        return None
+
+    def set_altitude_limits_enabled(self, enable: bool) -> None:
+        """Enable or disable altitude limit enforcement."""
+        pass
+
+    def find_home(self) -> bool:
+        """Initiate the mount's homing routine to establish absolute encoder position.
+
+        Homing searches for encoder index marks so the mount knows its
+        physical orientation.  This is typically required once after
+        power-on before GoTo commands will work.
+
+        Returns:
+            True if homing initiated successfully, False if unsupported
+        """
+        return False
+
+    def is_home(self) -> bool:
+        """Check whether the mount has been homed (knows its absolute position).
+
+        Returns:
+            True if the mount is at (or has found) its home position
+        """
+        return False
