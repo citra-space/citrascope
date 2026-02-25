@@ -56,6 +56,9 @@ class SystemStatus(BaseModel):
     supports_alignment: bool = False
     supports_autofocus: bool = False
     supports_manual_sync: bool = False
+    mount_homing: bool = False
+    mount_horizon_limit: int | None = None
+    mount_overhead_limit: int | None = None
     alignment_requested: bool = False
     alignment_running: bool = False
     alignment_progress: str = ""
@@ -779,6 +782,52 @@ class CitraScopeWebApp:
                 CITRASCOPE_LOGGER.error(f"Manual sync failed: {e}", exc_info=True)
                 return JSONResponse({"error": str(e)}, status_code=500)
 
+        @self.app.post("/api/mount/home")
+        async def trigger_mount_home():
+            """Request mount homing — queued to run when imaging is idle."""
+            if not self.daemon:
+                return JSONResponse({"error": "Daemon not available"}, status_code=503)
+            if not self.daemon.task_manager:
+                return JSONResponse({"error": "Task manager not available"}, status_code=503)
+
+            try:
+                success = self.daemon.task_manager.homing_manager.request()
+                if success:
+                    return {"success": True, "message": "Mount homing queued — will run when imaging is idle"}
+                else:
+                    return JSONResponse({"error": "Homing already in progress"}, status_code=409)
+            except Exception as e:
+                CITRASCOPE_LOGGER.error(f"Error requesting mount homing: {e}", exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.get("/api/mount/limits")
+        async def get_mount_limits():
+            """Get the mount's altitude limits."""
+            if not self.daemon or not self.daemon.hardware_adapter:
+                return JSONResponse({"error": "Hardware not available"}, status_code=503)
+            try:
+                h_limit, o_limit = self.daemon.hardware_adapter.get_mount_limits()
+                return {"horizon_limit": h_limit, "overhead_limit": o_limit}
+            except Exception as e:
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.post("/api/mount/limits")
+        async def set_mount_limits(request: dict[str, Any]):
+            """Set the mount's altitude limits."""
+            if not self.daemon or not self.daemon.hardware_adapter:
+                return JSONResponse({"error": "Hardware not available"}, status_code=503)
+            adapter = self.daemon.hardware_adapter
+            results: dict[str, Any] = {}
+            try:
+                if "horizon_limit" in request:
+                    results["horizon_ok"] = adapter.set_mount_horizon_limit(int(request["horizon_limit"]))
+                if "overhead_limit" in request:
+                    results["overhead_ok"] = adapter.set_mount_overhead_limit(int(request["overhead_limit"]))
+                return {"success": True, **results}
+            except Exception as e:
+                CITRASCOPE_LOGGER.error("Error setting mount limits: %s", e, exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
         @self.app.post("/api/camera/capture")
         async def camera_capture(request: dict[str, Any]):
             """Trigger a test camera capture."""
@@ -891,9 +940,20 @@ class CitraScopeWebApp:
                 self.status.supports_alignment = has_camera and has_mount
                 self.status.supports_manual_sync = has_mount and hasattr(mount, "sync_to_radec")
 
+                if self.status.telescope_connected:
+                    try:
+                        h_limit, o_limit = adapter.get_mount_limits()
+                        self.status.mount_horizon_limit = h_limit
+                        self.status.mount_overhead_limit = o_limit
+                    except Exception:
+                        pass
+
             if hasattr(self.daemon, "task_manager") and self.daemon.task_manager:
                 task_manager = self.daemon.task_manager
                 self.status.current_task = task_manager.current_task_id
+                self.status.mount_homing = (
+                    task_manager.homing_manager.is_running() or task_manager.homing_manager.is_requested()
+                )
                 self.status.autofocus_requested = task_manager.autofocus_manager.is_requested()
                 self.status.autofocus_running = task_manager.autofocus_manager.is_running()
                 self.status.autofocus_progress = task_manager.autofocus_manager.progress

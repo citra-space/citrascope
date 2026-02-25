@@ -158,6 +158,43 @@ class ZwoAmTransport(ABC):
                     time.sleep(0.1)
             raise last_error  # type: ignore[misc]
 
+    def send_goto_command(self, command: str) -> str:
+        """Send a GoTo-style command whose success response is a bare ``0`` (no ``#``).
+
+        LX200 `:MS#` returns ``0`` on success (no terminator) or an error
+        code like ``e6#`` / ``6#`` on failure.  Normal ``_read_until_hash``
+        would hang on the success case.
+        """
+        with self._lock:
+            self._clear_input()
+            self._write(command.encode("ascii"))
+
+            buf = ""
+            deadline = time.monotonic() + self.timeout_s
+            while time.monotonic() < deadline:
+                ch = self._try_read_one()
+                if ch is None:
+                    if buf == "0":
+                        logger.debug("TX %s  RX(goto) %s  [success]", command, buf)
+                        return buf
+                    time.sleep(0.01)
+                    continue
+                if ch == "#":
+                    break
+                buf += ch
+                if buf == "0":
+                    time.sleep(0.15)
+                    extra = self._try_read_one()
+                    if extra is None:
+                        logger.debug("TX %s  RX(goto) %s  [success]", command, buf)
+                        return buf
+                    if extra == "#":
+                        break
+                    buf += extra
+
+            logger.debug("TX %s  RX(goto) %s", command, buf)
+            return buf
+
     @abstractmethod
     def _try_read_one(self) -> str | None:
         """Non-blocking read of a single character, or ``None`` if nothing available."""

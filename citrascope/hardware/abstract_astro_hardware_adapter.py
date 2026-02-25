@@ -234,6 +234,41 @@ class AbstractAstroHardwareAdapter(ABC):
         """
         pass
 
+    def home_mount(self) -> bool:
+        """Initiate the mount's homing routine.
+
+        Override in adapters that support mount homing. Default raises
+        NotImplementedError.
+
+        Returns:
+            True if homing was initiated successfully.
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} does not support mount homing")
+
+    def get_mount_limits(self) -> tuple[int | None, int | None]:
+        """Get the mount's altitude limits.
+
+        Returns:
+            (horizon_limit, overhead_limit) in integer degrees.
+        """
+        return None, None
+
+    def set_mount_horizon_limit(self, degrees: int) -> bool:
+        """Set the minimum altitude the mount will slew to.
+
+        Returns:
+            True if accepted, False if unsupported.
+        """
+        return False
+
+    def set_mount_overhead_limit(self, degrees: int) -> bool:
+        """Set the maximum altitude the mount will slew to.
+
+        Returns:
+            True if accepted, False if unsupported.
+        """
+        return False
+
     def do_autofocus(
         self,
         target_ra: float | None = None,

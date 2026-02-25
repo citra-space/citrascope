@@ -69,7 +69,7 @@ CITRASCOPE_LOGGER.addHandler(handler)
 # Silence noisy third-party loggers that write to stdout with their own formats.
 # Setting propagate=False on these prevents them reaching the root logger;
 # raising their level to WARNING keeps truly unexpected errors visible.
-for _noisy_logger in ("pixelemon", "httpx", "httpcore"):
+for _noisy_logger in ("pixelemon", "httpx", "httpcore", "websockets"):
     _lib_log = logging.getLogger(_noisy_logger)
     _lib_log.propagate = False
     _lib_log.setLevel(logging.WARNING)

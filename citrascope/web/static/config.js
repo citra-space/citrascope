@@ -741,12 +741,31 @@ async function manualSync(ra, dec) {
 }
 
 /**
+ * Initiate mount homing routine.
+ */
+async function homeMount() {
+    try {
+        const response = await fetch('/api/mount/home', { method: 'POST' });
+        const data = await response.json();
+        if (response.ok) {
+            createToast('Mount homing initiated', 'success');
+        } else {
+            createToast(data.error || 'Failed to home mount', 'danger', false);
+        }
+    } catch (error) {
+        console.error('Error homing mount:', error);
+        createToast('Failed to home mount', 'danger', false);
+    }
+}
+
+/**
  * Setup autofocus/alignment button event listeners (call once during init)
  */
 export function setupAutofocusButton() {
     window.triggerAutofocus = triggerAutofocus;
     window.triggerAlignment = triggerAlignment;
     window.manualSync = manualSync;
+    window.homeMount = homeMount;
 }
 
 /**

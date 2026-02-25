@@ -6,10 +6,84 @@ The protocol is a modified Meade LX200 text protocol.  Commands are sent as
 This module contains **only** pure functions and enums — no I/O, no state.
 It is safe to import and unit-test without any hardware present.
 
-Reference material:
-  - ZWO Mount Serial Communication Protocol v2.1 (official)
-  - Undocumented commands catalogue from INDIGO project
-  - jmcguigs/zwo-control-rs  (Rust reference implementation)
+.. warning::
+
+   The ZWO AM5 firmware is *not* standard LX200 and *not* standard OnStep.
+   It is a heavily customised OnStepX fork that strips most ``:GX``/``:SX``
+   extended commands and replaces limit/meridian commands with proprietary
+   ones.  **Do not add standard LX200 limit commands** (``:Gh#``, ``:Go#``,
+   ``:Sh#``, ``:So#``) or OnStep extended commands (``:GX95#``, ``:SX95#``)
+   — they silently fail or return garbage on real ZWO hardware.
+
+   The INDI ``lx200am5`` driver is the definitive reference for which
+   commands actually work.  When in doubt, read the driver source, not the
+   ZWO protocol PDF.
+
+Authoritative references (in order):
+
+  1. **INDI lx200am5 driver** (gold standard — written specifically for AM5):
+     https://github.com/indilib/indi/blob/master/drivers/telescope/lx200am5.cpp
+     (header: ``lx200am5.h``)
+
+  2. **OnStepX firmware source** (useful for error codes and ``:GU#`` flags,
+     but many commands are stripped from ZWO firmware):
+     https://github.com/hjd1964/OnStepX/tree/main/src/telescope/mount
+
+  3. **jmcguigs/zwo-control-rs** — Rust reference implementation.
+
+  4. **ZWO Mount Serial Communication Protocol v2.1** — official but incomplete.
+
+Commands that DO NOT work on ZWO AM5::
+
+  :Gh# / :Go#        Standard LX200 get horizon/overhead limit → empty/garbage
+  :Sh# / :So#        Standard LX200 set horizon/overhead limit → silently rejected
+  :GX95#             OnStep get meridian auto-flip → timeout / no response
+  :SX95,{0|1}#      OnStep set meridian auto-flip → rejected
+
+ZWO-proprietary commands (use these instead)::
+
+  Mount type (alt-az is the default for satellite observation work):
+    :AA#               Set alt-az mode (fire-and-forget)
+    :AP#               Set equatorial mode (fire-and-forget, requires mount restart)
+    :GU#               Status flags: G=equatorial, Z=alt-az, H=home, P=parked,
+                       n=not tracking, N=not slewing
+
+  Altitude limits (INDI driver v1.3+ — may require newer firmware):
+    :GLC#   → 0#/1#   Are limits enabled?
+    :SLE#              Enable limits (fire-and-forget)
+    :SLD#              Disable limits (fire-and-forget)
+    :GLH#   → DD#     Get upper limit in degrees
+    :GLL#   → DD#     Get lower limit in degrees
+    :SLH{dd}# → 1/0  Set upper limit (60–90°)
+    :SLL{dd}# → 1/0  Set lower limit (0–30°)
+
+    WARNING: On firmware 1.1.2, these collide with standard LX200 :GL (Get
+    Local Time) and :SL (Set Local Time).  :GLC# returns the local time
+    string instead of a limit status, and :SLH#/:SLL# are rejected as
+    malformed time values.  These commands likely require a firmware update.
+
+  Meridian flip (compound get/set — equatorial mode only):
+    :GTa#   → ET{s}DD#  e.g. 10+00# = flip=1, track-after=0, limit=+0°
+    :STa{e}{t}{s}{dd}# → 1/0  e.g. :STa11+00# (flip on, track on, +0° limit)
+
+  Other ZWO-specific:
+    :GBu# / :SBu{n}#  Buzzer (0=off, 1=low, 2=high)
+    :GRl# / :SRl{n}#  Heavy duty mode (1440=off, 720=on)
+    :GAT#  → 0#/1#    Is tracking active?
+    :Gm#   → W/E      Pier side (only meaningful in equatorial mode)
+    :SOa#  → 1/0      Set current position as home
+    :NSC#  → 1/0      Clear multi-star alignment data
+
+GoTo (``:MS#``) error codes::
+
+  0       Success (bare 0, NO # terminator — special case!)
+  1 / e1  Below horizon
+  2 / e2  Above overhead limit
+  3 / e3  Mount busy
+  4 / e4  Position unreachable
+  5 / e5  Not aligned
+  6 / e6  Outside limits (general)
+  7 / e7  Pier side limit (needs meridian flip)
 """
 
 from __future__ import annotations
@@ -145,7 +219,7 @@ class ZwoAmCommands:
     @staticmethod
     def get_status() -> str:
         """Response: status flags — ``n`` not tracking, ``N`` not slewing,
-        ``H`` at home, ``G`` equatorial, ``Z`` altaz."""
+        ``H`` at home, ``P`` parked, ``G`` equatorial, ``Z`` altaz."""
         return ":GU#"
 
     @staticmethod
@@ -153,8 +227,29 @@ class ZwoAmCommands:
         return ":Gm#"
 
     @staticmethod
-    def get_meridian_settings() -> str:
+    def get_meridian_flip_settings() -> str:
+        """Get compound meridian flip settings.
+
+        Response: ``ET{s}DD#`` where E = flip enabled (0/1),
+        T = track after meridian (0/1), {s}DD = signed degree limit.
+        Example: ``10+00#`` = flip on, stop tracking, limit +0°.
+        """
         return ":GTa#"
+
+    @staticmethod
+    def get_altitude_limit_enabled() -> str:
+        """Get altitude-limit enabled status.  Response: ``0#`` or ``1#``."""
+        return ":GLC#"
+
+    @staticmethod
+    def get_altitude_limit_upper() -> str:
+        """Get upper altitude limit (ZWO proprietary).  Response: ``DD#``."""
+        return ":GLH#"
+
+    @staticmethod
+    def get_altitude_limit_lower() -> str:
+        """Get lower altitude limit (ZWO proprietary).  Response: ``DD#``."""
+        return ":GLL#"
 
     # --- Target-coordinate setters (return ``1``/``0``) ---
 
@@ -346,12 +441,37 @@ class ZwoAmCommands:
         sign = "+" if offset >= 0 else "-"
         return f":SG{sign}{abs(offset):02d}#"
 
-    # --- Meridian / buzzer ---
+    # --- Limits / meridian / buzzer ---
 
     @staticmethod
-    def set_meridian_action(action: int) -> str:
-        """0 = stop at meridian, 1 = flip."""
-        return f":STa{min(1, action)}#"
+    def set_altitude_limit_enabled(enable: bool) -> str:
+        """Enable or disable altitude limits (fire-and-forget, no response)."""
+        return ":SLE#" if enable else ":SLD#"
+
+    @staticmethod
+    def set_altitude_limit_upper(degrees: int) -> str:
+        """Set upper altitude limit (ZWO proprietary).  Response: ``1`` or ``0``."""
+        clamped = max(60, min(90, degrees))
+        return f":SLH{clamped:02d}#"
+
+    @staticmethod
+    def set_altitude_limit_lower(degrees: int) -> str:
+        """Set lower altitude limit (ZWO proprietary).  Response: ``1`` or ``0``."""
+        clamped = max(0, min(30, degrees))
+        return f":SLL{clamped:02d}#"
+
+    @staticmethod
+    def set_meridian_flip_settings(enabled: bool, track_after: bool, limit: int) -> str:
+        """Set compound meridian flip settings.  Response: ``1`` or ``0``.
+
+        Args:
+            enabled: Whether the mount should auto-flip at the meridian.
+            track_after: Whether to continue tracking after a meridian flip.
+            limit: Degrees past the meridian before triggering a flip (-15 to +15).
+        """
+        clamped = max(-15, min(15, limit))
+        sign = "+" if clamped >= 0 else "-"
+        return f":STa{1 if enabled else 0}{1 if track_after else 0}{sign}{abs(clamped):02d}#"
 
     @staticmethod
     def set_buzzer_volume(volume: int) -> str:
@@ -476,19 +596,61 @@ class ZwoAmResponseParser:
         return _errors.get(trimmed, f"Unknown goto error: {trimmed}")
 
     @staticmethod
-    def parse_status(response: str) -> tuple[bool, bool, bool, MountMode]:
-        """Parse ``:GU#`` flags → (tracking, slewing, at_home, mount_mode)."""
+    def parse_status(response: str) -> tuple[bool, bool, bool, bool, MountMode]:
+        """Parse ``:GU#`` flags → (tracking, slewing, at_home, parked, mount_mode).
+
+        Flag reference (OnStep / ZWO AM variant):
+          ``n`` not tracking, ``N`` not slewing,
+          ``H`` at home, ``P`` parked, ``p``/``F`` park failed,
+          ``G`` equatorial, ``Z`` altaz.
+        """
         flags = response.strip().rstrip("#")
         tracking = "n" not in flags
         slewing = "N" not in flags
         at_home = "H" in flags
+        parked = "P" in flags
         if "G" in flags:
             mode = MountMode.EQUATORIAL
         elif "Z" in flags:
             mode = MountMode.ALTAZ
         else:
             mode = MountMode.UNKNOWN
-        return tracking, slewing, at_home, mode
+        return tracking, slewing, at_home, parked, mode
+
+    # --- Limit / meridian parsers ---
+
+    @staticmethod
+    def parse_altitude_limit(response: str) -> int | None:
+        """Parse ZWO altitude limit response ``DD#`` → integer degrees."""
+        trimmed = response.strip().rstrip("#")
+        try:
+            return int(trimmed)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def parse_meridian_flip_settings(response: str) -> tuple[bool, bool, int]:
+        """Parse ``:GTa#`` compound response → (flip_enabled, track_after, limit_degrees).
+
+        ZWO AM firmware returns 5+ chars like ``10+00`` where:
+          [0]   flip enabled (``1``/``0``)
+          [1]   track after meridian (``1``/``0``)
+          [2]   sign (``+``/``-``)
+          [3:]  degrees (e.g. ``00``, ``15``)
+        """
+        trimmed = response.strip().rstrip("#")
+        if len(trimmed) < 4:
+            return False, True, 0
+        flip = trimmed[0] == "1"
+        track = trimmed[1] == "1"
+        sign_char = trimmed[2]
+        try:
+            degrees = int(trimmed[3:])
+        except ValueError:
+            degrees = 0
+        if sign_char == "-":
+            degrees = -degrees
+        return flip, track, degrees
 
     # --- Coordinate helpers ---
 

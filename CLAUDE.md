@@ -18,6 +18,14 @@ Web UI runs on port **24872** (CITRA on a phone keypad).
 
 Config lives at `~/Library/Application Support/citrascope/config.json` (macOS) or platform equivalent via `platformdirs`.
 
+### Useful paths for debugging
+
+The running daemon exposes its file paths via `GET /api/config` (`config_file_path`, `log_file_path`). Typical macOS locations:
+
+- **Local API**: `http://localhost:24872/api/` (try `/api/config`, `/api/status`)
+- **Log file**: `~/Library/Logs/citrascope/citrascope-YYYY-MM-DD.log`
+- **Config file**: `~/Library/Application Support/citrascope/config.json`
+
 ## Architecture overview
 
 ```
@@ -149,8 +157,6 @@ The full stack runs at three layers. New code must pass all three cleanly.
 
 **Pyright** (basic mode) handles type checking. Config is in `pyrightconfig.json`. The same engine powers Pylance in the editor, so red squiggles in Cursor match what CI enforces.
 
-**After editing, run `pyright` via the shell** on changed files (e.g., `pyright citrascope/foo.py`). The editor's Pylance can lag behind on cross-file type changes, but the pre-commit hook runs the CLI `pyright` which always catches errors. Running it yourself before committing avoids surprises.
-
 Common type-checking patterns used in this codebase:
 
 - `assert self.x is not None` — narrow `T | None` attrs that are guaranteed set after initialization (e.g., after `connect()`, after `_initialize_components()`). Preferred over `if` guards when the None case is a programming error.
@@ -209,6 +215,7 @@ Aim for tests that are roughly 1:1 or shorter than the code they test. If you ne
 - **After renaming a parameter**, search the entire method/file for the old name. Long methods have had stale references survive "first pass" refactors, causing `NameError`s at runtime.
 - **Don't invent redundant settings.** Before adding one, check if an existing setting already controls the same behavior.
 - **Pre-commit hooks**: The repo has a 500KB file size limit. FITS files and large binaries will be rejected.
+- **ZWO AM5 mount protocol** has many gotchas — see the docstring in `citrascope/hardware/devices/mount/zwo_am_protocol.py` for the full reference (supported commands, broken commands, error codes, and authoritative sources).
 
 ## Key dependencies
 

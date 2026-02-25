@@ -8,6 +8,7 @@ from dateutil import parser as dtparser
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
 from citrascope.tasks.alignment_manager import AlignmentManager
 from citrascope.tasks.autofocus_manager import AutofocusManager
+from citrascope.tasks.homing_manager import HomingManager
 from citrascope.tasks.scope.static_telescope_task import StaticTelescopeTask
 from citrascope.tasks.task import Task
 
@@ -81,6 +82,11 @@ class TaskManager:
             self.logger,
             self.hardware_adapter,
             self.daemon,
+            imaging_queue=self.imaging_queue,
+        )
+        self.homing_manager = HomingManager(
+            self.logger,
+            self.hardware_adapter,
             imaging_queue=self.imaging_queue,
         )
 
@@ -279,10 +285,15 @@ class TaskManager:
 
     def task_runner(self):
         while not self._stop_event.is_set():
-            # Alignment and autofocus run regardless of pause state —
-            # they're operator-requested maintenance, not scheduled tasks.
+            # Operator-requested maintenance runs regardless of pause state.
+            self.homing_manager.check_and_execute()
             self.alignment_manager.check_and_execute()
             self.autofocus_manager.check_and_execute()
+
+            # Defer tasks while homing is active — mount is physically moving.
+            if self.homing_manager.is_running() or self.homing_manager.is_requested():
+                self._stop_event.wait(1)
+                continue
 
             with self._processing_lock:
                 is_paused = not self._processing_active

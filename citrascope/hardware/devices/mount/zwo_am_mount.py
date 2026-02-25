@@ -249,6 +249,25 @@ class ZwoAmMount(AbstractMount):
         except Exception:
             self.logger.warning("Could not read firmware version")
 
+        try:
+            _, _, at_home, parked, mode = self._get_status_flags()
+            self.logger.info("Mount mode: %s | At home: %s | Parked: %s", mode.value, at_home, parked)
+        except Exception:
+            self.logger.warning("Could not read mount status")
+
+        try:
+            limits_on = self.get_altitude_limits_enabled()
+            lower, upper = self.get_limits()
+            self.logger.info("Altitude limits: enabled=%s lower=%s° upper=%s°", limits_on, lower, upper)
+        except Exception:
+            self.logger.warning("Could not read altitude limits")
+
+        try:
+            flip, track, limit = self.get_meridian_flip_settings()
+            self.logger.info("Meridian flip: enabled=%s track_after=%s limit=%s°", flip, track, limit)
+        except Exception:
+            self.logger.warning("Could not read meridian flip settings")
+
         return True
 
     def disconnect(self) -> None:
@@ -275,7 +294,7 @@ class ZwoAmMount(AbstractMount):
             self.logger.error("Mount rejected Dec target %.4f°", dec)
             return False
 
-        response = self._transport.send_command_with_retry(ZwoAmCommands.goto())
+        response = self._transport.send_goto_command(ZwoAmCommands.goto())
         error = ZwoAmResponseParser.parse_goto_response(response)
         if error is not None:
             self.logger.error("GoTo failed: %s", error)
@@ -285,7 +304,7 @@ class ZwoAmMount(AbstractMount):
         return True
 
     def is_slewing(self) -> bool:
-        _, slewing, _, _ = self._get_status_flags()
+        _, slewing, _, _, _ = self._get_status_flags()
         return slewing
 
     def abort_slew(self) -> None:
@@ -326,7 +345,7 @@ class ZwoAmMount(AbstractMount):
         return True
 
     def is_tracking(self) -> bool:
-        tracking, _, _, _ = self._get_status_flags()
+        tracking, _, _, _, _ = self._get_status_flags()
         return tracking
 
     def park(self) -> bool:
@@ -340,11 +359,20 @@ class ZwoAmMount(AbstractMount):
         return True
 
     def is_parked(self) -> bool:
-        _, _, at_home, _ = self._get_status_flags()
+        _, _, _, parked, _ = self._get_status_flags()
+        return parked
+
+    def find_home(self) -> bool:
+        self._transport.send_command_no_response(ZwoAmCommands.find_home())
+        self.logger.info("Find-home initiated")
+        return True
+
+    def is_home(self) -> bool:
+        _, _, at_home, _, _ = self._get_status_flags()
         return at_home
 
     def get_mount_info(self) -> dict:
-        _, _, _, mode = self._get_status_flags()
+        _, _, _, _, mode = self._get_status_flags()
         return {
             "model": self._model,
             "firmware": self._firmware,
@@ -380,6 +408,80 @@ class ZwoAmMount(AbstractMount):
         self._transport.send_command_no_response(ZwoAmCommands.guide_pulse(d, duration_ms))
         self.logger.debug("Guide pulse %s %dms", d.value, duration_ms)
         return True
+
+    def get_meridian_auto_flip(self) -> bool | None:
+        resp = self._transport.send_command_with_retry(ZwoAmCommands.get_meridian_flip_settings())
+        self.logger.debug("Meridian flip raw response: %r", resp)
+        flip, _, _ = ZwoAmResponseParser.parse_meridian_flip_settings(resp)
+        return flip
+
+    def get_meridian_flip_settings(self) -> tuple[bool, bool, int]:
+        """Read full meridian flip settings: (enabled, track_after, limit_degrees)."""
+        resp = self._transport.send_command_with_retry(ZwoAmCommands.get_meridian_flip_settings())
+        return ZwoAmResponseParser.parse_meridian_flip_settings(resp)
+
+    def set_meridian_auto_flip(self, enabled: bool) -> bool:
+        """Enable/disable meridian auto-flip, preserving the other settings."""
+        _, track, limit = self.get_meridian_flip_settings()
+        cmd = ZwoAmCommands.set_meridian_flip_settings(enabled, track, limit)
+        ok = self._transport.send_command_bool_with_retry(cmd)
+        if ok:
+            self.logger.info("Meridian auto-flip %s", "enabled" if enabled else "disabled")
+        else:
+            self.logger.warning("Mount rejected meridian flip command")
+        return ok
+
+    def set_meridian_flip_settings(self, enabled: bool, track_after: bool, limit: int) -> bool:
+        """Set all meridian flip parameters at once."""
+        cmd = ZwoAmCommands.set_meridian_flip_settings(enabled, track_after, limit)
+        ok = self._transport.send_command_bool_with_retry(cmd)
+        if ok:
+            self.logger.info("Meridian flip: enabled=%s track_after=%s limit=%d°", enabled, track_after, limit)
+        else:
+            self.logger.warning("Mount rejected meridian flip settings")
+        return ok
+
+    def get_limits(self) -> tuple[int | None, int | None]:
+        """Read the mount's lower (horizon) and upper (overhead) altitude limits."""
+        lower_resp = self._transport.send_command_with_retry(ZwoAmCommands.get_altitude_limit_lower())
+        upper_resp = self._transport.send_command_with_retry(ZwoAmCommands.get_altitude_limit_upper())
+        return (
+            ZwoAmResponseParser.parse_altitude_limit(lower_resp),
+            ZwoAmResponseParser.parse_altitude_limit(upper_resp),
+        )
+
+    def get_altitude_limits_enabled(self) -> bool | None:
+        resp = self._transport.send_command_with_retry(ZwoAmCommands.get_altitude_limit_enabled())
+        return ZwoAmResponseParser.parse_bool(resp)
+
+    def set_altitude_limits_enabled(self, enable: bool) -> None:
+        self._transport.send_command_no_response(ZwoAmCommands.set_altitude_limit_enabled(enable))
+        self.logger.info("Altitude limits %s", "enabled" if enable else "disabled")
+
+    def set_horizon_limit(self, degrees: int) -> bool:
+        ok = self._transport.send_command_bool_with_retry(ZwoAmCommands.set_altitude_limit_lower(degrees))
+        if ok:
+            self.logger.info("Lower altitude limit set to %d°", degrees)
+        else:
+            self.logger.debug("Mount rejected lower altitude limit %d° (firmware may not support :SLL#)", degrees)
+        return ok
+
+    def set_overhead_limit(self, degrees: int) -> bool:
+        ok = self._transport.send_command_bool_with_retry(ZwoAmCommands.set_altitude_limit_upper(degrees))
+        if ok:
+            self.logger.info("Upper altitude limit set to %d°", degrees)
+        else:
+            self.logger.debug("Mount rejected upper altitude limit %d° (firmware may not support :SLH#)", degrees)
+        return ok
+
+    def set_equatorial_mode(self) -> bool:
+        self._transport.send_command_no_response(ZwoAmCommands.set_polar_mode())
+        self.logger.info("Sent :AP# (set equatorial mode) — requires mount restart to take effect")
+        return True
+
+    def get_mount_mode(self) -> MountMode:
+        _, _, _, _, mode = self._get_status_flags()
+        return mode
 
     def set_site_location(self, latitude: float, longitude: float, altitude: float) -> bool:
         lat_cmd = ZwoAmCommands.set_latitude(latitude)
@@ -418,6 +520,6 @@ class ZwoAmMount(AbstractMount):
     # Internals
     # ------------------------------------------------------------------
 
-    def _get_status_flags(self) -> tuple[bool, bool, bool, MountMode]:
+    def _get_status_flags(self) -> tuple[bool, bool, bool, bool, MountMode]:
         resp = self._transport.send_command_with_retry(ZwoAmCommands.get_status())
         return ZwoAmResponseParser.parse_status(resp)

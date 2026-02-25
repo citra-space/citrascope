@@ -39,7 +39,7 @@ PASS_SEARCH_HOURS = 12
 
 
 def _parse_3le_text(text: str) -> list[dict[str, str]]:
-    """Parse CelesTrak 3LE format (name / line1 / line2) into dicts."""
+    """Parse CelesTrak 3LE format (-name / line1 / line2) into dicts."""
     lines = [ln.rstrip() for ln in text.strip().splitlines() if ln.strip()]
     results: list[dict[str, str]] = []
     i = 0
@@ -390,12 +390,6 @@ class DummyApiClient(AbstractCitraApiClient):
             if alt_deg > MIN_ELEVATION_DEG:
                 immediate_sats.append((sat_id, alt_deg))
                 scheduled_sat_ids.add(sat_id)
-                if self.logger:
-                    self.logger.info(
-                        "DummyApiClient: %s visible now at %.1f° — immediate task",
-                        cat.get("name", sat_id),
-                        alt_deg,
-                    )
                 continue
 
             # Not visible now — find next pass
@@ -428,8 +422,9 @@ class DummyApiClient(AbstractCitraApiClient):
 
         # Build immediate tasks staggered 60s apart so they don't all image at once
         immediate_tasks: list[dict] = []
+        _FIRST_TASK_DELAY_S = 10
         for idx, (sat_id, alt_deg) in enumerate(immediate_sats):
-            task_start = now + timedelta(seconds=60 * idx)
+            task_start = now + timedelta(seconds=_FIRST_TASK_DELAY_S + 60 * idx)
             task_stop = task_start + timedelta(seconds=60)
             immediate_tasks.append(self._make_task(sat_id, task_start, task_stop, telescope, ground_station))
             cat = self._satellite_catalog.get(sat_id, {})
@@ -438,7 +433,7 @@ class DummyApiClient(AbstractCitraApiClient):
                     "DummyApiClient: %s visible now at %.1f° — task in %ds",
                     cat.get("name", sat_id),
                     alt_deg,
-                    60 * idx,
+                    _FIRST_TASK_DELAY_S + 60 * idx,
                 )
 
         # Immediate tasks first, then future passes sorted by start time

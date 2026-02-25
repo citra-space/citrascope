@@ -359,13 +359,23 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         return success
 
     def _sync_mount_site_and_time(self) -> None:
-        """Push site location and UTC time to the mount after a successful handshake.
+        """Push site location, time, and operational config to the mount.
 
-        Best-effort: logs warnings on failure but never blocks connect().
+        Called after a successful handshake.  All steps are best-effort:
+        logs warnings on failure but never blocks connect().
+
+        For satellite observation we keep the mount in **alt-az mode** —
+        no sidereal tracking needed, no meridian flip constraints, and
+        no polar alignment required.  Meridian flip config is only
+        relevant in equatorial mode so we skip it in alt-az.
         """
         assert self.mount is not None
 
-        # Sync site location from LocationService (GPS-first, ground station fallback)
+        # Log mount mode — alt-az is expected for satellite work
+        mode = self.mount.get_mount_mode()
+        self.logger.info("Mount operating mode: %s", mode)
+
+        # Sync site location from LocationService
         if self.location_service:
             location = self.location_service.get_current_location()
             if location:
@@ -380,6 +390,52 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         # Sync system UTC clock to mount
         if not self.mount.sync_datetime():
             self.logger.warning("Mount time sync not supported or failed")
+
+        # Unpark if the mount is parked — GoTo is rejected while parked
+        if self.mount.is_parked():
+            self.mount.unpark()
+            self.logger.info("Mount was parked — unparked for operation")
+
+        # Home the mount if needed.  In alt-az mode the mount can't convert
+        # RA/Dec → Alt/Az without a calibrated azimuth reference, so every
+        # GoTo will fail with e6 ("Outside limits") until homing completes.
+        # The AM5 uses absolute encoders; :hC# triggers a physical slew to
+        # the home index — typically takes only a few seconds.
+        if not self.mount.is_home():
+            self.logger.info("Mount not homed — initiating find-home (required for GoTo)")
+            self.mount.find_home()
+            deadline = time.monotonic() + 60
+            while time.monotonic() < deadline:
+                time.sleep(1)
+                if self.mount.is_home():
+                    self.logger.info("Mount homed successfully")
+                    break
+            else:
+                self.logger.warning("Homing did not complete within 60 s — GoTo may fail")
+        else:
+            self.logger.info("Mount already homed")
+
+        # Configure altitude limits for full-sky access.
+        # On firmware 1.1.2 the :GL/:SL limit commands collide with
+        # Get/Set Local Time and silently fail — that's expected.
+        try:
+            self.mount.set_altitude_limits_enabled(True)
+            upper_ok = self.mount.set_overhead_limit(90)
+            lower_ok = self.mount.set_horizon_limit(0)
+            if not (upper_ok and lower_ok):
+                self.logger.info("Altitude limit commands not supported on this firmware — using mount defaults")
+        except Exception:
+            self.logger.debug("Altitude limit configuration not supported", exc_info=True)
+
+        # Meridian flip is only relevant in equatorial mode.
+        # In alt-az (the default for satellite observation) there is no
+        # meridian concept, so we skip this entirely.
+        if mode == "equatorial":
+            try:
+                if self.mount.get_meridian_auto_flip() is not True:
+                    self.mount.set_meridian_auto_flip(True)
+            except Exception:
+                self.logger.debug("Meridian auto-flip not supported", exc_info=True)
 
     def disconnect(self):
         """Disconnect from all hardware devices."""
@@ -452,6 +508,27 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         if not self.mount.is_tracking():
             self.logger.info("Starting sidereal tracking")
             self.mount.start_tracking("sidereal")
+
+    def home_mount(self) -> bool:
+        if not self.mount or not self.mount.is_connected():
+            self.logger.warning("No mount connected — cannot home")
+            return False
+        return self.mount.find_home()
+
+    def get_mount_limits(self) -> tuple[int | None, int | None]:
+        if not self.mount or not self.mount.is_connected():
+            return None, None
+        return self.mount.get_limits()
+
+    def set_mount_horizon_limit(self, degrees: int) -> bool:
+        if not self.mount or not self.mount.is_connected():
+            return False
+        return self.mount.set_horizon_limit(degrees)
+
+    def set_mount_overhead_limit(self, degrees: int) -> bool:
+        if not self.mount or not self.mount.is_connected():
+            return False
+        return self.mount.set_overhead_limit(degrees)
 
     def get_scope_radec(self) -> tuple[float, float]:
         """Get current telescope RA/Dec position.

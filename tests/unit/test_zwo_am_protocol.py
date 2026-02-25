@@ -1,8 +1,10 @@
 """Tests for ZWO AM mount protocol — command generation and response parsing.
 
-These are pure-function tests that need no hardware.  Command strings and
-response formats are validated against the ZWO protocol spec and the
-jmcguigs/zwo-control-rs reference implementation.
+Pure-function tests that need no hardware.  Command strings and response
+formats are validated against the INDI lx200am5 driver source.
+
+See ``zwo_am_protocol.py`` module docstring for the full protocol reference:
+supported commands, broken commands, response formats, and error codes.
 """
 
 import pytest
@@ -167,6 +169,58 @@ class TestZwoAmCommands:
 
     def test_find_home(self):
         assert ZwoAmCommands.find_home() == ":hC#"
+
+    # --- altitude limits (ZWO-specific :GL/:SL commands) ---
+
+    def test_get_altitude_limit_enabled(self):
+        assert ZwoAmCommands.get_altitude_limit_enabled() == ":GLC#"
+
+    def test_set_altitude_limit_enabled_on(self):
+        assert ZwoAmCommands.set_altitude_limit_enabled(True) == ":SLE#"
+
+    def test_set_altitude_limit_enabled_off(self):
+        assert ZwoAmCommands.set_altitude_limit_enabled(False) == ":SLD#"
+
+    def test_get_altitude_limit_upper(self):
+        assert ZwoAmCommands.get_altitude_limit_upper() == ":GLH#"
+
+    def test_get_altitude_limit_lower(self):
+        assert ZwoAmCommands.get_altitude_limit_lower() == ":GLL#"
+
+    def test_set_altitude_limit_upper(self):
+        assert ZwoAmCommands.set_altitude_limit_upper(90) == ":SLH90#"
+
+    def test_set_altitude_limit_upper_clamps_low(self):
+        assert ZwoAmCommands.set_altitude_limit_upper(30) == ":SLH60#"
+
+    def test_set_altitude_limit_lower(self):
+        assert ZwoAmCommands.set_altitude_limit_lower(10) == ":SLL10#"
+
+    def test_set_altitude_limit_lower_zero(self):
+        assert ZwoAmCommands.set_altitude_limit_lower(0) == ":SLL00#"
+
+    def test_set_altitude_limit_lower_clamps(self):
+        assert ZwoAmCommands.set_altitude_limit_lower(50) == ":SLL30#"
+
+    # --- meridian flip (ZWO compound :GTa/:STa commands) ---
+
+    def test_get_meridian_flip_settings(self):
+        assert ZwoAmCommands.get_meridian_flip_settings() == ":GTa#"
+
+    def test_set_meridian_flip_all_on(self):
+        assert ZwoAmCommands.set_meridian_flip_settings(True, True, 0) == ":STa11+00#"
+
+    def test_set_meridian_flip_disabled(self):
+        assert ZwoAmCommands.set_meridian_flip_settings(False, True, 0) == ":STa01+00#"
+
+    def test_set_meridian_flip_negative_limit(self):
+        assert ZwoAmCommands.set_meridian_flip_settings(True, False, -5) == ":STa10-05#"
+
+    def test_set_meridian_flip_positive_limit(self):
+        assert ZwoAmCommands.set_meridian_flip_settings(True, True, 10) == ":STa11+10#"
+
+    def test_set_meridian_flip_clamps_limit(self):
+        assert ZwoAmCommands.set_meridian_flip_settings(True, True, 30) == ":STa11+15#"
 
     # --- mount mode ---
 
@@ -357,25 +411,90 @@ class TestZwoAmResponseParser:
     # --- status flags ---
 
     def test_parse_status_tracking_equatorial(self):
-        tracking, slewing, at_home, mode = ZwoAmResponseParser.parse_status("NG#")
+        tracking, slewing, at_home, parked, mode = ZwoAmResponseParser.parse_status("NG#")
         assert tracking is True
         assert slewing is False
         assert at_home is False
+        assert parked is False
         assert mode == MountMode.EQUATORIAL
 
     def test_parse_status_idle_home_altaz(self):
-        tracking, slewing, at_home, mode = ZwoAmResponseParser.parse_status("nNHZ#")
+        tracking, slewing, at_home, parked, mode = ZwoAmResponseParser.parse_status("nNHZ#")
         assert tracking is False
         assert slewing is False
         assert at_home is True
+        assert parked is False
         assert mode == MountMode.ALTAZ
 
     def test_parse_status_slewing(self):
-        tracking, slewing, at_home, mode = ZwoAmResponseParser.parse_status("G#")
+        tracking, slewing, at_home, parked, mode = ZwoAmResponseParser.parse_status("G#")
         assert tracking is True
         assert slewing is True
         assert at_home is False
+        assert parked is False
         assert mode == MountMode.EQUATORIAL
+
+    def test_parse_status_parked(self):
+        tracking, slewing, at_home, parked, mode = ZwoAmResponseParser.parse_status("nNHPG#")
+        assert tracking is False
+        assert slewing is False
+        assert at_home is True
+        assert parked is True
+        assert mode == MountMode.EQUATORIAL
+
+    def test_parse_status_parked_without_home(self):
+        tracking, slewing, at_home, parked, mode = ZwoAmResponseParser.parse_status("nNPZ#")
+        assert tracking is False
+        assert slewing is False
+        assert at_home is False
+        assert parked is True
+        assert mode == MountMode.ALTAZ
+
+    # --- altitude limit parser (ZWO :GLH/:GLL) ---
+
+    def test_parse_altitude_limit_90(self):
+        assert ZwoAmResponseParser.parse_altitude_limit("90#") == 90
+
+    def test_parse_altitude_limit_zero(self):
+        assert ZwoAmResponseParser.parse_altitude_limit("00#") == 0
+
+    def test_parse_altitude_limit_15(self):
+        assert ZwoAmResponseParser.parse_altitude_limit("15#") == 15
+
+    def test_parse_altitude_limit_invalid(self):
+        assert ZwoAmResponseParser.parse_altitude_limit("garbage#") is None
+
+    # --- meridian flip compound parser (:GTa#) ---
+
+    def test_parse_meridian_flip_enabled_track_zero(self):
+        flip, track, limit = ZwoAmResponseParser.parse_meridian_flip_settings("10+00#")
+        assert flip is True
+        assert track is False
+        assert limit == 0
+
+    def test_parse_meridian_flip_disabled(self):
+        flip, track, limit = ZwoAmResponseParser.parse_meridian_flip_settings("01+00#")
+        assert flip is False
+        assert track is True
+        assert limit == 0
+
+    def test_parse_meridian_flip_all_on_positive(self):
+        flip, track, limit = ZwoAmResponseParser.parse_meridian_flip_settings("11+10#")
+        assert flip is True
+        assert track is True
+        assert limit == 10
+
+    def test_parse_meridian_flip_negative_limit(self):
+        flip, track, limit = ZwoAmResponseParser.parse_meridian_flip_settings("10-05#")
+        assert flip is True
+        assert track is False
+        assert limit == -5
+
+    def test_parse_meridian_flip_short_response(self):
+        flip, track, limit = ZwoAmResponseParser.parse_meridian_flip_settings("#")
+        assert flip is False
+        assert track is True
+        assert limit == 0
 
     # --- coordinate helpers ---
 
