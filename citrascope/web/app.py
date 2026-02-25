@@ -63,6 +63,7 @@ class SystemStatus(BaseModel):
     alignment_running: bool = False
     alignment_progress: str = ""
     last_alignment_timestamp: int | None = None
+    safety_status: dict[str, Any] | None = None
 
 
 class HardwareConfig(BaseModel):
@@ -813,6 +814,52 @@ class CitraScopeWebApp:
             except Exception as e:
                 return JSONResponse({"error": str(e)}, status_code=500)
 
+        @self.app.get("/api/safety/status")
+        async def get_safety_status():
+            """Return status of all safety checks."""
+            if not self.daemon or not self.daemon.safety_monitor:
+                return {"checks": [], "watchdog_alive": False, "watchdog_last_heartbeat": 0}
+            try:
+                return self.daemon.safety_monitor.get_status()
+            except Exception as e:
+                CITRASCOPE_LOGGER.error(f"Error getting safety status: {e}", exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.post("/api/mount/unwind")
+        async def trigger_cable_unwind():
+            """Manually trigger cable unwind in a background thread."""
+            if not self.daemon or not self.daemon.safety_monitor:
+                return JSONResponse({"error": "Safety monitor not available"}, status_code=503)
+
+            import threading
+
+            from citrascope.safety.cable_wrap_check import CableWrapCheck
+
+            for chk in self.daemon.safety_monitor._checks:
+                if isinstance(chk, CableWrapCheck):
+                    if chk._unwinding:
+                        return JSONResponse({"error": "Unwind already in progress"}, status_code=409)
+                    threading.Thread(target=chk.execute_action, daemon=True, name="cable-unwind").start()
+                    return JSONResponse({"success": True, "message": "Cable unwind started"}, status_code=202)
+            return JSONResponse({"error": "No cable wrap check configured"}, status_code=404)
+
+        @self.app.post("/api/safety/cable-wrap/reset")
+        async def reset_cable_wrap():
+            """Reset cable wrap counter to zero (operator confirms cables are straight)."""
+            if not self.daemon or not self.daemon.safety_monitor:
+                return JSONResponse({"error": "Safety monitor not available"}, status_code=503)
+
+            from citrascope.safety.cable_wrap_check import CableWrapCheck
+
+            for chk in self.daemon.safety_monitor._checks:
+                if isinstance(chk, CableWrapCheck):
+                    if chk._unwinding:
+                        return JSONResponse({"error": "Cannot reset during unwind"}, status_code=409)
+                    chk.reset()
+                    CITRASCOPE_LOGGER.info("Cable wrap counter reset by operator")
+                    return {"success": True, "message": "Cable wrap counter reset to 0°"}
+            return JSONResponse({"error": "No cable wrap check configured"}, status_code=404)
+
         @self.app.post("/api/mount/limits")
         async def set_mount_limits(request: dict[str, Any]):
             """Set the mount's altitude limits."""
@@ -1076,6 +1123,15 @@ class CitraScopeWebApp:
                 if self.status.pipeline_stats is None:
                     self.status.pipeline_stats = {}
                 self.status.pipeline_stats["processors"] = self.daemon.processor_registry.get_processor_stats()
+
+            # Safety monitor status
+            if hasattr(self.daemon, "safety_monitor") and self.daemon.safety_monitor:
+                try:
+                    self.status.safety_status = self.daemon.safety_monitor.get_status()
+                except Exception:
+                    self.status.safety_status = None
+            else:
+                self.status.safety_status = None
 
             self.status.last_update = datetime.now().isoformat()
 

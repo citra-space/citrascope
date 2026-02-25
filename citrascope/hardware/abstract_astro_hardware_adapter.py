@@ -1,10 +1,15 @@
+from __future__ import annotations
+
 import logging
 import math
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
+
+if TYPE_CHECKING:
+    from citrascope.safety.safety_monitor import SafetyMonitor
 
 
 class SettingSchemaEntry(TypedDict, total=False):
@@ -60,6 +65,7 @@ class AbstractAstroHardwareAdapter(ABC):
         """
         self.images_dir = images_dir
         self.filter_map = {}
+        self._safety_monitor: SafetyMonitor | None = None
 
         # Load filter configuration from settings if available
         saved_filters = kwargs.get("filters", {})
@@ -89,9 +95,16 @@ class AbstractAstroHardwareAdapter(ABC):
         """
         pass
 
+    def set_safety_monitor(self, monitor: SafetyMonitor) -> None:
+        """Wire a SafetyMonitor for pre-action safety gates."""
+        self._safety_monitor = monitor
+
     def point_telescope(self, ra: float, dec: float):
         """Point the telescope to the specified RA/Dec coordinates."""
-        # separated out to allow pre/post processing if needed
+        if self._safety_monitor and not self._safety_monitor.is_action_safe("slew", ra=ra, dec=dec):
+            from citrascope.safety.safety_monitor import SafetyError
+
+            raise SafetyError("Slew blocked by safety monitor")
         self._do_point_telescope(ra, dec)
 
     @abstractmethod
@@ -178,6 +191,9 @@ class AbstractAstroHardwareAdapter(ABC):
         """Read the current telescope direction (RA degrees, DEC degrees)."""
         pass
 
+    def abort_slew(self) -> None:  # noqa: B027
+        """Abort any in-progress slew. No-op if not supported or not slewing."""
+
     @abstractmethod
     def telescope_is_moving(self) -> bool:
         """Check if the telescope is currently moving."""
@@ -251,6 +267,10 @@ class AbstractAstroHardwareAdapter(ABC):
         Returns:
             True if homing was initiated successfully.
         """
+        if self._safety_monitor and not self._safety_monitor.is_action_safe("home"):
+            from citrascope.safety.safety_monitor import SafetyError
+
+            raise SafetyError("Homing blocked by safety monitor")
         raise NotImplementedError(f"{self.__class__.__name__} does not support mount homing")
 
     def is_mount_homed(self) -> bool:

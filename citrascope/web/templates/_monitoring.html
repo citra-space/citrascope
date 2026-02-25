@@ -93,6 +93,45 @@
                                         x-text="$store.citrascope.wsConnected ? 'Connected' : ($store.citrascope.wsReconnecting ? 'Reconnecting' : 'Connecting...')"></span>
                                 </div>
                             </div>
+                            <div class="row mb-2"
+                                 x-data="{
+                                     get checks() { return $store.citrascope.status?.safety_status?.checks || []; },
+                                     get worst() {
+                                         const order = ['safe','warn','stop','emergency'];
+                                         let w = 'safe';
+                                         for (const c of this.checks) {
+                                             if (order.indexOf(c.action) > order.indexOf(w)) w = c.action;
+                                         }
+                                         return w;
+                                     },
+                                     get watchdog() { return $store.citrascope.status?.safety_status?.watchdog_alive; },
+                                     get tip() {
+                                         if (!this.checks.length) return 'No safety checks active';
+                                         const labels = { safe: '✓', warn: '⚠', stop: '⏸', emergency: '✖' };
+                                         const names = { cable_wrap: 'Cable Wrap', disk_space: 'Disk Space', time_health: 'Time Health' };
+                                         let lines = this.checks.map(c =>
+                                             (labels[c.action] || '?') + ' ' + (names[c.name] || c.name)
+                                         );
+                                         if (this.watchdog === false) lines.push('✖ Watchdog offline');
+                                         return lines.join('\n');
+                                     }
+                                 }"
+                                 x-show="checks.length > 0">
+                                <div class="col-6 fw-semibold">
+                                    <span data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="top"
+                                          title="Safety monitor with watchdog thread. Checks hardware limits, disk space, and time health.">
+                                        Safety
+                                    </span>
+                                </div>
+                                <div class="col-6">
+                                    <span class="badge rounded-pill"
+                                          data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="bottom"
+                                          style="white-space: pre-line;"
+                                          :title="tip"
+                                          :class="worst === 'emergency' ? 'bg-danger' : worst === 'stop' ? 'bg-warning text-dark' : worst === 'warn' ? 'bg-warning text-dark' : (watchdog === false ? 'bg-secondary' : 'bg-success')"
+                                          x-text="worst === 'emergency' ? 'Emergency' : worst === 'stop' ? 'Hold' : worst === 'warn' ? 'Warning' : (watchdog === false ? 'Offline' : checks.length + ' checks OK')"></span>
+                                </div>
+                            </div>
                             <div class="row mb-2">
                                 <div class="col-6 fw-semibold">Telescope</div>
                                 <div class="col-6">
@@ -208,17 +247,89 @@
                             </div>
                             <div class="row mb-2">
                                 <div class="col-6 fw-semibold">RA / DEC</div>
-                                <div class="col-6" x-text="($store.citrascope.status?.telescope_ra != null && $store.citrascope.status?.telescope_dec != null) ? ($store.citrascope.status.telescope_ra.toFixed(3) + '° / ' + $store.citrascope.status.telescope_dec.toFixed(3) + '°') : '-'"></div>
-                            </div>
-                            <div class="row mb-2" x-show="$store.citrascope.status?.telescope_connected">
-                                <div class="col-6 fw-semibold">Mount Home</div>
-                                <div class="col-6 d-flex align-items-center gap-2">
-                                    <span class="badge rounded-pill bg-warning text-dark"
-                                        x-show="$store.citrascope.status?.mount_homing">Homing...</span>
-                                    <button class="btn btn-sm btn-outline-light"
-                                        x-show="!$store.citrascope.status?.mount_homing"
-                                        @click="homeMount()">
+                                <div class="col-6 d-flex align-items-center gap-2"
+                                     x-data="{
+                                         get ra() { return $store.citrascope.status?.telescope_ra; },
+                                         get dec() { return $store.citrascope.status?.telescope_dec; },
+                                         get dotX() {
+                                             const a = (this.ra / 360) * 2 * Math.PI;
+                                             const r = Math.min(12, 12 * (90 - this.dec) / 90);
+                                             return 14 + r * Math.sin(a);
+                                         },
+                                         get dotY() {
+                                             const a = (this.ra / 360) * 2 * Math.PI;
+                                             const r = Math.min(12, 12 * (90 - this.dec) / 90);
+                                             return 14 - r * Math.cos(a);
+                                         }
+                                     }">
+                                    <svg width="28" height="28" viewBox="0 0 28 28"
+                                         x-show="ra != null && dec != null"
+                                         style="flex-shrink: 0;">
+                                        <circle cx="14" cy="14" r="13" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>
+                                        <circle cx="14" cy="14" r="6.5" fill="none" stroke="rgba(255,255,255,0.10)" stroke-width="0.5"/>
+                                        <line x1="14" y1="1" x2="14" y2="27" stroke="rgba(255,255,255,0.08)" stroke-width="0.5"/>
+                                        <line x1="1" y1="14" x2="27" y2="14" stroke="rgba(255,255,255,0.08)" stroke-width="0.5"/>
+                                        <circle r="3" fill="#22c55e" opacity="0.9"
+                                                :cx="dotX" :cy="dotY"/>
+                                    </svg>
+                                    <span x-text="(ra != null && dec != null) ? (ra.toFixed(3) + '° / ' + dec.toFixed(3) + '°') : '-'"></span>
+                                    <span class="badge rounded-pill bg-warning text-dark ms-auto"
+                                          x-show="$store.citrascope.status?.telescope_connected && $store.citrascope.status?.mount_homing">
+                                        <span class="spinner-border spinner-border-sm me-1" style="width: .6rem; height: .6rem;"></span>
+                                        Homing...
+                                    </span>
+                                    <button class="btn btn-sm btn-outline-light ms-auto"
+                                            x-show="$store.citrascope.status?.telescope_connected && !$store.citrascope.status?.mount_homing"
+                                            @click="homeMount()"
+                                            data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="top"
+                                            title="Send mount to home position">
                                         <i class="bi bi-house-door"></i> Home
+                                    </button>
+                                </div>
+                            </div>
+                            <!-- Cable Wrap status (visible when safety monitor has a cable_wrap check) -->
+                            <div class="row mb-2"
+                                 x-data="{ get cw() { return ($store.citrascope.status?.safety_status?.checks || []).find(c => c.name === 'cable_wrap'); } }"
+                                 x-show="cw">
+                                <div class="col-6 fw-semibold">
+                                    <span data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="top"
+                                          title="Cumulative cable rotation since last unwind. Soft limit pauses new tasks; hard limit aborts motion.">
+                                        Cable Wrap
+                                    </span>
+                                </div>
+                                <div class="col-6 d-flex align-items-center gap-2">
+                                    <template x-if="cw?.unwinding">
+                                        <span class="badge rounded-pill bg-info text-dark">
+                                            <span class="spinner-border spinner-border-sm me-1" style="width: .7rem; height: .7rem;"></span>
+                                            Unwinding...
+                                        </span>
+                                    </template>
+                                    <template x-if="!cw?.unwinding">
+                                        <span class="badge rounded-pill"
+                                              :class="cw?.action === 'emergency' ? 'bg-danger' : cw?.action === 'stop' ? 'bg-warning text-dark' : 'bg-success'"
+                                              x-text="(cw?.cumulative_deg >= 0 ? '+' : '') + (cw?.cumulative_deg ?? 0) + '°'"></span>
+                                    </template>
+                                    <div class="progress flex-grow-1" style="height: 6px; min-width: 60px; max-width: 100px;"
+                                         data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="top"
+                                         :title="'Soft ' + (cw?.soft_limit ?? 270) + '° / Hard ' + (cw?.hard_limit ?? 350) + '°'">
+                                        <div class="progress-bar"
+                                             :class="cw?.action === 'emergency' ? 'bg-danger' : cw?.action === 'stop' ? 'bg-warning' : 'bg-success'"
+                                             :style="'width:' + Math.min(100, (Math.abs(cw?.cumulative_deg ?? 0) / (cw?.hard_limit ?? 350)) * 100) + '%'">
+                                        </div>
+                                    </div>
+                                    <button class="btn btn-sm btn-outline-warning"
+                                            x-show="cw && !cw.unwinding && Math.abs(cw.cumulative_deg) > 5"
+                                            @click="triggerCableUnwind()"
+                                            data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="top"
+                                            title="Unwind cable by reversing mount rotation">
+                                        <i class="bi bi-arrow-counterclockwise"></i> Unwind
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-secondary"
+                                            x-show="cw && !cw.unwinding && Math.abs(cw.cumulative_deg) > 0"
+                                            @click="resetCableWrap()"
+                                            data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="top"
+                                            title="Reset counter to 0° — use after manually straightening cables">
+                                        <i class="bi bi-0-circle"></i> Reset
                                     </button>
                                 </div>
                             </div>
@@ -261,6 +372,51 @@
 
             </div>
         </div>
+        <!-- Safety alerts — shown when any check is non-safe -->
+        <div class="container"
+             x-data="{ get alerts() {
+                 return ($store.citrascope.status?.safety_status?.checks || []).filter(c => c.action && c.action !== 'safe');
+             }}"
+             x-show="alerts.length > 0">
+            <div class="row g-3 mb-3">
+                <template x-for="alert in alerts" :key="alert.name">
+                    <div class="col-12">
+                        <div class="alert mb-0 d-flex align-items-center py-2"
+                             :class="alert.action === 'emergency' ? 'alert-danger' : 'alert-warning'" role="alert">
+                            <i class="bi me-2"
+                               :class="alert.action === 'emergency' ? 'bi-exclamation-triangle-fill' : 'bi-exclamation-circle-fill'"></i>
+                            <span>
+                                <strong x-text="alert.action === 'emergency' ? 'EMERGENCY' : (alert.action === 'stop' ? 'Safety Hold' : 'Warning')"></strong>
+                                &mdash;
+                                <template x-if="alert.name === 'cable_wrap'">
+                                    <span>Cable wrap at <span x-text="Math.abs(alert.cumulative_deg ?? 0)"></span>&deg;
+                                        (<span x-text="alert.action === 'emergency' ? 'hard limit' : 'soft limit'"></span> reached).
+                                        <template x-if="alert.unwinding">
+                                            <span class="fw-semibold">Unwinding in progress...</span>
+                                        </template>
+                                    </span>
+                                </template>
+                                <template x-if="alert.name === 'disk_space'">
+                                    <span>Low disk space
+                                        <template x-if="alert.free_mb != null">
+                                            (<span x-text="alert.free_mb >= 1000 ? (alert.free_mb / 1000).toFixed(1) + ' GB' : alert.free_mb + ' MB'"></span> free)
+                                        </template>
+                                        &mdash; <span x-text="alert.action === 'stop' ? 'imaging paused' : 'approaching limit'"></span>.
+                                    </span>
+                                </template>
+                                <template x-if="alert.name === 'time_health'">
+                                    <span>System clock drift is critical &mdash; observations may be inaccurate.</span>
+                                </template>
+                                <template x-if="alert.name !== 'cable_wrap' && alert.name !== 'disk_space' && alert.name !== 'time_health'">
+                                    <span>Safety check "<span x-text="alert.name"></span>" triggered.</span>
+                                </template>
+                            </span>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
         <div class="container">
             <!-- Active Tasks Card with Pipeline Stages -->
             <div class="row g-3 mb-3">

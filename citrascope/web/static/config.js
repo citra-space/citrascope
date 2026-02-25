@@ -759,6 +759,42 @@ async function homeMount() {
 }
 
 /**
+ * Trigger cable unwind to resolve cable wrap buildup.
+ */
+async function triggerCableUnwind() {
+    try {
+        const response = await fetch('/api/mount/unwind', { method: 'POST' });
+        const data = await response.json();
+        if (response.ok) {
+            createToast('Cable unwind started — monitor progress in the Telescope card', 'success');
+        } else {
+            createToast(data.error || 'Cable unwind failed', 'danger', false);
+        }
+    } catch (error) {
+        console.error('Error triggering cable unwind:', error);
+        createToast('Failed to trigger cable unwind', 'danger', false);
+    }
+}
+
+/**
+ * Reset cable wrap counter to zero after operator verifies cables are straight.
+ */
+async function resetCableWrap() {
+    try {
+        const response = await fetch('/api/safety/cable-wrap/reset', { method: 'POST' });
+        const data = await response.json();
+        if (response.ok) {
+            createToast('Cable wrap counter reset to 0°', 'success');
+        } else {
+            createToast(data.error || 'Reset failed', 'danger', false);
+        }
+    } catch (error) {
+        console.error('Error resetting cable wrap:', error);
+        createToast('Failed to reset cable wrap', 'danger', false);
+    }
+}
+
+/**
  * Setup autofocus/alignment button event listeners (call once during init)
  */
 export function setupAutofocusButton() {
@@ -766,6 +802,8 @@ export function setupAutofocusButton() {
     window.triggerAlignment = triggerAlignment;
     window.manualSync = manualSync;
     window.homeMount = homeMount;
+    window.triggerCableUnwind = triggerCableUnwind;
+    window.resetCableWrap = resetCableWrap;
 }
 
 /**

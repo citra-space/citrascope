@@ -291,3 +291,46 @@ class AbstractMount(AbstractHardwareDevice):
             True if the mount is at (or has found) its home position
         """
         return False
+
+    # ------------------------------------------------------------------
+    # Safety-related optional methods — used by SafetyMonitor for cable
+    # wrap protection.  Mounts that don't support these are silently
+    # excluded from azimuth-based safety checks.
+    # ------------------------------------------------------------------
+
+    def get_azimuth(self) -> float | None:
+        """Get current mount azimuth in degrees (0-360).
+
+        Used by CableWrapCheck to track cumulative azimuth rotation
+        in alt-az mode.
+
+        Returns:
+            Azimuth in degrees, or None if unsupported.
+        """
+        return None
+
+    def start_move(self, direction: str, rate: int = 7) -> bool:
+        """Start continuous motion in a cardinal direction.
+
+        Used for directional cable unwinding where explicit CW/CCW
+        control is required (GoTo takes shortest path which may worsen wrap).
+
+        Args:
+            direction: One of ``"north"``, ``"south"``, ``"east"``, ``"west"``
+            rate: Slew rate 0-9 (0 slowest, 9 fastest). Default 7 is moderate.
+
+        Returns:
+            True if motion started, False if unsupported.
+        """
+        return False
+
+    def stop_move(self, direction: str) -> bool:
+        """Stop continuous motion in a cardinal direction.
+
+        Args:
+            direction: One of ``"north"``, ``"south"``, ``"east"``, ``"west"``
+
+        Returns:
+            True if stop issued, False if unsupported.
+        """
+        return False

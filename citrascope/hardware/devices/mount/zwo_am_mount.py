@@ -488,6 +488,39 @@ class ZwoAmMount(AbstractMount):
         _, _, _, _, mode = self._get_status_flags()
         return mode.value
 
+    def get_azimuth(self) -> float | None:
+        try:
+            resp = self._transport.send_command_with_retry(ZwoAmCommands.get_azimuth())
+            parsed = ZwoAmResponseParser.parse_azimuth(resp)
+            if parsed is None:
+                return None
+            d, m, s = parsed
+            return d + m / 60.0 + s / 3600.0
+        except Exception:
+            self.logger.debug("Could not read azimuth", exc_info=True)
+            return None
+
+    def start_move(self, direction: str, rate: int = 7) -> bool:
+        try:
+            d = Direction(direction.lower())
+        except ValueError:
+            self.logger.error("Invalid move direction: %s", direction)
+            return False
+        self._transport.send_command_no_response(ZwoAmCommands.set_slew_rate(rate))
+        self._transport.send_command_no_response(ZwoAmCommands.move_direction(d))
+        self.logger.info("Started move %s at rate %d", d.value, rate)
+        return True
+
+    def stop_move(self, direction: str) -> bool:
+        try:
+            d = Direction(direction.lower())
+        except ValueError:
+            self.logger.error("Invalid stop direction: %s", direction)
+            return False
+        self._transport.send_command_no_response(ZwoAmCommands.stop_direction(d))
+        self.logger.info("Stopped move %s", d.value)
+        return True
+
     def set_site_location(self, latitude: float, longitude: float, altitude: float) -> bool:
         lat_cmd = ZwoAmCommands.set_latitude(latitude)
         if not self._transport.send_command_bool_with_retry(lat_cmd):

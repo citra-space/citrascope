@@ -297,6 +297,11 @@ class TaskManager:
 
     def task_runner(self):
         while not self._stop_event.is_set():
+            # Safety evaluation runs first — before any managers or tasks.
+            if self._evaluate_safety():
+                self._stop_event.wait(1)
+                continue
+
             # Operator-requested maintenance runs regardless of pause state.
             self.homing_manager.check_and_execute()
             self.alignment_manager.check_and_execute()
@@ -355,6 +360,45 @@ class TaskManager:
                     time.sleep(5)
 
             self._stop_event.wait(1)
+
+    def _evaluate_safety(self) -> bool:
+        """Run safety monitor evaluation; return True if the loop should yield."""
+        safety_monitor = getattr(self.daemon, "safety_monitor", None)
+        if not safety_monitor:
+            return False
+
+        from citrascope.safety.safety_monitor import SafetyAction
+
+        try:
+            action, triggered_check = safety_monitor.evaluate()
+        except Exception:
+            self.logger.error("Safety monitor evaluation failed", exc_info=True)
+            return False
+
+        if action == SafetyAction.EMERGENCY:
+            try:
+                self.hardware_adapter.abort_slew()
+            except Exception:
+                pass
+            if triggered_check:
+                self.logger.critical("Executing safety action from %r", triggered_check.name)
+                try:
+                    triggered_check.execute_action()
+                except Exception:
+                    self.logger.error("Safety corrective action failed", exc_info=True)
+            return True
+
+        if action == SafetyAction.QUEUE_STOP:
+            if self.imaging_queue.is_idle():
+                if triggered_check:
+                    self.logger.warning("Executing safety action from %r (queue idle)", triggered_check.name)
+                    try:
+                        triggered_check.execute_action()
+                    except Exception:
+                        self.logger.error("Safety corrective action failed", exc_info=True)
+            return True
+
+        return False
 
     def _create_telescope_task(self, task: Task):
         """Create appropriate telescope task instance for the given task."""

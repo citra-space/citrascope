@@ -1,6 +1,7 @@
 import atexit
 import signal
 import time
+from pathlib import Path
 
 from citrascope.api.citra_api_client import AbstractCitraApiClient, CitraApiClient
 from citrascope.api.dummy_api_client import DummyApiClient
@@ -44,6 +45,7 @@ class CitraScopeDaemon:
         self.location_service = None
         self.ground_station = None
         self.telescope_record = None
+        self.safety_monitor = None
         self.configuration_error: str | None = None
         self._stop_requested = False
         self._shutdown_done = False
@@ -120,6 +122,10 @@ class CitraScopeDaemon:
                 old_uploading_tasks = dict(self.task_manager.uploading_tasks)
                 self.task_manager.stop()
                 self.task_manager = None
+
+            if self.safety_monitor:
+                self.safety_monitor.stop_watchdog()
+                self.safety_monitor = None
 
             if self.time_monitor:
                 self.time_monitor.stop()
@@ -283,6 +289,9 @@ class CitraScopeDaemon:
             # Sync discovered filters to backend on startup
             self._sync_filters_to_backend()
 
+            # Initialize safety monitor
+            self._initialize_safety_monitor()
+
             # Create TaskManager (now owns all queues and stage tracking)
             self.task_manager = TaskManager(
                 self.api_client,
@@ -320,6 +329,46 @@ class CitraScopeDaemon:
             error_msg = f"Error initializing telescope: {e!s}"
             CITRASCOPE_LOGGER.error(error_msg, exc_info=True)
             return False, error_msg
+
+    def _initialize_safety_monitor(self) -> None:
+        """Create SafetyMonitor with applicable checks and wire to hardware."""
+        from citrascope.safety.cable_wrap_check import CableWrapCheck
+        from citrascope.safety.disk_space_check import DiskSpaceCheck
+        from citrascope.safety.safety_monitor import SafetyMonitor
+        from citrascope.safety.time_health_check import TimeHealthCheck
+
+        assert self.hardware_adapter is not None
+
+        checks = []
+
+        # Cable wrap check — only for adapters with a direct mount
+        mount = getattr(self.hardware_adapter, "mount", None)
+        if mount is not None:
+            import platformdirs
+
+            data_dir = Path(platformdirs.user_data_dir("citrascope", appauthor="citrascope"))
+            state_file = data_dir / "cable_wrap_state.json"
+            checks.append(CableWrapCheck(CITRASCOPE_LOGGER, mount, state_file=state_file))
+
+        # Disk space check
+        checks.append(DiskSpaceCheck(CITRASCOPE_LOGGER, self.hardware_adapter.images_dir))
+
+        # Time health check
+        if self.time_monitor:
+            checks.append(TimeHealthCheck(CITRASCOPE_LOGGER, self.time_monitor))
+
+        def abort_callback() -> None:
+            try:
+                mount = getattr(self.hardware_adapter, "mount", None)
+                if mount:
+                    mount.abort_slew()
+            except Exception:
+                pass
+
+        self.safety_monitor = SafetyMonitor(CITRASCOPE_LOGGER, checks, abort_callback=abort_callback)
+        self.hardware_adapter.set_safety_monitor(self.safety_monitor)
+        self.safety_monitor.start_watchdog()
+        CITRASCOPE_LOGGER.info("Safety monitor started with %d check(s)", len(checks))
 
     def _save_filter_config(self):
         """Save filter configuration from adapter to settings if supported.
@@ -479,11 +528,19 @@ class CitraScopeDaemon:
         self._shutdown_done = True
 
         CITRASCOPE_LOGGER.info("Shutting down...")
+        if self.safety_monitor:
+            self.safety_monitor.stop_watchdog()
         if self.task_manager:
             self.task_manager.stop()
         if self.time_monitor:
             self.time_monitor.stop()
         if self.hardware_adapter:
+            try:
+                mount = getattr(self.hardware_adapter, "mount", None)
+                if mount:
+                    mount.abort_slew()
+            except Exception:
+                pass
             try:
                 CITRASCOPE_LOGGER.info("Disconnecting hardware...")
                 self.hardware_adapter.disconnect()
