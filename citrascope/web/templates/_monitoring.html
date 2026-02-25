@@ -298,24 +298,16 @@
                                     </span>
                                 </div>
                                 <div class="col-6 d-flex align-items-center gap-2">
-                                    <template x-if="cw?.unwinding">
-                                        <span class="badge rounded-pill bg-info text-dark">
-                                            <span class="spinner-border spinner-border-sm me-1" style="width: .7rem; height: .7rem;"></span>
-                                            Unwinding...
-                                        </span>
-                                    </template>
-                                    <template x-if="!cw?.unwinding">
-                                        <span class="badge rounded-pill"
-                                              :class="cw?.action === 'emergency' ? 'bg-danger' : cw?.action === 'stop' ? 'bg-warning text-dark' : 'bg-success'"
-                                              x-text="(cw?.cumulative_deg >= 0 ? '+' : '') + (cw?.cumulative_deg ?? 0) + '°'"></span>
-                                    </template>
-                                    <div class="progress flex-grow-1" style="height: 6px; min-width: 60px; max-width: 100px;"
+                                    <div class="progress position-relative" style="height: 1.3rem; min-width: 80px; max-width: 120px;"
                                          data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="top"
-                                         :title="'Soft ' + (cw?.soft_limit ?? 270) + '° / Hard ' + (cw?.hard_limit ?? 350) + '°'">
+                                         :title="'Soft ' + (cw?.soft_limit ?? 180) + '° / Hard ' + (cw?.hard_limit ?? 270) + '°'">
                                         <div class="progress-bar"
-                                             :class="cw?.action === 'emergency' ? 'bg-danger' : cw?.action === 'stop' ? 'bg-warning' : 'bg-success'"
-                                             :style="'width:' + Math.min(100, (Math.abs(cw?.cumulative_deg ?? 0) / (cw?.hard_limit ?? 350)) * 100) + '%'">
+                                             :class="cw?.unwinding ? 'bg-info progress-bar-striped progress-bar-animated' : cw?.action === 'emergency' ? 'bg-danger' : cw?.action === 'stop' ? 'bg-warning' : 'bg-success'"
+                                             :style="'width:' + Math.min(100, (Math.abs(cw?.cumulative_deg ?? 0) / (cw?.hard_limit ?? 270)) * 100) + '%'">
                                         </div>
+                                        <span class="position-absolute top-50 start-50 translate-middle small fw-semibold"
+                                              :class="(cw?.action === 'stop' && !cw?.unwinding) ? 'text-dark' : 'text-white'"
+                                              x-text="(cw?.cumulative_deg >= 0 ? '+' : '') + (cw?.cumulative_deg ?? 0) + '°'"></span>
                                     </div>
                                     <button class="btn btn-sm btn-outline-warning"
                                             x-show="cw && !cw.unwinding && Math.abs(cw.cumulative_deg) > 5"
