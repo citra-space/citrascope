@@ -435,6 +435,21 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         """Check if fake telescope is moving."""
         return self._is_moving
 
+    def home_if_needed(self) -> bool:
+        if self.mount.is_home():
+            self.logger.info("DummyAdapter: Mount already homed")
+            return True
+        if self._safety_monitor and not self._safety_monitor.is_action_safe("home"):
+            from citrascope.safety.safety_monitor import SafetyError
+
+            raise SafetyError("Homing blocked by safety monitor")
+        self.logger.info("DummyAdapter: Homing mount (safety-monitored)...")
+        self._is_moving = True
+        self.mount.find_home()
+        self._is_moving = False
+        self.logger.info("DummyAdapter: Mount homed")
+        return True
+
     def home_mount(self) -> bool:
         if self._safety_monitor and not self._safety_monitor.is_action_safe("home"):
             from citrascope.safety.safety_monitor import SafetyError

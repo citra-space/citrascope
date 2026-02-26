@@ -271,7 +271,7 @@ class CitraScopeDaemon:
             if self.location_service:
                 self.hardware_adapter.set_location_service(self.location_service)
 
-            # connect to hardware server
+            # connect to hardware server (serial handshake + config — no motion)
             CITRASCOPE_LOGGER.info(f"Connecting to hardware with {type(self.hardware_adapter).__name__}...")
             if not self.hardware_adapter.connect():
                 error_msg = f"Failed to connect to hardware adapter: {type(self.hardware_adapter).__name__}"
@@ -289,8 +289,15 @@ class CitraScopeDaemon:
             # Sync discovered filters to backend on startup
             self._sync_filters_to_backend()
 
-            # Initialize safety monitor
+            # Safety monitor MUST be online before any mount motion.
+            # connect() above establishes the serial link and syncs site/time
+            # but does NOT home.  home_if_needed() below triggers the first
+            # physical slew — by then, CableWrapCheck is already observing.
             self._initialize_safety_monitor()
+
+            # Home the mount (now safety-gated and monitored)
+            if not self.hardware_adapter.home_if_needed():
+                CITRASCOPE_LOGGER.warning("Mount homing failed or timed out — GoTo may not work")
 
             # Create TaskManager (now owns all queues and stage tracking)
             self.task_manager = TaskManager(

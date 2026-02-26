@@ -399,25 +399,6 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             self.mount.unpark()
             self.logger.info("Mount was parked — unparked for operation")
 
-        # Home the mount if needed.  In alt-az mode the mount can't convert
-        # RA/Dec → Alt/Az without a calibrated azimuth reference, so every
-        # GoTo will fail with e6 ("Outside limits") until homing completes.
-        # The AM5 uses absolute encoders; :hC# triggers a physical slew to
-        # the home index — typically takes only a few seconds.
-        if not self.mount.is_home():
-            self.logger.info("Mount not homed — initiating find-home (required for GoTo)")
-            self.mount.find_home()
-            deadline = time.monotonic() + 60
-            while time.monotonic() < deadline:
-                time.sleep(1)
-                if self.mount.is_home():
-                    self.logger.info("Mount homed successfully")
-                    break
-            else:
-                self.logger.warning("Homing did not complete within 60 s — GoTo may fail")
-        else:
-            self.logger.info("Mount already homed")
-
         # Configure altitude limits for full-sky access.
         # Set values BEFORE enabling so we don't accidentally enforce
         # restrictive defaults.  On firmware 1.1.2 the :GL/:SL limit
@@ -523,6 +504,40 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
 
             raise SafetyError("Homing blocked by safety monitor")
         return self.mount.find_home()
+
+    def home_if_needed(self) -> bool:
+        """Home the mount if not already homed, blocking until complete.
+
+        In alt-az mode the mount can't convert RA/Dec to Alt/Az without a
+        calibrated azimuth reference, so GoTo will fail until homing completes.
+        The AM5 uses absolute encoders; :hC# triggers a physical slew to the
+        home index — typically takes only a few seconds.
+
+        This is called after connect() and after the SafetyMonitor is online,
+        so the CableWrapCheck is actively observing during the homing slew.
+        """
+        if not self.mount or not self.mount.is_connected():
+            self.logger.info("No mount connected — skipping home")
+            return True
+        if self.mount.is_home():
+            self.logger.info("Mount already homed")
+            return True
+
+        if self._safety_monitor and not self._safety_monitor.is_action_safe("home"):
+            from citrascope.safety.safety_monitor import SafetyError
+
+            raise SafetyError("Homing blocked by safety monitor")
+
+        self.logger.info("Mount not homed — initiating find-home (required for GoTo)")
+        self.mount.find_home()
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            time.sleep(1)
+            if self.mount.is_home():
+                self.logger.info("Mount homed successfully")
+                return True
+        self.logger.warning("Homing did not complete within 60 s — GoTo may fail")
+        return False
 
     def is_mount_homed(self) -> bool:
         if not self.mount or not self.mount.is_connected():

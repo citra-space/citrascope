@@ -258,6 +258,19 @@ class AbstractAstroHardwareAdapter(ABC):
         """
         pass
 
+    def home_if_needed(self) -> bool:
+        """Home the mount if required, blocking until complete.
+
+        Called after connect() and after the SafetyMonitor is online, so
+        safety checks (e.g. CableWrapCheck) are actively monitoring during
+        any physical motion.  Default is a no-op for adapters that don't
+        need an explicit homing step.
+
+        Returns:
+            True if homing succeeded or was unnecessary.
+        """
+        return True
+
     def home_mount(self) -> bool:
         """Initiate the mount's homing routine.
 
