@@ -87,13 +87,13 @@ class TestSafetyMonitorEvaluate:
         """A check that raises is treated as QUEUE_STOP (fail-closed)."""
         checks = [_ExplodingCheck(), _StubCheck("ok", SafetyAction.WARN)]
         monitor = SafetyMonitor(MagicMock(), checks)
-        action, check = monitor.evaluate()
+        action, _check = monitor.evaluate()
         assert action == SafetyAction.QUEUE_STOP
 
     def test_exploding_check_alone_is_queue_stop(self):
         checks = [_ExplodingCheck()]
         monitor = SafetyMonitor(MagicMock(), checks)
-        action, check = monitor.evaluate()
+        action, _check = monitor.evaluate()
         assert action == SafetyAction.QUEUE_STOP
 
 
