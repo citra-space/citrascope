@@ -38,6 +38,8 @@ class SystemStatus(BaseModel):
     hardware_adapter: str = "unknown"
     telescope_ra: float | None = None
     telescope_dec: float | None = None
+    telescope_az: float | None = None
+    telescope_alt: float | None = None
     ground_station_id: str | None = None
     ground_station_name: str | None = None
     ground_station_url: str | None = None
@@ -964,10 +966,13 @@ class CitraScopeWebApp:
                 try:
                     self.status.telescope_connected = self.daemon.hardware_adapter.is_telescope_connected()
                     if self.status.telescope_connected:
-                        # If connected, try to get position
                         ra, dec = self.daemon.hardware_adapter.get_telescope_direction()
                         self.status.telescope_ra = ra
                         self.status.telescope_dec = dec
+                        mount = getattr(self.daemon.hardware_adapter, "mount", None)
+                        if mount:
+                            self.status.telescope_az = mount.get_azimuth()
+                            self.status.telescope_alt = mount.get_altitude()
                 except Exception:
                     self.status.telescope_connected = False
 

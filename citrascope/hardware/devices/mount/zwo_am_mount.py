@@ -525,6 +525,19 @@ class ZwoAmMount(AbstractMount):
             self.logger.debug("Could not read azimuth", exc_info=True)
             return None
 
+    def get_altitude(self) -> float | None:
+        try:
+            resp = self._transport.send_command_with_retry(ZwoAmCommands.get_altitude())
+            parsed = ZwoAmResponseParser.parse_azimuth(resp)
+            if parsed is None:
+                return None
+            d, m, s = parsed
+            sign = -1 if d < 0 else 1
+            return sign * (abs(d) + m / 60.0 + s / 3600.0)
+        except Exception:
+            self.logger.debug("Could not read altitude", exc_info=True)
+            return None
+
     def start_move(self, direction: str, rate: int = 7) -> bool:
         try:
             d = Direction(direction.lower())

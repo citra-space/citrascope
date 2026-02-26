@@ -309,6 +309,14 @@ class AbstractMount(AbstractHardwareDevice):
         """
         return None
 
+    def get_altitude(self) -> float | None:
+        """Get current mount altitude in degrees.
+
+        Returns:
+            Altitude in degrees (0-90 above horizon), or None if unsupported.
+        """
+        return None
+
     def start_move(self, direction: str, rate: int = 7) -> bool:
         """Start continuous motion in a cardinal direction.
 

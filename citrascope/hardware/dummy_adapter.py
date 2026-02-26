@@ -279,6 +279,9 @@ class _DummyMount(AbstractMount):
             return (self._base_az + self._TRACKING_DRIFT_DEG_PER_S * dt) % 360.0
         return self._base_az % 360.0
 
+    def get_altitude(self) -> float | None:
+        return self._alt
+
     def start_move(self, direction: str, rate: int = 7) -> bool:
         self._snap_az()
         self._moving_dir = direction
