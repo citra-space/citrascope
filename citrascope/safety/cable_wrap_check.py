@@ -2,6 +2,10 @@
 
 Tracks azimuth deltas via shortest-arc math, enforces two-tier limits,
 and performs defensive directional unwinding when limits are reached.
+
+Observation runs on a dedicated thread so that ``check()`` is a pure
+read with no side effects — safe to call from any number of callers
+without double-counting azimuth deltas.
 """
 
 from __future__ import annotations
@@ -21,6 +25,7 @@ if TYPE_CHECKING:
 SOFT_LIMIT_DEG = 240.0
 HARD_LIMIT_DEG = 270.0
 
+_OBSERVE_INTERVAL_S = 0.5
 _UNWIND_POLL_INTERVAL_S = 0.5
 _STALL_THRESHOLD_DEG = 1.0
 _STALL_READINGS = 3
@@ -46,6 +51,11 @@ def _shortest_arc(from_deg: float, to_deg: float) -> float:
 class CableWrapCheck(SafetyCheck):
     """Monitors cumulative azimuth rotation and unwinds when limits are hit.
 
+    Observation (reading azimuth, accumulating deltas, persisting state) runs
+    on its own thread at ~2 Hz via ``start()`` / ``stop()``.  ``check()`` is a
+    pure read that compares the accumulated value against limits — no I/O, no
+    side effects.
+
     Designed to work with any mount that implements the optional
     ``get_azimuth()``, ``start_move()``, and ``stop_move()`` methods.
     Mounts that don't support these are silently excluded (always SAFE).
@@ -65,10 +75,83 @@ class CableWrapCheck(SafetyCheck):
         self._last_az: float | None = None
         self._unwinding: bool = False
         self._unwind_thread: threading.Thread | None = None
+        self._az_healthy: bool = True
         self._lock = threading.Lock()
         self._last_save_time: float = 0.0
 
+        self._observe_thread: threading.Thread | None = None
+        self._observe_stop = threading.Event()
+
         self._load_state()
+
+    # ------------------------------------------------------------------
+    # Observation thread
+    # ------------------------------------------------------------------
+
+    def start(self) -> None:
+        """Start the background observation thread."""
+        if self._observe_thread is not None and self._observe_thread.is_alive():
+            return
+        self._observe_stop.clear()
+        self._observe_thread = threading.Thread(target=self._observe_loop, daemon=True, name="cable-wrap-observer")
+        self._observe_thread.start()
+        self._logger.info("Cable wrap observer started (interval=%.1fs)", _OBSERVE_INTERVAL_S)
+
+    def stop(self) -> None:
+        """Stop the background observation thread."""
+        if self._observe_thread is None:
+            return
+        self._observe_stop.set()
+        self._observe_thread.join(timeout=_OBSERVE_INTERVAL_S + 2)
+        self._observe_thread = None
+        self._logger.info("Cable wrap observer stopped")
+
+    def _observe_loop(self) -> None:
+        while not self._observe_stop.is_set():
+            try:
+                self._observe_once()
+            except Exception:
+                self._logger.error("Cable wrap observation failed", exc_info=True)
+            self._observe_stop.wait(_OBSERVE_INTERVAL_S)
+
+    def _observe_once(self) -> None:
+        """Single observation cycle: read azimuth, accumulate delta, persist.
+
+        Called by the observation thread, or directly by tests.  During an
+        active unwind the observation thread yields — the unwind loop takes
+        over accumulation at its own cadence.
+        """
+        mode = self._mount.get_mount_mode()
+
+        try:
+            az = self._mount.get_azimuth() if mode == "altaz" else None
+        except Exception:
+            self._logger.debug("Failed to read azimuth", exc_info=True)
+            az = None
+
+        with self._lock:
+            if self._unwinding:
+                return
+
+            if mode != "altaz":
+                return
+
+            if az is None:
+                self._az_healthy = False
+                return
+
+            self._az_healthy = True
+
+            if self._last_az is not None:
+                delta = _shortest_arc(self._last_az, az)
+                self._cumulative_deg += delta
+            self._last_az = az
+
+            abs_cumulative = abs(self._cumulative_deg)
+            now = time.monotonic()
+            if now - self._last_save_time >= _SAVE_INTERVAL_S or abs_cumulative >= SOFT_LIMIT_DEG:
+                self._save_state()
+                self._last_save_time = now
 
     # ------------------------------------------------------------------
     # SafetyCheck interface
@@ -79,6 +162,7 @@ class CableWrapCheck(SafetyCheck):
         return "cable_wrap"
 
     def check(self) -> SafetyAction:
+        """Pure evaluation — no I/O, no side effects."""
         with self._lock:
             if self._unwinding:
                 return SafetyAction.QUEUE_STOP
@@ -86,22 +170,10 @@ class CableWrapCheck(SafetyCheck):
             if self._mount.get_mount_mode() != "altaz":
                 return SafetyAction.SAFE
 
-            az = self._mount.get_azimuth()
-            if az is None:
-                self._logger.warning("Cannot read mount azimuth in alt-az mode — treating as WARN")
+            if not self._az_healthy:
                 return SafetyAction.WARN
 
-            if self._last_az is not None:
-                delta = _shortest_arc(self._last_az, az)
-                self._cumulative_deg += delta
-            self._last_az = az
-
             abs_cumulative = abs(self._cumulative_deg)
-
-            now = time.monotonic()
-            if now - self._last_save_time >= _SAVE_INTERVAL_S or abs_cumulative >= SOFT_LIMIT_DEG:
-                self._save_state()
-                self._last_save_time = now
             if abs_cumulative >= HARD_LIMIT_DEG:
                 self._logger.critical(
                     "Cable wrap HARD LIMIT: %.1f° cumulative (limit %.1f°)",
@@ -222,11 +294,12 @@ class CableWrapCheck(SafetyCheck):
                     self._logger.error("Lost azimuth reading during unwind — stopping")
                     break
 
-                if self._last_az is not None:
-                    delta = _shortest_arc(self._last_az, az)
-                    self._cumulative_deg += delta
-                    travel += abs(delta)
-                self._last_az = az
+                with self._lock:
+                    if self._last_az is not None:
+                        delta = _shortest_arc(self._last_az, az)
+                        self._cumulative_deg += delta
+                        travel += abs(delta)
+                    self._last_az = az
 
                 self._logger.info(
                     "Unwind poll #%d: az=%.1f° cumulative=%.1f° travel=%.1f° | ra/dec=%s",

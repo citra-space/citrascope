@@ -72,49 +72,63 @@ class TestCableWrapCheckBasics:
         """Lost azimuth in alt-az mode is WARN (fail-closed)."""
         mount = _make_mount(mode="altaz")
         check = CableWrapCheck(MagicMock(), mount)
+        check._observe_once()
         assert check.check() == SafetyAction.WARN
 
     def test_initial_reading_is_safe(self):
         mount = _make_mount(azimuths=[10.0])
         check = CableWrapCheck(MagicMock(), mount)
+        check._observe_once()
         assert check.check() == SafetyAction.SAFE
         assert check._cumulative_deg == 0.0
 
     def test_accumulation_basic(self):
         mount = _make_mount(azimuths=[10.0, 30.0, 50.0])
         check = CableWrapCheck(MagicMock(), mount)
-        check.check()
-        check.check()
-        check.check()
+        check._observe_once()
+        check._observe_once()
+        check._observe_once()
         assert check._cumulative_deg == pytest.approx(40.0)
+
+    def test_check_is_pure_read(self):
+        """Calling check() multiple times doesn't change internal state."""
+        mount = _make_mount(azimuths=[10.0, 30.0])
+        check = CableWrapCheck(MagicMock(), mount)
+        check._observe_once()
+        check._observe_once()
+        cumulative_before = check._cumulative_deg
+        check.check()
+        check.check()
+        check.check()
+        assert check._cumulative_deg == cumulative_before
 
 
 class TestCableWrapCheckLimits:
     def test_soft_limit_triggers_queue_stop(self):
-        mount = _make_mount(azimuths=[0.0, 0.0])
+        mount = _make_mount(azimuths=[0.0])
         check = CableWrapCheck(MagicMock(), mount)
-        check.check()
+        check._observe_once()
         check._cumulative_deg = SOFT_LIMIT_DEG
         assert check.check() == SafetyAction.QUEUE_STOP
 
     def test_hard_limit_triggers_emergency(self):
-        mount = _make_mount(azimuths=[0.0, 0.0])
+        mount = _make_mount(azimuths=[0.0])
         check = CableWrapCheck(MagicMock(), mount)
-        check.check()
+        check._observe_once()
         check._cumulative_deg = HARD_LIMIT_DEG
         assert check.check() == SafetyAction.EMERGENCY
 
     def test_below_soft_limit_is_safe(self):
-        mount = _make_mount(azimuths=[0.0, 0.0])
+        mount = _make_mount(azimuths=[0.0])
         check = CableWrapCheck(MagicMock(), mount)
-        check.check()
+        check._observe_once()
         check._cumulative_deg = SOFT_LIMIT_DEG - 1
         assert check.check() == SafetyAction.SAFE
 
     def test_negative_cumulative_soft_limit(self):
-        mount = _make_mount(azimuths=[0.0, 0.0])
+        mount = _make_mount(azimuths=[0.0])
         check = CableWrapCheck(MagicMock(), mount)
-        check.check()
+        check._observe_once()
         check._cumulative_deg = -SOFT_LIMIT_DEG
         assert check.check() == SafetyAction.QUEUE_STOP
 
@@ -123,8 +137,8 @@ class TestCableWrapCheckReset:
     def test_reset_clears_state(self):
         mount = _make_mount(azimuths=[0.0, 100.0])
         check = CableWrapCheck(MagicMock(), mount)
-        check.check()
-        check.check()
+        check._observe_once()
+        check._observe_once()
         assert check._cumulative_deg != 0.0
         check.reset()
         assert check._cumulative_deg == 0.0
@@ -134,13 +148,12 @@ class TestCableWrapCheckReset:
 class TestCableWrapCheckPersistence:
     def test_save_and_load(self, tmp_path: Path):
         state_file = tmp_path / "wrap.json"
-        mount = _make_mount(azimuths=[0.0, 100.0, 100.0])
+        mount = _make_mount(azimuths=[0.0, 100.0])
 
         check = CableWrapCheck(MagicMock(), mount, state_file=state_file)
-        check.check()
-        # Force save timing so the second check() persists immediately
+        check._observe_once()
         check._last_save_time = 0.0
-        check.check()
+        check._observe_once()
         assert state_file.exists()
 
         data = json.loads(state_file.read_text())
@@ -162,20 +175,20 @@ class TestCableWrapCheckProposedAction:
     def test_slew_allowed_with_plenty_of_headroom(self):
         mount = _make_mount(azimuths=[0.0])
         check = CableWrapCheck(MagicMock(), mount)
-        check.check()
+        check._observe_once()
         assert check.check_proposed_action("slew") is True
 
     def test_slew_blocked_at_soft_limit(self):
         mount = _make_mount(azimuths=[0.0])
         check = CableWrapCheck(MagicMock(), mount)
-        check.check()
+        check._observe_once()
         check._cumulative_deg = SOFT_LIMIT_DEG
         assert check.check_proposed_action("slew") is False
 
     def test_slew_allowed_just_below_soft_limit(self):
         mount = _make_mount(azimuths=[0.0])
         check = CableWrapCheck(MagicMock(), mount)
-        check.check()
+        check._observe_once()
         check._cumulative_deg = SOFT_LIMIT_DEG - 1
         assert check.check_proposed_action("slew") is True
 
@@ -195,7 +208,7 @@ class TestCableWrapCheckProposedAction:
     def test_capture_allowed_below_soft_limit(self):
         mount = _make_mount(azimuths=[0.0])
         check = CableWrapCheck(MagicMock(), mount)
-        check.check()
+        check._observe_once()
         assert check.check_proposed_action("capture") is True
 
 
@@ -215,6 +228,15 @@ class TestCableWrapCheckUnwindBehavior:
         check.execute_action()
         mount.stop_tracking.assert_not_called()
 
+    def test_observe_once_yields_during_unwind(self):
+        """Observer thread should not accumulate while unwind is active."""
+        mount = _make_mount(azimuths=[10.0, 30.0])
+        check = CableWrapCheck(MagicMock(), mount)
+        check._observe_once()
+        check._unwinding = True
+        check._observe_once()
+        assert check._cumulative_deg == 0.0
+
 
 class TestCableWrapStallDetection:
     """Stall detection during unwind must handle the 0/360 azimuth boundary."""
@@ -224,7 +246,7 @@ class TestCableWrapStallDetection:
         but 359.5° of raw difference. The stall detector must use wrapped
         deltas, not raw span, to correctly identify this as movement."""
         azimuths = [
-            0.0,  # initial baseline for check()
+            0.0,  # initial baseline for _observe_once()
             0.0,  # start logging get_azimuth
             0.0,  # first poll
             359.5,
@@ -234,7 +256,7 @@ class TestCableWrapStallDetection:
         ]
         mount = _make_mount(azimuths=azimuths)
         check = CableWrapCheck(MagicMock(), mount)
-        check.check()
+        check._observe_once()
         check._cumulative_deg = 280.0
 
         check.execute_action()
@@ -244,7 +266,7 @@ class TestCableWrapStallDetection:
         """Readings with >1° steps should NOT trigger stall detection,
         even near the 0/360 boundary."""
         azimuths = [
-            10.0,  # baseline for check()
+            10.0,  # baseline for _observe_once()
             10.0,  # start logging get_azimuth
             10.0,  # first poll
             7.0,
@@ -254,7 +276,7 @@ class TestCableWrapStallDetection:
         ]
         mount = _make_mount(azimuths=azimuths)
         check = CableWrapCheck(MagicMock(), mount)
-        check.check()
+        check._observe_once()
         check._cumulative_deg = 8.0
 
         check.execute_action()
@@ -270,7 +292,7 @@ class TestCableWrapCheckUnwindReset:
     def test_convergence_resets_cumulative(self):
         """When the unwind converges, cumulative is reset to 0."""
         azimuths = [
-            10.0,  # baseline for check()
+            10.0,  # baseline for _observe_once()
             10.0,  # _do_unwind: start_az
             10.0,  # poll 1
             7.0,  # poll 2
@@ -279,7 +301,7 @@ class TestCableWrapCheckUnwindReset:
         ]
         mount = _make_mount(azimuths=azimuths)
         check = CableWrapCheck(MagicMock(), mount)
-        check.check()
+        check._observe_once()
         check._cumulative_deg = 8.0
 
         check.execute_action()
@@ -288,7 +310,7 @@ class TestCableWrapCheckUnwindReset:
     def test_stall_preserves_cumulative(self):
         """When unwind stalls, cumulative is NOT reset."""
         azimuths = [
-            0.0,  # baseline for check()
+            0.0,  # baseline for _observe_once()
             0.0,  # _do_unwind: start_az
             0.0,  # poll 1
             0.0,  # poll 2
@@ -297,7 +319,7 @@ class TestCableWrapCheckUnwindReset:
         ]
         mount = _make_mount(azimuths=azimuths)
         check = CableWrapCheck(MagicMock(), mount)
-        check.check()
+        check._observe_once()
         check._cumulative_deg = 250.0
 
         check.execute_action()
@@ -306,14 +328,14 @@ class TestCableWrapCheckUnwindReset:
     def test_lost_azimuth_preserves_cumulative(self):
         """When azimuth reading is lost during unwind, cumulative is preserved."""
         azimuths = [
-            10.0,  # baseline for check()
+            10.0,  # baseline for _observe_once()
             10.0,  # _do_unwind: start_az
             None,  # poll 1 — lost azimuth
             None,  # finally: end_az
         ]
         mount = _make_mount(azimuths=azimuths)
         check = CableWrapCheck(MagicMock(), mount)
-        check.check()
+        check._observe_once()
         check._cumulative_deg = 250.0
 
         check.execute_action()
@@ -324,9 +346,29 @@ class TestCableWrapCheckStatus:
     def test_get_status(self):
         mount = _make_mount(azimuths=[0.0])
         check = CableWrapCheck(MagicMock(), mount)
-        check.check()
+        check._observe_once()
         status = check.get_status()
         assert status["name"] == "cable_wrap"
         assert "cumulative_deg" in status
         assert status["soft_limit"] == SOFT_LIMIT_DEG
         assert status["hard_limit"] == HARD_LIMIT_DEG
+
+
+class TestCableWrapObserverLifecycle:
+    def test_start_stop(self):
+        mount = _make_mount(azimuths=[10.0] * 100)
+        check = CableWrapCheck(MagicMock(), mount)
+        check.start()
+        assert check._observe_thread is not None
+        assert check._observe_thread.is_alive()
+        check.stop()
+        assert check._observe_thread is None
+
+    def test_start_is_idempotent(self):
+        mount = _make_mount(azimuths=[10.0] * 100)
+        check = CableWrapCheck(MagicMock(), mount)
+        check.start()
+        thread = check._observe_thread
+        check.start()
+        assert check._observe_thread is thread
+        check.stop()

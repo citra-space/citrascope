@@ -348,7 +348,9 @@ class CitraScopeDaemon:
 
             data_dir = Path(platformdirs.user_data_dir("citrascope", appauthor="citrascope"))
             state_file = data_dir / "cable_wrap_state.json"
-            checks.append(CableWrapCheck(CITRASCOPE_LOGGER, mount, state_file=state_file))
+            cable_check = CableWrapCheck(CITRASCOPE_LOGGER, mount, state_file=state_file)
+            cable_check.start()
+            checks.append(cable_check)
 
         # Disk space check
         checks.append(DiskSpaceCheck(CITRASCOPE_LOGGER, self.hardware_adapter.images_dir))
@@ -534,6 +536,7 @@ class CitraScopeDaemon:
 
             cable_check = self.safety_monitor.get_check("cable_wrap")
             if isinstance(cable_check, CableWrapCheck):
+                cable_check.stop()
                 cable_check.join_unwind(timeout=10.0)
         if self.task_manager:
             self.task_manager.stop()
