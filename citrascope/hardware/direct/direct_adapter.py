@@ -893,14 +893,15 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         expected_ra_deg: float | None = None,
         expected_dec_deg: float | None = None,
     ) -> None:
-        if not self.mount:
-            return
-        self.mount.sync_to_radec(solved_ra_deg, solved_dec_deg)
+        # Intentional no-op: async plate solves from the processing queue
+        # arrive after the mount has potentially moved on to the next task.
+        # Syncing stale coordinates corrupts the pointing model.
+        # Mount syncs happen only through the explicit AlignmentManager path.
         if expected_ra_deg is not None and expected_dec_deg is not None:
             error = self.angular_distance(solved_ra_deg, solved_dec_deg, expected_ra_deg, expected_dec_deg)
-            self.logger.info(f"Mount synced from plate solve (pointing error: {error * 60:.1f} arcmin)")
-        else:
-            self.logger.info(f"Mount synced from plate solve to RA={solved_ra_deg:.4f}°, Dec={solved_dec_deg:.4f}°")
+            self.logger.info(
+                "Plate solve result: pointing error %.1f arcmin (not syncing — use alignment instead)", error * 60
+            )
 
     def perform_alignment(self, target_ra: float, target_dec: float) -> bool:
         """Plate-solve at the current position and sync the mount.
