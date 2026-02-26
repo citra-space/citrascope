@@ -85,6 +85,7 @@ class SafetyMonitor:
         self._watchdog_stop = threading.Event()
         self._watchdog_interval: float = 1.0
         self._watchdog_last_heartbeat: float = 0.0
+        self._last_watchdog_action: SafetyAction = SafetyAction.SAFE
 
     # ------------------------------------------------------------------
     # Core evaluation
@@ -164,14 +165,17 @@ class SafetyMonitor:
                 self._watchdog_last_heartbeat = time.monotonic()
                 action, triggered_check = self.evaluate()
                 if action == SafetyAction.EMERGENCY and self._abort_callback:
-                    self._logger.critical(
-                        "SAFETY EMERGENCY from %r — aborting motion",
-                        triggered_check.name if triggered_check else "unknown",
-                    )
+                    is_new = self._last_watchdog_action != SafetyAction.EMERGENCY
+                    if is_new:
+                        self._logger.critical(
+                            "SAFETY EMERGENCY from %r — aborting motion",
+                            triggered_check.name if triggered_check else "unknown",
+                        )
                     try:
                         self._abort_callback()
                     except Exception:
                         self._logger.error("abort_callback raised", exc_info=True)
+                self._last_watchdog_action = action
             except Exception:
                 self._logger.error("Watchdog cycle failed", exc_info=True)
             self._watchdog_stop.wait(self._watchdog_interval)

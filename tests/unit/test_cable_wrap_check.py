@@ -269,17 +269,18 @@ class TestCableWrapStallDetection:
     """Stall detection during unwind must handle the 0/360 azimuth boundary."""
 
     def test_stall_detected_near_zero_boundary(self):
-        """Readings like [359.5, 0.0, 0.5] span only 1° of real motion
-        but 359.5° of raw difference. The stall detector must use wrapped
-        deltas, not raw span, to correctly identify this as movement."""
+        """Tiny steps crossing the 0/360 boundary must still be detected
+        as a stall using wrapped deltas, not raw span."""
         azimuths = [
-            0.0,  # initial baseline for _observe_once()
-            0.0,  # start logging get_azimuth
-            0.0,  # first poll
-            359.5,
-            0.0,
-            0.5,
-            0.5,  # end logging get_azimuth
+            0.0,  # cached_state for _observe_once()
+            0.0,  # _do_unwind: start_az
+            359.96,  # poll 1
+            359.97,  # poll 2
+            359.98,  # poll 3
+            359.99,  # poll 4
+            0.00,  # poll 5
+            0.01,  # poll 6 — stall (max step 0.01° < 0.1°)
+            0.01,  # finally: end_az
         ]
         mount = _make_mount(azimuths=azimuths)
         check = CableWrapCheck(MagicMock(), mount)
@@ -290,16 +291,14 @@ class TestCableWrapStallDetection:
         mount.stop_move.assert_called_once()
 
     def test_real_motion_not_flagged_as_stall(self):
-        """Readings with >1° steps should NOT trigger stall detection,
-        even near the 0/360 boundary."""
+        """Steps well above the stall threshold converge without stall."""
         azimuths = [
-            10.0,  # baseline for _observe_once()
-            10.0,  # start logging get_azimuth
-            10.0,  # first poll
-            7.0,
-            4.0,
-            1.0,
-            1.0,  # end logging get_azimuth
+            10.0,  # cached_state for _observe_once()
+            10.0,  # _do_unwind: start_az
+            10.0,  # poll 1
+            7.0,  # poll 2
+            4.0,  # poll 3 — cumulative 8-6=2 < convergence(5)
+            4.0,  # finally: end_az
         ]
         mount = _make_mount(azimuths=azimuths)
         check = CableWrapCheck(MagicMock(), mount)
@@ -337,11 +336,14 @@ class TestCableWrapCheckUnwindReset:
     def test_stall_preserves_cumulative(self):
         """When unwind stalls, cumulative is NOT reset."""
         azimuths = [
-            0.0,  # baseline for _observe_once()
+            0.0,  # cached_state for _observe_once()
             0.0,  # _do_unwind: start_az
             0.0,  # poll 1
             0.0,  # poll 2
-            0.0,  # poll 3 — stall detected (0° max step over 3 readings)
+            0.0,  # poll 3
+            0.0,  # poll 4
+            0.0,  # poll 5
+            0.0,  # poll 6 — stall detected (0° max step)
             0.0,  # finally: end_az
         ]
         mount = _make_mount(azimuths=azimuths)
@@ -379,6 +381,88 @@ class TestCableWrapCheckStatus:
         assert "cumulative_deg" in status
         assert status["soft_limit"] == SOFT_LIMIT_DEG
         assert status["hard_limit"] == HARD_LIMIT_DEG
+        assert status["intervention_required"] is False
+        assert status["consecutive_failures"] == 0
+
+    def test_status_shows_intervention_required(self):
+        mount = _make_mount(azimuths=[0.0])
+        check = CableWrapCheck(MagicMock(), mount)
+        check._intervention_required = True
+        check._consecutive_unwind_failures = 3
+        status = check.get_status()
+        assert status["intervention_required"] is True
+        assert status["consecutive_failures"] == 3
+
+
+class TestCableWrapRetryCap:
+    """Unwind retry cap latches to intervention-required after repeated failures."""
+
+    def _make_stalling_mount(self):
+        """Mount that always stalls (zero motion) with enough readings."""
+        azimuths = [0.0] * 10
+        return _make_mount(azimuths=azimuths)
+
+    def test_single_failure_increments_counter(self):
+        mount = _make_mount(azimuths=[0.0] * 10)
+        check = CableWrapCheck(MagicMock(), mount)
+        check._observe_once()
+        check._cumulative_deg = 280.0
+        check.execute_action()
+        assert check._consecutive_unwind_failures == 1
+        assert check._intervention_required is False
+
+    def test_three_failures_latch_intervention(self):
+        for i in range(3):
+            mount = _make_mount(azimuths=[0.0] * 10)
+            if i == 0:
+                check = CableWrapCheck(MagicMock(), mount)
+                check._observe_once()
+            else:
+                check._mount = mount
+                check._last_az = 0.0
+            check._cumulative_deg = 280.0
+            check.execute_action()
+        assert check._consecutive_unwind_failures == 3
+        assert check._intervention_required is True
+
+    def test_intervention_blocks_further_unwinds(self):
+        mount = _make_mount(azimuths=[0.0] * 10)
+        check = CableWrapCheck(MagicMock(), mount)
+        check._intervention_required = True
+        check._cumulative_deg = 280.0
+        check.execute_action()
+        mount.stop_tracking.assert_not_called()
+
+    def test_reset_clears_intervention(self):
+        mount = _make_mount(azimuths=[0.0])
+        check = CableWrapCheck(MagicMock(), mount)
+        check._intervention_required = True
+        check._consecutive_unwind_failures = 3
+        check.reset()
+        assert check._intervention_required is False
+        assert check._consecutive_unwind_failures == 0
+
+    def test_convergence_resets_failure_counter(self):
+        mount = _make_mount(azimuths=[0.0] * 10)
+        check = CableWrapCheck(MagicMock(), mount)
+        check._observe_once()
+        check._cumulative_deg = 280.0
+        check.execute_action()
+        assert check._consecutive_unwind_failures == 1
+
+        azimuths_converge = [
+            10.0,  # cached_state for _observe_once
+            10.0,  # start_az
+            10.0,  # poll 1
+            7.0,  # poll 2
+            4.0,  # poll 3 — convergence (cumulative 8-6=2 < 5)
+            4.0,  # end_az
+        ]
+        check._mount = _make_mount(azimuths=azimuths_converge)
+        check._observe_once()
+        check._cumulative_deg = 8.0
+        check.execute_action()
+        assert check._consecutive_unwind_failures == 0
 
 
 class TestCableWrapObserverLifecycle:

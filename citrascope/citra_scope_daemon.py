@@ -353,10 +353,30 @@ class CitraScopeDaemon:
         if mount is not None:
             import platformdirs
 
+            from citrascope.safety.cable_wrap_check import HARD_LIMIT_DEG
+
             data_dir = Path(platformdirs.user_data_dir("citrascope", appauthor="citrascope"))
             state_file = data_dir / "cable_wrap_state.json"
             cable_check = CableWrapCheck(CITRASCOPE_LOGGER, mount, state_file=state_file)
             cable_check.start()
+
+            if abs(cable_check._cumulative_deg) >= HARD_LIMIT_DEG:
+                CITRASCOPE_LOGGER.warning(
+                    "Persisted cable wrap at %.1f° exceeds hard limit (%.1f°) — attempting startup unwind",
+                    cable_check._cumulative_deg,
+                    HARD_LIMIT_DEG,
+                )
+                cable_check.execute_action()
+                if cable_check._consecutive_unwind_failures > 0:
+                    cable_check._intervention_required = True
+                    CITRASCOPE_LOGGER.critical(
+                        "Startup unwind did not converge (%.1f° remaining) — "
+                        "manual intervention required before the system can "
+                        "operate. Use web UI to reset after physically "
+                        "verifying cables.",
+                        cable_check._cumulative_deg,
+                    )
+
             checks.append(cable_check)
 
         # Disk space check
@@ -369,8 +389,12 @@ class CitraScopeDaemon:
         def abort_callback() -> None:
             try:
                 mount = getattr(self.hardware_adapter, "mount", None)
-                if mount:
-                    mount.abort_slew()
+                if not mount:
+                    return
+                snap = mount.cached_state
+                if snap is not None and not snap.is_slewing:
+                    return
+                mount.abort_slew()
             except Exception:
                 pass
 
@@ -537,18 +561,14 @@ class CitraScopeDaemon:
         self._shutdown_done = True
 
         CITRASCOPE_LOGGER.info("Shutting down...")
-        if self.safety_monitor:
-            self.safety_monitor.stop_watchdog()
-            from citrascope.safety.cable_wrap_check import CableWrapCheck
 
-            cable_check = self.safety_monitor.get_check("cable_wrap")
-            if isinstance(cable_check, CableWrapCheck):
-                cable_check.stop()
-                cable_check.join_unwind(timeout=10.0)
+        # 1. Stop sources of new motion
         if self.task_manager:
             self.task_manager.stop()
         if self.time_monitor:
             self.time_monitor.stop()
+
+        # 2. Abort any residual motion
         if self.hardware_adapter:
             try:
                 mount = getattr(self.hardware_adapter, "mount", None)
@@ -556,11 +576,26 @@ class CitraScopeDaemon:
                     mount.abort_slew()
             except Exception:
                 pass
+
+        # 3. Stop safety (watchdog last — it was guarding steps 1-2)
+        if self.safety_monitor:
+            from citrascope.safety.cable_wrap_check import CableWrapCheck
+
+            cable_check = self.safety_monitor.get_check("cable_wrap")
+            if isinstance(cable_check, CableWrapCheck):
+                cable_check.join_unwind(timeout=10.0)
+                cable_check.stop()
+            self.safety_monitor.stop_watchdog()
+
+        # 4. Disconnect hardware
+        if self.hardware_adapter:
             try:
                 CITRASCOPE_LOGGER.info("Disconnecting hardware...")
                 self.hardware_adapter.disconnect()
             except Exception as e:
                 CITRASCOPE_LOGGER.warning(f"Error disconnecting hardware: {e}")
+
+        # 5. Stop web server
         if self.web_server:
             CITRASCOPE_LOGGER.info("Stopping web server...")
             if self.web_server.web_log_handler:

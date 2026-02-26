@@ -27,13 +27,14 @@ HARD_LIMIT_DEG = 270.0
 
 _OBSERVE_INTERVAL_S = 0.5
 _UNWIND_POLL_INTERVAL_S = 0.5
-_STALL_THRESHOLD_DEG = 1.0
-_STALL_READINGS = 3
+_STALL_THRESHOLD_DEG = 0.1
+_STALL_READINGS = 6
 _TRAVEL_BUDGET_DEG = 360.0
 _CONVERGENCE_DEG = 5.0
-_UNWIND_RATE = 7
+_UNWIND_RATE = 9
 _UNWIND_TIMEOUT_S = 300.0
 _SAVE_INTERVAL_S = 10.0
+_MAX_CONSECUTIVE_UNWIND_FAILURES = 3
 
 
 def _shortest_arc(from_deg: float, to_deg: float) -> float:
@@ -79,6 +80,9 @@ class CableWrapCheck(SafetyCheck):
         self._az_healthy: bool = True
         self._lock = threading.Lock()
         self._last_save_time: float = 0.0
+        self._consecutive_unwind_failures: int = 0
+        self._intervention_required: bool = False
+        self._hard_limit_logged: bool = False
 
         self._observe_thread: threading.Thread | None = None
         self._observe_stop = threading.Event()
@@ -174,17 +178,23 @@ class CableWrapCheck(SafetyCheck):
             if not self._is_altaz:
                 return SafetyAction.SAFE
 
+            if self._intervention_required:
+                return SafetyAction.EMERGENCY
+
             if not self._az_healthy:
                 return SafetyAction.WARN
 
             abs_cumulative = abs(self._cumulative_deg)
             if abs_cumulative >= HARD_LIMIT_DEG:
-                self._logger.critical(
-                    "Cable wrap HARD LIMIT: %.1f° cumulative (limit %.1f°)",
-                    self._cumulative_deg,
-                    HARD_LIMIT_DEG,
-                )
+                if not self._hard_limit_logged:
+                    self._logger.critical(
+                        "Cable wrap HARD LIMIT: %.1f° cumulative (limit %.1f°)",
+                        self._cumulative_deg,
+                        HARD_LIMIT_DEG,
+                    )
+                    self._hard_limit_logged = True
                 return SafetyAction.EMERGENCY
+            self._hard_limit_logged = False
             if abs_cumulative >= SOFT_LIMIT_DEG:
                 self._logger.warning(
                     "Cable wrap soft limit: %.1f° cumulative (limit %.1f°)",
@@ -198,6 +208,8 @@ class CableWrapCheck(SafetyCheck):
         with self._lock:
             if self._unwinding:
                 return False
+            if self._intervention_required:
+                return False
             if action_type in ("slew", "home"):
                 if abs(self._cumulative_deg) >= SOFT_LIMIT_DEG:
                     return False
@@ -208,10 +220,25 @@ class CableWrapCheck(SafetyCheck):
         with self._lock:
             if self._unwinding:
                 return
+            if self._intervention_required:
+                return
             self._unwinding = True
             self._unwind_thread = threading.current_thread()
         try:
-            self._do_unwind()
+            converged = self._do_unwind()
+            with self._lock:
+                if converged:
+                    self._consecutive_unwind_failures = 0
+                else:
+                    self._consecutive_unwind_failures += 1
+                    if self._consecutive_unwind_failures >= _MAX_CONSECUTIVE_UNWIND_FAILURES:
+                        self._intervention_required = True
+                        self._logger.critical(
+                            "Cable unwind failed %d consecutive times — "
+                            "manual intervention required. Use the web UI "
+                            "to reset after physically verifying cables.",
+                            self._consecutive_unwind_failures,
+                        )
         finally:
             with self._lock:
                 self._unwinding = False
@@ -228,6 +255,9 @@ class CableWrapCheck(SafetyCheck):
         with self._lock:
             self._cumulative_deg = 0.0
             self._last_az = None
+            self._consecutive_unwind_failures = 0
+            self._intervention_required = False
+            self._hard_limit_logged = False
             self._save_state()
 
     @property
@@ -243,6 +273,8 @@ class CableWrapCheck(SafetyCheck):
                 "soft_limit": SOFT_LIMIT_DEG,
                 "hard_limit": HARD_LIMIT_DEG,
                 "unwinding": self._unwinding,
+                "intervention_required": self._intervention_required,
+                "consecutive_failures": self._consecutive_unwind_failures,
             }
 
     # ------------------------------------------------------------------
@@ -257,7 +289,8 @@ class CableWrapCheck(SafetyCheck):
         except Exception:
             return "n/a"
 
-    def _do_unwind(self) -> None:
+    def _do_unwind(self) -> bool:
+        """Returns True if the unwind converged, False otherwise."""
         start_az = self._mount.get_azimuth()
         ra_dec = self._get_mount_radec()
         self._logger.warning(
@@ -273,7 +306,7 @@ class CableWrapCheck(SafetyCheck):
         direction = "west" if self._cumulative_deg > 0 else "east"
         if not self._mount.start_move(direction, rate=_UNWIND_RATE):
             self._logger.error("Mount does not support directional motion — cannot unwind")
-            return
+            return False
 
         recent_readings: list[float] = []
         travel = 0.0
@@ -314,9 +347,6 @@ class CableWrapCheck(SafetyCheck):
                     self._get_mount_radec(),
                 )
 
-                # Stall detection — use wrapped pairwise deltas so readings
-                # near the 0/360 boundary (e.g. [359.5, 0.0, 0.5]) don't
-                # produce a false 359° span.
                 recent_readings.append(az)
                 if len(recent_readings) > _STALL_READINGS:
                     recent_readings.pop(0)
@@ -327,14 +357,13 @@ class CableWrapCheck(SafetyCheck):
                     )
                     if max_step < _STALL_THRESHOLD_DEG:
                         self._logger.error(
-                            "Unwind stall detected (max step %.1f° over %d readings) "
+                            "Unwind stall detected (max step %.2f° over %d readings) "
                             "— possible cable binding or obstruction",
                             max_step,
                             _STALL_READINGS,
                         )
                         break
 
-                # Travel budget
                 if travel > _TRAVEL_BUDGET_DEG:
                     self._logger.error(
                         "Unwind travel budget exceeded (%.1f° > %.1f°) — stopping",
@@ -343,7 +372,6 @@ class CableWrapCheck(SafetyCheck):
                     )
                     break
 
-                # Convergence
                 if abs(self._cumulative_deg) < _CONVERGENCE_DEG:
                     self._logger.info("Cable unwind converged at %.1f° cumulative", self._cumulative_deg)
                     converged = True
@@ -374,6 +402,7 @@ class CableWrapCheck(SafetyCheck):
                     self._cumulative_deg,
                 )
                 self._save_state()
+        return converged
 
     # ------------------------------------------------------------------
     # State persistence
