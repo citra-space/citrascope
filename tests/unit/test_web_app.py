@@ -69,6 +69,7 @@ def mock_daemon(mock_settings):
     d.hardware_adapter.supports_autofocus.return_value = True
     d.hardware_adapter.get_filter_config.return_value = {0: {"name": "L", "enabled": True}}
     d.hardware_adapter.get_missing_dependencies.return_value = []
+    d.hardware_adapter.mount.cached_state = None
     d.task_manager = MagicMock()
     d.task_manager.current_task_id = None
     d.task_manager.task_heap = []

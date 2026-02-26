@@ -19,6 +19,7 @@ from citrascope.hardware.abstract_astro_hardware_adapter import (
     SettingSchemaEntry,
 )
 from citrascope.hardware.devices.mount.abstract_mount import AbstractMount
+from citrascope.hardware.devices.mount.mount_state_cache import MountStateCache
 
 # Default observer location — Pikes Peak, matches DummyApiClient.
 _OBSERVER_LAT_DEG = 38.8409
@@ -340,6 +341,7 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         self._is_moving = False
         self._tracking_rate = (15.041, 0.0)  # arcsec/sec (sidereal rate)
         self.mount = _DummyMount(logger)
+        self._mount_cache: MountStateCache | None = None
 
         # Set by the daemon after connecting, mirrors the real telescope_record from the API.
         # When present, take_image() derives sensor dimensions and pixel scale from it.
@@ -388,12 +390,20 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         self._connected = True
         self._telescope_connected = True
         self._camera_connected = True
+        cache = MountStateCache(self.mount)
+        cache.refresh_static()
+        cache.start()
+        self.mount._state_cache = cache  # type: ignore[attr-defined]
+        self._mount_cache = cache
         self.logger.info("DummyAdapter: Connected successfully")
         return True
 
     def disconnect(self):
         """Simulate disconnection."""
         self.logger.info("DummyAdapter: Disconnecting...")
+        if self._mount_cache:
+            self._mount_cache.stop()
+            self._mount_cache = None
         self._connected = False
         self._telescope_connected = False
         self._camera_connected = False

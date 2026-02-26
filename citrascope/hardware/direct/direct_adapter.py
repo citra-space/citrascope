@@ -23,6 +23,7 @@ from citrascope.hardware.devices.device_registry import (
 from citrascope.hardware.devices.filter_wheel import AbstractFilterWheel
 from citrascope.hardware.devices.focuser import AbstractFocuser
 from citrascope.hardware.devices.mount import AbstractMount
+from citrascope.hardware.devices.mount.mount_state_cache import MountStateCache
 
 
 class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
@@ -55,6 +56,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         super().__init__(images_dir, **kwargs)
         self.logger = logger
         self.location_service: Any | None = None
+        self._mount_cache: MountStateCache | None = None
 
         # Track dependency issues for reporting
         self._dependency_issues: list[dict[str, str]] = []
@@ -338,6 +340,11 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                 success = False
             else:
                 self._sync_mount_site_and_time()
+                cache = MountStateCache(self.mount)
+                cache.refresh_static()
+                cache.start()
+                self.mount._state_cache = cache  # type: ignore[attr-defined]
+                self._mount_cache = cache
         else:
             self.logger.info("No mount configured (static camera mode)")
 
@@ -427,7 +434,10 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         """Disconnect from all hardware devices."""
         self.logger.info("Disconnecting from direct hardware devices...")
 
-        # Disconnect all devices
+        if self._mount_cache:
+            self._mount_cache.stop()
+            self._mount_cache = None
+
         if self.camera:
             self.camera.disconnect()
 
@@ -552,12 +562,18 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
     def set_mount_horizon_limit(self, degrees: int) -> bool:
         if not self.mount or not self.mount.is_connected():
             return False
-        return self.mount.set_horizon_limit(degrees)
+        ok = self.mount.set_horizon_limit(degrees)
+        if ok and self._mount_cache:
+            self._mount_cache.refresh_limits()
+        return ok
 
     def set_mount_overhead_limit(self, degrees: int) -> bool:
         if not self.mount or not self.mount.is_connected():
             return False
-        return self.mount.set_overhead_limit(degrees)
+        ok = self.mount.set_overhead_limit(degrees)
+        if ok and self._mount_cache:
+            self._mount_cache.refresh_limits()
+        return ok
 
     def get_scope_radec(self) -> tuple[float, float]:
         """Get current telescope RA/Dec position.

@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from citrascope.hardware.devices.mount.mount_state_cache import MountSnapshot
 from citrascope.safety.cable_wrap_check import (
     HARD_LIMIT_DEG,
     SOFT_LIMIT_DEG,
@@ -48,13 +49,26 @@ class TestShortestArc:
 # ------------------------------------------------------------------
 
 
-def _make_mount(mode: str = "altaz", azimuths: list[float] | None = None):
+class _CachedStateSequence:
+    """Returns sequential az_deg values from mount.cached_state attribute access."""
+
+    def __init__(self, azimuths: list[float | None]):
+        self._iter = iter(azimuths)
+
+    @property
+    def az_deg(self) -> float | None:
+        return next(self._iter, None)
+
+
+def _make_mount(mode: str = "altaz", azimuths: list[float | None] | None = None):
     mount = MagicMock()
     mount.get_mount_mode.return_value = mode
     if azimuths is not None:
-        mount.get_azimuth.side_effect = list(azimuths)
+        mount.get_azimuth.side_effect = list(azimuths[1:]) if len(azimuths) > 1 else []
+        mount.cached_state = _CachedStateSequence(azimuths)
     else:
         mount.get_azimuth.return_value = None
+        mount.cached_state = MountSnapshot()
     mount.start_move.return_value = True
     mount.stop_move.return_value = True
     mount.stop_tracking.return_value = True

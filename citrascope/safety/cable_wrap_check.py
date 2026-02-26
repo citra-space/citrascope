@@ -121,12 +121,17 @@ class CableWrapCheck(SafetyCheck):
         Called by the observation thread, or directly by tests.  During an
         active unwind the observation thread yields — the unwind loop takes
         over accumulation at its own cadence.
+
+        When the mount has a state cache the azimuth is read from its
+        cached snapshot (zero serial I/O).  If no cache is attached,
+        the reading is treated as lost (az = None).
         """
         if not self._is_altaz:
             return
 
         try:
-            az = self._mount.get_azimuth()
+            cached = self._mount.cached_state
+            az = cached.az_deg if cached is not None else None
         except Exception:
             self._logger.debug("Failed to read azimuth", exc_info=True)
             az = None

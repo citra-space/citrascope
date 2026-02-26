@@ -1,8 +1,14 @@
 """Abstract mount device interface."""
 
+from __future__ import annotations
+
 from abc import abstractmethod
+from typing import TYPE_CHECKING
 
 from citrascope.hardware.devices.abstract_hardware_device import AbstractHardwareDevice
+
+if TYPE_CHECKING:
+    from citrascope.hardware.devices.mount.mount_state_cache import MountSnapshot
 
 
 class AbstractMount(AbstractHardwareDevice):
@@ -10,6 +16,11 @@ class AbstractMount(AbstractHardwareDevice):
 
     Provides a common interface for controlling equatorial and alt-az mounts.
     All RA/Dec coordinates are in **degrees** (project convention).
+
+    When a ``MountStateCache`` is attached (via ``_state_cache``), the
+    ``cached_state``, ``cached_mount_info``, and ``cached_limits`` properties
+    expose its data.  The adapter creates and attaches the cache — consumers
+    never see it directly.
     """
 
     # ------------------------------------------------------------------
@@ -342,3 +353,25 @@ class AbstractMount(AbstractHardwareDevice):
             True if stop issued, False if unsupported.
         """
         return False
+
+    # ------------------------------------------------------------------
+    # Cached state — populated by MountStateCache (attached by adapter)
+    # ------------------------------------------------------------------
+
+    @property
+    def cached_state(self) -> MountSnapshot | None:
+        """Latest cached position/status snapshot, or None if no cache."""
+        cache = getattr(self, "_state_cache", None)
+        return cache.snapshot if cache is not None else None
+
+    @property
+    def cached_mount_info(self) -> dict:
+        """Cached mount info (model, capabilities). Empty dict if no cache."""
+        cache = getattr(self, "_state_cache", None)
+        return cache.mount_info if cache is not None else {}
+
+    @property
+    def cached_limits(self) -> tuple[int | None, int | None]:
+        """Cached altitude limits. (None, None) if no cache."""
+        cache = getattr(self, "_state_cache", None)
+        return cache.limits if cache is not None else (None, None)

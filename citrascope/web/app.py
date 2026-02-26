@@ -962,58 +962,49 @@ class CitraScopeWebApp:
             self.status.hardware_adapter = self.daemon.settings.hardware_adapter
 
             if hasattr(self.daemon, "hardware_adapter") and self.daemon.hardware_adapter:
+                adapter = self.daemon.hardware_adapter
+                mount = getattr(adapter, "mount", None)
+
                 # Check telescope connection status
                 try:
-                    self.status.telescope_connected = self.daemon.hardware_adapter.is_telescope_connected()
+                    self.status.telescope_connected = adapter.is_telescope_connected()
                     if self.status.telescope_connected:
-                        ra, dec = self.daemon.hardware_adapter.get_telescope_direction()
-                        self.status.telescope_ra = ra
-                        self.status.telescope_dec = dec
-                        mount = getattr(self.daemon.hardware_adapter, "mount", None)
-                        if mount:
-                            self.status.telescope_az = mount.get_azimuth()
-                            self.status.telescope_alt = mount.get_altitude()
+                        snap = mount.cached_state if mount is not None else None
+                        if snap is not None:
+                            self.status.telescope_ra = snap.ra_deg
+                            self.status.telescope_dec = snap.dec_deg
+                            self.status.telescope_az = snap.az_deg
+                            self.status.telescope_alt = snap.alt_deg
+                        else:
+                            ra, dec = adapter.get_telescope_direction()
+                            self.status.telescope_ra = ra
+                            self.status.telescope_dec = dec
                 except Exception:
                     self.status.telescope_connected = False
 
                 # Check camera connection status
                 try:
-                    self.status.camera_connected = self.daemon.hardware_adapter.is_camera_connected()
+                    self.status.camera_connected = adapter.is_camera_connected()
                 except Exception:
                     self.status.camera_connected = False
 
                 # Check adapter capabilities
                 try:
-                    self.status.supports_direct_camera_control = (
-                        self.daemon.hardware_adapter.supports_direct_camera_control()
-                    )
+                    self.status.supports_direct_camera_control = adapter.supports_direct_camera_control()
                 except Exception:
                     self.status.supports_direct_camera_control = False
 
-                self.status.supports_autofocus = self.daemon.hardware_adapter.supports_autofocus()
+                self.status.supports_autofocus = adapter.supports_autofocus()
 
-                adapter = self.daemon.hardware_adapter
                 has_camera = getattr(adapter, "camera", None) is not None
-                mount = getattr(adapter, "mount", None)
-                has_mount = mount is not None
-                self.status.supports_alignment = has_camera and has_mount
-                try:
-                    self.status.supports_manual_sync = has_mount and mount.get_mount_info().get("supports_sync", False)
-                except Exception:
-                    self.status.supports_manual_sync = False
+                self.status.supports_alignment = has_camera and mount is not None
 
-                try:
-                    self.status.mount_at_home = has_mount and mount.is_home()
-                except Exception:
-                    self.status.mount_at_home = False
-
-                if self.status.telescope_connected:
-                    try:
-                        h_limit, o_limit = adapter.get_mount_limits()
-                        self.status.mount_horizon_limit = h_limit
-                        self.status.mount_overhead_limit = o_limit
-                    except Exception:
-                        pass
+                if mount is not None and mount.cached_state is not None:
+                    self.status.supports_manual_sync = mount.cached_mount_info.get("supports_sync", False)
+                    self.status.mount_at_home = mount.cached_state.is_at_home
+                    h_limit, o_limit = mount.cached_limits
+                    self.status.mount_horizon_limit = h_limit
+                    self.status.mount_overhead_limit = o_limit
 
             if hasattr(self.daemon, "task_manager") and self.daemon.task_manager:
                 task_manager = self.daemon.task_manager
