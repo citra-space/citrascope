@@ -193,7 +193,7 @@ class CableWrapCheck(SafetyCheck):
         with self._lock:
             if self._unwinding:
                 return False
-            if action_type == "slew":
+            if action_type in ("slew", "home"):
                 if abs(self._cumulative_deg) >= SOFT_LIMIT_DEG:
                     return False
             return True

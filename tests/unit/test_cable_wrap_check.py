@@ -211,6 +211,19 @@ class TestCableWrapCheckProposedAction:
         check._observe_once()
         assert check.check_proposed_action("capture") is True
 
+    def test_home_blocked_at_soft_limit(self):
+        mount = _make_mount(azimuths=[0.0])
+        check = CableWrapCheck(MagicMock(), mount)
+        check._observe_once()
+        check._cumulative_deg = SOFT_LIMIT_DEG
+        assert check.check_proposed_action("home") is False
+
+    def test_home_allowed_below_soft_limit(self):
+        mount = _make_mount(azimuths=[0.0])
+        check = CableWrapCheck(MagicMock(), mount)
+        check._observe_once()
+        assert check.check_proposed_action("home") is True
+
 
 class TestCableWrapCheckUnwindBehavior:
     def test_check_returns_queue_stop_during_unwind(self):

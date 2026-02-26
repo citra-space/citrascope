@@ -388,6 +388,19 @@ class ZwoAmMount(AbstractMount):
     # ------------------------------------------------------------------
 
     def sync_to_radec(self, ra: float, dec: float) -> bool:
+        try:
+            tracking, slewing, at_home, parked, mode = self._get_status_flags()
+            self.logger.info(
+                "Pre-sync status: mode=%s tracking=%s slewing=%s home=%s parked=%s",
+                mode.value,
+                tracking,
+                slewing,
+                at_home,
+                parked,
+            )
+        except Exception:
+            self.logger.warning("Could not read mount status before sync", exc_info=True)
+
         ra_hours = ra / 15.0
 
         ra_cmd = ZwoAmCommands.set_target_ra_decimal(ra_hours)
@@ -400,8 +413,20 @@ class ZwoAmMount(AbstractMount):
             self.logger.error("Mount rejected sync Dec target %.4f°", dec)
             return False
 
-        self._transport.send_command_with_retry(ZwoAmCommands.sync())
-        self.logger.info("Synced to RA=%.4f° Dec=%.4f°", ra, dec)
+        sync_resp = self._transport.send_command_with_retry(ZwoAmCommands.sync())
+        error = ZwoAmResponseParser.parse_goto_response(sync_resp)
+        if error is not None:
+            self.logger.error("Mount rejected sync: %s (raw response: %r)", error, sync_resp)
+            return False
+
+        self.logger.info("Sync accepted for RA=%.4f° Dec=%.4f° (response: %r)", ra, dec, sync_resp)
+
+        try:
+            readback_ra, readback_dec = self.get_radec()
+            self.logger.info("Post-sync readback: RA=%.4f° Dec=%.4f°", readback_ra, readback_dec)
+        except Exception:
+            self.logger.warning("Could not read back position after sync")
+
         return True
 
     def guide_pulse(self, direction: str, duration_ms: int) -> bool:
@@ -533,6 +558,26 @@ class ZwoAmMount(AbstractMount):
             return False
 
         self.logger.info("Site location set: lat=%.4f° lon=%.4f° alt=%.0fm", latitude, longitude, altitude)
+
+        try:
+            lat_resp = self._transport.send_command_with_retry(ZwoAmCommands.get_latitude())
+            lon_resp = self._transport.send_command_with_retry(ZwoAmCommands.get_longitude())
+            readback_lat = ZwoAmResponseParser.parse_site_coordinate(lat_resp)
+            readback_lon = ZwoAmResponseParser.parse_site_coordinate(lon_resp)
+            if readback_lon is not None:
+                readback_lon = -readback_lon  # Meade convention is west-positive
+            self.logger.info(
+                "Site location readback: lat=%s° (expected %.4f°) lon=%s° (expected %.4f°) | raw lat=%r lon=%r",
+                f"{readback_lat:.4f}" if readback_lat is not None else "PARSE_FAIL",
+                latitude,
+                f"{readback_lon:.4f}" if readback_lon is not None else "PARSE_FAIL",
+                longitude,
+                lat_resp,
+                lon_resp,
+            )
+        except Exception:
+            self.logger.warning("Could not read back site location after write", exc_info=True)
+
         return True
 
     def sync_datetime(self) -> bool:
@@ -552,6 +597,13 @@ class ZwoAmMount(AbstractMount):
             return False
 
         self.logger.info("Mount time synced to UTC: %s", now.strftime("%Y-%m-%d %H:%M:%S"))
+
+        try:
+            lst_resp = self._transport.send_command_with_retry(ZwoAmCommands.get_sidereal_time())
+            self.logger.info("Mount sidereal time readback: %s", lst_resp.rstrip("#"))
+        except Exception:
+            self.logger.warning("Could not read back sidereal time after time sync", exc_info=True)
+
         return True
 
     # ------------------------------------------------------------------

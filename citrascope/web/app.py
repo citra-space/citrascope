@@ -56,6 +56,7 @@ class SystemStatus(BaseModel):
     supports_alignment: bool = False
     supports_autofocus: bool = False
     supports_manual_sync: bool = False
+    mount_at_home: bool = False
     mount_homing: bool = False
     mount_horizon_limit: int | None = None
     mount_overhead_limit: int | None = None
@@ -780,7 +781,6 @@ class CitraScopeWebApp:
             try:
                 success = mount.sync_to_radec(ra_f, dec_f)
                 if success:
-                    CITRASCOPE_LOGGER.info(f"Manual mount sync to RA={ra_f:.4f}°, Dec={dec_f:.4f}°")
                     return {"success": True, "message": f"Mount synced to RA={ra_f:.4f}°, Dec={dec_f:.4f}°"}
                 else:
                     return JSONResponse({"error": "Mount sync returned failure"}, status_code=500)
@@ -996,6 +996,11 @@ class CitraScopeWebApp:
                     self.status.supports_manual_sync = has_mount and mount.get_mount_info().get("supports_sync", False)
                 except Exception:
                     self.status.supports_manual_sync = False
+
+                try:
+                    self.status.mount_at_home = has_mount and mount.is_home()
+                except Exception:
+                    self.status.mount_at_home = False
 
                 if self.status.telescope_connected:
                     try:

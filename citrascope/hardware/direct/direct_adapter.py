@@ -518,6 +518,10 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         if not self.mount or not self.mount.is_connected():
             self.logger.warning("No mount connected — cannot home")
             return False
+        if self._safety_monitor and not self._safety_monitor.is_action_safe("home"):
+            from citrascope.safety.safety_monitor import SafetyError
+
+            raise SafetyError("Homing blocked by safety monitor")
         return self.mount.find_home()
 
     def is_mount_homed(self) -> bool:
