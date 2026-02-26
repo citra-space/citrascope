@@ -35,6 +35,9 @@ _UNWIND_RATE = 9
 _UNWIND_TIMEOUT_S = 300.0
 _SAVE_INTERVAL_S = 10.0
 _MAX_CONSECUTIVE_UNWIND_FAILURES = 3
+_FIRMWARE_LIMIT_TRAVEL_DEG = 10.0
+_MAX_SEGMENT_RESTARTS = 5
+_SEGMENT_PAUSE_S = 1.0
 
 
 def _shortest_arc(from_deg: float, to_deg: float) -> float:
@@ -290,29 +293,109 @@ class CableWrapCheck(SafetyCheck):
             return "n/a"
 
     def _do_unwind(self) -> bool:
-        """Returns True if the unwind converged, False otherwise."""
+        """Unwind cable wrap using chained move segments.
+
+        The AM5 firmware caps continuous directional motion at ~191°. For
+        longer unwinds we detect the firmware deceleration, stop, pause,
+        and restart.  A segment that barely moved (<_FIRMWARE_LIMIT_TRAVEL_DEG)
+        is treated as a real stall (cable binding / obstruction) and aborts.
+        """
         start_az = self._mount.get_azimuth()
         ra_dec = self._get_mount_radec()
+        direction = "west" if self._cumulative_deg > 0 else "east"
         self._logger.warning(
             "Starting cable unwind from %.1f° cumulative | az=%.1f° | ra/dec=%s | direction=%s",
             self._cumulative_deg,
             start_az or 0.0,
             ra_dec,
-            "west" if self._cumulative_deg > 0 else "east",
+            direction,
         )
 
         self._mount.stop_tracking()
 
-        direction = "west" if self._cumulative_deg > 0 else "east"
-        if not self._mount.start_move(direction, rate=_UNWIND_RATE):
-            self._logger.error("Mount does not support directional motion — cannot unwind")
-            return False
-
-        recent_readings: list[float] = []
-        travel = 0.0
-        poll_count = 0
+        total_travel = 0.0
+        total_polls = 0
+        segment = 0
         converged = False
         deadline = time.monotonic() + _UNWIND_TIMEOUT_S
+
+        while segment <= _MAX_SEGMENT_RESTARTS:
+            segment_travel, segment_polls, reason = self._run_unwind_segment(direction, deadline, total_travel)
+            total_travel += segment_travel
+            total_polls += segment_polls
+
+            if reason == "converged":
+                converged = True
+                break
+
+            if reason == "timeout" or reason == "no_az" or reason == "budget":
+                break
+
+            if reason == "stall":
+                if segment_travel < _FIRMWARE_LIMIT_TRAVEL_DEG:
+                    self._logger.error(
+                        "Segment %d traveled only %.1f° before stalling " "— likely cable binding or obstruction",
+                        segment,
+                        segment_travel,
+                    )
+                    break
+                self._logger.info(
+                    "Segment %d traveled %.1f° before firmware limit — "
+                    "pausing %.1fs then restarting (segment %d/%d)",
+                    segment,
+                    segment_travel,
+                    _SEGMENT_PAUSE_S,
+                    segment + 1,
+                    _MAX_SEGMENT_RESTARTS + 1,
+                )
+                time.sleep(_SEGMENT_PAUSE_S)
+                segment += 1
+                continue
+
+            break
+
+        end_az = self._mount.get_azimuth()
+        if converged:
+            self._logger.info(
+                "Cable unwind complete: %d segments, %d polls, %.1f° traveled, "
+                "az %.1f° → %.1f° | final ra/dec=%s | resetting cumulative to 0",
+                segment + 1,
+                total_polls,
+                total_travel,
+                start_az or 0.0,
+                end_az or 0.0,
+                self._get_mount_radec(),
+            )
+            self.reset()
+        else:
+            self._logger.error(
+                "Unwind did NOT converge: %d segments, %d polls, %.1f° traveled, "
+                "az %.1f° → %.1f° | %.1f° cumulative remaining | "
+                "operator must verify cable state before resuming",
+                segment + 1,
+                total_polls,
+                total_travel,
+                start_az or 0.0,
+                end_az or 0.0,
+                self._cumulative_deg,
+            )
+            self._save_state()
+        return converged
+
+    def _run_unwind_segment(self, direction: str, deadline: float, prior_travel: float) -> tuple[float, int, str]:
+        """Execute one continuous move segment.
+
+        Returns (segment_travel_deg, poll_count, stop_reason).
+        stop_reason is one of: "converged", "stall", "timeout", "no_az", "budget", "start_failed".
+        """
+        if not self._mount.start_move(direction, rate=_UNWIND_RATE):
+            self._logger.error("Mount does not support directional motion — cannot unwind")
+            return 0.0, 0, "start_failed"
+
+        recent_readings: list[float] = []
+        segment_travel = 0.0
+        poll_count = 0
+        reason = "stall"
 
         try:
             while True:
@@ -324,26 +407,28 @@ class CableWrapCheck(SafetyCheck):
                         "Unwind wall-clock timeout (%.0fs) — stopping",
                         _UNWIND_TIMEOUT_S,
                     )
+                    reason = "timeout"
                     break
 
                 az = self._mount.get_azimuth()
                 if az is None:
                     self._logger.error("Lost azimuth reading during unwind — stopping")
+                    reason = "no_az"
                     break
 
                 with self._lock:
                     if self._last_az is not None:
                         delta = _shortest_arc(self._last_az, az)
                         self._cumulative_deg += delta
-                        travel += abs(delta)
+                        segment_travel += abs(delta)
                     self._last_az = az
 
                 self._logger.info(
-                    "Unwind poll #%d: az=%.1f° cumulative=%.1f° travel=%.1f° | ra/dec=%s",
+                    "Unwind poll #%d: az=%.1f° cumulative=%.1f° segment_travel=%.1f° | ra/dec=%s",
                     poll_count,
                     az,
                     self._cumulative_deg,
-                    travel,
+                    segment_travel,
                     self._get_mount_radec(),
                 )
 
@@ -356,53 +441,29 @@ class CableWrapCheck(SafetyCheck):
                         for i in range(len(recent_readings) - 1)
                     )
                     if max_step < _STALL_THRESHOLD_DEG:
-                        self._logger.error(
-                            "Unwind stall detected (max step %.2f° over %d readings) "
-                            "— possible cable binding or obstruction",
-                            max_step,
-                            _STALL_READINGS,
-                        )
+                        reason = "stall"
                         break
 
-                if travel > _TRAVEL_BUDGET_DEG:
+                if (prior_travel + segment_travel) > _TRAVEL_BUDGET_DEG:
                     self._logger.error(
                         "Unwind travel budget exceeded (%.1f° > %.1f°) — stopping",
-                        travel,
+                        prior_travel + segment_travel,
                         _TRAVEL_BUDGET_DEG,
                     )
+                    reason = "budget"
                     break
 
                 if abs(self._cumulative_deg) < _CONVERGENCE_DEG:
-                    self._logger.info("Cable unwind converged at %.1f° cumulative", self._cumulative_deg)
-                    converged = True
+                    self._logger.info(
+                        "Cable unwind converged at %.1f° cumulative",
+                        self._cumulative_deg,
+                    )
+                    reason = "converged"
                     break
         finally:
             self._mount.stop_move(direction)
-            end_az = self._mount.get_azimuth()
-            if converged:
-                self._logger.info(
-                    "Cable unwind complete: %d polls, %.1f° traveled, "
-                    "az %.1f° → %.1f° | final ra/dec=%s | resetting cumulative to 0",
-                    poll_count,
-                    travel,
-                    start_az or 0.0,
-                    end_az or 0.0,
-                    self._get_mount_radec(),
-                )
-                self.reset()
-            else:
-                self._logger.error(
-                    "Unwind did NOT converge: %d polls, %.1f° traveled, "
-                    "az %.1f° → %.1f° | %.1f° cumulative remaining | "
-                    "operator must verify cable state before resuming",
-                    poll_count,
-                    travel,
-                    start_az or 0.0,
-                    end_az or 0.0,
-                    self._cumulative_deg,
-                )
-                self._save_state()
-        return converged
+
+        return segment_travel, poll_count, reason
 
     # ------------------------------------------------------------------
     # State persistence

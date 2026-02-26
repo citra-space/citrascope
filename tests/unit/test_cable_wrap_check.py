@@ -465,6 +465,93 @@ class TestCableWrapRetryCap:
         assert check._consecutive_unwind_failures == 0
 
 
+class TestCableWrapMultiSegmentUnwind:
+    """Multi-segment unwind: firmware caps motion at ~191°, so we stop/restart."""
+
+    def test_firmware_limit_triggers_restart_and_converges(self):
+        """Segment 1 travels 40° then stalls (firmware limit).
+        Segment 2 finishes the job and converges."""
+        azimuths = [
+            200.0,  # cached_state for _observe_once
+            200.0,  # _do_unwind: start_az
+            # Segment 1 polls (7):
+            180.0,  # poll 1 — moving
+            160.0,  # poll 2 — moving
+            160.0,  # poll 3 — stalled
+            160.0,  # poll 4
+            160.0,  # poll 5
+            160.0,  # poll 6 — window still has big step from 180→160
+            160.0,  # poll 7 — window is [160]*6, max_step=0 → stall
+            # Segment 2 polls (2):
+            155.0,  # poll 1 — moving (cumulative: 10→5)
+            150.0,  # poll 2 — converged (cumulative: 5→0)
+            # _do_unwind: end_az
+            150.0,
+        ]
+        mount = _make_mount(azimuths=azimuths)
+        check = CableWrapCheck(MagicMock(), mount)
+        check._observe_once()
+        check._cumulative_deg = 50.0
+
+        check.execute_action()
+
+        assert check._cumulative_deg == 0.0
+        assert check._consecutive_unwind_failures == 0
+        assert mount.start_move.call_count == 2
+        assert mount.stop_move.call_count == 2
+
+    def test_real_stall_after_tiny_travel_aborts(self):
+        """If a segment barely moves (<10°) before stalling, it's a real
+        obstruction — don't restart, count it as a failure."""
+        azimuths = [
+            0.0,  # cached_state for _observe_once
+            0.0,  # _do_unwind: start_az
+            # Segment 1: barely moves then stalls
+            1.0,  # poll 1
+            1.0,  # poll 2
+            1.0,  # poll 3
+            1.0,  # poll 4
+            1.0,  # poll 5
+            1.0,  # poll 6 — window = 6 readings, max_step ≈ 0
+            # _do_unwind: end_az
+            1.0,
+        ]
+        mount = _make_mount(azimuths=azimuths)
+        check = CableWrapCheck(MagicMock(), mount)
+        check._observe_once()
+        check._cumulative_deg = 280.0
+
+        check.execute_action()
+
+        assert check._consecutive_unwind_failures == 1
+        assert check._cumulative_deg > 0
+        assert mount.start_move.call_count == 1
+
+    def test_max_restarts_respected(self):
+        """Even if every segment looks like a firmware limit, we stop after
+        _MAX_SEGMENT_RESTARTS + 1 segments."""
+        from citrascope.safety.cable_wrap_check import _MAX_SEGMENT_RESTARTS
+
+        # 7 polls per segment (same pattern as segment 1 above)
+        segment_polls = [80.0, 60.0, 60.0, 60.0, 60.0, 60.0, 60.0]
+        num_segments = _MAX_SEGMENT_RESTARTS + 2  # more than we'd ever need
+        all_polls = segment_polls * num_segments
+        azimuths = [
+            100.0,  # cached_state for _observe_once
+            100.0,  # _do_unwind: start_az
+            *all_polls,
+            60.0,  # _do_unwind: end_az
+        ]
+        mount = _make_mount(azimuths=azimuths)
+        check = CableWrapCheck(MagicMock(), mount)
+        check._observe_once()
+        check._cumulative_deg = 500.0
+
+        check.execute_action()
+
+        assert mount.start_move.call_count == _MAX_SEGMENT_RESTARTS + 1
+
+
 class TestCableWrapObserverLifecycle:
     def test_start_stop(self):
         mount = _make_mount(azimuths=[10.0] * 100)
