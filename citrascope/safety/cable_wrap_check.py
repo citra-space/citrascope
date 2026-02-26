@@ -70,6 +70,7 @@ class CableWrapCheck(SafetyCheck):
         self._logger = logger
         self._mount = mount
         self._state_file = state_file
+        self._is_altaz: bool = mount.get_mount_mode() == "altaz"
 
         self._cumulative_deg: float = 0.0
         self._last_az: float | None = None
@@ -121,19 +122,17 @@ class CableWrapCheck(SafetyCheck):
         active unwind the observation thread yields — the unwind loop takes
         over accumulation at its own cadence.
         """
-        mode = self._mount.get_mount_mode()
+        if not self._is_altaz:
+            return
 
         try:
-            az = self._mount.get_azimuth() if mode == "altaz" else None
+            az = self._mount.get_azimuth()
         except Exception:
             self._logger.debug("Failed to read azimuth", exc_info=True)
             az = None
 
         with self._lock:
             if self._unwinding:
-                return
-
-            if mode != "altaz":
                 return
 
             if az is None:
@@ -167,7 +166,7 @@ class CableWrapCheck(SafetyCheck):
             if self._unwinding:
                 return SafetyAction.QUEUE_STOP
 
-            if self._mount.get_mount_mode() != "altaz":
+            if not self._is_altaz:
                 return SafetyAction.SAFE
 
             if not self._az_healthy:
