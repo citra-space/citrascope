@@ -14,6 +14,7 @@ import json
 import logging
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -89,6 +90,8 @@ class CableWrapCheck(SafetyCheck):
 
         self._observe_thread: threading.Thread | None = None
         self._observe_stop = threading.Event()
+
+        self.safety_gate: Callable[[], bool] | None = None
 
         self._load_state()
 
@@ -320,6 +323,10 @@ class CableWrapCheck(SafetyCheck):
         deadline = time.monotonic() + _UNWIND_TIMEOUT_S
 
         while segment <= _MAX_SEGMENT_RESTARTS:
+            if self.safety_gate is not None and not self.safety_gate():
+                self._logger.warning("Unwind aborted — safety gate blocked motion")
+                break
+
             segment_travel, segment_polls, reason = self._run_unwind_segment(direction, deadline, total_travel)
             total_travel += segment_travel
             total_polls += segment_polls
@@ -386,7 +393,7 @@ class CableWrapCheck(SafetyCheck):
         """Execute one continuous move segment.
 
         Returns (segment_travel_deg, poll_count, stop_reason).
-        stop_reason is one of: "converged", "stall", "timeout", "no_az", "budget", "start_failed".
+        stop_reason is one of: "converged", "stall", "timeout", "no_az", "budget", "start_failed", "gate".
         """
         if not self._mount.start_move(direction, rate=_UNWIND_RATE):
             self._logger.error("Mount does not support directional motion — cannot unwind")
@@ -401,6 +408,11 @@ class CableWrapCheck(SafetyCheck):
             while True:
                 time.sleep(_UNWIND_POLL_INTERVAL_S)
                 poll_count += 1
+
+                if self.safety_gate is not None and not self.safety_gate():
+                    self._logger.warning("Unwind interrupted by operator stop")
+                    reason = "gate"
+                    break
 
                 if time.monotonic() > deadline:
                     self._logger.error(

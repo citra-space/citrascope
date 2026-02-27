@@ -149,7 +149,7 @@ class DummyApiClient(AbstractCitraApiClient):
     """
 
     # Simulated failure rate for testing retry logic (30% chance of upload failure)
-    UPLOAD_FAILURE_RATE = 0.3
+    UPLOAD_FAILURE_RATE = 0.1
 
     def __init__(self, logger=None):
         """Initialize dummy API client with in-memory data."""

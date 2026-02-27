@@ -68,8 +68,24 @@ class SafetyCheck(ABC):
         return {"name": self.name}
 
 
+from citrascope.safety.operator_stop_check import OperatorStopCheck  # noqa: E402
+
+__all__ = [
+    "OperatorStopCheck",
+    "SafetyAction",
+    "SafetyCheck",
+    "SafetyError",
+    "SafetyMonitor",
+]
+
+
 class SafetyMonitor:
-    """Orchestrates multiple SafetyCheck instances with a watchdog thread."""
+    """Orchestrates multiple SafetyCheck instances with a watchdog thread.
+
+    An ``OperatorStopCheck`` is automatically prepended to the check list
+    and exposed via ``self.operator_stop`` so callers can activate/clear
+    the stop without reaching through ``get_check()``.
+    """
 
     def __init__(
         self,
@@ -78,14 +94,36 @@ class SafetyMonitor:
         abort_callback: Callable[[], None] | None = None,
     ) -> None:
         self._logger = logger
-        self._checks = list(checks)
         self._abort_callback = abort_callback
+
+        self.operator_stop = OperatorStopCheck()
+        self._checks: list[SafetyCheck] = [self.operator_stop, *checks]
 
         self._watchdog_thread: threading.Thread | None = None
         self._watchdog_stop = threading.Event()
         self._watchdog_interval: float = 1.0
         self._watchdog_last_heartbeat: float = 0.0
         self._last_watchdog_action: SafetyAction = SafetyAction.SAFE
+
+    # ------------------------------------------------------------------
+    # Operator stop  (convenience pass-throughs)
+    # ------------------------------------------------------------------
+
+    def activate_operator_stop(self) -> None:
+        was_active = self.operator_stop.is_active
+        self.operator_stop.activate()
+        if not was_active and self.operator_stop.is_active:
+            self._logger.warning("Operator STOP activated — all motion blocked")
+
+    def clear_operator_stop(self) -> None:
+        was_active = self.operator_stop.is_active
+        self.operator_stop.clear()
+        if was_active and not self.operator_stop.is_active:
+            self._logger.info("Operator stop cleared")
+
+    @property
+    def is_operator_stopped(self) -> bool:
+        return self.operator_stop.is_active
 
     # ------------------------------------------------------------------
     # Core evaluation
@@ -100,6 +138,7 @@ class SafetyMonitor:
         """
         worst_action = SafetyAction.SAFE
         worst_check: SafetyCheck | None = None
+
         for chk in self._checks:
             try:
                 action = chk.check()
@@ -117,7 +156,7 @@ class SafetyMonitor:
     def is_action_safe(self, action_type: str, **kwargs) -> bool:
         """Pre-action gate: ask every check whether *action_type* is safe.
 
-        Fail-closed: if a check raises, the action is blocked.
+        Fail-closed: if a registered check raises, the action is blocked.
         """
         for chk in self._checks:
             try:
@@ -164,21 +203,40 @@ class SafetyMonitor:
             try:
                 self._watchdog_last_heartbeat = time.monotonic()
                 action, triggered_check = self.evaluate()
-                if action == SafetyAction.EMERGENCY and self._abort_callback:
+                if action == SafetyAction.EMERGENCY:
                     is_new = self._last_watchdog_action != SafetyAction.EMERGENCY
-                    if is_new:
+                    if is_new and triggered_check:
                         self._logger.critical(
                             "SAFETY EMERGENCY from %r — aborting motion",
-                            triggered_check.name if triggered_check else "unknown",
+                            triggered_check.name,
                         )
-                    try:
-                        self._abort_callback()
-                    except Exception:
-                        self._logger.error("abort_callback raised", exc_info=True)
+                    if self._abort_callback:
+                        try:
+                            self._abort_callback()
+                        except Exception:
+                            self._logger.error("abort_callback raised", exc_info=True)
+                    if triggered_check and is_new:
+                        self._run_corrective_action(triggered_check)
                 self._last_watchdog_action = action
             except Exception:
                 self._logger.error("Watchdog cycle failed", exc_info=True)
             self._watchdog_stop.wait(self._watchdog_interval)
+
+    def _run_corrective_action(self, check: SafetyCheck) -> None:
+        """Fire a check's corrective action in a background thread.
+
+        ``execute_action`` can block (e.g. cable unwind takes minutes),
+        so we avoid stalling the watchdog loop.  The check itself is
+        responsible for idempotency — duplicate calls are no-ops.
+        """
+
+        def _action() -> None:
+            try:
+                check.execute_action()
+            except Exception:
+                self._logger.error("Corrective action from %r failed", check.name, exc_info=True)
+
+        threading.Thread(target=_action, daemon=True, name=f"safety-action-{check.name}").start()
 
     # ------------------------------------------------------------------
     # Check lookup
@@ -202,7 +260,7 @@ class SafetyMonitor:
         call instead of calling ``check()`` again, because some checks (e.g.
         CableWrapCheck) have side effects in ``check()``.
         """
-        check_statuses = []
+        check_statuses: list[dict] = []
         for chk in self._checks:
             try:
                 status = chk.get_status()

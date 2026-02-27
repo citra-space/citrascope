@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import atexit
 import signal
 import time
@@ -346,9 +348,11 @@ class CitraScopeDaemon:
 
         assert self.hardware_adapter is not None
 
-        checks = []
+        checks: list = []
 
         # Cable wrap check — only for adapters with a direct mount
+        cable_check: CableWrapCheck | None = None
+        needs_startup_unwind = False
         mount = getattr(self.hardware_adapter, "mount", None)
         if mount is not None:
             import platformdirs
@@ -362,20 +366,11 @@ class CitraScopeDaemon:
 
             if abs(cable_check._cumulative_deg) >= HARD_LIMIT_DEG:
                 CITRASCOPE_LOGGER.warning(
-                    "Persisted cable wrap at %.1f° exceeds hard limit (%.1f°) — attempting startup unwind",
+                    "Persisted cable wrap at %.1f° exceeds hard limit (%.1f°) — will unwind after safety gate is wired",
                     cable_check._cumulative_deg,
                     HARD_LIMIT_DEG,
                 )
-                cable_check.execute_action()
-                if cable_check._consecutive_unwind_failures > 0:
-                    cable_check._intervention_required = True
-                    CITRASCOPE_LOGGER.critical(
-                        "Startup unwind did not converge (%.1f° remaining) — "
-                        "manual intervention required before the system can "
-                        "operate. Use web UI to reset after physically "
-                        "verifying cables.",
-                        cable_check._cumulative_deg,
-                    )
+                needs_startup_unwind = True
 
             checks.append(cable_check)
 
@@ -400,8 +395,32 @@ class CitraScopeDaemon:
 
         self.safety_monitor = SafetyMonitor(CITRASCOPE_LOGGER, checks, abort_callback=abort_callback)
         self.hardware_adapter.set_safety_monitor(self.safety_monitor)
+
+        # Wire safety gate so cable unwind respects operator stop.
+        # Must check operator_stop directly — is_action_safe() would ask
+        # cable_wrap itself, which returns False while _unwinding is True.
+        # IMPORTANT: this must happen BEFORE any execute_action() call so
+        # the unwind can be interrupted by operator stop.
+        op_stop = self.safety_monitor.operator_stop
+        if cable_check is not None:
+            cable_check.safety_gate = lambda: not op_stop.is_active
+
         self.safety_monitor.start_watchdog()
         CITRASCOPE_LOGGER.info("Safety monitor started with %d check(s)", len(checks))
+
+        # Now that the safety gate is wired, attempt the startup unwind.
+        if needs_startup_unwind and cable_check is not None:
+            CITRASCOPE_LOGGER.info("Starting deferred cable unwind (safety gate active)")
+            cable_check.execute_action()
+            if cable_check._consecutive_unwind_failures > 0:
+                cable_check._intervention_required = True
+                CITRASCOPE_LOGGER.critical(
+                    "Startup unwind did not converge (%.1f° remaining) — "
+                    "manual intervention required before the system can "
+                    "operate. Use web UI to reset after physically "
+                    "verifying cables.",
+                    cable_check._cumulative_deg,
+                )
 
     def _save_filter_config(self):
         """Save filter configuration from adapter to settings if supported.

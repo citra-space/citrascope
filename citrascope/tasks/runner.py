@@ -72,6 +72,7 @@ class TaskManager:
         # Task processing control (restored from settings)
         self._processing_active = not settings.task_processing_paused
         self._processing_lock = threading.Lock()
+        self._last_safety_action: object = None
         self.autofocus_manager = AutofocusManager(
             self.logger,
             self.hardware_adapter,
@@ -381,23 +382,30 @@ class TaskManager:
             except Exception:
                 pass
             if triggered_check:
-                self.logger.critical("Executing safety action from %r", triggered_check.name)
-                try:
-                    triggered_check.execute_action()
-                except Exception:
-                    self.logger.error("Safety corrective action failed", exc_info=True)
+                is_new = self._last_safety_action != SafetyAction.EMERGENCY
+                if is_new:
+                    self.logger.critical("Executing safety action from %r", triggered_check.name)
+                    try:
+                        triggered_check.execute_action()
+                    except Exception:
+                        self.logger.error("Safety corrective action failed", exc_info=True)
+            self._last_safety_action = action
             return True
 
         if action == SafetyAction.QUEUE_STOP:
             if self.imaging_queue.is_idle():
                 if triggered_check:
-                    self.logger.warning("Executing safety action from %r (queue idle)", triggered_check.name)
-                    try:
-                        triggered_check.execute_action()
-                    except Exception:
-                        self.logger.error("Safety corrective action failed", exc_info=True)
+                    is_new = self._last_safety_action != SafetyAction.QUEUE_STOP
+                    if is_new:
+                        self.logger.warning("Executing safety action from %r (queue idle)", triggered_check.name)
+                        try:
+                            triggered_check.execute_action()
+                        except Exception:
+                            self.logger.error("Safety corrective action failed", exc_info=True)
+            self._last_safety_action = action
             return True
 
+        self._last_safety_action = action
         return False
 
     def _create_telescope_task(self, task: Task):
@@ -434,6 +442,16 @@ class TaskManager:
             if not next_tasks:
                 summary += "No tasks scheduled."
             return summary
+
+    def clear_pending_tasks(self) -> int:
+        """Drain the task heap and imaging queue. Returns total items removed."""
+        with self.heap_lock:
+            count = len(self.task_heap)
+            self.task_heap.clear()
+            self.task_ids.clear()
+            self.task_dict.clear()
+        count += self.imaging_queue.clear()
+        return count
 
     def pause(self) -> bool:
         """Pause task processing. Returns new state (False)."""

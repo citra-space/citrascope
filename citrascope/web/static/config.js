@@ -796,6 +796,42 @@ async function resetCableWrap() {
 }
 
 /**
+ * Emergency stop — halt mount, pause tasks, drain imaging queue.
+ */
+async function emergencyStop() {
+    try {
+        const response = await fetch('/api/emergency-stop', { method: 'POST' });
+        const data = await response.json();
+        if (response.ok) {
+            createToast(data.message || 'Emergency stop executed', 'warning', false);
+        } else {
+            createToast(data.error || 'Emergency stop failed', 'danger', false);
+        }
+    } catch (error) {
+        console.error('Emergency stop error:', error);
+        createToast('Failed to execute emergency stop', 'danger', false);
+    }
+}
+
+/**
+ * Clear the operator stop — allows motion to resume.
+ */
+async function clearOperatorStop() {
+    try {
+        const response = await fetch('/api/safety/operator-stop/clear', { method: 'POST' });
+        const data = await response.json();
+        if (response.ok) {
+            createToast(data.message || 'Operator stop cleared', 'success', true);
+        } else {
+            createToast(data.error || 'Failed to clear operator stop', 'danger', false);
+        }
+    } catch (error) {
+        console.error('Clear operator stop error:', error);
+        createToast('Failed to clear operator stop', 'danger', false);
+    }
+}
+
+/**
  * Setup autofocus/alignment button event listeners (call once during init)
  */
 export function setupAutofocusButton() {
@@ -805,6 +841,8 @@ export function setupAutofocusButton() {
     window.homeMount = homeMount;
     window.triggerCableUnwind = triggerCableUnwind;
     window.resetCableWrap = resetCableWrap;
+    window.emergencyStop = emergencyStop;
+    window.clearOperatorStop = clearOperatorStop;
 }
 
 /**

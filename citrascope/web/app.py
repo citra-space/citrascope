@@ -867,6 +867,79 @@ class CitraScopeWebApp:
             CITRASCOPE_LOGGER.info("Cable wrap counter reset by operator")
             return {"success": True, "message": "Cable wrap counter reset to 0°"}
 
+        @self.app.post("/api/emergency-stop")
+        async def emergency_stop():
+            """Stop mount, pause task processing, and drain imaging queue."""
+            if not self.daemon:
+                return JSONResponse({"error": "Daemon not available"}, status_code=503)
+
+            import threading
+
+            # Activate safety check — watchdog will enforce continuously
+            if self.daemon.safety_monitor:
+                self.daemon.safety_monitor.activate_operator_stop()
+
+            cleared = 0
+            tm = self.daemon.task_manager
+            if tm:
+                tm.pause()
+                cleared = tm.clear_pending_tasks()
+            if self.daemon.settings:
+                self.daemon.settings.task_processing_paused = True
+                self.daemon.settings.save()
+
+            # Immediate mount halt in background thread (serial I/O can't
+            # run on the async event loop).  The watchdog provides ongoing
+            # enforcement at 1 Hz; this gives sub-second first response.
+            daemon = self.daemon
+
+            def _halt_mount():
+                mount = getattr(daemon.hardware_adapter, "mount", None) if daemon.hardware_adapter else None
+                if not mount:
+                    return
+                try:
+                    mount.abort_slew()
+                    mount.stop_tracking()
+                except Exception:
+                    CITRASCOPE_LOGGER.error("Error halting mount during emergency stop", exc_info=True)
+
+            threading.Thread(target=_halt_mount, daemon=True, name="emergency-stop").start()
+
+            CITRASCOPE_LOGGER.warning(
+                "EMERGENCY STOP by operator — processing paused, %d imaging tasks cleared, mount halt issued",
+                cleared,
+            )
+            return JSONResponse(
+                {
+                    "success": True,
+                    "message": f"Emergency stop: mount halt issued, {cleared} queued task(s) cleared",
+                },
+                status_code=202,
+            )
+
+        @self.app.post("/api/safety/operator-stop/clear")
+        async def clear_operator_stop():
+            """Clear the operator stop — allows motion to resume.
+
+            Also reverses the pause that emergency_stop applied so
+            task processing can pick up where it left off.
+            """
+            if not self.daemon:
+                return JSONResponse({"error": "Daemon not available"}, status_code=503)
+            if not self.daemon.safety_monitor:
+                return JSONResponse({"error": "Safety monitor not available"}, status_code=503)
+            self.daemon.safety_monitor.clear_operator_stop()
+
+            tm = self.daemon.task_manager
+            if tm:
+                tm.resume()
+            if self.daemon.settings:
+                self.daemon.settings.task_processing_paused = False
+                self.daemon.settings.save()
+
+            CITRASCOPE_LOGGER.info("Operator stop cleared via web UI — task processing resumed")
+            return {"success": True, "message": "Operator stop cleared — motion may resume"}
+
         @self.app.post("/api/mount/limits")
         async def set_mount_limits(request: dict[str, Any]):
             """Set the mount's altitude limits."""

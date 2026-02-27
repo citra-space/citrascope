@@ -80,8 +80,15 @@
             <div class="row g-3 mb-3">
                 <div class="col-12 col-md-6">
                     <div class="card bg-dark text-light border-secondary h-100">
-                        <div class="card-header">
+                        <div class="card-header d-flex align-items-center justify-content-between">
                             System Status
+                            <button class="btn btn-sm btn-danger"
+                                    x-show="$store.citrascope.wsConnected"
+                                    @click="emergencyStop()"
+                                    data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="bottom"
+                                    title="Stop mount, pause tasks, drain queue">
+                                <i class="bi bi-stop-circle-fill"></i> Stop
+                            </button>
                         </div>
                         <div class="card-body">
                             <div class="row mb-2">
@@ -108,7 +115,7 @@
                                      get tip() {
                                          if (!this.checks.length) return 'No safety checks active';
                                          const labels = { safe: '✓', warn: '⚠', stop: '⏸', emergency: '✖' };
-                                         const names = { cable_wrap: 'Cable Wrap', disk_space: 'Disk Space', time_health: 'Time Health' };
+                                         const names = { operator_stop: 'Operator Stop', cable_wrap: 'Cable Wrap', disk_space: 'Disk Space', time_health: 'Time Health' };
                                          let lines = this.checks.map(c =>
                                              (labels[c.action] || '?') + ' ' + (names[c.name] || c.name)
                                          );
@@ -399,6 +406,12 @@
                             <span>
                                 <strong x-text="alert.action === 'emergency' ? 'EMERGENCY' : (alert.action === 'stop' ? 'Safety Hold' : 'Warning')"></strong>
                                 &mdash;
+                                <template x-if="alert.name === 'operator_stop'">
+                                    <span>Operator stop active &mdash; all motion blocked.
+                                        <button class="btn btn-sm btn-outline-light ms-2"
+                                                @click="clearOperatorStop()">Clear Stop</button>
+                                    </span>
+                                </template>
                                 <template x-if="alert.name === 'cable_wrap'">
                                     <span>Cable wrap at <span x-text="Math.abs(alert.cumulative_deg ?? 0)"></span>&deg;
                                         (<span x-text="alert.action === 'emergency' ? 'hard limit' : 'soft limit'"></span> reached).
@@ -418,7 +431,7 @@
                                 <template x-if="alert.name === 'time_health'">
                                     <span>System clock drift is critical &mdash; observations may be inaccurate.</span>
                                 </template>
-                                <template x-if="alert.name !== 'cable_wrap' && alert.name !== 'disk_space' && alert.name !== 'time_health'">
+                                <template x-if="!['operator_stop','cable_wrap','disk_space','time_health'].includes(alert.name)">
                                     <span>Safety check "<span x-text="alert.name"></span>" triggered.</span>
                                 </template>
                             </span>
