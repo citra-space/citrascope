@@ -540,13 +540,37 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
 
         self.logger.info("Mount not homed — initiating find-home (required for GoTo)")
         self.mount.find_home()
-        deadline = time.monotonic() + 60
+
+        _TIMEOUT_S = 60
+        _GRACE_POLLS = 5
+        _IDLE_THRESHOLD = 3
+        deadline = time.monotonic() + _TIMEOUT_S
+        poll_count = 0
+        idle_count = 0
         while time.monotonic() < deadline:
             time.sleep(1)
             if self.mount.is_home():
                 self.logger.info("Mount homed successfully")
                 return True
-        self.logger.warning("Homing did not complete within 60 s — GoTo may fail")
+
+            poll_count += 1
+            if poll_count > _GRACE_POLLS:
+                try:
+                    still_moving = self.mount.is_slewing()
+                except Exception:
+                    still_moving = True
+                if not still_moving:
+                    idle_count += 1
+                    if idle_count >= _IDLE_THRESHOLD:
+                        self.logger.warning(
+                            "Mount stopped without reaching home (poll %d) — homing interrupted",
+                            poll_count,
+                        )
+                        return False
+                else:
+                    idle_count = 0
+
+        self.logger.warning("Homing did not complete within %d s — GoTo may fail", _TIMEOUT_S)
         return False
 
     def is_mount_homed(self) -> bool:
