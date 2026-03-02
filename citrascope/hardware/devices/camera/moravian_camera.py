@@ -25,6 +25,11 @@ if TYPE_CHECKING:
 class MoravianCamera(AbstractCamera):
     """Driver for Moravian Instruments Gx/Cx cameras via gxccd native library."""
 
+    _camera_cache: list[dict[str, str | int]] | None = None
+    _read_mode_cache: list[dict[str, str | int]] | None = None
+    _cache_timestamp: float = 0
+    _cache_ttl: float = 30.0
+
     @classmethod
     def get_friendly_name(cls) -> str:
         return "Moravian Instruments Camera (Gx/Cx)"
@@ -34,17 +39,75 @@ class MoravianCamera(AbstractCamera):
         return {"packages": [], "install_extra": ""}
 
     @classmethod
+    def _detect_available_cameras(cls) -> list[dict[str, str | int]]:
+        """Probe connected Moravian cameras and return {value, label} options.
+
+        Each camera is briefly initialized to read its description and serial,
+        then released. Results are cached for _cache_ttl seconds.
+        """
+        import time as _time
+
+        cache_age = _time.time() - cls._cache_timestamp
+        if cls._camera_cache is not None and cache_age < cls._cache_ttl:
+            return cls._camera_cache
+
+        options: list[dict[str, str | int]] = [{"value": -1, "label": "Auto (single camera)"}]
+        read_modes: list[dict[str, str | int]] = [{"value": -1, "label": "Camera default"}]
+        try:
+            from citrascope.hardware.devices.moravian_bindings import (
+                GSP_CAMERA_DESCRIPTION,
+                GSP_CAMERA_SERIAL,
+            )
+            from citrascope.hardware.devices.moravian_bindings import (
+                GxccdCamera as GxccdCam,
+            )
+
+            probe = GxccdCam()
+            ids = probe.enumerate_usb()
+            for cid in ids:
+                try:
+                    probe2 = GxccdCam()
+                    probe2.initialize_usb(cid)
+                    desc = probe2.get_string_parameter(GSP_CAMERA_DESCRIPTION).strip()
+                    serial = probe2.get_string_parameter(GSP_CAMERA_SERIAL).strip()
+                    # Grab read modes from the first camera we probe
+                    if len(read_modes) == 1:
+                        try:
+                            modes = probe2.enumerate_read_modes()
+                            for i, name in enumerate(modes):
+                                read_modes.append({"value": i, "label": name})
+                        except Exception:
+                            pass
+                    probe2.release()
+                    label = f"{desc} (SN: {serial})" if serial else desc
+                    options.append({"value": cid, "label": label})
+                except Exception:
+                    options.append({"value": cid, "label": f"Camera {cid}"})
+        except Exception:
+            pass
+
+        cls._camera_cache = options
+        if len(read_modes) > 1:
+            cls._read_mode_cache = read_modes
+        cls._cache_timestamp = _time.time()
+        return options
+
+    @classmethod
     def get_settings_schema(cls) -> list[SettingSchemaEntry]:
+        camera_options = cls._detect_available_cameras()
+        read_mode_options = cls._read_mode_cache or [{"value": -1, "label": "Camera default"}]
+
         return cast(
             list[SettingSchemaEntry],
             [
                 {
                     "name": "camera_id",
-                    "friendly_name": "Camera ID",
+                    "friendly_name": "Camera",
                     "type": "int",
                     "default": -1,
-                    "description": "Camera identifier (-1 for single camera, or ID from enumeration)",
+                    "description": "Select which camera to use",
                     "required": False,
+                    "options": camera_options,
                     "group": "Camera",
                 },
                 {
@@ -82,8 +145,9 @@ class MoravianCamera(AbstractCamera):
                     "friendly_name": "Read Mode",
                     "type": "int",
                     "default": -1,
-                    "description": "Read mode index (-1 for camera default)",
+                    "description": "Sensor read mode",
                     "required": False,
+                    "options": read_mode_options,
                     "group": "Camera",
                 },
                 {
@@ -94,6 +158,32 @@ class MoravianCamera(AbstractCamera):
                     "description": "Default gain register value (0 = minimum, max depends on camera model)",
                     "required": False,
                     "min": 0,
+                    "group": "Camera",
+                },
+                {
+                    "name": "default_binning",
+                    "friendly_name": "Default Binning",
+                    "type": "int",
+                    "default": 1,
+                    "description": "Pixel binning factor (1x1, 2x2, etc.)",
+                    "required": False,
+                    "options": [
+                        {"value": 1, "label": "1x1 (no binning)"},
+                        {"value": 2, "label": "2x2"},
+                        {"value": 3, "label": "3x3"},
+                        {"value": 4, "label": "4x4"},
+                    ],
+                    "group": "Camera",
+                },
+                {
+                    "name": "cooling_target_temp",
+                    "friendly_name": "Cooling Target (°C)",
+                    "type": "float",
+                    "default": -10.0,
+                    "description": "Target sensor temperature. Set to 20 to disable cooling.",
+                    "required": False,
+                    "min": -50,
+                    "max": 20,
                     "group": "Camera",
                 },
             ],
@@ -107,11 +197,18 @@ class MoravianCamera(AbstractCamera):
         self._eth_port: int = int(kwargs.get("eth_port", 48899))
         self._default_read_mode: int = int(kwargs.get("default_read_mode", -1))
         self._default_gain: int = int(kwargs.get("default_gain", 0))
+        self._default_binning: int = int(kwargs.get("default_binning", 1))
+        self._cooling_target_temp: float = float(kwargs.get("cooling_target_temp", -10.0))
 
         self._gxccd: GxccdCamera | None = None
         self._has_cooler = False
+        self._has_fan = False
+        self._has_window_heating = False
+        self._max_fan: int = 0
+        self._max_window_heating: int = 0
         self._cooling_active = False
         self._target_temp: float | None = None
+        self._read_modes: list[str] = []
         self._camera_info: dict = {}
         self._integrated_fw: MoravianIntegratedFilterWheel | None = None
 
@@ -119,12 +216,16 @@ class MoravianCamera(AbstractCamera):
         try:
             from citrascope.hardware.devices.moravian_bindings import (
                 GBP_COOLER,
+                GBP_FAN,
                 GBP_FILTERS,
+                GBP_WINDOW_HEATING,
                 GIP_CHIP_D,
                 GIP_CHIP_W,
                 GIP_DEFAULT_READ_MODE,
                 GIP_FILTERS,
+                GIP_MAX_FAN,
                 GIP_MAX_GAIN,
+                GIP_MAX_WINDOW_HEATING,
                 GIP_PIXEL_D,
                 GIP_PIXEL_W,
                 GSP_CAMERA_DESCRIPTION,
@@ -170,12 +271,36 @@ class MoravianCamera(AbstractCamera):
                 "max_gain": max_gain,
             }
 
-            # Cooling capability
+            # Cooling and thermal capabilities
             self._has_cooler = cam.get_boolean_parameter(GBP_COOLER)
+            self._has_fan = cam.get_boolean_parameter(GBP_FAN)
+            self._has_window_heating = cam.get_boolean_parameter(GBP_WINDOW_HEATING)
+            if self._has_fan:
+                self._max_fan = cam.get_integer_parameter(GIP_MAX_FAN)
+            if self._has_window_heating:
+                self._max_window_heating = cam.get_integer_parameter(GIP_MAX_WINDOW_HEATING)
+
+            # Enumerate read modes and push to class-level cache for the settings schema
+            try:
+                self._read_modes = cam.enumerate_read_modes()
+                if self._read_modes:
+                    for i, mode_name in enumerate(self._read_modes):
+                        self.logger.info(f"  Read mode {i}: {mode_name}")
+                    MoravianCamera._read_mode_cache = [{"value": -1, "label": "Camera default"}] + [
+                        {"value": i, "label": name} for i, name in enumerate(self._read_modes)
+                    ]
+            except Exception as e:
+                self.logger.debug(f"Could not enumerate read modes: {e}")
 
             # Apply default read mode
             if self._default_read_mode >= 0:
                 cam.set_read_mode(self._default_read_mode)
+                mode_label = (
+                    self._read_modes[self._default_read_mode]
+                    if self._default_read_mode < len(self._read_modes)
+                    else str(self._default_read_mode)
+                )
+                self.logger.info(f"Read mode set to {mode_label}")
             else:
                 default = cam.get_integer_parameter(GIP_DEFAULT_READ_MODE)
                 cam.set_read_mode(default)
@@ -189,7 +314,17 @@ class MoravianCamera(AbstractCamera):
                 self.logger.info(f"Detected integrated filter wheel with {num_filters} positions")
 
             temp = cam.get_value(GV_CHIP_TEMPERATURE)
-            self.logger.info(f"Connected to {desc.strip()} (SN: {serial.strip()}) " f"{w}x{h} px, {temp:.1f}°C")
+            self.logger.info(
+                f"Connected to {desc.strip()} (SN: {serial.strip()}) "
+                f"{w}x{h} px, {temp:.1f}°C"
+                + (f", fan: max={self._max_fan}" if self._has_fan else "")
+                + (f", heating: max={self._max_window_heating}" if self._has_window_heating else "")
+            )
+
+            # Auto-start cooling if cooler present and target is below ambient
+            if self._has_cooler and self._cooling_target_temp < 20.0:
+                self.start_cooling()
+
             return True
 
         except (GxccdError, OSError) as e:
@@ -198,6 +333,11 @@ class MoravianCamera(AbstractCamera):
             return False
 
     def disconnect(self):
+        if self._gxccd and self._cooling_active:
+            try:
+                self.stop_cooling()
+            except Exception as e:
+                self.logger.warning(f"Error stopping cooling during disconnect: {e}")
         self._integrated_fw = None
         if self._gxccd:
             self._gxccd.release()
@@ -328,24 +468,61 @@ class MoravianCamera(AbstractCamera):
             return False
 
     def start_cooling(self) -> bool:
-        if not self._has_cooler:
+        """Start the full thermal lifecycle: fan, window heating, ramp, and target temp."""
+        if not self._has_cooler or not self.is_connected():
             return False
-        temp = self._target_temp if self._target_temp is not None else -10.0
-        return self.set_temperature(temp)
+        assert self._gxccd is not None
+
+        try:
+            if self._has_fan:
+                self._gxccd.set_fan(self._max_fan)
+                self.logger.info(f"Fan enabled at speed {self._max_fan}")
+
+            if self._has_window_heating:
+                self._gxccd.set_window_heating(self._max_window_heating)
+                self.logger.info(f"Window heating enabled at intensity {self._max_window_heating}")
+
+            self._gxccd.set_temperature_ramp(3.0)
+            self.logger.info("Temperature ramp set to 3 °C/min")
+
+            target = self._cooling_target_temp
+            self._gxccd.set_temperature(target)
+            self._target_temp = target
+            self._cooling_active = True
+            self.logger.info(f"Cooling started, target {target}°C")
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to start cooling: {e}")
+            return False
 
     def stop_cooling(self) -> bool:
+        """Ramp to ambient and disable fan/heating."""
         if not self.is_connected() or not self._has_cooler:
             return False
         assert self._gxccd is not None
+
         try:
-            # Setting a very high target effectively disables cooling
-            self._gxccd.set_temperature(40.0)
+            self._gxccd.set_temperature_ramp(3.0)
+            self._gxccd.set_temperature(20.0)
+            self.logger.info("Cooling ramp-down to +20°C started")
+
+            if self._has_fan:
+                self._gxccd.set_fan(0)
+                self.logger.info("Fan disabled")
+
+            if self._has_window_heating:
+                self._gxccd.set_window_heating(0)
+                self.logger.info("Window heating disabled")
+
             self._cooling_active = False
-            self.logger.info("Cooling disabled")
+            self._target_temp = None
             return True
         except Exception as e:
             self.logger.error(f"Failed to stop cooling: {e}")
             return False
+
+    def get_default_binning(self) -> int:
+        return self._default_binning
 
     def get_camera_info(self) -> dict:
         return self._camera_info.copy()

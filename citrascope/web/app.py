@@ -76,6 +76,7 @@ class SystemStatus(BaseModel):
     alignment_running: bool = False
     alignment_progress: str = ""
     last_alignment_timestamp: int | None = None
+    camera_temperature: float | None = None
     current_filter_position: int | None = None
     current_filter_name: str | None = None
     safety_status: dict[str, Any] | None = None
@@ -1116,8 +1117,14 @@ class CitraScopeWebApp:
                 # Check camera connection status
                 try:
                     self.status.camera_connected = adapter.is_camera_connected()
+                    camera = getattr(adapter, "camera", None)
+                    if self.status.camera_connected and camera is not None:
+                        self.status.camera_temperature = camera.get_temperature()
+                    else:
+                        self.status.camera_temperature = None
                 except Exception:
                     self.status.camera_connected = False
+                    self.status.camera_temperature = None
 
                 # Check adapter capabilities
                 try:

@@ -48,7 +48,9 @@ from ctypes import (
 
 # gxccd_get_boolean_parameter indexes
 GBP_COOLER = 4
+GBP_FAN = 5
 GBP_FILTERS = 6
+GBP_WINDOW_HEATING = 8
 
 # gxccd_get_integer_parameter indexes
 GIP_CHIP_W = 1
@@ -60,6 +62,8 @@ GIP_MAX_BINNING_Y = 6
 GIP_READ_MODES = 7
 GIP_FILTERS = 8
 GIP_DEFAULT_READ_MODE = 12
+GIP_MAX_WINDOW_HEATING = 13
+GIP_MAX_FAN = 14
 GIP_MAX_GAIN = 16
 
 # gxccd_get_string_parameter indexes
@@ -158,6 +162,7 @@ def _init_camera_api(lib: ctypes.CDLL) -> None:
     lib.gxccd_get_value.argtypes = [c_void_p, c_int, c_void_p]
 
     lib.gxccd_set_temperature.argtypes = [c_void_p, c_float]
+    lib.gxccd_set_temperature_ramp.argtypes = [c_void_p, c_float]
     lib.gxccd_set_binning.argtypes = [c_void_p, c_int, c_int]
     lib.gxccd_set_read_mode.argtypes = [c_void_p, c_int]
     lib.gxccd_set_gain.argtypes = [c_void_p, c_uint16]
@@ -170,6 +175,11 @@ def _init_camera_api(lib: ctypes.CDLL) -> None:
 
     lib.gxccd_enumerate_filters.argtypes = [c_void_p, c_int, c_void_p, c_size_t, c_void_p, c_void_p]
     lib.gxccd_set_filter.argtypes = [c_void_p, c_int]
+    lib.gxccd_set_fan.argtypes = [c_void_p, ctypes.c_uint8]
+    lib.gxccd_set_window_heating.argtypes = [c_void_p, ctypes.c_uint8]
+
+    lib.gxccd_enumerate_read_modes.argtypes = [c_void_p, c_int, c_void_p, c_size_t]
+    lib.gxccd_enumerate_read_modes.restype = c_int
 
     lib.gxccd_get_last_error.argtypes = [c_void_p, c_void_p, c_size_t]
 
@@ -296,11 +306,23 @@ class GxccdCamera:
         self._check(self._lib.gxccd_get_value(self._handle, index, byref(v)))
         return v.value
 
-    # -- temperature --
+    # -- temperature / thermal --
 
     def set_temperature(self, temp_celsius: float) -> None:
         assert self._handle is not None
         self._check(self._lib.gxccd_set_temperature(self._handle, c_float(temp_celsius)))
+
+    def set_temperature_ramp(self, degrees_per_min: float) -> None:
+        assert self._handle is not None
+        self._check(self._lib.gxccd_set_temperature_ramp(self._handle, c_float(degrees_per_min)))
+
+    def set_fan(self, speed: int) -> None:
+        assert self._handle is not None
+        self._check(self._lib.gxccd_set_fan(self._handle, ctypes.c_uint8(speed)))
+
+    def set_window_heating(self, intensity: int) -> None:
+        assert self._handle is not None
+        self._check(self._lib.gxccd_set_window_heating(self._handle, ctypes.c_uint8(intensity)))
 
     # -- imaging --
 
@@ -333,6 +355,22 @@ class GxccdCamera:
     def read_image(self, buf: ctypes.Array, size: int) -> None:  # type: ignore[type-arg]
         assert self._handle is not None
         self._check(self._lib.gxccd_read_image(self._handle, buf, c_size_t(size)))
+
+    # -- read modes --
+
+    def enumerate_read_modes(self) -> list[str]:
+        """Returns list of read mode names, indexed by position."""
+        assert self._handle is not None
+        modes: list[str] = []
+        idx = 0
+        while True:
+            buf = create_string_buffer(_BUF_SIZE)
+            ret = self._lib.gxccd_enumerate_read_modes(self._handle, idx, buf, sizeof(buf) - 1)
+            if ret == -1:
+                break
+            modes.append(buf.value.decode("utf-8", errors="replace"))
+            idx += 1
+        return modes
 
     # -- integrated filter wheel --
 

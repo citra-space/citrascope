@@ -95,6 +95,10 @@ class AbstractCamera(AbstractHardwareDevice):
         """
         pass
 
+    def get_default_binning(self) -> int:
+        """Return the camera's default binning setting (e.g., 1 for 1x1, 2 for 2x2)."""
+        return 1
+
     def is_hyperspectral(self) -> bool:
         """Indicates whether this camera captures hyperspectral data.
 

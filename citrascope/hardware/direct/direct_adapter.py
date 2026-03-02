@@ -968,6 +968,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         return str(
             self.camera.take_exposure(
                 duration=exposure_duration_seconds,
+                binning=self.camera.get_default_binning(),
                 save_path=save_path,
             )
         )
