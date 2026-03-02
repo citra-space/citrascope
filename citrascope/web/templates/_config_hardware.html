@@ -75,9 +75,9 @@
                                                                            :data-field="field.name" :data-type="field.type"
                                                                            :placeholder="field.placeholder || ''"
                                                                            :min="field.min" :max="field.max"
-                                                                           :step="field.type === 'float' ? 'any' : '1'"
+                                                                           :step="field.step || (field.type === 'float' ? 'any' : '1')"
                                                                            :required="field.required"
-                                                                           x-model="field.value" @input="handleChange">
+                                                                           x-model.lazy="field.value" @change="handleChange">
                                                                 </template>
 
                                                                 <!-- Text input -->
@@ -309,13 +309,12 @@
                                             <h6 class="mb-2">Autofocus</h6>
                                             <div class="mb-3">
                                                 <button type="button" class="btn btn-sm w-100"
-                                                    :class="$store.citrascope.status?.autofocus_running ? 'btn-outline-info' : ($store.citrascope.status?.autofocus_requested ? 'btn-outline-warning' : 'btn-outline-primary')"
-                                                    :disabled="$store.citrascope.status?.autofocus_running"
+                                                    :class="$store.citrascope.status?.autofocus_running ? 'btn-outline-danger' : ($store.citrascope.status?.autofocus_requested ? 'btn-outline-warning' : 'btn-outline-primary')"
                                                     @click="window.triggerAutofocus()">
                                                     <template x-if="$store.citrascope.status?.autofocus_running">
                                                         <span>
-                                                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                                                            Autofocusing...
+                                                            <i class="bi bi-stop-fill me-1"></i>
+                                                            Cancel Autofocus
                                                         </span>
                                                     </template>
                                                     <template x-if="!$store.citrascope.status?.autofocus_running">

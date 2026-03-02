@@ -22,6 +22,8 @@ import numpy as np
 from scipy import ndimage
 
 if TYPE_CHECKING:
+    import threading
+
     from citrascope.hardware.devices.camera import AbstractCamera
     from citrascope.hardware.devices.focuser import AbstractFocuser
 
@@ -182,6 +184,7 @@ def run_autofocus(
     crop_ratio: float = 0.5,
     on_progress: Callable[[str], None] | None = None,
     logger: logging.Logger | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> int:
     """Run V-curve autofocus and return the best focuser position.
 
@@ -199,12 +202,14 @@ def run_autofocus(
         crop_ratio: Fraction of image centre to analyse (0 < x <= 1).
         on_progress: Optional callback for progress strings.
         logger: Optional logger.
+        cancel_event: If set, abort the sweep at the next step boundary.
 
     Returns:
         Optimal focuser position (integer steps).
 
     Raises:
-        RuntimeError: If autofocus cannot determine a valid position.
+        RuntimeError: If autofocus cannot determine a valid position
+            (including cancellation).
     """
     log = logger or logging.getLogger(__name__)
     report = on_progress or (lambda _msg: None)
@@ -228,6 +233,10 @@ def run_autofocus(
     mode_name = "unknown"
 
     for idx, pos in enumerate(positions, 1):
+        if cancel_event and cancel_event.is_set():
+            log.info("Autofocus cancelled by user")
+            raise RuntimeError("Autofocus cancelled")
+
         report(f"Step {idx}/{total}: moving to {pos}")
 
         if not focuser.move_absolute(pos):

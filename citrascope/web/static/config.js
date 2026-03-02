@@ -600,10 +600,9 @@ async function saveModifiedFilters() {
  */
 async function triggerAutofocus() {
     const store = Alpine.store('citrascope');
-    const isCancel = store.status?.autofocus_requested;
+    const shouldCancel = store.status?.autofocus_requested || store.status?.autofocus_running;
 
-    if (isCancel) {
-        // Cancel autofocus
+    if (shouldCancel) {
         try {
             const response = await fetch('/api/adapter/autofocus/cancel', {
                 method: 'POST'

@@ -774,6 +774,7 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         target_ra: float | None = None,
         target_dec: float | None = None,
         on_progress: Callable[[str], None] | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> None:
         """Simulate autofocus routine."""
         if target_ra is not None and target_dec is not None:

@@ -309,7 +309,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         if focuser_type and focuser_type in focuser_devices:
             _prefix_schema(get_device_schema("focuser", focuser_type), "focuser_")
 
-        # Autofocus tuning — shown whenever a focuser is configured
+        # Autofocus tuning — shown alongside focuser settings
         if focuser_type:
             schema.extend(
                 [
@@ -322,7 +322,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                         "required": False,
                         "min": 10,
                         "max": 5000,
-                        "group": "Autofocus",
+                        "group": "Focuser",
                     },
                     {
                         "name": "autofocus_num_steps",
@@ -333,7 +333,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                         "required": False,
                         "min": 2,
                         "max": 15,
-                        "group": "Autofocus",
+                        "group": "Focuser",
                     },
                     {
                         "name": "autofocus_exposure",
@@ -342,9 +342,10 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                         "default": 3.0,
                         "description": "Exposure duration in seconds per autofocus sample",
                         "required": False,
-                        "min": 0.5,
+                        "min": 0.01,
                         "max": 30.0,
-                        "group": "Autofocus",
+                        "step": 0.01,
+                        "group": "Focuser",
                     },
                     {
                         "name": "autofocus_crop",
@@ -355,7 +356,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                         "required": False,
                         "min": 0.1,
                         "max": 1.0,
-                        "group": "Autofocus",
+                        "group": "Focuser",
                     },
                 ]
             )
@@ -928,6 +929,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         target_ra: float | None = None,
         target_dec: float | None = None,
         on_progress: Callable[[str], None] | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> None:
         """Run V-curve autofocus for each enabled filter.
 
@@ -956,7 +958,6 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         af_crop = float(self._af_crop)
 
         if not enabled_filters or not self.filter_wheel:
-            # No filters — single autofocus run on whatever's in the optical path
             report("Running autofocus (no filter wheel)...")
             best = run_autofocus(
                 camera=self.camera,
@@ -967,12 +968,18 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                 crop_ratio=af_crop,
                 on_progress=on_progress,
                 logger=self.logger,
+                cancel_event=cancel_event,
             )
             self.logger.info(f"Autofocus result: position {best}")
             return
 
         total_filters = len(enabled_filters)
         for idx, (fid, fdata) in enumerate(enabled_filters.items(), 1):
+            if cancel_event and cancel_event.is_set():
+                report("Autofocus cancelled")
+                self.logger.info("Autofocus cancelled between filters")
+                return
+
             fname = fdata.get("name", f"Filter {fid}")
             report(f"Filter {idx}/{total_filters}: {fname}")
             self.logger.info(f"Autofocusing filter '{fname}' (position {fid})")
@@ -990,6 +997,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                 crop_ratio=af_crop,
                 on_progress=on_progress,
                 logger=self.logger,
+                cancel_event=cancel_event,
             )
 
             self.filter_map[fid]["focus_position"] = best

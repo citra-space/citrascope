@@ -839,7 +839,7 @@ class CitraScopeWebApp:
 
         @self.app.post("/api/adapter/autofocus/cancel")
         async def cancel_autofocus():
-            """Cancel pending autofocus request."""
+            """Cancel autofocus — works whether queued or actively running."""
             if not self.daemon:
                 return JSONResponse({"error": "Daemon not available"}, status_code=503)
 
