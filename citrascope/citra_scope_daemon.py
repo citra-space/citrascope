@@ -17,7 +17,6 @@ from citrascope.logging._citrascope_logger import setup_file_logging
 from citrascope.processors.processor_registry import ProcessorRegistry
 from citrascope.settings.citrascope_settings import CitraScopeSettings
 from citrascope.tasks.runner import TaskManager
-from citrascope.time.time_health import TimeHealth
 from citrascope.time.time_monitor import TimeMonitor
 from citrascope.web.server import CitraScopeWebServer
 
@@ -185,7 +184,6 @@ class CitraScopeDaemon:
             self.time_monitor = TimeMonitor(
                 check_interval_minutes=self.settings.time_check_interval_minutes,
                 pause_threshold_ms=self.settings.time_offset_pause_ms,
-                pause_callback=self._on_time_drift_pause,
                 gps_monitor=self.location_service.gps_monitor if self.location_service else None,
             )
             self.time_monitor.start()
@@ -502,31 +500,6 @@ class CitraScopeDaemon:
         if not self.task_manager:
             return False
         return self.task_manager.autofocus_manager.is_requested()
-
-    def _on_time_drift_pause(self, health: TimeHealth) -> None:
-        """
-        Callback invoked when time drift exceeds pause threshold.
-
-        Automatically pauses task processing to prevent observations with
-        inaccurate timestamps. User must manually resume after fixing time sync.
-
-        Args:
-            health: Current time health status
-        """
-        if not self.task_manager:
-            return
-
-        CITRASCOPE_LOGGER.critical(
-            f"Time drift exceeded threshold: {health.offset_ms:+.1f}ms. "
-            "Pausing task processing to prevent inaccurate observations."
-        )
-
-        # Pause task processing
-        self.task_manager.pause()
-        CITRASCOPE_LOGGER.warning(
-            "Task processing paused due to time sync issues. "
-            "Fix NTP configuration and manually resume via web interface."
-        )
 
     def run(self):
         assert self.web_server is not None
