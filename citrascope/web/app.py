@@ -627,20 +627,23 @@ class CitraScopeWebApp:
                     if filter_id_int not in filter_config:
                         return JSONResponse({"error": f"Filter ID {filter_id} not found"}, status_code=404)
 
-                    validated_update: dict[str, int | str | bool] = {"filter_id_int": filter_id_int}
+                    validated_update: dict[str, int | str | bool | None] = {"filter_id_int": filter_id_int}
 
-                    # Validate focus_position if provided
+                    # Validate focus_position if provided (null clears it)
                     if "focus_position" in update:
                         focus_position = update["focus_position"]
-                        if not isinstance(focus_position, int):
+                        if focus_position is None:
+                            validated_update["focus_position"] = None
+                        elif not isinstance(focus_position, int):
                             return JSONResponse(
-                                {"error": f"focus_position at index {idx} must be an integer"}, status_code=400
+                                {"error": f"focus_position at index {idx} must be an integer or null"}, status_code=400
                             )
-                        if focus_position < 0 or focus_position > 65535:
+                        elif focus_position < 0 or focus_position > 65535:
                             return JSONResponse(
                                 {"error": f"focus_position at index {idx} must be between 0 and 65535"}, status_code=400
                             )
-                        validated_update["focus_position"] = focus_position
+                        else:
+                            validated_update["focus_position"] = focus_position
 
                     # Validate enabled if provided
                     if "enabled" in update:

@@ -527,12 +527,12 @@ class AbstractAstroHardwareAdapter(ABC):
             for filter_id, filter_data in self.filter_map.items()
         }
 
-    def update_filter_focus(self, filter_id: str, focus_position: int) -> bool:
+    def update_filter_focus(self, filter_id: str, focus_position: int | None) -> bool:
         """Update the focus position for a specific filter.
 
         Args:
             filter_id: Filter ID as string
-            focus_position: New focus position in steps
+            focus_position: New focus position in steps, or None to clear
 
         Returns:
             bool: True if update was successful, False otherwise

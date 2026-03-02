@@ -534,8 +534,8 @@ async function saveModifiedFilters() {
     // Collect all filter updates from store
     const filterUpdates = [];
     for (const [filterId, filter] of Object.entries(filters)) {
-        const focusPosition = parseInt(filter.focus_position);
-        if (Number.isNaN(focusPosition) || focusPosition < 0) continue;
+        const rawFocus = parseInt(filter.focus_position);
+        const focusPosition = (Number.isNaN(rawFocus) || rawFocus < 0) ? null : rawFocus;
 
         const update = {
             filter_id: filterId,
