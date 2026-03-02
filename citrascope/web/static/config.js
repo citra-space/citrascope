@@ -859,6 +859,60 @@ async function changeFilterPosition(position) {
     }
 }
 
+async function moveFocuserRelative(steps) {
+    try {
+        const response = await fetch('/api/focuser/move', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ relative: parseInt(steps) })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            createToast(data.error || 'Focuser move failed', 'danger', false);
+        }
+    } catch (error) {
+        console.error('Focuser move error:', error);
+        createToast('Failed to move focuser', 'danger', false);
+    }
+}
+
+async function moveFocuserAbsolute(position) {
+    try {
+        const response = await fetch('/api/focuser/move', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ position: parseInt(position) })
+        });
+        const data = await response.json();
+        if (response.ok) {
+            createToast(`Focuser moved to ${data.position}`, 'success', true);
+        } else {
+            createToast(data.error || 'Focuser move failed', 'danger', false);
+        }
+    } catch (error) {
+        console.error('Focuser move error:', error);
+        createToast('Failed to move focuser', 'danger', false);
+    }
+}
+
+async function abortFocuser() {
+    try {
+        const response = await fetch('/api/focuser/abort', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await response.json();
+        if (response.ok) {
+            createToast('Focuser stopped', 'warning', true);
+        } else {
+            createToast(data.error || 'Failed to stop focuser', 'danger', false);
+        }
+    } catch (error) {
+        console.error('Focuser abort error:', error);
+        createToast('Failed to stop focuser', 'danger', false);
+    }
+}
+
 export function setupAutofocusButton() {
     window.triggerAutofocus = triggerAutofocus;
     window.triggerAlignment = triggerAlignment;
@@ -869,6 +923,9 @@ export function setupAutofocusButton() {
     window.emergencyStop = emergencyStop;
     window.clearOperatorStop = clearOperatorStop;
     window.changeFilterPosition = changeFilterPosition;
+    window.moveFocuserRelative = moveFocuserRelative;
+    window.moveFocuserAbsolute = moveFocuserAbsolute;
+    window.abortFocuser = abortFocuser;
 }
 
 /**

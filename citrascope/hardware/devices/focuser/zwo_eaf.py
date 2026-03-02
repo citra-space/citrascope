@@ -7,6 +7,7 @@ focuser control as an AbstractFocuser device for the DirectHardwareAdapter.
 from __future__ import annotations
 
 import logging
+import threading
 import time as _time
 from typing import TYPE_CHECKING, Any, cast
 
@@ -132,6 +133,7 @@ class ZwoEafFocuser(AbstractFocuser):
         self._eaf: EafFocuser | None = None
         self._sdk_id: int | None = None
         self._max_step: int = 0
+        self._lock = threading.Lock()
 
     def connect(self) -> bool:
         try:
@@ -142,103 +144,105 @@ class ZwoEafFocuser(AbstractFocuser):
             self.logger.error("ZWO EAF SDK library not found. See zwo_eaf_bindings.py for installation instructions.")
             return False
 
-        try:
-            eaf = EafDriver()
-            sdk_ver = eaf.get_sdk_version()
-            self.logger.info(f"ZWO EAF SDK version: {sdk_ver}")
+        with self._lock:
+            try:
+                eaf = EafDriver()
+                sdk_ver = eaf.get_sdk_version()
+                self.logger.info(f"ZWO EAF SDK version: {sdk_ver}")
 
-            count = eaf.get_num()
-            if count == 0:
-                self.logger.error("No ZWO EAF focusers found")
+                count = eaf.get_num()
+                if count == 0:
+                    self.logger.error("No ZWO EAF focusers found")
+                    return False
+                self.logger.info(f"Found {count} ZWO EAF focuser(s)")
+
+                # Resolve which focuser to open
+                target_id: int
+                if self._focuser_id < 0:
+                    target_id = eaf.get_id(0)
+                    self.logger.info(f"Auto-selecting first focuser (ID: {target_id})")
+                else:
+                    target_id = self._focuser_id
+
+                info = eaf.get_property(target_id)
+                name = info.Name.decode("utf-8", errors="replace").strip()
+                self.logger.info(f"Opening EAF: {name} (ID: {target_id}, hardware max step: {info.MaxStep})")
+
+                eaf.open(target_id)
+
+                # Read firmware version
+                try:
+                    major, minor, build = eaf.get_firmware_version()
+                    self.logger.info(f"EAF firmware: {major}.{minor}.{build}")
+                except Exception as e:
+                    self.logger.debug(f"Could not read firmware version: {e}")
+
+                # Read serial number
+                try:
+                    sn = eaf.get_serial_number()
+                    self.logger.info(f"EAF serial: {sn}")
+                except Exception as e:
+                    self.logger.debug(f"Could not read serial number: {e}")
+
+                # Apply settings
+                try:
+                    eaf.set_backlash(self._backlash)
+                    self.logger.info(f"Backlash compensation: {self._backlash} steps")
+                except Exception as e:
+                    self.logger.warning(f"Could not set backlash: {e}")
+
+                try:
+                    eaf.set_reverse(self._reverse)
+                    self.logger.info(f"Reverse direction: {self._reverse}")
+                except Exception as e:
+                    self.logger.warning(f"Could not set reverse: {e}")
+
+                try:
+                    eaf.set_beep(self._beep)
+                    self.logger.info(f"Beep on move: {self._beep}")
+                except Exception as e:
+                    self.logger.warning(f"Could not set beep: {e}")
+
+                # Read max step
+                try:
+                    self._max_step = eaf.get_max_step()
+                    self.logger.info(f"Max step (user-configured): {self._max_step}")
+                except Exception as e:
+                    self._max_step = info.MaxStep
+                    self.logger.debug(f"Using hardware max step ({self._max_step}): {e}")
+
+                # Read current position and temperature
+                try:
+                    pos = eaf.get_position()
+                    self.logger.info(f"Current position: {pos}")
+                except Exception as e:
+                    self.logger.debug(f"Could not read position: {e}")
+
+                try:
+                    temp = eaf.get_temperature()
+                    if temp > -273:
+                        self.logger.info(f"Temperature: {temp:.1f} C")
+                except Exception as e:
+                    self.logger.debug(f"Could not read temperature: {e}")
+
+                self._eaf = eaf
+                self._sdk_id = target_id
+                self.logger.info("ZWO EAF connected successfully")
+                return True
+
+            except Exception as e:
+                self.logger.error(f"Failed to connect to ZWO EAF: {e}")
                 return False
-            self.logger.info(f"Found {count} ZWO EAF focuser(s)")
-
-            # Resolve which focuser to open
-            target_id: int
-            if self._focuser_id < 0:
-                target_id = eaf.get_id(0)
-                self.logger.info(f"Auto-selecting first focuser (ID: {target_id})")
-            else:
-                target_id = self._focuser_id
-
-            info = eaf.get_property(target_id)
-            name = info.Name.decode("utf-8", errors="replace").strip()
-            self.logger.info(f"Opening EAF: {name} (ID: {target_id}, hardware max step: {info.MaxStep})")
-
-            eaf.open(target_id)
-
-            # Read firmware version
-            try:
-                major, minor, build = eaf.get_firmware_version()
-                self.logger.info(f"EAF firmware: {major}.{minor}.{build}")
-            except Exception as e:
-                self.logger.debug(f"Could not read firmware version: {e}")
-
-            # Read serial number
-            try:
-                sn = eaf.get_serial_number()
-                self.logger.info(f"EAF serial: {sn}")
-            except Exception as e:
-                self.logger.debug(f"Could not read serial number: {e}")
-
-            # Apply settings
-            try:
-                eaf.set_backlash(self._backlash)
-                self.logger.info(f"Backlash compensation: {self._backlash} steps")
-            except Exception as e:
-                self.logger.warning(f"Could not set backlash: {e}")
-
-            try:
-                eaf.set_reverse(self._reverse)
-                self.logger.info(f"Reverse direction: {self._reverse}")
-            except Exception as e:
-                self.logger.warning(f"Could not set reverse: {e}")
-
-            try:
-                eaf.set_beep(self._beep)
-                self.logger.info(f"Beep on move: {self._beep}")
-            except Exception as e:
-                self.logger.warning(f"Could not set beep: {e}")
-
-            # Read max step
-            try:
-                self._max_step = eaf.get_max_step()
-                self.logger.info(f"Max step (user-configured): {self._max_step}")
-            except Exception as e:
-                self._max_step = info.MaxStep
-                self.logger.debug(f"Using hardware max step ({self._max_step}): {e}")
-
-            # Read current position and temperature
-            try:
-                pos = eaf.get_position()
-                self.logger.info(f"Current position: {pos}")
-            except Exception as e:
-                self.logger.debug(f"Could not read position: {e}")
-
-            try:
-                temp = eaf.get_temperature()
-                if temp > -273:
-                    self.logger.info(f"Temperature: {temp:.1f} C")
-            except Exception as e:
-                self.logger.debug(f"Could not read temperature: {e}")
-
-            self._eaf = eaf
-            self._sdk_id = target_id
-            self.logger.info("ZWO EAF connected successfully")
-            return True
-
-        except Exception as e:
-            self.logger.error(f"Failed to connect to ZWO EAF: {e}")
-            return False
 
     def disconnect(self) -> None:
-        if self._eaf is not None:
-            try:
-                self._eaf.close()
-            except Exception as e:
-                self.logger.warning(f"Error closing EAF: {e}")
-            self._eaf = None
-            self._sdk_id = None
+        with self._lock:
+            if self._eaf is not None:
+                try:
+                    self._eaf.close()
+                except Exception as e:
+                    self.logger.warning(f"Error closing EAF: {e}")
+                self._eaf = None
+                self._sdk_id = None
         self.logger.info("ZWO EAF disconnected")
 
     def is_connected(self) -> bool:
@@ -247,75 +251,91 @@ class ZwoEafFocuser(AbstractFocuser):
     # -- AbstractFocuser --
 
     def move_absolute(self, position: int) -> bool:
-        if not self._eaf:
-            self.logger.warning("EAF not connected")
-            return False
-
         if position < 0 or (self._max_step > 0 and position > self._max_step):
             self.logger.error(f"Position {position} out of range (0-{self._max_step})")
             return False
 
-        try:
-            self._eaf.move(position)
-            return True
-        except Exception as e:
-            self.logger.error(f"Failed to move EAF to {position}: {e}")
-            return False
+        with self._lock:
+            if not self._eaf:
+                self.logger.warning("EAF not connected")
+                return False
+            try:
+                self._eaf.move(position)
+                return True
+            except Exception as e:
+                self.logger.error(f"Failed to move EAF to {position}: {e}")
+                return False
 
     def move_relative(self, steps: int) -> bool:
-        if not self._eaf:
-            self.logger.warning("EAF not connected")
-            return False
+        with self._lock:
+            if not self._eaf:
+                self.logger.warning("EAF not connected")
+                return False
 
-        current = self.get_position()
-        if current is None:
-            self.logger.error("Cannot move relative: current position unknown")
-            return False
+            try:
+                current = self._eaf.get_position()
+            except Exception as e:
+                self.logger.error(f"Cannot move relative: failed to read position: {e}")
+                return False
 
-        target = current + steps
-        return self.move_absolute(target)
+            target = current + steps
+            if target < 0 or (self._max_step > 0 and target > self._max_step):
+                self.logger.error(f"Target position {target} out of range (0-{self._max_step})")
+                return False
+
+            try:
+                self._eaf.move(target)
+                return True
+            except Exception as e:
+                self.logger.error(f"Failed to move EAF to {target}: {e}")
+                return False
 
     def get_position(self) -> int | None:
-        if not self._eaf:
-            return None
-        try:
-            return self._eaf.get_position()
-        except Exception as e:
-            self.logger.debug(f"Failed to read position: {e}")
-            return None
+        with self._lock:
+            if not self._eaf:
+                return None
+            try:
+                return self._eaf.get_position()
+            except Exception as e:
+                self.logger.debug(f"Failed to read position: {e}")
+                return None
 
     def is_moving(self) -> bool:
-        if not self._eaf:
-            return False
-        try:
-            moving, _hand_ctrl = self._eaf.is_moving()
-            return moving
-        except Exception:
-            return False
+        with self._lock:
+            if not self._eaf:
+                return False
+            try:
+                moving, _hand_ctrl = self._eaf.is_moving()
+                return moving
+            except Exception:
+                return False
 
     def abort_move(self) -> None:
-        if not self._eaf:
-            return
-        try:
-            self._eaf.stop()
-        except Exception as e:
-            self.logger.warning(f"Failed to stop EAF: {e}")
+        with self._lock:
+            if not self._eaf:
+                return
+            try:
+                self._eaf.stop()
+            except Exception as e:
+                self.logger.warning(f"Failed to stop EAF: {e}")
 
     def get_max_position(self) -> int | None:
-        if not self._eaf:
-            return None
-        try:
-            return self._eaf.get_max_step()
-        except Exception:
-            return self._max_step if self._max_step > 0 else None
+        with self._lock:
+            if not self._eaf:
+                return None
+            try:
+                return self._eaf.get_max_step()
+            except Exception:
+                return self._max_step if self._max_step > 0 else None
 
     def get_temperature(self) -> float | None:
-        if not self._eaf:
-            return None
-        try:
-            temp = self._eaf.get_temperature()
-            if temp <= -273:
+        with self._lock:
+            if not self._eaf:
                 return None
-            return temp
-        except Exception:
-            return None
+            try:
+                temp = self._eaf.get_temperature()
+                if temp <= -273:
+                    return None
+                return temp
+            except Exception:
+                return None

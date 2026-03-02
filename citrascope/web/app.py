@@ -79,6 +79,11 @@ class SystemStatus(BaseModel):
     camera_temperature: float | None = None
     current_filter_position: int | None = None
     current_filter_name: str | None = None
+    focuser_connected: bool = False
+    focuser_position: int | None = None
+    focuser_max_position: int | None = None
+    focuser_temperature: float | None = None
+    focuser_moving: bool = False
     safety_status: dict[str, Any] | None = None
 
 
@@ -748,6 +753,67 @@ class CitraScopeWebApp:
                 CITRASCOPE_LOGGER.error(f"Error setting filter position: {e}", exc_info=True)
                 return JSONResponse({"error": str(e)}, status_code=500)
 
+        @self.app.post("/api/focuser/move")
+        async def focuser_move(body: dict[str, Any]):
+            """Move the focuser to an absolute position or by relative steps.
+
+            Jog moves are fire-and-forget: the command is issued and the
+            endpoint returns immediately.  The UI tracks position via the
+            status poll.  Issuing a move while the focuser is already moving
+            stops the previous move first.
+            """
+            if not self.daemon or not self.daemon.hardware_adapter:
+                return JSONResponse({"error": "Hardware adapter not initialized"}, status_code=503)
+
+            focuser = getattr(self.daemon.hardware_adapter, "focuser", None)
+            if focuser is None or not hasattr(focuser, "is_connected") or not focuser.is_connected():
+                return JSONResponse({"error": "No focuser connected"}, status_code=404)
+
+            absolute = body.get("position")
+            relative = body.get("relative")
+
+            try:
+                if focuser.is_moving():
+                    focuser.abort_move()
+                    time.sleep(0.1)
+
+                if absolute is not None:
+                    if not isinstance(absolute, int):
+                        return JSONResponse({"error": "position must be an integer"}, status_code=400)
+                    if not focuser.move_absolute(absolute):
+                        return JSONResponse({"error": "Move failed"}, status_code=500)
+                    return {"success": True, "position": focuser.get_position()}
+
+                if relative is not None:
+                    if not isinstance(relative, int):
+                        return JSONResponse({"error": "relative must be an integer"}, status_code=400)
+                    if not focuser.move_relative(relative):
+                        return JSONResponse({"error": "Move failed"}, status_code=500)
+                    return {"success": True, "position": focuser.get_position()}
+
+            except Exception as e:
+                CITRASCOPE_LOGGER.error(f"Focuser move error: {e}", exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+            return JSONResponse({"error": "Provide 'position' (absolute) or 'relative' (steps)"}, status_code=400)
+
+        @self.app.post("/api/focuser/abort")
+        async def focuser_abort():
+            """Stop focuser movement."""
+            if not self.daemon or not self.daemon.hardware_adapter:
+                return JSONResponse({"error": "Hardware adapter not initialized"}, status_code=503)
+
+            focuser = getattr(self.daemon.hardware_adapter, "focuser", None)
+            if focuser is None or not hasattr(focuser, "is_connected") or not focuser.is_connected():
+                return JSONResponse({"error": "No focuser connected"}, status_code=404)
+
+            try:
+                focuser.abort_move()
+                return {"success": True, "position": focuser.get_position()}
+            except Exception as e:
+                CITRASCOPE_LOGGER.error(f"Focuser abort error: {e}", exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
         @self.app.post("/api/adapter/autofocus")
         async def trigger_autofocus():
             """Request autofocus to run between tasks."""
@@ -1144,6 +1210,33 @@ class CitraScopeWebApp:
                 except Exception:
                     self.status.current_filter_position = None
                     self.status.current_filter_name = None
+
+                # Check focuser status
+                focuser = getattr(adapter, "focuser", None)
+                if focuser is not None and hasattr(focuser, "is_connected") and focuser.is_connected():
+                    self.status.focuser_connected = True
+                    try:
+                        self.status.focuser_position = focuser.get_position()
+                    except Exception:
+                        self.status.focuser_position = None
+                    try:
+                        self.status.focuser_max_position = focuser.get_max_position()
+                    except Exception:
+                        self.status.focuser_max_position = None
+                    try:
+                        self.status.focuser_temperature = focuser.get_temperature()
+                    except Exception:
+                        self.status.focuser_temperature = None
+                    try:
+                        self.status.focuser_moving = focuser.is_moving()
+                    except Exception:
+                        self.status.focuser_moving = False
+                else:
+                    self.status.focuser_connected = False
+                    self.status.focuser_position = None
+                    self.status.focuser_max_position = None
+                    self.status.focuser_temperature = None
+                    self.status.focuser_moving = False
 
                 has_camera = getattr(adapter, "camera", None) is not None
                 self.status.supports_alignment = has_camera and mount is not None

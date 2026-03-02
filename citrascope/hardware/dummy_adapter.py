@@ -300,6 +300,45 @@ class _DummyMount(AbstractMount):
         self._ref_time = time.monotonic()
 
 
+class _DummyFocuser:
+    """Simulated focuser for DummyAdapter. Mimics AbstractFocuser without inheriting it."""
+
+    def __init__(self, logger: logging.Logger) -> None:
+        self._logger = logger
+        self._position: int = 25000
+        self._max_position: int = 100000
+        self._connected = True
+        self._moving = False
+
+    def is_connected(self) -> bool:
+        return self._connected
+
+    def get_position(self) -> int | None:
+        return self._position
+
+    def get_max_position(self) -> int | None:
+        return self._max_position
+
+    def get_temperature(self) -> float | None:
+        return 18.5
+
+    def is_moving(self) -> bool:
+        return self._moving
+
+    def move_absolute(self, position: int) -> bool:
+        if position < 0 or position > self._max_position:
+            self._logger.error(f"DummyFocuser: position {position} out of range")
+            return False
+        self._position = position
+        return True
+
+    def abort_move(self) -> None:
+        self._moving = False
+
+    def disconnect(self) -> None:
+        self._connected = False
+
+
 # Synthetic camera constants — consistent across take_image() and the WCS header
 # so the image geometry is self-describing.
 _DUMMY_IMG_SIZE = 1024  # pixels per side
@@ -342,6 +381,7 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         self._tracking_rate = (15.041, 0.0)  # arcsec/sec (sidereal rate)
         self.mount = _DummyMount(logger)
         self._mount_cache: MountStateCache | None = None
+        self.focuser = _DummyFocuser(logger)
 
         # Set by the daemon after connecting, mirrors the real telescope_record from the API.
         # When present, take_image() derives sensor dimensions and pixel scale from it.
@@ -769,6 +809,19 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
             return False
         except (ValueError, KeyError):
             return False
+
+    def set_focus(self, position: int) -> bool:
+        """Move simulated focuser to absolute position."""
+        if not self.focuser:
+            return False
+        self.logger.info(f"DummyAdapter: Moving focuser to {position}")
+        return self.focuser.move_absolute(position)
+
+    def get_focus_position(self) -> int | None:
+        """Get simulated focuser position."""
+        if not self.focuser:
+            return None
+        return self.focuser.get_position()
 
     def supports_direct_camera_control(self) -> bool:
         """Dummy adapter supports direct camera control."""
