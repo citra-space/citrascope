@@ -7,7 +7,6 @@ V-curve algorithm with mocked camera/focuser, and edge cases.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -60,7 +59,6 @@ def _make_texture(size: int = 512, blur_sigma: float = 0.0, seed: int = 42) -> n
 
     rng = np.random.default_rng(seed)
     img = rng.uniform(200, 800, (size, size)).astype(np.float64)
-    # Add some edges
     img[100:150, :] = 2000
     img[:, 200:210] = 3000
     if blur_sigma > 0:
@@ -151,8 +149,6 @@ class TestComputeHFR:
     def test_returns_none_for_few_stars(self):
         img = _make_star_field(n_stars=2, fwhm=4.0)
         result = compute_hfr(img, crop_ratio=0.3)
-        # With only 2 stars and a tight crop, should get < MIN_STARS_FOR_HFR
-        # (may or may not depending on placement, so we just verify the type)
         assert result is None or isinstance(result, float)
 
 
@@ -227,40 +223,29 @@ def _make_mock_focuser(position: int = 25000, max_pos: int = 100000) -> MagicMoc
     return focuser
 
 
-def _make_mock_camera(images_dir: Path, v_curve_center: int = 25000, v_curve_scale: float = 0.001) -> MagicMock:
-    """Create a mock camera whose images have HFR proportional to distance from v_curve_center."""
+def _make_mock_camera_array(seed_base: int = 0) -> MagicMock:
+    """Create a mock camera that returns star-field numpy arrays from capture_array."""
     camera = MagicMock()
     camera.is_connected.return_value = True
     camera.get_default_binning.return_value = 1
-    call_counter = {"n": 0}
+    call_counter = {"n": seed_base}
 
-    def take_exposure(duration: float, binning: int = 1, save_path: Path | None = None, **kw) -> Path:
+    def capture_array(duration: float, binning: int = 1, **kw) -> np.ndarray:
         call_counter["n"] += 1
-        if save_path is None:
-            save_path = images_dir / f"mock_{call_counter['n']}.fits"
-        # Write a synthetic star field whose FWHM depends on focuser distance
-        # The caller will read the mock focuser position separately
-        from astropy.io import fits
+        return _make_star_field(size=256, n_stars=25, fwhm=4.0, seed=call_counter["n"]).astype(np.uint16)
 
-        # Simple: write a real FITS with stars
-        img = _make_star_field(size=256, n_stars=25, fwhm=4.0, seed=call_counter["n"])
-        hdu = fits.PrimaryHDU(data=img.astype(np.uint16))
-        hdu.writeto(str(save_path), overwrite=True)
-        return save_path
-
-    camera.take_exposure.side_effect = take_exposure
+    camera.capture_array.side_effect = capture_array
     return camera
 
 
 class TestRunAutofocus:
-    def test_completes_and_returns_position(self, tmp_path: Path):
+    def test_completes_and_returns_position(self):
         focuser = _make_mock_focuser(position=25000)
-        camera = _make_mock_camera(tmp_path)
+        camera = _make_mock_camera_array()
 
         best = run_autofocus(
             camera=camera,
             focuser=focuser,
-            images_dir=tmp_path,
             step_size=200,
             num_steps=3,
             exposure_time=0.1,
@@ -270,34 +255,32 @@ class TestRunAutofocus:
 
         assert isinstance(best, int)
         assert 0 <= best <= 100000
-        assert focuser.move_absolute.call_count >= 7  # 2*3+1 sweep + final move
+        assert focuser.move_absolute.call_count >= 7
 
-    def test_too_few_measurements_raises(self, tmp_path: Path):
+    def test_too_few_measurements_raises(self):
         focuser = _make_mock_focuser(position=25000)
         camera = MagicMock()
         camera.is_connected.return_value = True
         camera.get_default_binning.return_value = 1
-        camera.take_exposure.side_effect = RuntimeError("Camera error")
+        camera.capture_array.side_effect = RuntimeError("Camera error")
 
         with pytest.raises(RuntimeError, match="Too few valid measurements"):
             run_autofocus(
                 camera=camera,
                 focuser=focuser,
-                images_dir=tmp_path,
                 step_size=200,
                 num_steps=2,
                 exposure_time=0.1,
                 logger=logging.getLogger("test"),
             )
 
-    def test_clamps_to_max_position(self, tmp_path: Path):
+    def test_clamps_to_max_position(self):
         focuser = _make_mock_focuser(position=500, max_pos=1000)
-        camera = _make_mock_camera(tmp_path)
+        camera = _make_mock_camera_array()
 
         best = run_autofocus(
             camera=camera,
             focuser=focuser,
-            images_dir=tmp_path,
             step_size=300,
             num_steps=3,
             exposure_time=0.1,
@@ -307,15 +290,14 @@ class TestRunAutofocus:
 
         assert 0 <= best <= 1000
 
-    def test_progress_callback_called(self, tmp_path: Path):
+    def test_progress_callback_called(self):
         focuser = _make_mock_focuser(position=25000)
-        camera = _make_mock_camera(tmp_path)
+        camera = _make_mock_camera_array()
         progress_msgs: list[str] = []
 
         run_autofocus(
             camera=camera,
             focuser=focuser,
-            images_dir=tmp_path,
             step_size=200,
             num_steps=2,
             exposure_time=0.1,
@@ -327,7 +309,7 @@ class TestRunAutofocus:
         assert len(progress_msgs) >= 5
         assert any("complete" in m.lower() for m in progress_msgs)
 
-    def test_sharpness_fallback_on_texture(self, tmp_path: Path):
+    def test_sharpness_fallback_on_texture(self):
         """When the camera returns featureless images, sharpness metric is used."""
         focuser = _make_mock_focuser(position=25000)
         camera = MagicMock()
@@ -335,23 +317,15 @@ class TestRunAutofocus:
         camera.get_default_binning.return_value = 1
         call_counter = {"n": 0}
 
-        def take_texture(duration: float, binning: int = 1, save_path: Path | None = None, **kw) -> Path:
-            from astropy.io import fits
-
+        def capture_texture(duration: float, binning: int = 1, **kw) -> np.ndarray:
             call_counter["n"] += 1
-            if save_path is None:
-                save_path = tmp_path / f"tex_{call_counter['n']}.fits"
-            img = _make_texture(size=256, seed=call_counter["n"])
-            hdu = fits.PrimaryHDU(data=img.astype(np.uint16))
-            hdu.writeto(str(save_path), overwrite=True)
-            return save_path
+            return _make_texture(size=256, seed=call_counter["n"]).astype(np.uint16)
 
-        camera.take_exposure.side_effect = take_texture
+        camera.capture_array.side_effect = capture_texture
 
         best = run_autofocus(
             camera=camera,
             focuser=focuser,
-            images_dir=tmp_path,
             step_size=200,
             num_steps=2,
             exposure_time=0.1,
@@ -369,38 +343,27 @@ class TestRunAutofocus:
 
 
 class TestParabolicFit:
-    def test_known_v_curve(self, tmp_path: Path):
+    def test_known_v_curve(self):
         """Verify the fit finds the minimum of a known quadratic V-curve."""
         focuser = _make_mock_focuser(position=25000, max_pos=50000)
-
-        # Camera returns FITS with star FWHM proportional to |pos - 25000|
-        # so HFR is minimised at 25000
         camera = MagicMock()
         camera.is_connected.return_value = True
         camera.get_default_binning.return_value = 1
         call_counter = {"n": 0}
         optimal_pos = 25000
 
-        def take_vcurve(duration: float, binning: int = 1, save_path: Path | None = None, **kw) -> Path:
-            from astropy.io import fits
-
+        def capture_vcurve(duration: float, binning: int = 1, **kw) -> np.ndarray:
             call_counter["n"] += 1
-            if save_path is None:
-                save_path = tmp_path / f"vc_{call_counter['n']}.fits"
             cur = focuser.get_position()
             dist = abs(cur - optimal_pos)
             fwhm = 3.0 + dist * 0.005
-            img = _make_star_field(size=256, n_stars=25, fwhm=fwhm, seed=call_counter["n"])
-            hdu = fits.PrimaryHDU(data=img.astype(np.uint16))
-            hdu.writeto(str(save_path), overwrite=True)
-            return save_path
+            return _make_star_field(size=256, n_stars=25, fwhm=fwhm, seed=call_counter["n"]).astype(np.uint16)
 
-        camera.take_exposure.side_effect = take_vcurve
+        camera.capture_array.side_effect = capture_vcurve
 
         best = run_autofocus(
             camera=camera,
             focuser=focuser,
-            images_dir=tmp_path,
             step_size=500,
             num_steps=4,
             exposure_time=0.1,
@@ -408,7 +371,6 @@ class TestParabolicFit:
             logger=logging.getLogger("test"),
         )
 
-        # Should be close to 25000 (within a step or two)
         assert abs(best - optimal_pos) < 1500, f"Expected ~{optimal_pos}, got {best}"
 
 

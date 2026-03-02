@@ -1,6 +1,7 @@
 """Direct hardware adapter using composable device adapters."""
 
 import logging
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -58,6 +59,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         self.logger = logger
         self.location_service: Any | None = None
         self._mount_cache: MountStateCache | None = None
+        self._preview_lock = threading.Lock()
 
         # Track dependency issues for reporting
         self._dependency_issues: list[dict[str, str]] = []
@@ -754,6 +756,23 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
     def supports_direct_camera_control(self) -> bool:
         return True
 
+    def capture_preview(self, exposure_time: float) -> str:
+        if not self.camera:
+            raise RuntimeError("Camera not initialized")
+        if not self._preview_lock.acquire(blocking=False):
+            raise RuntimeError("Preview capture already in progress")
+
+        try:
+            from citrascope.web.preview import array_to_jpeg_data_url
+
+            data = self.camera.capture_array(
+                duration=exposure_time,
+                binning=self.camera.get_default_binning(),
+            )
+            return array_to_jpeg_data_url(data)
+        finally:
+            self._preview_lock.release()
+
     def expose_camera(
         self,
         exposure_time: float,
@@ -942,7 +961,6 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             best = run_autofocus(
                 camera=self.camera,
                 focuser=self.focuser,
-                images_dir=self.images_dir,
                 step_size=af_step,
                 num_steps=af_steps,
                 exposure_time=af_exp,
@@ -966,7 +984,6 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             best = run_autofocus(
                 camera=self.camera,
                 focuser=self.focuser,
-                images_dir=self.images_dir,
                 step_size=af_step,
                 num_steps=af_steps,
                 exposure_time=af_exp,

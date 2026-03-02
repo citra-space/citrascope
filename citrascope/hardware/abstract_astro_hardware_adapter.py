@@ -425,6 +425,23 @@ class AbstractAstroHardwareAdapter(ABC):
         """
         return False
 
+    def capture_preview(self, exposure_time: float) -> str:
+        """Take an ephemeral preview exposure and return a JPEG data URL.
+
+        No files are written to disk. Used by the live focus loop in the UI.
+        Only implemented by adapters that support direct camera control.
+
+        Args:
+            exposure_time: Exposure duration in seconds.
+
+        Returns:
+            ``"data:image/jpeg;base64,..."`` string.
+
+        Raises:
+            NotImplementedError: If this adapter does not support preview.
+        """
+        raise NotImplementedError
+
     def is_hyperspectral(self) -> bool:
         """Indicates whether this adapter uses a hyperspectral camera.
 

@@ -16,7 +16,6 @@ import logging
 import math
 import time
 from collections.abc import Callable
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -173,22 +172,9 @@ def _wait_for_focuser(focuser: AbstractFocuser, timeout: float = 60.0) -> None:
         time.sleep(0.15)
 
 
-def _load_fits_data(path: Path) -> np.ndarray:
-    """Read the primary HDU of a FITS file as a 2-D numpy array."""
-    from astropy.io import fits
-
-    with fits.open(path) as hdul:
-        hdu = hdul[0]
-        assert isinstance(hdu, fits.PrimaryHDU)
-        data = hdu.data
-        assert data is not None
-        return np.array(data, dtype=np.float64)
-
-
 def run_autofocus(
     camera: AbstractCamera,
     focuser: AbstractFocuser,
-    images_dir: Path,
     *,
     step_size: int = 500,
     num_steps: int = 5,
@@ -201,12 +187,12 @@ def run_autofocus(
 
     Sweeps the focuser through (2 * num_steps + 1) positions centred on the
     current position, measures a focus metric at each, fits a parabola, and
-    moves to the computed optimum.
+    moves to the computed optimum.  All image data is acquired in-memory via
+    ``camera.capture_array()`` — no files are written to disk.
 
     Args:
         camera: Connected camera device.
         focuser: Connected focuser device.
-        images_dir: Directory for temporary autofocus exposures.
         step_size: Focuser steps between samples.
         num_steps: Number of samples on each side of centre.
         exposure_time: Seconds per sample exposure.
@@ -249,23 +235,17 @@ def run_autofocus(
             continue
         _wait_for_focuser(focuser)
 
-        # Take exposure
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        save_path = images_dir / f"autofocus_{timestamp}_{idx:02d}.fits"
         report(f"Step {idx}/{total}: exposing {exposure_time:.1f}s")
 
         try:
-            image_path = camera.take_exposure(
+            image_data = camera.capture_array(
                 duration=exposure_time,
                 binning=camera.get_default_binning(),
-                save_path=save_path,
-            )
-            image_data = _load_fits_data(Path(image_path))
+            ).astype(np.float64)
         except Exception as e:
             log.warning(f"Exposure failed at position {pos}: {e}")
             continue
 
-        # Compute metric; lock mode on first successful measurement
         if metric_mode is None:
             value, minimize = compute_focus_metric(image_data, crop_ratio)
             metric_mode = minimize
@@ -281,12 +261,6 @@ def run_autofocus(
         measurements.append((pos, value))
         report(f"Step {idx}/{total}: pos={pos} {mode_name}={value:.3f}")
         log.info(f"Autofocus point: position={pos}, {mode_name}={value:.3f}")
-
-        # Clean up temporary file
-        try:
-            Path(image_path).unlink(missing_ok=True)
-        except OSError:
-            pass
 
     if len(measurements) < 3:
         raise RuntimeError(f"Too few valid measurements ({len(measurements)}) for curve fit")
@@ -335,14 +309,10 @@ def run_autofocus(
 
     # Verification exposure
     try:
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        verify_path = images_dir / f"autofocus_verify_{timestamp}.fits"
-        img_path = camera.take_exposure(
+        verify_data = camera.capture_array(
             duration=exposure_time,
             binning=camera.get_default_binning(),
-            save_path=verify_path,
-        )
-        verify_data = _load_fits_data(Path(img_path))
+        ).astype(np.float64)
         if metric_mode:
             verify_val = compute_hfr(verify_data, crop_ratio)
             if verify_val is not None:
@@ -350,10 +320,6 @@ def run_autofocus(
         else:
             verify_val_s = compute_sharpness(verify_data, crop_ratio)
             log.info(f"Verification: position={best_pos}, sharpness={verify_val_s:.3f}")
-        try:
-            Path(img_path).unlink(missing_ok=True)
-        except OSError:
-            pass
     except Exception as e:
         log.debug(f"Verification exposure failed (non-critical): {e}")
 

@@ -827,6 +827,20 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         """Dummy adapter supports direct camera control."""
         return True
 
+    def capture_preview(self, exposure_time: float) -> str:
+        """Return a synthetic preview image as a JPEG data URL."""
+        import numpy as np
+
+        from citrascope.web.preview import array_to_jpeg_data_url
+
+        # Synthetic gradient with random noise to simulate a camera frame
+        rng = np.random.default_rng()
+        h, w = 512, 512
+        y, x = np.mgrid[0:h, 0:w]
+        gradient = ((x + y) / (h + w) * 40000).astype(np.uint16)
+        noise = rng.integers(0, 2000, size=(h, w), dtype=np.uint16)
+        return array_to_jpeg_data_url(gradient + noise)
+
     def expose_camera(self, exposure_seconds: float = 1.0) -> str:
         """Simulate manual camera exposure."""
         return self.take_image("manual_test", exposure_seconds)
