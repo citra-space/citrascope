@@ -138,10 +138,10 @@
                                             <span class="rounded-circle d-inline-block flex-shrink-0"
                                                 :style="{ width: '12px', height: '12px', minWidth: '12px', backgroundColor: $store.citrascope.filterColors[$store.citrascope.status?.current_filter_name] || '#777' }"></span>
                                             <select class="form-select form-select-sm"
-                                                :value="$store.citrascope.status?.current_filter_position"
+                                                :value="String($store.citrascope.status?.current_filter_position ?? '')"
                                                 @change="window.changeFilterPosition($event.target.value)">
                                                 <template x-for="[fid, fdata] in Object.entries($store.citrascope.filters || {})" :key="fid">
-                                                    <option :value="fid" x-text="fdata.name" :selected="parseInt(fid) === $store.citrascope.status?.current_filter_position"></option>
+                                                    <option :value="fid" x-text="fdata.name"></option>
                                                 </template>
                                             </select>
                                         </div>
@@ -167,15 +167,16 @@
                                                                     <input type="checkbox" class="form-check-input filter-enabled-checkbox"
                                                                         :data-filter-id="filterId" x-model="$store.citrascope.filters[filterId].enabled">
                                                                 </td>
-                                                                <td x-data="{ customName: '' }">
+                                                                <td x-data="{ customName: '', isCustom: !$store.citrascope.filterNameOptions.some(g => g.names.includes($store.citrascope.filters[filterId].name)) }"
+                                                                    x-init="if (isCustom) customName = $store.citrascope.filters[filterId].name">
                                                                     <div x-show="$store.citrascope.filterNamesEditable">
                                                                         <div class="d-flex align-items-center gap-2">
                                                                             <span class="rounded-circle d-inline-block flex-shrink-0"
                                                                                 :style="{ width: '12px', height: '12px', minWidth: '12px', backgroundColor: $store.citrascope.filterColors[$store.citrascope.filters[filterId].name] || '#777' }"></span>
                                                                             <select class="form-select form-select-sm"
                                                                                 :data-filter-id="filterId"
-                                                                                :value="$store.citrascope.filterNameOptions.some(g => g.names.includes($store.citrascope.filters[filterId].name)) ? $store.citrascope.filters[filterId].name : '__custom__'"
-                                                                                @change="if ($event.target.value === '__custom__') { customName = $store.citrascope.filters[filterId].name; } else { $store.citrascope.filters[filterId].name = $event.target.value; }">
+                                                                                :value="isCustom ? '__custom__' : $store.citrascope.filters[filterId].name"
+                                                                                @change="if ($event.target.value === '__custom__') { isCustom = true; customName = $store.citrascope.filters[filterId].name; } else { isCustom = false; $store.citrascope.filters[filterId].name = $event.target.value; }">
                                                                                 <template x-for="group in $store.citrascope.filterNameOptions" :key="group.group">
                                                                                     <optgroup :label="group.group">
                                                                                         <template x-for="fname in group.names" :key="fname">
@@ -186,7 +187,7 @@
                                                                                 <option value="__custom__">Custom...</option>
                                                                             </select>
                                                                         </div>
-                                                                        <input x-show="!$store.citrascope.filterNameOptions.some(g => g.names.includes($store.citrascope.filters[filterId].name))"
+                                                                        <input x-show="isCustom"
                                                                             type="text" class="form-control form-control-sm mt-1"
                                                                             placeholder="Custom filter name"
                                                                             x-model="customName"
