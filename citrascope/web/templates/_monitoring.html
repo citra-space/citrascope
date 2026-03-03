@@ -212,7 +212,7 @@
                 <!-- ── Telescope Card ── -->
                 <div class="col-12 col-lg-6">
                     <div class="card bg-dark text-light border-secondary h-100">
-                        <div class="card-header">Telescope</div>
+                        <div class="card-header"><i class="bi bi-crosshair me-1"></i>Telescope</div>
                         <div class="card-body">
                             <div class="row mb-2">
                                 <div class="col-6 fw-semibold">Adapter</div>
@@ -523,11 +523,11 @@
                                         <span x-text="$store.citrascope.isLooping ? 'Stop' : 'Loop'"></span>
                                     </button>
                                     <button class="btn btn-sm btn-outline-secondary"
-                                            :disabled="$store.citrascope.isCapturing || $store.citrascope.isLooping || $store.citrascope.isImagingTaskActive"
+                                            :disabled="$store.citrascope.isSaving || $store.citrascope.isLooping || $store.citrascope.isImagingTaskActive"
                                             @click="$store.citrascope.captureImage()"
                                             data-bs-toggle="tooltip" data-bs-theme="dark" title="Capture to FITS using current exposure">
                                         <i class="bi bi-save"></i>
-                                        <span x-text="$store.citrascope.isCapturing ? 'Saving...' : 'Save'"></span>
+                                        <span x-text="$store.citrascope.isSaving ? 'Saving...' : 'Save'"></span>
                                     </button>
                                     <button class="btn btn-sm"
                                             :class="$store.citrascope.previewFlipH ? 'btn-info' : 'btn-outline-secondary'"
@@ -777,7 +777,7 @@
                 <div class="col-12">
                     <div class="card bg-dark text-light border-secondary">
                         <div class="card-header d-flex align-items-center justify-content-between">
-                            <span>Scheduled Tasks</span>
+                            <span><i class="bi bi-calendar-week me-1"></i>Scheduled Tasks</span>
                             <span class="small text-secondary"><span x-text="$store.citrascope.status?.tasks_pending ?? $store.citrascope.tasks?.length ?? 0">0</span> scheduled</span>
                         </div>
                         <div class="card-body p-0">

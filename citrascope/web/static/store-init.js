@@ -49,6 +49,7 @@ import { FILTER_COLORS } from './filters.js';
             // Loading states for async operations
             isSavingConfig: false,
             isCapturing: false,
+            isSaving: false,
             isAutofocusing: false,
             captureResult: null,
             // Focus loop state
@@ -85,7 +86,7 @@ import { FILTER_COLORS } from './filters.js';
                     return;
                 }
 
-                this.isCapturing = true;
+                this.isSaving = true;
                 try {
                     const response = await fetch('/api/camera/capture', {
                         method: 'POST',
@@ -107,7 +108,7 @@ import { FILTER_COLORS } from './filters.js';
                     const { createToast } = await import('./config.js');
                     createToast('Failed to capture image: ' + error.message, 'danger', false);
                 } finally {
-                    this.isCapturing = false;
+                    this.isSaving = false;
                 }
             },
 
