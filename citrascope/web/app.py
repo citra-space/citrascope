@@ -777,23 +777,25 @@ class CitraScopeWebApp:
             relative = body.get("relative")
 
             try:
-                if focuser.is_moving():
-                    focuser.abort_move()
-                    time.sleep(0.1)
+                if await asyncio.to_thread(focuser.is_moving):
+                    await asyncio.to_thread(focuser.abort_move)
+                    await asyncio.sleep(0.1)
 
                 if absolute is not None:
                     if not isinstance(absolute, int):
                         return JSONResponse({"error": "position must be an integer"}, status_code=400)
-                    if not focuser.move_absolute(absolute):
+                    if not await asyncio.to_thread(focuser.move_absolute, absolute):
                         return JSONResponse({"error": "Move failed"}, status_code=500)
-                    return {"success": True, "position": focuser.get_position()}
+                    pos = await asyncio.to_thread(focuser.get_position)
+                    return {"success": True, "position": pos}
 
                 if relative is not None:
                     if not isinstance(relative, int):
                         return JSONResponse({"error": "relative must be an integer"}, status_code=400)
-                    if not focuser.move_relative(relative):
+                    if not await asyncio.to_thread(focuser.move_relative, relative):
                         return JSONResponse({"error": "Move failed"}, status_code=500)
-                    return {"success": True, "position": focuser.get_position()}
+                    pos = await asyncio.to_thread(focuser.get_position)
+                    return {"success": True, "position": pos}
 
             except Exception as e:
                 CITRASCOPE_LOGGER.error(f"Focuser move error: {e}", exc_info=True)
@@ -1147,6 +1149,9 @@ class CitraScopeWebApp:
 
             try:
                 duration = request.get("duration", 1.0)
+                if not isinstance(duration, (int, float)):
+                    return JSONResponse({"error": "duration must be a number"}, status_code=400)
+                duration = float(duration)
                 if duration <= 0:
                     return JSONResponse({"error": "Exposure duration must be positive"}, status_code=400)
                 if duration > 30:

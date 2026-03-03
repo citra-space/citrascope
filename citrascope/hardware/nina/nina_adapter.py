@@ -95,10 +95,15 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         Slews telescope to a bright reference star and runs autofocus
         for each enabled filter in the filter map, updating focus positions.
 
+        Note: cancel_event is accepted for interface compatibility but not
+        checked — NINA runs autofocus internally and there is no REST API
+        endpoint to cancel a NINA autofocus in progress.
+
         Args:
             target_ra: RA of the slew target in degrees (J2000), or None for Mirach
             target_dec: Dec of the slew target in degrees (J2000), or None for Mirach
             on_progress: Optional callback(str) to report progress updates
+            cancel_event: Unused (NINA manages its own autofocus lifecycle)
 
         Raises:
             RuntimeError: If no filters discovered or no enabled filters

@@ -36,12 +36,12 @@ class FilterConfig(TypedDict):
 
     Attributes:
         name: Human-readable filter name (e.g., 'Luminance', 'Red', 'Ha')
-        focus_position: Focuser position for this filter in steps
+        focus_position: Focuser position for this filter in steps, or None if unset
         enabled: Whether this filter is enabled for observations (default: True)
     """
 
     name: str
-    focus_position: int
+    focus_position: int | None
     enabled: bool
 
 

@@ -58,12 +58,15 @@ class ZwoEafFocuser(AbstractFocuser):
             for idx in range(count):
                 try:
                     eaf_id = probe.get_id(idx)
+                except Exception:
+                    continue
+                try:
                     info = probe.get_property(eaf_id)
                     name = info.Name.decode("utf-8", errors="replace").strip()
                     label = f"{name} (ID: {eaf_id}, max: {info.MaxStep})" if name else f"EAF {eaf_id}"
                     options.append({"value": eaf_id, "label": label})
                 except Exception:
-                    options.append({"value": idx, "label": f"EAF (index {idx})"})
+                    options.append({"value": eaf_id, "label": f"EAF (ID: {eaf_id})"})
         except ImportError:
             pass
         except Exception:

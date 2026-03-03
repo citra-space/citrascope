@@ -39,6 +39,18 @@ MAX_ELONGATION = 3.0
 # ---------------------------------------------------------------------------
 
 
+def _ensure_2d(image: np.ndarray) -> np.ndarray:
+    """Convert a multi-channel image to 2-D grayscale if needed."""
+    if image.ndim == 2:
+        return image
+    if image.ndim == 3:
+        if image.shape[2] == 3:
+            weights = np.array([0.2126, 0.7152, 0.0722], dtype=np.float64)
+            return np.tensordot(image.astype(np.float64), weights, axes=([2], [0]))
+        return np.mean(image, axis=2)
+    return image
+
+
 def _crop_center(image: np.ndarray, ratio: float) -> np.ndarray:
     """Return the central *ratio* fraction of *image*."""
     if ratio >= 1.0:
@@ -247,10 +259,11 @@ def run_autofocus(
         report(f"Step {idx}/{total}: exposing {exposure_time:.1f}s")
 
         try:
-            image_data = camera.capture_array(
+            raw = camera.capture_array(
                 duration=exposure_time,
                 binning=camera.get_default_binning(),
-            ).astype(np.float64)
+            )
+            image_data = _ensure_2d(raw).astype(np.float64)
         except Exception as e:
             log.warning(f"Exposure failed at position {pos}: {e}")
             continue
@@ -318,10 +331,11 @@ def run_autofocus(
 
     # Verification exposure
     try:
-        verify_data = camera.capture_array(
+        verify_raw = camera.capture_array(
             duration=exposure_time,
             binning=camera.get_default_binning(),
-        ).astype(np.float64)
+        )
+        verify_data = _ensure_2d(verify_raw).astype(np.float64)
         if metric_mode:
             verify_val = compute_hfr(verify_data, crop_ratio)
             if verify_val is not None:

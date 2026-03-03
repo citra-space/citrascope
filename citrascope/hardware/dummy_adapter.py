@@ -332,6 +332,14 @@ class _DummyFocuser:
         self._position = position
         return True
 
+    def move_relative(self, offset: int) -> bool:
+        target = self._position + offset
+        if target < 0 or target > self._max_position:
+            self._logger.error(f"DummyFocuser: relative move to {target} out of range (0–{self._max_position})")
+            return False
+        self._position = target
+        return True
+
     def abort_move(self) -> None:
         self._moving = False
 
@@ -785,9 +793,15 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         filters = [f for f in self.filter_map.values() if f.get("enabled", True)] if self.filter_map else []
         total = len(filters) or 1
         for idx, f in enumerate(filters or [{"name": "Default"}], 1):
+            if cancel_event and cancel_event.is_set():
+                self.logger.info("DummyAdapter: Autofocus cancelled")
+                raise RuntimeError("Autofocus cancelled")
             if on_progress:
                 on_progress(f"Filter {idx}/{total}: {f['name']} — focusing...")
             self._simulate_delay(1.0)
+            if cancel_event and cancel_event.is_set():
+                self.logger.info("DummyAdapter: Autofocus cancelled")
+                raise RuntimeError("Autofocus cancelled")
             if on_progress:
                 on_progress(f"Filter {idx}/{total}: {f['name']} — done")
 
