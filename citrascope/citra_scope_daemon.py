@@ -384,10 +384,10 @@ class CitraScopeDaemon:
                 mount = getattr(self.hardware_adapter, "mount", None)
                 if not mount:
                     return
-                snap = mount.cached_state
-                if snap is not None and not snap.is_slewing:
-                    return
                 mount.abort_slew()
+                mount.stop_tracking()
+                for d in ("north", "south", "east", "west"):
+                    mount.stop_move(d)
             except Exception:
                 pass
 

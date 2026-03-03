@@ -912,6 +912,60 @@ async function abortFocuser() {
     }
 }
 
+async function mountMove(action, direction, rate) {
+    try {
+        const response = await fetch('/api/mount/move', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action, direction, rate })
+        });
+        if (!response.ok) {
+            const data = await response.json();
+            console.error('Mount move error:', data.error);
+        }
+    } catch (error) {
+        console.error('Mount move error:', error);
+    }
+}
+
+async function mountGoto(ra, dec) {
+    try {
+        const response = await fetch('/api/mount/goto', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ra: parseFloat(ra), dec: parseFloat(dec) })
+        });
+        const data = await response.json();
+        if (response.ok) {
+            createToast(`Slewing to RA=${parseFloat(ra).toFixed(2)}°, Dec=${parseFloat(dec).toFixed(2)}°`, 'info', true);
+        } else {
+            createToast(data.error || 'Goto failed', 'danger', false);
+        }
+    } catch (error) {
+        console.error('Mount goto error:', error);
+        createToast('Failed to send goto command', 'danger', false);
+    }
+}
+
+async function mountSetTracking(enabled) {
+    try {
+        const response = await fetch('/api/mount/tracking', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled })
+        });
+        const data = await response.json();
+        if (response.ok) {
+            createToast(enabled ? 'Tracking started' : 'Tracking stopped', 'info', true);
+        } else {
+            createToast(data.error || 'Tracking command failed', 'danger', false);
+        }
+    } catch (error) {
+        console.error('Mount tracking error:', error);
+        createToast('Failed to change tracking', 'danger', false);
+    }
+}
+
 export function setupAutofocusButton() {
     window.triggerAutofocus = triggerAutofocus;
     window.triggerAlignment = triggerAlignment;
@@ -925,6 +979,9 @@ export function setupAutofocusButton() {
     window.moveFocuserRelative = moveFocuserRelative;
     window.moveFocuserAbsolute = moveFocuserAbsolute;
     window.abortFocuser = abortFocuser;
+    window.mountMove = mountMove;
+    window.mountGoto = mountGoto;
+    window.mountSetTracking = mountSetTracking;
 }
 
 /**

@@ -85,6 +85,8 @@ class SystemStatus(BaseModel):
     focuser_max_position: int | None = None
     focuser_temperature: float | None = None
     focuser_moving: bool = False
+    mount_tracking: bool = False
+    mount_slewing: bool = False
     safety_status: dict[str, Any] | None = None
 
 
@@ -981,6 +983,98 @@ class CitraScopeWebApp:
             threading.Thread(target=chk.execute_action, daemon=True, name="cable-unwind").start()
             return JSONResponse({"success": True, "message": "Cable unwind started"}, status_code=202)
 
+        @self.app.post("/api/mount/move")
+        async def mount_move(body: dict[str, Any]):
+            """Start or stop directional mount motion (jog control).
+
+            In alt-az mode: north=up, south=down, east=right, west=left.
+            """
+            if not self.daemon or not self.daemon.hardware_adapter:
+                return JSONResponse({"error": "Hardware adapter not initialized"}, status_code=503)
+
+            mount = getattr(self.daemon.hardware_adapter, "mount", None)
+            if mount is None or not self.daemon.hardware_adapter.is_telescope_connected():
+                return JSONResponse({"error": "No mount connected"}, status_code=404)
+
+            action = body.get("action")
+            direction = body.get("direction")
+            valid_directions = ("north", "south", "east", "west")
+
+            if direction not in valid_directions:
+                return JSONResponse({"error": f"direction must be one of {valid_directions}"}, status_code=400)
+
+            try:
+                if action == "start":
+                    rate = body.get("rate", 5)
+                    if not isinstance(rate, int) or not 1 <= rate <= 9:
+                        return JSONResponse({"error": "rate must be an integer 1-9"}, status_code=400)
+                    ok = await asyncio.to_thread(mount.start_move, direction, rate)
+                    return {"success": ok}
+                elif action == "stop":
+                    ok = await asyncio.to_thread(mount.stop_move, direction)
+                    return {"success": ok}
+                else:
+                    return JSONResponse({"error": "action must be 'start' or 'stop'"}, status_code=400)
+            except Exception as e:
+                CITRASCOPE_LOGGER.error(f"Mount move error: {e}", exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.post("/api/mount/goto")
+        async def mount_goto(body: dict[str, Any]):
+            """Slew the mount to arbitrary RA/Dec coordinates (degrees).
+
+            Fire-and-forget: initiates the slew and returns immediately.
+            The UI tracks slew progress via mount_slewing in the status poll.
+            """
+            if not self.daemon or not self.daemon.hardware_adapter:
+                return JSONResponse({"error": "Hardware adapter not initialized"}, status_code=503)
+
+            mount = getattr(self.daemon.hardware_adapter, "mount", None)
+            if mount is None or not self.daemon.hardware_adapter.is_telescope_connected():
+                return JSONResponse({"error": "No mount connected"}, status_code=404)
+
+            ra = body.get("ra")
+            dec = body.get("dec")
+            if not isinstance(ra, (int, float)) or not isinstance(dec, (int, float)):
+                return JSONResponse({"error": "ra and dec must be numbers (degrees)"}, status_code=400)
+            if not 0 <= float(ra) <= 360:
+                return JSONResponse({"error": "ra must be 0-360"}, status_code=400)
+            if not -90 <= float(dec) <= 90:
+                return JSONResponse({"error": "dec must be -90 to 90"}, status_code=400)
+
+            try:
+                ok = await asyncio.to_thread(mount.slew_to_radec, float(ra), float(dec))
+                if not ok:
+                    return JSONResponse({"error": "Mount rejected slew command"}, status_code=500)
+                return {"success": True, "message": f"Slewing to RA={ra:.4f}, Dec={dec:.4f}"}
+            except Exception as e:
+                CITRASCOPE_LOGGER.error(f"Mount goto error: {e}", exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.post("/api/mount/tracking")
+        async def mount_tracking(body: dict[str, Any]):
+            """Start or stop sidereal tracking."""
+            if not self.daemon or not self.daemon.hardware_adapter:
+                return JSONResponse({"error": "Hardware adapter not initialized"}, status_code=503)
+
+            mount = getattr(self.daemon.hardware_adapter, "mount", None)
+            if mount is None or not self.daemon.hardware_adapter.is_telescope_connected():
+                return JSONResponse({"error": "No mount connected"}, status_code=404)
+
+            enabled = body.get("enabled")
+            if not isinstance(enabled, bool):
+                return JSONResponse({"error": "enabled must be a boolean"}, status_code=400)
+
+            try:
+                if enabled:
+                    ok = await asyncio.to_thread(mount.start_tracking)
+                else:
+                    ok = await asyncio.to_thread(mount.stop_tracking)
+                return {"success": ok, "tracking": enabled}
+            except Exception as e:
+                CITRASCOPE_LOGGER.error(f"Mount tracking error: {e}", exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
         @self.app.post("/api/safety/cable-wrap/reset")
         async def reset_cable_wrap():
             """Reset cable wrap counter to zero (operator confirms cables are straight)."""
@@ -1031,6 +1125,8 @@ class CitraScopeWebApp:
                 try:
                     mount.abort_slew()
                     mount.stop_tracking()
+                    for d in ("north", "south", "east", "west"):
+                        mount.stop_move(d)
                 except Exception:
                     CITRASCOPE_LOGGER.error("Error halting mount during emergency stop", exc_info=True)
 
@@ -1216,12 +1312,21 @@ class CitraScopeWebApp:
                             self.status.telescope_dec = snap.dec_deg
                             self.status.telescope_az = snap.az_deg
                             self.status.telescope_alt = snap.alt_deg
+                            self.status.mount_tracking = snap.is_tracking
+                            self.status.mount_slewing = snap.is_slewing
                         else:
                             ra, dec = adapter.get_telescope_direction()
                             self.status.telescope_ra = ra
                             self.status.telescope_dec = dec
+                            self.status.mount_tracking = False
+                            self.status.mount_slewing = False
+                    else:
+                        self.status.mount_tracking = False
+                        self.status.mount_slewing = False
                 except Exception:
                     self.status.telescope_connected = False
+                    self.status.mount_tracking = False
+                    self.status.mount_slewing = False
 
                 # Check camera connection status
                 try:

@@ -390,6 +390,111 @@
                                     </template>
                                 </div>
                             </div>
+
+                            <!-- Mount Controls (visible when telescope connected) -->
+                            <div x-show="$store.citrascope.status?.telescope_connected"
+                                 x-data="{ jogRate: 5, gotoRa: '', gotoDec: '' }"
+                                 class="mt-3 pt-3 border-top border-secondary">
+
+                                <!-- Tracking toggle + slewing indicator -->
+                                <div class="d-flex align-items-center gap-2 mb-3">
+                                    <button class="btn btn-sm"
+                                            :class="$store.citrascope.status?.mount_tracking ? 'btn-success' : 'btn-outline-secondary'"
+                                            @click="mountSetTracking(!$store.citrascope.status?.mount_tracking)">
+                                        <i class="bi" :class="$store.citrascope.status?.mount_tracking ? 'bi-broadcast' : 'bi-broadcast'"></i>
+                                        <span x-text="$store.citrascope.status?.mount_tracking ? 'Tracking' : 'Start Tracking'"></span>
+                                    </button>
+                                    <span class="badge rounded-pill bg-info"
+                                          x-show="$store.citrascope.status?.mount_slewing">
+                                        <span class="spinner-border spinner-border-sm me-1" style="width: .6rem; height: .6rem;"></span>
+                                        Slewing
+                                    </span>
+                                </div>
+
+                                <!-- Jog Pad -->
+                                <div class="d-flex align-items-start gap-3 mb-3">
+                                    <div style="display: grid; grid-template-columns: repeat(3, 36px); grid-template-rows: repeat(3, 36px); gap: 2px;">
+                                        <div></div>
+                                        <button class="btn btn-sm btn-outline-light d-flex align-items-center justify-content-center p-0"
+                                                style="width:36px;height:36px;"
+                                                @mousedown="mountMove('start','north',jogRate)"
+                                                @mouseup="mountMove('stop','north')"
+                                                @mouseleave="mountMove('stop','north')"
+                                                @touchstart.prevent="mountMove('start','north',jogRate)"
+                                                @touchend.prevent="mountMove('stop','north')"
+                                                title="Up (Alt+)">
+                                            <i class="bi bi-chevron-up"></i>
+                                        </button>
+                                        <div></div>
+
+                                        <button class="btn btn-sm btn-outline-light d-flex align-items-center justify-content-center p-0"
+                                                style="width:36px;height:36px;"
+                                                @mousedown="mountMove('start','west',jogRate)"
+                                                @mouseup="mountMove('stop','west')"
+                                                @mouseleave="mountMove('stop','west')"
+                                                @touchstart.prevent="mountMove('start','west',jogRate)"
+                                                @touchend.prevent="mountMove('stop','west')"
+                                                title="Left (Az-)">
+                                            <i class="bi bi-chevron-left"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger d-flex align-items-center justify-content-center p-0"
+                                                style="width:36px;height:36px;"
+                                                @click="mountMove('stop','north'); mountMove('stop','south'); mountMove('stop','east'); mountMove('stop','west')"
+                                                title="Stop all motion">
+                                            <i class="bi bi-stop-fill"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-light d-flex align-items-center justify-content-center p-0"
+                                                style="width:36px;height:36px;"
+                                                @mousedown="mountMove('start','east',jogRate)"
+                                                @mouseup="mountMove('stop','east')"
+                                                @mouseleave="mountMove('stop','east')"
+                                                @touchstart.prevent="mountMove('start','east',jogRate)"
+                                                @touchend.prevent="mountMove('stop','east')"
+                                                title="Right (Az+)">
+                                            <i class="bi bi-chevron-right"></i>
+                                        </button>
+
+                                        <div></div>
+                                        <button class="btn btn-sm btn-outline-light d-flex align-items-center justify-content-center p-0"
+                                                style="width:36px;height:36px;"
+                                                @mousedown="mountMove('start','south',jogRate)"
+                                                @mouseup="mountMove('stop','south')"
+                                                @mouseleave="mountMove('stop','south')"
+                                                @touchstart.prevent="mountMove('start','south',jogRate)"
+                                                @touchend.prevent="mountMove('stop','south')"
+                                                title="Down (Alt-)">
+                                            <i class="bi bi-chevron-down"></i>
+                                        </button>
+                                        <div></div>
+                                    </div>
+                                    <div>
+                                        <label class="form-label small text-muted mb-1">Speed</label>
+                                        <input type="range" class="form-range" min="1" max="9" step="1"
+                                               x-model.number="jogRate" style="width: 80px;">
+                                        <div class="text-center small text-muted" x-text="jogRate + '/9'"></div>
+                                    </div>
+                                </div>
+
+                                <!-- Goto RA/Dec -->
+                                <div class="d-flex align-items-end gap-2">
+                                    <div style="flex: 1;">
+                                        <label class="form-label small text-muted mb-1">RA (°)</label>
+                                        <input type="number" class="form-control form-control-sm"
+                                               x-model.lazy="gotoRa" step="any" min="0" max="360" placeholder="0–360">
+                                    </div>
+                                    <div style="flex: 1;">
+                                        <label class="form-label small text-muted mb-1">Dec (°)</label>
+                                        <input type="number" class="form-control form-control-sm"
+                                               x-model.lazy="gotoDec" step="any" min="-90" max="90" placeholder="-90–90">
+                                    </div>
+                                    <button class="btn btn-sm btn-outline-primary text-nowrap"
+                                            :disabled="gotoRa === '' || gotoDec === '' || $store.citrascope.status?.mount_slewing"
+                                            @click="mountGoto(gotoRa, gotoDec)">
+                                        <i class="bi bi-cursor"></i> Go
+                                    </button>
+                                </div>
+                            </div>
+
                         </div>
                     </div>
                 </div>
