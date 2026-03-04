@@ -115,7 +115,7 @@ class AlignmentManager:
                 self.logger.error("Cannot align — no telescope_record available (configure telescope in Citra)")
                 return
 
-            mount: Any = getattr(self.hardware_adapter, "mount", None)
+            mount = self.hardware_adapter.mount
             if not self.hardware_adapter.is_camera_connected() or not mount:
                 self.logger.error("Cannot align — camera and mount are both required")
                 return

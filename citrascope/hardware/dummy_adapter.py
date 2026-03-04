@@ -414,15 +414,23 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         self._camera_connected = False
         self._is_moving = False
         self._tracking_rate = (15.041, 0.0)  # arcsec/sec (sidereal rate)
-        self.mount = _DummyMount(logger)
+        self._mount = _DummyMount(logger)
         self._mount_cache: MountStateCache | None = None
-        self.focuser = _DummyFocuser(logger)
+        self._focuser = _DummyFocuser(logger)
 
         # Set by the daemon after connecting, mirrors the real telescope_record from the API.
         # When present, take_image() derives sensor dimensions and pixel scale from it.
         self.telescope_record: dict | None = None
 
         self.logger.info("DummyAdapter initialized")
+
+    @property
+    def mount(self) -> _DummyMount:
+        return self._mount
+
+    @property
+    def focuser(self) -> _DummyFocuser:
+        return self._focuser
 
     @classmethod
     def get_settings_schema(cls, **kwargs) -> list[SettingSchemaEntry]:
@@ -476,10 +484,10 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
             }
             self.logger.info(f"DummyAdapter: Populated {len(self.filter_map)} simulated filters")
 
-        cache = MountStateCache(self.mount)
+        cache = MountStateCache(self._mount)
         cache.refresh_static()
         cache.start()
-        self.mount._state_cache = cache  # type: ignore[attr-defined]
+        self._mount._state_cache = cache  # type: ignore[attr-defined]
         self._mount_cache = cache
         self.logger.info("DummyAdapter: Connected successfully")
         return True
@@ -517,7 +525,7 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         """Simulate telescope slew."""
         self.logger.info(f"DummyAdapter: Slewing to RA={ra:.4f}°, Dec={dec:.4f}°")
         self._is_moving = True
-        success = self.mount.slew_to_radec(ra, dec)
+        success = self._mount.slew_to_radec(ra, dec)
         self._is_moving = False
         if not success:
             raise RuntimeError("Slew aborted by safety monitor")
@@ -525,17 +533,17 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
 
     def get_telescope_direction(self) -> tuple[float, float]:
         """Return current telescope position from the simulated mount."""
-        return self.mount.get_radec()
+        return self._mount.get_radec()
 
     def abort_slew(self) -> None:
-        self.mount.abort_slew()
+        self._mount.abort_slew()
 
     def telescope_is_moving(self) -> bool:
         """Check if fake telescope is moving."""
         return self._is_moving
 
     def home_if_needed(self) -> bool:
-        if self.mount.is_home():
+        if self._mount.is_home():
             self.logger.info("DummyAdapter: Mount already homed")
             return True
         if self._safety_monitor and not self._safety_monitor.is_action_safe("home"):
@@ -544,7 +552,7 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
             raise SafetyError("Homing blocked by safety monitor")
         self.logger.info("DummyAdapter: Homing mount (safety-monitored)...")
         self._is_moving = True
-        self.mount.find_home()
+        self._mount.find_home()
         self._is_moving = False
         self.logger.info("DummyAdapter: Mount homed")
         return True
@@ -556,13 +564,13 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
             raise SafetyError("Homing blocked by safety monitor")
         self.logger.info("DummyAdapter: Homing mount...")
         self._is_moving = True
-        self.mount.find_home()
+        self._mount.find_home()
         self._is_moving = False
         self.logger.info("DummyAdapter: Mount homed")
         return True
 
     def is_mount_homed(self) -> bool:
-        return self.mount.is_home()
+        return self._mount.is_home()
 
     def select_camera(self, device_name: str) -> bool:
         """Simulate camera selection."""
@@ -580,7 +588,7 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         filepath = self.images_dir / filename
         filepath.parent.mkdir(parents=True, exist_ok=True)
 
-        ra, dec = self.mount.get_radec()
+        ra, dec = self._mount.get_radec()
         image_data, wcs = self._generate_starfield(
             ra,
             dec,
@@ -796,7 +804,7 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         """Simulate plate solving alignment."""
         self.logger.info(f"DummyAdapter: Performing alignment to RA={target_ra}°, Dec={target_dec}°")
         self._simulate_delay()
-        self.mount.slew_to_radec(target_ra + 0.001, target_dec + 0.001)
+        self._mount.slew_to_radec(target_ra + 0.001, target_dec + 0.001)
         self.logger.info("DummyAdapter: Alignment successful")
         return True
 
@@ -854,16 +862,16 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
 
     def set_focus(self, position: int) -> bool:
         """Move simulated focuser to absolute position."""
-        if not self.focuser:
+        if not self._focuser:
             return False
         self.logger.info(f"DummyAdapter: Moving focuser to {position}")
-        return self.focuser.move_absolute(position)
+        return self._focuser.move_absolute(position)
 
     def get_focus_position(self) -> int | None:
         """Get simulated focuser position."""
-        if not self.focuser:
+        if not self._focuser:
             return None
-        return self.focuser.get_position()
+        return self._focuser.get_position()
 
     def supports_direct_camera_control(self) -> bool:
         """Dummy adapter supports direct camera control."""
@@ -875,7 +883,7 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
 
         from citrascope.web.preview import array_to_jpeg_data_url
 
-        ra, dec = self.mount.get_radec()
+        ra, dec = self._mount.get_radec()
         image_data, _ = self._generate_starfield(ra, dec, exposure_time, seed=int(time.time() * 1000))
         return array_to_jpeg_data_url(image_data, flip_horizontal=flip_horizontal)
 

@@ -267,8 +267,8 @@ class TestDirectAdapterFilterAutoDetect:
 
                 adapter = DirectHardwareAdapter(logger, images_dir, camera_type="moravian")
 
-        # Override the camera with our mock
-        adapter.camera = mock_camera
+        # Override the camera with our mock (private attr backing the property)
+        adapter._camera = mock_camera
         adapter.connect()
 
         assert adapter.filter_wheel is mock_fw

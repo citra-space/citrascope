@@ -11,6 +11,9 @@ from typing import TYPE_CHECKING, Any, TypedDict
 if TYPE_CHECKING:
     import threading
 
+    from citrascope.hardware.devices.camera.abstract_camera import AbstractCamera
+    from citrascope.hardware.devices.focuser.abstract_focuser import AbstractFocuser
+    from citrascope.hardware.devices.mount.abstract_mount import AbstractMount
     from citrascope.safety.safety_monitor import SafetyMonitor
 
 
@@ -101,6 +104,21 @@ class AbstractAstroHardwareAdapter(ABC):
     def set_safety_monitor(self, monitor: SafetyMonitor) -> None:
         """Wire a SafetyMonitor for pre-action safety gates."""
         self._safety_monitor = monitor
+
+    @property
+    def mount(self) -> AbstractMount | None:
+        """Direct mount device, or None for orchestration adapters (NINA/KStars)."""
+        return None
+
+    @property
+    def focuser(self) -> AbstractFocuser | None:
+        """Direct focuser device, or None if not available."""
+        return None
+
+    @property
+    def camera(self) -> AbstractCamera | None:
+        """Direct camera device, or None for orchestration adapters."""
+        return None
 
     def point_telescope(self, ra: float, dec: float):
         """Point the telescope to the specified RA/Dec coordinates."""

@@ -787,8 +787,8 @@ class CitraScopeWebApp:
             if not self.daemon or not self.daemon.hardware_adapter:
                 return JSONResponse({"error": "Hardware adapter not initialized"}, status_code=503)
 
-            focuser = getattr(self.daemon.hardware_adapter, "focuser", None)
-            if focuser is None or not hasattr(focuser, "is_connected") or not focuser.is_connected():
+            focuser = self.daemon.hardware_adapter.focuser
+            if focuser is None or not focuser.is_connected():
                 return JSONResponse({"error": "No focuser connected"}, status_code=404)
 
             absolute = body.get("position")
@@ -827,8 +827,8 @@ class CitraScopeWebApp:
             if not self.daemon or not self.daemon.hardware_adapter:
                 return JSONResponse({"error": "Hardware adapter not initialized"}, status_code=503)
 
-            focuser = getattr(self.daemon.hardware_adapter, "focuser", None)
-            if focuser is None or not hasattr(focuser, "is_connected") or not focuser.is_connected():
+            focuser = self.daemon.hardware_adapter.focuser
+            if focuser is None or not focuser.is_connected():
                 return JSONResponse({"error": "No focuser connected"}, status_code=404)
 
             try:
@@ -925,7 +925,7 @@ class CitraScopeWebApp:
             except (TypeError, ValueError):
                 return JSONResponse({"error": "RA and Dec must be numeric (degrees)"}, status_code=400)
 
-            mount = getattr(self.daemon.hardware_adapter, "mount", None)
+            mount = self.daemon.hardware_adapter.mount
             if not mount:
                 return JSONResponse({"error": "No mount connected"}, status_code=404)
 
@@ -1008,7 +1008,7 @@ class CitraScopeWebApp:
             if not self.daemon or not self.daemon.hardware_adapter:
                 return JSONResponse({"error": "Hardware adapter not initialized"}, status_code=503)
 
-            mount = getattr(self.daemon.hardware_adapter, "mount", None)
+            mount = self.daemon.hardware_adapter.mount
             if mount is None or not self.daemon.hardware_adapter.is_telescope_connected():
                 return JSONResponse({"error": "No mount connected"}, status_code=404)
 
@@ -1048,7 +1048,7 @@ class CitraScopeWebApp:
             if not self.daemon or not self.daemon.hardware_adapter:
                 return JSONResponse({"error": "Hardware adapter not initialized"}, status_code=503)
 
-            mount = getattr(self.daemon.hardware_adapter, "mount", None)
+            mount = self.daemon.hardware_adapter.mount
             if mount is None or not self.daemon.hardware_adapter.is_telescope_connected():
                 return JSONResponse({"error": "No mount connected"}, status_code=404)
 
@@ -1076,7 +1076,7 @@ class CitraScopeWebApp:
             if not self.daemon or not self.daemon.hardware_adapter:
                 return JSONResponse({"error": "Hardware adapter not initialized"}, status_code=503)
 
-            mount = getattr(self.daemon.hardware_adapter, "mount", None)
+            mount = self.daemon.hardware_adapter.mount
             if mount is None or not self.daemon.hardware_adapter.is_telescope_connected():
                 return JSONResponse({"error": "No mount connected"}, status_code=404)
 
@@ -1138,7 +1138,7 @@ class CitraScopeWebApp:
             daemon = self.daemon
 
             def _halt_mount():
-                mount = getattr(daemon.hardware_adapter, "mount", None) if daemon.hardware_adapter else None
+                mount = daemon.hardware_adapter.mount if daemon.hardware_adapter else None
                 if not mount:
                     return
                 try:
@@ -1318,7 +1318,7 @@ class CitraScopeWebApp:
 
             if hasattr(self.daemon, "hardware_adapter") and self.daemon.hardware_adapter:
                 adapter = self.daemon.hardware_adapter
-                mount = getattr(adapter, "mount", None)
+                mount = adapter.mount
 
                 # Check telescope connection status
                 try:
@@ -1349,7 +1349,7 @@ class CitraScopeWebApp:
                 # Check camera connection status
                 try:
                     self.status.camera_connected = adapter.is_camera_connected()
-                    camera = getattr(adapter, "camera", None)
+                    camera = adapter.camera
                     if self.status.camera_connected and camera is not None:
                         self.status.camera_temperature = camera.get_temperature()
                     else:
@@ -1364,9 +1364,7 @@ class CitraScopeWebApp:
                 except Exception:
                     self.status.supports_direct_camera_control = False
 
-                self.status.supports_direct_mount_control = (
-                    mount is not None and hasattr(mount, "start_move") and self.status.telescope_connected
-                )
+                self.status.supports_direct_mount_control = mount is not None and self.status.telescope_connected
 
                 self.status.supports_autofocus = adapter.supports_autofocus()
 
@@ -1382,8 +1380,8 @@ class CitraScopeWebApp:
                     self.status.current_filter_name = None
 
                 # Check focuser status
-                focuser = getattr(adapter, "focuser", None)
-                if focuser is not None and hasattr(focuser, "is_connected") and focuser.is_connected():
+                focuser = adapter.focuser
+                if focuser is not None and focuser.is_connected():
                     self.status.focuser_connected = True
                     try:
                         self.status.focuser_position = focuser.get_position()
