@@ -351,22 +351,19 @@ class CitraScopeDaemon:
         # Cable wrap check — only for adapters with a direct mount
         cable_check: CableWrapCheck | None = None
         needs_startup_unwind = False
-        mount = getattr(self.hardware_adapter, "mount", None)
+        mount = self.hardware_adapter.mount
         if mount is not None:
             import platformdirs
-
-            from citrascope.safety.cable_wrap_check import HARD_LIMIT_DEG
 
             data_dir = Path(platformdirs.user_data_dir("citrascope", appauthor="citrascope"))
             state_file = data_dir / "cable_wrap_state.json"
             cable_check = CableWrapCheck(CITRASCOPE_LOGGER, mount, state_file=state_file)
             cable_check.start()
 
-            if abs(cable_check._cumulative_deg) >= HARD_LIMIT_DEG:
+            if cable_check.needs_startup_unwind():
                 CITRASCOPE_LOGGER.warning(
-                    "Persisted cable wrap at %.1f° exceeds hard limit (%.1f°) — will unwind after safety gate is wired",
-                    cable_check._cumulative_deg,
-                    HARD_LIMIT_DEG,
+                    "Persisted cable wrap at %.1f° exceeds hard limit — will unwind after safety gate is wired",
+                    cable_check.cumulative_deg,
                 )
                 needs_startup_unwind = True
 
@@ -381,13 +378,13 @@ class CitraScopeDaemon:
 
         def abort_callback() -> None:
             try:
-                mount = getattr(self.hardware_adapter, "mount", None)
-                if not mount:
+                m = self.hardware_adapter.mount if self.hardware_adapter else None
+                if not m:
                     return
-                mount.abort_slew()
-                mount.stop_tracking()
+                m.abort_slew()
+                m.stop_tracking()
                 for d in ("north", "south", "east", "west"):
-                    mount.stop_move(d)
+                    m.stop_move(d)
             except Exception:
                 pass
 
@@ -410,14 +407,14 @@ class CitraScopeDaemon:
         if needs_startup_unwind and cable_check is not None:
             CITRASCOPE_LOGGER.info("Starting deferred cable unwind (safety gate active)")
             cable_check.execute_action()
-            if cable_check._consecutive_unwind_failures > 0:
-                cable_check._intervention_required = True
+            if cable_check.did_last_unwind_fail():
+                cable_check.mark_intervention_required()
                 CITRASCOPE_LOGGER.critical(
                     "Startup unwind did not converge (%.1f° remaining) — "
                     "manual intervention required before the system can "
                     "operate. Use web UI to reset after physically "
                     "verifying cables.",
-                    cable_check._cumulative_deg,
+                    cable_check.cumulative_deg,
                 )
 
     def _save_filter_config(self):
@@ -563,9 +560,9 @@ class CitraScopeDaemon:
         # 2. Abort any residual motion
         if self.hardware_adapter:
             try:
-                mount = getattr(self.hardware_adapter, "mount", None)
-                if mount:
-                    mount.abort_slew()
+                m = self.hardware_adapter.mount
+                if m:
+                    m.abort_slew()
             except Exception:
                 pass
 

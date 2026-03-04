@@ -84,7 +84,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         camera_class = get_camera_class(camera_type)
         camera_deps = check_dependencies(camera_class)
 
-        self.camera: AbstractCamera | None = None
+        self._camera: AbstractCamera | None = None
         if not camera_deps["available"]:
             self.logger.warning(
                 f"Camera '{camera_type}' missing dependencies: {', '.join(camera_deps['missing'])}. "
@@ -100,10 +100,10 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             )
         else:
             self.logger.info(f"Instantiating camera: {camera_type}")
-            self.camera = camera_class(logger=self.logger, **camera_settings)
+            self._camera = camera_class(logger=self.logger, **camera_settings)
 
         # Check and instantiate mount (optional)
-        self.mount: AbstractMount | None = None
+        self._mount: AbstractMount | None = None
         if mount_type:
             self.logger.info(f"Checking mount dependencies: {mount_type}")
             mount_class = get_mount_class(mount_type)
@@ -124,7 +124,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                 )
             else:
                 self.logger.info(f"Instantiating mount: {mount_type}")
-                self.mount = mount_class(logger=self.logger, **mount_settings)
+                self._mount = mount_class(logger=self.logger, **mount_settings)
 
         # Check and instantiate filter wheel (optional)
         self.filter_wheel: AbstractFilterWheel | None = None
@@ -151,7 +151,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                 self.filter_wheel = filter_wheel_class(logger=self.logger, **filter_wheel_settings)
 
         # Check and instantiate focuser (optional)
-        self.focuser: AbstractFocuser | None = None
+        self._focuser: AbstractFocuser | None = None
         if focuser_type:
             self.logger.info(f"Checking focuser dependencies: {focuser_type}")
             focuser_class = get_focuser_class(focuser_type)
@@ -172,7 +172,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                 )
             else:
                 self.logger.info(f"Instantiating focuser: {focuser_type}")
-                self.focuser = focuser_class(logger=self.logger, **focuser_settings)
+                self._focuser = focuser_class(logger=self.logger, **focuser_settings)
 
         # State tracking
         self._current_filter_position: int | None = None
@@ -366,6 +366,18 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
     def set_location_service(self, location_service) -> None:
         self.location_service = location_service
 
+    @property
+    def mount(self) -> AbstractMount | None:
+        return self._mount
+
+    @property
+    def focuser(self) -> AbstractFocuser | None:
+        return self._focuser
+
+    @property
+    def camera(self) -> AbstractCamera | None:
+        return self._camera
+
     def supports_filter_management(self) -> bool:
         return self.filter_wheel is not None
 
@@ -423,25 +435,25 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         success = True
 
         # Connect mount (if present)
-        if self.mount:
-            if not self.mount.connect():
+        if self._mount:
+            if not self._mount.connect():
                 self.logger.error("Failed to connect to mount")
                 success = False
             else:
                 self._sync_mount_site_and_time()
-                cache = MountStateCache(self.mount)
+                cache = MountStateCache(self._mount)
                 cache.refresh_static()
                 cache.start()
-                self.mount._state_cache = cache  # type: ignore[attr-defined]
+                self._mount._state_cache = cache  # type: ignore[attr-defined]
                 self._mount_cache = cache
         else:
             self.logger.info("No mount configured (static camera mode)")
 
         # Connect camera
-        if not self.camera:
+        if not self._camera:
             self.logger.error("Camera not initialized (missing dependencies)")
             return False
-        if not self.camera.connect():
+        if not self._camera.connect():
             self.logger.error("Failed to connect to camera")
             success = False
 
@@ -451,8 +463,8 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             self.filter_wheel = None
 
         # Auto-detect integrated filter wheel if no standalone one configured
-        if not self.filter_wheel and self.camera:
-            integrated_fw = self.camera.get_integrated_filter_wheel()
+        if not self.filter_wheel and self._camera:
+            integrated_fw = self._camera.get_integrated_filter_wheel()
             if integrated_fw:
                 if integrated_fw.connect():
                     self.filter_wheel = integrated_fw
@@ -464,7 +476,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         if self.filter_wheel:
             self._populate_filter_map_from_hardware()
 
-        if self.focuser and not self.focuser.connect():
+        if self._focuser and not self._focuser.connect():
             self.logger.warning("Failed to connect to focuser (optional)")
 
         if success:
@@ -505,17 +517,17 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         no polar alignment required.  Meridian flip config is only
         relevant in equatorial mode so we skip it in alt-az.
         """
-        assert self.mount is not None
+        assert self._mount is not None
 
         # Log mount mode — alt-az is expected for satellite work
-        mode = self.mount.get_mount_mode()
+        mode = self._mount.get_mount_mode()
         self.logger.info("Mount operating mode: %s", mode)
 
         # Sync site location from LocationService
         if self.location_service:
             location = self.location_service.get_current_location()
             if location:
-                ok = self.mount.set_site_location(location["latitude"], location["longitude"], location["altitude"])
+                ok = self._mount.set_site_location(location["latitude"], location["longitude"], location["altitude"])
                 if not ok:
                     self.logger.warning("Mount rejected site location")
             else:
@@ -524,12 +536,12 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             self.logger.warning("No LocationService — mount site not set")
 
         # Sync system UTC clock to mount
-        if not self.mount.sync_datetime():
+        if not self._mount.sync_datetime():
             self.logger.warning("Mount time sync not supported or failed")
 
         # Unpark if the mount is parked — GoTo is rejected while parked
-        if self.mount.is_parked():
-            self.mount.unpark()
+        if self._mount.is_parked():
+            self._mount.unpark()
             self.logger.info("Mount was parked — unparked for operation")
 
         # Altitude limits: software-enforced via AltitudeLimitCheck in the
@@ -537,8 +549,8 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         # :GL/:SL commands collide with Get/Set Local Time).
         # Log current state for diagnostics but don't try to configure.
         try:
-            limits_on = self.mount.get_altitude_limits_enabled()
-            lower, upper = self.mount.get_limits()
+            limits_on = self._mount.get_altitude_limits_enabled()
+            lower, upper = self._mount.get_limits()
             self.logger.info("Firmware altitude limits: enabled=%s lower=%s° upper=%s°", limits_on, lower, upper)
         except Exception:
             self.logger.debug("Could not read firmware altitude limits", exc_info=True)
@@ -548,8 +560,8 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         # meridian concept, so we skip this entirely.
         if mode == "equatorial":
             try:
-                if self.mount.get_meridian_auto_flip() is not True:
-                    self.mount.set_meridian_auto_flip(True)
+                if self._mount.get_meridian_auto_flip() is not True:
+                    self._mount.set_meridian_auto_flip(True)
             except Exception:
                 self.logger.debug("Meridian auto-flip not supported", exc_info=True)
 
@@ -561,17 +573,17 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             self._mount_cache.stop()
             self._mount_cache = None
 
-        if self.camera:
-            self.camera.disconnect()
+        if self._camera:
+            self._camera.disconnect()
 
-        if self.mount:
-            self.mount.disconnect()
+        if self._mount:
+            self._mount.disconnect()
 
         if self.filter_wheel:
             self.filter_wheel.disconnect()
 
-        if self.focuser:
-            self.focuser.disconnect()
+        if self._focuser:
+            self._focuser.disconnect()
 
         self.logger.info("All devices disconnected")
 
@@ -581,9 +593,9 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         Returns:
             True if mount is connected and responsive, or True if no mount (static camera)
         """
-        if not self.mount:
+        if not self._mount:
             return True  # No mount required for static camera
-        return self.mount.is_connected()
+        return self._mount.is_connected()
 
     def is_camera_connected(self) -> bool:
         """Check if camera is connected.
@@ -591,9 +603,9 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         Returns:
             True if camera is connected and responsive
         """
-        if not self.camera:
+        if not self._camera:
             return False
-        return self.camera.is_connected()
+        return self._camera.is_connected()
 
     def _do_point_telescope(self, ra: float, dec: float):
         """Point the telescope to specified RA/Dec coordinates.
@@ -602,41 +614,41 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             ra: Right Ascension in degrees
             dec: Declination in degrees
         """
-        if not self.mount:
+        if not self._mount:
             self.logger.warning("No mount configured - cannot point telescope (static camera mode)")
             return
 
         self.logger.info(f"Slewing telescope to RA={ra:.4f}°, Dec={dec:.4f}°")
 
-        if not self.mount.slew_to_radec(ra, dec):
+        if not self._mount.slew_to_radec(ra, dec):
             raise RuntimeError(f"Failed to initiate slew to RA={ra}, Dec={dec}")
 
         # Wait for slew to complete
         timeout = 300  # 5 minute timeout
         start_time = time.time()
 
-        while self.mount.is_slewing():
+        while self._mount.is_slewing():
             if time.time() - start_time > timeout:
-                self.mount.abort_slew()
+                self._mount.abort_slew()
                 raise RuntimeError("Slew timeout exceeded")
             time.sleep(0.5)
 
         self.logger.info("Slew complete")
 
         # Ensure tracking is enabled
-        if not self.mount.is_tracking():
+        if not self._mount.is_tracking():
             self.logger.info("Starting sidereal tracking")
-            self.mount.start_tracking("sidereal")
+            self._mount.start_tracking("sidereal")
 
     def home_mount(self) -> bool:
-        if not self.mount or not self.mount.is_connected():
+        if not self._mount or not self._mount.is_connected():
             self.logger.warning("No mount connected — cannot home")
             return False
         if self._safety_monitor and not self._safety_monitor.is_action_safe("home"):
             from citrascope.safety.safety_monitor import SafetyError
 
             raise SafetyError("Homing blocked by safety monitor")
-        return self.mount.find_home()
+        return self._mount.find_home()
 
     def home_if_needed(self) -> bool:
         """Home the mount if not already homed, blocking until complete.
@@ -649,10 +661,10 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         This is called after connect() and after the SafetyMonitor is online,
         so the CableWrapCheck is actively observing during the homing slew.
         """
-        if not self.mount or not self.mount.is_connected():
+        if not self._mount or not self._mount.is_connected():
             self.logger.info("No mount connected — skipping home")
             return True
-        if self.mount.is_home():
+        if self._mount.is_home():
             self.logger.info("Mount already homed")
             return True
 
@@ -662,7 +674,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             raise SafetyError("Homing blocked by safety monitor")
 
         self.logger.info("Mount not homed — initiating find-home (required for GoTo)")
-        self.mount.find_home()
+        self._mount.find_home()
 
         _TIMEOUT_S = 60
         _GRACE_POLLS = 5
@@ -673,7 +685,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         while time.monotonic() < deadline:
             time.sleep(1)
             try:
-                if self.mount.is_home():
+                if self._mount.is_home():
                     self.logger.info("Mount homed successfully")
                     return True
             except Exception:
@@ -682,7 +694,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             poll_count += 1
             if poll_count > _GRACE_POLLS:
                 try:
-                    still_moving = self.mount.is_slewing()
+                    still_moving = self._mount.is_slewing()
                 except Exception:
                     still_moving = True
                 if not still_moving:
@@ -700,27 +712,27 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         return False
 
     def is_mount_homed(self) -> bool:
-        if not self.mount or not self.mount.is_connected():
+        if not self._mount or not self._mount.is_connected():
             return False
-        return self.mount.is_home()
+        return self._mount.is_home()
 
     def get_mount_limits(self) -> tuple[int | None, int | None]:
-        if not self.mount or not self.mount.is_connected():
+        if not self._mount or not self._mount.is_connected():
             return None, None
-        return self.mount.get_limits()
+        return self._mount.get_limits()
 
     def set_mount_horizon_limit(self, degrees: int) -> bool:
-        if not self.mount or not self.mount.is_connected():
+        if not self._mount or not self._mount.is_connected():
             return False
-        ok = self.mount.set_horizon_limit(degrees)
+        ok = self._mount.set_horizon_limit(degrees)
         if ok and self._mount_cache:
             self._mount_cache.refresh_limits()
         return ok
 
     def set_mount_overhead_limit(self, degrees: int) -> bool:
-        if not self.mount or not self.mount.is_connected():
+        if not self._mount or not self._mount.is_connected():
             return False
-        ok = self.mount.set_overhead_limit(degrees)
+        ok = self._mount.set_overhead_limit(degrees)
         if ok and self._mount_cache:
             self._mount_cache.refresh_limits()
         return ok
@@ -731,10 +743,10 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         Returns:
             Tuple of (RA in degrees, Dec in degrees), or (0.0, 0.0) if no mount
         """
-        if not self.mount:
+        if not self._mount:
             # self.logger.warning("No mount configured - returning default RA/Dec")
             return (0.0, 0.0)
-        return self.mount.get_radec()
+        return self._mount.get_radec()
 
     def _get_camera_file_extension(self) -> str:
         """Get the preferred file extension from the camera.
@@ -745,17 +757,17 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         Returns:
             File extension string (e.g., 'fits', 'png', 'jpg')
         """
-        if not self.camera:
+        if not self._camera:
             return "fits"
 
         # Let the camera decide its preferred file extension
-        return self.camera.get_preferred_file_extension()
+        return self._camera.get_preferred_file_extension()
 
     def supports_direct_camera_control(self) -> bool:
         return True
 
     def capture_preview(self, exposure_time: float, flip_horizontal: bool = False) -> str:
-        if not self.camera:
+        if not self._camera:
             raise RuntimeError("Camera not initialized")
         if not self._preview_lock.acquire(blocking=False):
             raise RuntimeError("Preview capture already in progress")
@@ -763,9 +775,9 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         try:
             from citrascope.web.preview import array_to_jpeg_data_url
 
-            data = self.camera.capture_array(
+            data = self._camera.capture_array(
                 duration=exposure_time,
-                binning=self.camera.get_default_binning(),
+                binning=self._camera.get_default_binning(),
             )
             return array_to_jpeg_data_url(data, flip_horizontal=flip_horizontal)
         finally:
@@ -789,7 +801,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         Returns:
             Path to the last saved image
         """
-        if not self.camera:
+        if not self._camera:
             raise RuntimeError("Camera not initialized (missing dependencies)")
 
         self.logger.info(f"Taking {count} exposure(s): {exposure_time}s, " f"gain={gain}, offset={offset}")
@@ -806,11 +818,11 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             save_path = self.images_dir / f"direct_capture_{timestamp}_{i:03d}.{output_ext}"
 
             # Take exposure
-            image_path = self.camera.take_exposure(
+            image_path = self._camera.take_exposure(
                 duration=exposure_time,
                 gain=gain,
                 offset=offset,
-                binning=self.camera.get_default_binning(),
+                binning=self._camera.get_default_binning(),
                 save_path=save_path,
             )
 
@@ -850,7 +862,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         self._current_filter_position = filter_position
 
         # Adjust focus if configured
-        if self.focuser and filter_position in self.filter_map:
+        if self._focuser and filter_position in self.filter_map:
             focus_position = self.filter_map[filter_position].get("focus_position")
             if focus_position is not None:
                 self.logger.info(f"Adjusting focus to {focus_position} for filter {filter_position}")
@@ -878,13 +890,13 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         Returns:
             True if focus move successful
         """
-        if not self.focuser:
+        if not self._focuser:
             self.logger.warning("No focuser available")
             return False
 
         self.logger.info(f"Moving focuser to position {position}")
 
-        if not self.focuser.move_absolute(position):
+        if not self._focuser.move_absolute(position):
             self.logger.error(f"Failed to move focuser to {position}")
             return False
 
@@ -892,7 +904,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         timeout = 60
         start_time = time.time()
 
-        while self.focuser.is_moving():
+        while self._focuser.is_moving():
             if time.time() - start_time > timeout:
                 self.logger.error("Focuser movement timeout")
                 return False
@@ -908,17 +920,17 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         Returns:
             Current focus position in steps, or None if unavailable
         """
-        if not self.focuser:
+        if not self._focuser:
             return None
-        return self.focuser.get_position()
+        return self._focuser.get_position()
 
     def supports_autofocus(self) -> bool:
         """Autofocus is available when both a camera and focuser are connected."""
         return (
-            self.camera is not None
-            and self.camera.is_connected()
-            and self.focuser is not None
-            and self.focuser.is_connected()
+            self._camera is not None
+            and self._camera.is_connected()
+            and self._focuser is not None
+            and self._focuser.is_connected()
         )
 
     def do_autofocus(
@@ -935,13 +947,13 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         """
         from citrascope.hardware.direct.autofocus import run_autofocus
 
-        assert self.camera is not None
-        assert self.focuser is not None
+        assert self._camera is not None
+        assert self._focuser is not None
 
         report = on_progress or (lambda _msg: None)
 
         # Slew to target star if we have a mount and coordinates
-        if target_ra is not None and target_dec is not None and self.mount:
+        if target_ra is not None and target_dec is not None and self._mount:
             report("Slewing to autofocus target...")
             self._do_point_telescope(target_ra, target_dec)
 
@@ -957,8 +969,8 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         if not enabled_filters or not self.filter_wheel:
             report("Running autofocus (no filter wheel)...")
             best = run_autofocus(
-                camera=self.camera,
-                focuser=self.focuser,
+                camera=self._camera,
+                focuser=self._focuser,
                 step_size=af_step,
                 num_steps=af_steps,
                 exposure_time=af_exp,
@@ -986,8 +998,8 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                 continue
 
             best = run_autofocus(
-                camera=self.camera,
-                focuser=self.focuser,
+                camera=self._camera,
+                focuser=self._focuser,
                 step_size=af_step,
                 num_steps=af_steps,
                 exposure_time=af_exp,
@@ -1008,9 +1020,9 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         Returns:
             Temperature in Celsius, or None if unavailable
         """
-        if not self.camera:
+        if not self._camera:
             return None
-        return self.camera.get_temperature()
+        return self._camera.get_temperature()
 
     def is_hyperspectral(self) -> bool:
         """Indicates whether this adapter uses a hyperspectral camera.
@@ -1018,8 +1030,8 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         Returns:
             bool: True if camera is hyperspectral, False otherwise
         """
-        if self.camera:
-            return self.camera.is_hyperspectral()
+        if self._camera:
+            return self._camera.is_hyperspectral()
         return False
 
     def get_missing_dependencies(self) -> list[dict[str, str]]:
@@ -1035,16 +1047,16 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         self.logger.warning("Aborting all operations")
 
         # Abort camera exposure if running
-        if self.camera:
-            self.camera.abort_exposure()
+        if self._camera:
+            self._camera.abort_exposure()
 
         # Stop mount slew if running
-        if self.mount and self.mount.is_slewing():
-            self.mount.abort_slew()
+        if self._mount and self._mount.is_slewing():
+            self._mount.abort_slew()
 
         # Stop focuser if moving
-        if self.focuser and self.focuser.is_moving():
-            self.focuser.abort_move()
+        if self._focuser and self._focuser.is_moving():
+            self._focuser.abort_move()
 
     # Required abstract method implementations
 
@@ -1056,21 +1068,21 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         """
         devices = []
 
-        if self.camera:
-            devices.append(f"Camera: {self.camera.get_friendly_name()}")
+        if self._camera:
+            devices.append(f"Camera: {self._camera.get_friendly_name()}")
         else:
             devices.append("Camera: Not initialized (missing dependencies)")
 
-        if self.mount:
-            devices.append(f"Mount: {self.mount.get_friendly_name()}")
+        if self._mount:
+            devices.append(f"Mount: {self._mount.get_friendly_name()}")
         else:
             devices.append("Mount: None (static camera mode)")
 
         if self.filter_wheel:
             devices.append(f"Filter Wheel: {self.filter_wheel.get_friendly_name()}")
 
-        if self.focuser:
-            devices.append(f"Focuser: {self.focuser.get_friendly_name()}")
+        if self._focuser:
+            devices.append(f"Focuser: {self._focuser.get_friendly_name()}")
 
         return devices
 
@@ -1085,10 +1097,10 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         Returns:
             True if mount is configured and connected
         """
-        if not self.mount:
+        if not self._mount:
             self.logger.warning("No mount configured")
             return False
-        return self.mount.is_connected()
+        return self._mount.is_connected()
 
     def get_telescope_direction(self) -> tuple[float, float]:
         """Get current telescope RA/Dec position.
@@ -1104,9 +1116,9 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         Returns:
             True if mount is slewing, False otherwise
         """
-        if not self.mount:
+        if not self._mount:
             return False
-        return self.mount.is_slewing()
+        return self._mount.is_slewing()
 
     def select_camera(self, device_name: str) -> bool:
         """Select camera device (not applicable for direct control).
@@ -1119,9 +1131,9 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         Returns:
             True if camera is connected
         """
-        if not self.camera:
+        if not self._camera:
             return False
-        return self.camera.is_connected()
+        return self._camera.is_connected()
 
     def take_image(self, task_id: str, exposure_duration_seconds: float = 1.0) -> str:
         """Capture an image with the camera.
@@ -1133,7 +1145,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         Returns:
             Path to the saved image
         """
-        if not self.camera:
+        if not self._camera:
             raise RuntimeError("Camera not initialized (missing dependencies)")
 
         # Generate save path with task ID
@@ -1143,9 +1155,9 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         save_path = self.images_dir / f"task_{task_id}_{timestamp}.{output_ext}"
 
         return str(
-            self.camera.take_exposure(
+            self._camera.take_exposure(
                 duration=exposure_duration_seconds,
-                binning=self.camera.get_default_binning(),
+                binning=self._camera.get_default_binning(),
                 save_path=save_path,
             )
         )
@@ -1157,12 +1169,12 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             ra_rate: RA tracking rate in arcseconds/second
             dec_rate: Dec tracking rate in arcseconds/second
         """
-        if not self.mount:
+        if not self._mount:
             self.logger.warning("No mount configured - cannot set tracking rate")
             return
 
         self.logger.info(f'Setting custom tracking rate: RA={ra_rate}"/s, Dec={dec_rate}"/s')
-        if not self.mount.set_custom_tracking_rates(ra_rate, dec_rate):
+        if not self._mount.set_custom_tracking_rates(ra_rate, dec_rate):
             self.logger.warning("Mount does not support custom tracking rates")
 
     def get_tracking_rate(self) -> tuple[float, float]:
@@ -1171,10 +1183,10 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         Returns:
             Tuple of (RA rate in arcsec/s, Dec rate in arcsec/s), or (0.0, 0.0) if no mount
         """
-        if not self.mount:
+        if not self._mount:
             return (0.0, 0.0)
-        if hasattr(self.mount, "get_tracking_rate"):
-            return self.mount.get_tracking_rate()  # type: ignore
+        if hasattr(self._mount, "get_tracking_rate"):
+            return self._mount.get_tracking_rate()  # type: ignore
         return (0.0, 0.0)
 
     def update_from_plate_solve(
@@ -1207,10 +1219,10 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         Returns:
             True if plate solve + sync succeeded.
         """
-        if not self.mount:
+        if not self._mount:
             self.logger.warning("No mount configured — cannot perform alignment")
             return False
-        if not self.camera:
+        if not self._camera:
             self.logger.warning("No camera configured — cannot perform alignment")
             return False
         if not self.telescope_record:
@@ -1234,7 +1246,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             )
             if result is not None:
                 solved_ra, solved_dec = result
-                self.mount.sync_to_radec(solved_ra, solved_dec)
+                self._mount.sync_to_radec(solved_ra, solved_dec)
                 error = self.angular_distance(solved_ra, solved_dec, target_ra, target_dec)
                 self.logger.info(
                     f"Alignment successful: solved RA={solved_ra:.4f}°, Dec={solved_dec:.4f}° "
