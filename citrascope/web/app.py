@@ -1008,7 +1008,7 @@ class CitraScopeWebApp:
                 if action == "start":
                     rate = body.get("rate")
                     if rate is not None:
-                        if not isinstance(rate, int) or not 0 <= rate <= mount.max_move_rate:
+                        if isinstance(rate, bool) or not isinstance(rate, int) or not 0 <= rate <= mount.max_move_rate:
                             return JSONResponse(
                                 {"error": f"rate must be an integer 0-{mount.max_move_rate}"}, status_code=400
                             )
@@ -1241,7 +1241,7 @@ class CitraScopeWebApp:
 
             task_manager = self.daemon.task_manager if hasattr(self.daemon, "task_manager") else None
             if task_manager and task_manager.is_processing_active():
-                return JSONResponse({"error": "Camera unavailable — task processing is active"}, status_code=409)
+                return JSONResponse({"error": "Camera unavailable — task processing is active"}, status_code=503)
 
             try:
                 duration = request.get("duration", 1.0)

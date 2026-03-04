@@ -362,6 +362,7 @@
                                                     @mouseleave="mountMove('stop','north')"
                                                     @touchstart.prevent="mountMove('start','north')"
                                                     @touchend.prevent="mountMove('stop','north')"
+                                                    @touchcancel.prevent="mountMove('stop','north')"
                                                     title="Up (Alt+)">
                                                 <i class="bi bi-chevron-up"></i>
                                             </button>
@@ -373,6 +374,7 @@
                                                     @mouseleave="mountMove('stop','west')"
                                                     @touchstart.prevent="mountMove('start','west')"
                                                     @touchend.prevent="mountMove('stop','west')"
+                                                    @touchcancel.prevent="mountMove('stop','west')"
                                                     title="Left (Az-)">
                                                 <i class="bi bi-chevron-left"></i>
                                             </button>
@@ -389,6 +391,7 @@
                                                     @mouseleave="mountMove('stop','east')"
                                                     @touchstart.prevent="mountMove('start','east')"
                                                     @touchend.prevent="mountMove('stop','east')"
+                                                    @touchcancel.prevent="mountMove('stop','east')"
                                                     title="Right (Az+)">
                                                 <i class="bi bi-chevron-right"></i>
                                             </button>
@@ -400,6 +403,7 @@
                                                     @mouseleave="mountMove('stop','south')"
                                                     @touchstart.prevent="mountMove('start','south')"
                                                     @touchend.prevent="mountMove('stop','south')"
+                                                    @touchcancel.prevent="mountMove('stop','south')"
                                                     title="Down (Alt-)">
                                                 <i class="bi bi-chevron-down"></i>
                                             </button>

@@ -541,7 +541,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             lower, upper = self.mount.get_limits()
             self.logger.info("Firmware altitude limits: enabled=%s lower=%s° upper=%s°", limits_on, lower, upper)
         except Exception:
-            self.logger.info("Could not read firmware altitude limits", exc_info=True)
+            self.logger.debug("Could not read firmware altitude limits", exc_info=True)
 
         # Meridian flip is only relevant in equatorial mode.
         # In alt-az (the default for satellite observation) there is no
