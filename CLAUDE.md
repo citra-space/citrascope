@@ -130,6 +130,33 @@ For validation, add it in `__init__` after loading (see autofocus RA/Dec validat
 
 After imaging completes, a task is in-flight through processing and upload queues. The next poll cycle can see it's not the `current_task_id` and not yet removed from the API response — re-adding it causes duplicate imaging and 404 errors on the second upload attempt. The `_stage_lock` vs `heap_lock` ordering matters: `remove_task_from_all_stages` acquires `_stage_lock` then `heap_lock`, so any code that needs both must follow the same order to avoid deadlocks.
 
+### Module boundaries and encapsulation
+
+**We have shipped violations of every rule below. These are not aspirational — they are load-bearing guardrails.**
+
+#### Pass narrow dependencies, not god objects
+
+A class or function should receive only the specific objects it actually uses — not a large parent object it can reach into. If you're writing `self.thing.foo.bar`, the dependency is too wide. Pass `foo` directly, or define a small Protocol/dataclass that bundles just the fields the consumer needs.
+
+#### Use abstractions — never bypass them
+
+If a module defines an abstract interface, all external consumers must go through it. Don't use `getattr()` to fish out a concrete implementation's internal objects and call methods on them directly — that silently breaks every other implementation of the abstraction. If the interface doesn't expose what you need, **extend the interface**.
+
+#### Respect private fields (`_prefix`)
+
+Never read or write `_private` attributes from outside the owning class. If external code needs the information:
+
+1. Add a public method or property to the class that owns the state.
+2. Put the decision logic where the data lives — if a check depends on private state, the check belongs on the class that holds it, not on the caller.
+
+#### Don't reach into another object's locks or internal data structures
+
+If you need a snapshot of another object's state, call a **public query method** that handles its own locking and returns a copy. Never acquire another object's locks from outside, iterate its internal collections directly, or depend on the shape of its private data structures. Lock ordering and data layout must stay encapsulated in the owning class.
+
+#### Dependency direction flows downward
+
+Lower-level modules must not import from higher-level ones. If a lower layer needs data that originates in a higher one, define a Protocol or lightweight data class in the lower layer (or a shared module) instead of importing the higher-level type. When you find yourself adding an import that points upward, stop and introduce a narrow interface.
+
 ## Coding standards
 
 - **Python 3.10+**, line length **120** (Black)
@@ -216,6 +243,7 @@ Aim for tests that are roughly 1:1 or shorter than the code they test. If you ne
 - **Don't invent redundant settings.** Before adding one, check if an existing setting already controls the same behavior.
 - **Pre-commit hooks**: The repo has a 500KB file size limit. FITS files and large binaries will be rejected.
 - **ZWO AM5 mount protocol** has many gotchas — see the docstring in `citrascope/hardware/devices/mount/zwo_am_protocol.py` for the full reference (supported commands, broken commands, error codes, and authoritative sources).
+- **Encapsulation shortcuts compound.** Before passing a large object, bypassing an abstraction, reading a private field, grabbing another object's lock, or adding an upward import — re-read *Module boundaries and encapsulation* above. Every one of these has caused real bugs here.
 
 ## Key dependencies
 
