@@ -138,7 +138,8 @@ class AlignmentManager:
                 return
 
             self._set_progress("Plate solving...")
-            result = PlateSolverProcessor.solve(Path(image_path), telescope_record)
+            location_service = getattr(self.daemon, "location_service", None)
+            result = PlateSolverProcessor.solve(Path(image_path), telescope_record, location_service=location_service)
 
             if result is None:
                 self.logger.error("Alignment failed — plate solve returned no solution")

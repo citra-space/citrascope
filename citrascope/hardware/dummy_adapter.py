@@ -221,6 +221,17 @@ class _DummyMount(AbstractMount):
     def get_mount_info(self) -> dict:
         return {"name": "Dummy Mount", "supports_sync": True}
 
+    def sync_to_radec(self, ra: float, dec: float) -> bool:
+        self._snap()
+        self._ra = ra
+        self._dec = dec
+        az, alt = _radec_to_altaz(ra, dec)
+        self._base_az = az
+        self._alt = alt
+        self._ref_time = time.monotonic()
+        self.logger.info(f"Synced to RA={ra:.4f}°, Dec={dec:.4f}°")
+        return True
+
     _HOME_AZ = 0.0
 
     # -- Homing ----------------------------------------------------------------
