@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 import threading
-import time as _time
 from typing import TYPE_CHECKING, Any, cast
 
 from citrascope.hardware.abstract_astro_hardware_adapter import SettingSchemaEntry
@@ -18,12 +17,37 @@ if TYPE_CHECKING:
     from citrascope.hardware.devices.focuser.zwo_eaf_bindings import EafFocuser
 
 
+def _probe_eaf_focusers() -> list[dict[str, str | int]]:
+    """Enumerate ZWO EAF focusers via the native SDK.
+
+    Standalone module-level function so it can be pickled and sent to a
+    subprocess by :func:`run_hardware_probe`.
+    """
+    from citrascope.hardware.devices.focuser.zwo_eaf_bindings import EafFocuser as EafProbe
+
+    options: list[dict[str, str | int]] = [{"value": -1, "label": "Auto (first available)"}]
+    probe = EafProbe()
+    count = probe.get_num()
+    for idx in range(count):
+        try:
+            eaf_id = probe.get_id(idx)
+        except Exception:
+            continue
+        try:
+            info = probe.get_property(eaf_id)
+            name = info.Name.decode("utf-8", errors="replace").strip()
+            label = f"{name} (ID: {eaf_id}, max: {info.MaxStep})" if name else f"EAF {eaf_id}"
+            options.append({"value": eaf_id, "label": label})
+        except Exception:
+            options.append({"value": eaf_id, "label": f"EAF (ID: {eaf_id})"})
+    return options
+
+
+_FOCUSER_FALLBACK: list[dict[str, str | int]] = [{"value": -1, "label": "Auto (first available)"}]
+
+
 class ZwoEafFocuser(AbstractFocuser):
     """Driver for the ZWO Electronic Automatic Focuser via the native SDK."""
-
-    _focuser_cache: list[dict[str, str | int]] | None = None
-    _cache_timestamp: float = 0
-    _cache_ttl: float = 30.0
 
     # -- AbstractHardwareDevice class methods --
 
@@ -42,39 +66,15 @@ class ZwoEafFocuser(AbstractFocuser):
     def _detect_available_focusers(cls) -> list[dict[str, str | int]]:
         """Probe connected ZWO EAF focusers and return {value, label} options.
 
-        Each focuser is briefly opened to read its name and max step,
-        then closed. Results are cached for _cache_ttl seconds.
+        Uses :meth:`_cached_hardware_probe` for subprocess isolation and
+        caching so a hung native call cannot freeze the web server.
         """
-        cache_age = _time.time() - cls._cache_timestamp
-        if cls._focuser_cache is not None and cache_age < cls._cache_ttl:
-            return cls._focuser_cache
-
-        options: list[dict[str, str | int]] = [{"value": -1, "label": "Auto (first available)"}]
-        try:
-            from citrascope.hardware.devices.focuser.zwo_eaf_bindings import EafFocuser as EafProbe
-
-            probe = EafProbe()
-            count = probe.get_num()
-            for idx in range(count):
-                try:
-                    eaf_id = probe.get_id(idx)
-                except Exception:
-                    continue
-                try:
-                    info = probe.get_property(eaf_id)
-                    name = info.Name.decode("utf-8", errors="replace").strip()
-                    label = f"{name} (ID: {eaf_id}, max: {info.MaxStep})" if name else f"EAF {eaf_id}"
-                    options.append({"value": eaf_id, "label": label})
-                except Exception:
-                    options.append({"value": eaf_id, "label": f"EAF (ID: {eaf_id})"})
-        except ImportError:
-            pass
-        except Exception:
-            pass
-
-        cls._focuser_cache = options
-        cls._cache_timestamp = _time.time()
-        return options
+        return cls._cached_hardware_probe(
+            _probe_eaf_focusers,
+            fallback=_FOCUSER_FALLBACK,
+            cache_ttl=30.0,
+            timeout=10.0,
+        )
 
     @classmethod
     def get_settings_schema(cls) -> list[SettingSchemaEntry]:

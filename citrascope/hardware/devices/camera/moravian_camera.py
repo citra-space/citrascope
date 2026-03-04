@@ -24,13 +24,57 @@ if TYPE_CHECKING:
     from citrascope.hardware.devices.moravian_bindings import GxccdCamera
 
 
+def _probe_moravian_cameras() -> tuple[list[dict[str, str | int]], list[dict[str, str | int]]]:
+    """Enumerate Moravian cameras via the native SDK.
+
+    Standalone module-level function so it can be pickled and sent to a
+    subprocess by :func:`run_hardware_probe`.  Returns ``(options, read_modes)``.
+    """
+    from citrascope.hardware.devices.moravian_bindings import (
+        GSP_CAMERA_DESCRIPTION,
+        GSP_CAMERA_SERIAL,
+    )
+    from citrascope.hardware.devices.moravian_bindings import (
+        GxccdCamera as GxccdCam,
+    )
+
+    options: list[dict[str, str | int]] = [{"value": -1, "label": "Auto (single camera)"}]
+    read_modes: list[dict[str, str | int]] = [{"value": -1, "label": "Camera default"}]
+
+    probe = GxccdCam()
+    ids = probe.enumerate_usb()
+    for cid in ids:
+        try:
+            cam = GxccdCam()
+            cam.initialize_usb(cid)
+            try:
+                desc = cam.get_string_parameter(GSP_CAMERA_DESCRIPTION).strip()
+                serial = cam.get_string_parameter(GSP_CAMERA_SERIAL).strip()
+                if len(read_modes) == 1:
+                    try:
+                        modes = cam.enumerate_read_modes()
+                        for i, name in enumerate(modes):
+                            read_modes.append({"value": i, "label": name})
+                    except Exception:
+                        pass
+                label = f"{desc} (SN: {serial})" if serial else desc
+                options.append({"value": cid, "label": label})
+            finally:
+                cam.release()
+        except Exception:
+            options.append({"value": cid, "label": f"Camera {cid}"})
+
+    return options, read_modes
+
+
+_CAMERA_FALLBACK: list[dict[str, str | int]] = [{"value": -1, "label": "Auto (single camera)"}]
+_READ_MODE_FALLBACK: list[dict[str, str | int]] = [{"value": -1, "label": "Camera default"}]
+
+
 class MoravianCamera(AbstractCamera):
     """Driver for Moravian Instruments Gx/Cx cameras via gxccd native library."""
 
-    _camera_cache: list[dict[str, str | int]] | None = None
     _read_mode_cache: list[dict[str, str | int]] | None = None
-    _cache_timestamp: float = 0
-    _cache_ttl: float = 30.0
 
     @classmethod
     def get_friendly_name(cls) -> str:
@@ -44,54 +88,18 @@ class MoravianCamera(AbstractCamera):
     def _detect_available_cameras(cls) -> list[dict[str, str | int]]:
         """Probe connected Moravian cameras and return {value, label} options.
 
-        Each camera is briefly initialized to read its description and serial,
-        then released. Results are cached for _cache_ttl seconds.
+        Uses :meth:`_cached_hardware_probe` for subprocess isolation and
+        caching so a hung native call cannot freeze the web server.
         """
-        import time as _time
+        options, read_modes = cls._cached_hardware_probe(
+            _probe_moravian_cameras,
+            fallback=(_CAMERA_FALLBACK, _READ_MODE_FALLBACK),
+            cache_ttl=30.0,
+            timeout=10.0,
+        )
 
-        cache_age = _time.time() - cls._cache_timestamp
-        if cls._camera_cache is not None and cache_age < cls._cache_ttl:
-            return cls._camera_cache
-
-        options: list[dict[str, str | int]] = [{"value": -1, "label": "Auto (single camera)"}]
-        read_modes: list[dict[str, str | int]] = [{"value": -1, "label": "Camera default"}]
-        try:
-            from citrascope.hardware.devices.moravian_bindings import (
-                GSP_CAMERA_DESCRIPTION,
-                GSP_CAMERA_SERIAL,
-            )
-            from citrascope.hardware.devices.moravian_bindings import (
-                GxccdCamera as GxccdCam,
-            )
-
-            probe = GxccdCam()
-            ids = probe.enumerate_usb()
-            for cid in ids:
-                try:
-                    probe2 = GxccdCam()
-                    probe2.initialize_usb(cid)
-                    desc = probe2.get_string_parameter(GSP_CAMERA_DESCRIPTION).strip()
-                    serial = probe2.get_string_parameter(GSP_CAMERA_SERIAL).strip()
-                    # Grab read modes from the first camera we probe
-                    if len(read_modes) == 1:
-                        try:
-                            modes = probe2.enumerate_read_modes()
-                            for i, name in enumerate(modes):
-                                read_modes.append({"value": i, "label": name})
-                        except Exception:
-                            pass
-                    probe2.release()
-                    label = f"{desc} (SN: {serial})" if serial else desc
-                    options.append({"value": cid, "label": label})
-                except Exception:
-                    options.append({"value": cid, "label": f"Camera {cid}"})
-        except Exception:
-            pass
-
-        cls._camera_cache = options
         if len(read_modes) > 1:
             cls._read_mode_cache = read_modes
-        cls._cache_timestamp = _time.time()
         return options
 
     @classmethod
