@@ -266,6 +266,13 @@ class TestCableWrapCheckUnwindBehavior:
         assert check._cumulative_deg == 0.0
 
 
+@pytest.fixture
+def _fast_unwind_sleep(monkeypatch):
+    """Eliminate real time.sleep() in unwind loops so tests run at CPU speed."""
+    monkeypatch.setattr("citrascope.safety.cable_wrap_check.time.sleep", lambda _: None)
+
+
+@pytest.mark.usefixtures("_fast_unwind_sleep")
 class TestCableWrapStallDetection:
     """Stall detection during unwind must handle the 0/360 azimuth boundary."""
 
@@ -313,6 +320,7 @@ class TestCableWrapStallDetection:
             assert "stall" not in str(call).lower()
 
 
+@pytest.mark.usefixtures("_fast_unwind_sleep")
 class TestCableWrapCheckUnwindReset:
     """Unwind should only reset cumulative on convergence, not on failure."""
 
@@ -395,6 +403,7 @@ class TestCableWrapCheckStatus:
         assert status["consecutive_failures"] == 3
 
 
+@pytest.mark.usefixtures("_fast_unwind_sleep")
 class TestCableWrapRetryCap:
     """Unwind retry cap latches to intervention-required after repeated failures."""
 
@@ -466,6 +475,7 @@ class TestCableWrapRetryCap:
         assert check._consecutive_unwind_failures == 0
 
 
+@pytest.mark.usefixtures("_fast_unwind_sleep")
 class TestCableWrapMultiSegmentUnwind:
     """Multi-segment unwind: firmware caps motion at ~191°, so we stop/restart."""
 
