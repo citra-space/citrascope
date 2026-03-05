@@ -102,7 +102,7 @@ def test_settings_defaults(tmp_path):
 
         from citrascope.settings.citrascope_settings import CitraScopeSettings
 
-        s = CitraScopeSettings()
+        s = CitraScopeSettings.load()
 
     assert s.hardware_adapter == ""
     assert s.personal_access_token == ""
@@ -123,7 +123,7 @@ def test_settings_to_dict(tmp_path):
 
         from citrascope.settings.citrascope_settings import CitraScopeSettings
 
-        s = CitraScopeSettings()
+        s = CitraScopeSettings.load()
 
     d = s.to_dict()
     assert d["personal_access_token"] == "tok"
@@ -144,7 +144,7 @@ def test_settings_is_configured(tmp_path):
         }
         from citrascope.settings.citrascope_settings import CitraScopeSettings
 
-        s = CitraScopeSettings()
+        s = CitraScopeSettings.load()
 
     assert s.is_configured() is True
 
@@ -158,7 +158,7 @@ def test_settings_validates_custom_ra_out_of_range():
         }
         from citrascope.settings.citrascope_settings import CitraScopeSettings
 
-        s = CitraScopeSettings()
+        s = CitraScopeSettings.load()
 
     assert s.autofocus_target_custom_ra is None
     assert s.autofocus_target_custom_dec is None
@@ -170,7 +170,7 @@ def test_settings_validates_autofocus_interval():
         instance.load_config.return_value = {"autofocus_interval_minutes": -5}
         from citrascope.settings.citrascope_settings import CitraScopeSettings
 
-        s = CitraScopeSettings()
+        s = CitraScopeSettings.load()
 
     assert s.autofocus_interval_minutes == 60
 
@@ -181,7 +181,7 @@ def test_settings_save(tmp_path):
         instance.load_config.return_value = {"hardware_adapter": "dummy"}
         from citrascope.settings.citrascope_settings import CitraScopeSettings
 
-        s = CitraScopeSettings()
+        s = CitraScopeSettings.load()
         s.save()
 
     instance.save_config.assert_called_once()
@@ -193,7 +193,7 @@ def test_settings_update_and_save():
         instance.load_config.return_value = {"hardware_adapter": "dummy"}
         from citrascope.settings.citrascope_settings import CitraScopeSettings
 
-        s = CitraScopeSettings()
+        s = CitraScopeSettings.load()
         s.update_and_save(
             {
                 "hardware_adapter": "dummy",
@@ -208,6 +208,58 @@ def test_settings_update_and_save():
     assert saved["adapter_settings"]["dummy"]["some_key"] == "val"
 
 
+def test_update_and_save_preserves_fields_not_in_payload():
+    """Backend-only fields survive a web UI save that omits them (data-loss bug fix)."""
+    with patch("citrascope.settings.citrascope_settings.SettingsFileManager") as MockSFM:
+        instance = MockSFM.return_value
+        instance.load_config.return_value = {
+            "hardware_adapter": "dummy",
+            "elset_refresh_interval_hours": 12,
+            "observation_mode": "tracking",
+        }
+        from citrascope.settings.citrascope_settings import CitraScopeSettings
+
+        s = CitraScopeSettings.load()
+        s.update_and_save(
+            {
+                "hardware_adapter": "dummy",
+                "adapter_settings": {},
+                "personal_access_token": "new_tok",
+            }
+        )
+
+    saved = instance.save_config.call_args[0][0]
+    assert saved["elset_refresh_interval_hours"] == 12
+    assert saved["observation_mode"] == "tracking"
+    assert saved["personal_access_token"] == "new_tok"
+
+
+def test_update_and_save_strips_computed_keys():
+    """Computed/server-only keys from the web UI should not be written to disk."""
+    with patch("citrascope.settings.citrascope_settings.SettingsFileManager") as MockSFM:
+        instance = MockSFM.return_value
+        instance.load_config.return_value = {"hardware_adapter": "dummy"}
+        from citrascope.settings.citrascope_settings import CitraScopeSettings
+
+        s = CitraScopeSettings.load()
+        s.update_and_save(
+            {
+                "hardware_adapter": "dummy",
+                "adapter_settings": {},
+                "app_url": "https://should-not-persist.example",
+                "config_file_path": "/tmp/fake",
+                "log_file_path": "/tmp/fake.log",
+                "images_dir_path": "/tmp/images",
+                "processing_dir_path": "/tmp/processing",
+            }
+        )
+
+    saved = instance.save_config.call_args[0][0]
+    for key in ("app_url", "config_file_path", "log_file_path", "images_dir_path", "processing_dir_path"):
+        assert key not in saved, f"Computed key '{key}' should not be persisted"
+    assert saved["hardware_adapter"] == "dummy"
+
+
 # ---------------------------------------------------------------------------
 # Observation mode
 # ---------------------------------------------------------------------------
@@ -218,7 +270,7 @@ def test_observation_mode_defaults_to_auto():
         MockSFM.return_value.load_config.return_value = {}
         from citrascope.settings.citrascope_settings import CitraScopeSettings
 
-        s = CitraScopeSettings()
+        s = CitraScopeSettings.load()
 
     assert s.observation_mode == "auto"
 
@@ -229,7 +281,7 @@ def test_observation_mode_accepts_valid_values(mode):
         MockSFM.return_value.load_config.return_value = {"observation_mode": mode}
         from citrascope.settings.citrascope_settings import CitraScopeSettings
 
-        s = CitraScopeSettings()
+        s = CitraScopeSettings.load()
 
     assert s.observation_mode == mode
 
@@ -239,7 +291,7 @@ def test_observation_mode_rejects_invalid_value():
         MockSFM.return_value.load_config.return_value = {"observation_mode": "bogus"}
         from citrascope.settings.citrascope_settings import CitraScopeSettings
 
-        s = CitraScopeSettings()
+        s = CitraScopeSettings.load()
 
     assert s.observation_mode == "auto"
 
@@ -249,6 +301,6 @@ def test_observation_mode_in_to_dict():
         MockSFM.return_value.load_config.return_value = {"observation_mode": "tracking"}
         from citrascope.settings.citrascope_settings import CitraScopeSettings
 
-        s = CitraScopeSettings()
+        s = CitraScopeSettings.load()
 
     assert s.to_dict()["observation_mode"] == "tracking"
