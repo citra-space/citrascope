@@ -156,7 +156,21 @@ markers = [
 ]
 
 [tool.coverage.run]
-omit = ["tests/*", "__init__.py"]
+omit = [
+    "tests/*",
+    "__init__.py",
+    "citrascope/hardware/devices/camera/moravian_camera.py",
+    "citrascope/hardware/devices/camera/ximea_camera.py",
+    "citrascope/hardware/devices/camera/rpi_hq_camera.py",
+    "citrascope/hardware/devices/camera/usb_camera.py",
+    "citrascope/hardware/devices/focuser/zwo_eaf.py",
+    "citrascope/hardware/devices/mount/zwo_am_mount.py",
+    "citrascope/hardware/devices/mount/zwo_am_transport.py",
+    "citrascope/hardware/indi/*",
+    "citrascope/hardware/kstars/*",
+    "citrascope/hardware/nina/*",
+    "citrascope/location/gps_monitor.py",
+]
 
 [tool.hatch.metadata]
 allow-direct-references = true

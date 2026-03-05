@@ -1,3 +1,4 @@
+import math
 import threading
 import time
 from abc import ABC, abstractmethod
@@ -8,6 +9,43 @@ from skyfield.api import EarthSatellite, load, wgs84
 
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
 from citrascope.tasks.fits_enrichment import enrich_fits_metadata
+
+_DEFAULT_SLEW_ACCELERATION_DEG_PER_S2 = 2.0
+_DEFAULT_SETTLE_TIME_S = 1.5
+_DEFAULT_CONVERGENCE_THRESHOLD_DEG = 0.3
+_FOV_CONVERGENCE_FRACTION = 0.35
+
+_MIN_MOTION_TIME_S = 0.5
+_MIN_SLEW_DISTANCE_DEG = 0.1
+_MIN_OBSERVED_RATE_DEG_PER_S = 0.1
+_MAX_OBSERVED_RATE_DEG_PER_S = 50.0
+_RATE_DIVERGENCE_WARNING_THRESHOLD = 0.3
+
+
+def estimate_slew_time(
+    distance_deg: float,
+    max_rate: float,
+    acceleration: float = _DEFAULT_SLEW_ACCELERATION_DEG_PER_S2,
+    settle_time: float = _DEFAULT_SETTLE_TIME_S,
+) -> float:
+    """Estimate slew time using a trapezoidal velocity profile.
+
+    For short slews the mount never reaches max speed (triangle profile).
+    For long slews it accelerates, cruises, then decelerates (trapezoid).
+    Settle time (vibration damping after stop) is always added.
+    """
+    if distance_deg <= 0 or max_rate <= 0 or acceleration <= 0:
+        return settle_time
+
+    # Distance threshold where the mount just barely reaches max_rate
+    d_transition = max_rate**2 / acceleration
+
+    if distance_deg < d_transition:
+        motion_time = 2.0 * math.sqrt(distance_deg / acceleration)
+    else:
+        motion_time = distance_deg / max_rate + max_rate / acceleration
+
+    return motion_time + settle_time
 
 
 class AbstractBaseTelescopeTask(ABC):
@@ -131,18 +169,20 @@ class AbstractBaseTelescopeTask(ABC):
             self.logger.info(self._format_processing_summary(task_id, result.extracted_data))
 
         # Feed plate solve result to hardware adapter so mount model can update (e.g. alignment offsets)
-        if result and result.extracted_data and self.daemon.hardware_adapter:
+        if result and result.extracted_data and self.hardware_adapter:
             ra = result.extracted_data.get("plate_solver.ra_center")
             dec = result.extracted_data.get("plate_solver.dec_center")
             if ra is not None and dec is not None:
                 expected_ra = getattr(self.task, "target_ra_deg", None)
                 expected_dec = getattr(self.task, "target_dec_deg", None)
-                self.daemon.hardware_adapter.update_from_plate_solve(
+                self.hardware_adapter.update_from_plate_solve(
                     float(ra),
                     float(dec),
                     expected_ra_deg=expected_ra,
                     expected_dec_deg=expected_dec,
                 )
+
+            self._update_observed_fov_from_plate_solve(result.extracted_data)
 
         # Queue for upload
         self._queue_for_upload(filepath, processing_result=result)
@@ -195,6 +235,10 @@ class AbstractBaseTelescopeTask(ABC):
         scale = data.get("plate_solver.pixel_scale")
         if scale is not None:
             parts.append(f'scale={scale:.2f}"/px')
+        fw = data.get("plate_solver.field_width_deg")
+        fh = data.get("plate_solver.field_height_deg")
+        if fw is not None and fh is not None:
+            parts.append(f"FOV={fw:.2f}\u00d7{fh:.2f}\u00b0")
 
         sources = data.get("source_extractor.num_sources")
         if sources is not None:
@@ -282,31 +326,43 @@ class AbstractBaseTelescopeTask(ABC):
 
         return target_ra, target_dec, target_ra_rate, target_dec_rate
 
-    def predict_slew_time_seconds(self, satellite_data, seconds_from_now: float = 0.0) -> float:
+    def predict_slew_time_seconds(
+        self, satellite_data, seconds_from_now: float = 0.0, max_rate: float | None = None
+    ) -> float:
         current_scope_ra, current_scope_dec = self.hardware_adapter.get_telescope_direction()
         current_target_ra, current_target_dec, _, _ = self.get_target_radec_and_rates(satellite_data, seconds_from_now)
 
-        ra_diff_deg = abs(current_target_ra.degrees - current_scope_ra)  # type: ignore
-        dec_diff_deg = abs(current_target_dec.degrees - current_scope_dec)  # type: ignore
+        distance_deg = self.hardware_adapter.angular_distance(
+            current_scope_ra,
+            current_scope_dec,
+            current_target_ra.degrees,  # type: ignore
+            current_target_dec.degrees,  # type: ignore
+        )
 
-        if ra_diff_deg > dec_diff_deg:
-            return ra_diff_deg / self.hardware_adapter.scope_slew_rate_degrees_per_second
-        else:
-            return dec_diff_deg / self.hardware_adapter.scope_slew_rate_degrees_per_second
+        rate = max_rate if max_rate is not None else self.hardware_adapter.scope_slew_rate_degrees_per_second
+        return estimate_slew_time(distance_deg, rate)
 
     def point_to_lead_position(self, satellite_data):
 
         self.logger.debug(f"Using TLE {satellite_data['most_recent_elset']['tle']}")
 
-        max_angular_distance_deg = 0.3
+        max_angular_distance_deg = self._compute_convergence_threshold()
+        self.logger.info(f"Convergence threshold: {max_angular_distance_deg:.3f}°")
+
+        effective_rate: float | None = None
+        rate_warning_logged = False
         attempts = 0
         max_attempts = 10
+
         while attempts < max_attempts:
             if self.is_cancelled:
                 raise RuntimeError("Task cancelled")
 
             attempts += 1
-            lead_ra, lead_dec, est_slew_time = self.estimate_lead_position(satellite_data)
+
+            pre_slew_ra, pre_slew_dec = self.hardware_adapter.get_telescope_direction()
+
+            lead_ra, lead_dec, est_slew_time = self.estimate_lead_position(satellite_data, max_rate=effective_rate)
             self.logger.info(
                 f"Pointing ahead to RA: {lead_ra.degrees:.4f}°, DEC: {lead_dec.degrees:.4f}°, "
                 f"estimated slew time: {est_slew_time:.1f}s"
@@ -320,16 +376,39 @@ class AbstractBaseTelescopeTask(ABC):
                 time.sleep(0.1)
 
             slew_duration = time.time() - slew_start_time
+
+            post_slew_ra, post_slew_dec = self.hardware_adapter.get_telescope_direction()
+            slewed_distance = self.hardware_adapter.angular_distance(
+                pre_slew_ra, pre_slew_dec, post_slew_ra, post_slew_dec
+            )
+
+            # Adaptive rate: learn from observed slew performance
+            motion_time = slew_duration - _DEFAULT_SETTLE_TIME_S
+            if motion_time > _MIN_MOTION_TIME_S and slewed_distance > _MIN_SLEW_DISTANCE_DEG:
+                observed_rate = slewed_distance / motion_time
+                effective_rate = max(_MIN_OBSERVED_RATE_DEG_PER_S, min(_MAX_OBSERVED_RATE_DEG_PER_S, observed_rate))
+
+                if not rate_warning_logged:
+                    api_rate = self.hardware_adapter.scope_slew_rate_degrees_per_second
+                    if api_rate > 0 and abs(effective_rate - api_rate) / api_rate > _RATE_DIVERGENCE_WARNING_THRESHOLD:
+                        self.logger.warning(
+                            f"Observed slew rate ({effective_rate:.1f} deg/s) differs from "
+                            f"configured maxSlewRate ({api_rate:.1f} deg/s) by "
+                            f"{abs(effective_rate - api_rate) / api_rate * 100:.0f}% — "
+                            f"using observed rate for predictions. Consider updating "
+                            f"maxSlewRate in your Citra telescope settings."
+                        )
+                    rate_warning_logged = True
+
             self.logger.info(
                 f"Telescope slew done, took {slew_duration:.1f} sec, "
                 f"off by {abs(slew_duration - est_slew_time):.1f} sec."
             )
 
-            current_scope_ra, current_scope_dec = self.hardware_adapter.get_telescope_direction()
             current_satellite_position = self.get_target_radec_and_rates(satellite_data)
             current_angular_distance_deg = self.hardware_adapter.angular_distance(
-                current_scope_ra,
-                current_scope_dec,
+                post_slew_ra,
+                post_slew_dec,
                 current_satellite_position[0].degrees,  # type: ignore
                 current_satellite_position[1].degrees,  # type: ignore
             )
@@ -338,32 +417,85 @@ class AbstractBaseTelescopeTask(ABC):
                 self.logger.info("Telescope is within acceptable range of target.")
                 break
 
+    def _compute_convergence_threshold(self) -> float:
+        """Derive pointing convergence threshold from FOV.
+
+        Prefers plate-solved FOV (from previous solves in this session), falls back
+        to nominal FOV from telescope record, then to a hardcoded default.
+        """
+        observed_fov = self.hardware_adapter.observed_fov_short_deg
+        if observed_fov and observed_fov > 0:
+            return max((observed_fov / 2) * _FOV_CONVERGENCE_FRACTION, 0.1)
+
+        tr = self.hardware_adapter.telescope_record
+        if tr:
+            try:
+                pixel_scale_arcsec = float(tr["pixelSize"]) / float(tr["focalLength"]) * 206.265
+                short_axis_px = min(int(tr["horizontalPixelCount"]), int(tr["verticalPixelCount"]))
+                half_fov_deg = (short_axis_px * pixel_scale_arcsec / 3600) / 2
+                return max(half_fov_deg * _FOV_CONVERGENCE_FRACTION, 0.1)
+            except (KeyError, TypeError, ValueError, ZeroDivisionError):
+                pass
+
+        return _DEFAULT_CONVERGENCE_THRESHOLD_DEG
+
+    def _update_observed_fov_from_plate_solve(self, extracted_data: dict) -> None:
+        """Update the adapter's observed FOV from plate-solve results.
+
+        Called once after the first successful plate solve in a session. If the
+        solved pixel scale diverges from the telescope record by >10%, logs a
+        warning so the operator knows their config may be stale.
+        """
+        adapter = self.hardware_adapter
+        if adapter is None or adapter.observed_fov_short_deg:
+            return
+
+        field_w = extracted_data.get("plate_solver.field_width_deg")
+        field_h = extracted_data.get("plate_solver.field_height_deg")
+        if not field_w or not field_h:
+            return
+
+        adapter.observed_fov_short_deg = min(field_w, field_h)
+
+        tr = adapter.telescope_record
+        if tr:
+            try:
+                nominal_scale = float(tr["pixelSize"]) / float(tr["focalLength"]) * 206.265
+                solved_scale = extracted_data.get("plate_solver.pixel_scale")
+                if solved_scale and nominal_scale > 0:
+                    pct_diff = abs(solved_scale - nominal_scale) / nominal_scale
+                    if pct_diff > 0.1:
+                        self.logger.warning(
+                            f'Plate-solved pixel scale ({solved_scale:.2f}"/px) differs from '
+                            f'telescope record ({nominal_scale:.2f}"/px) by {pct_diff * 100:.0f}% — '
+                            f"using plate-solved FOV for pointing threshold"
+                        )
+            except (KeyError, TypeError, ValueError, ZeroDivisionError):
+                pass
+
     def estimate_lead_position(
         self,
         satellite_data: dict,
         max_iterations: int = 5,
         tolerance: float = 0.1,
+        max_rate: float | None = None,
     ):
-        """
-        Iteratively estimate the future RA/Dec where the satellite will be when the telescope finishes slewing.
+        """Iteratively estimate the future RA/Dec where the satellite will be
+        when the telescope finishes slewing.
 
         Args:
             satellite_data: Satellite data dict.
             max_iterations: Maximum number of iterations.
             tolerance: Convergence threshold in seconds.
+            max_rate: Override slew rate (deg/s) from adaptive measurement.
 
         Returns:
             Tuple of (target_ra, target_dec, estimated_slew_time)
         """
-        # Get initial estimate
-        est_slew_time = self.predict_slew_time_seconds(satellite_data)
+        est_slew_time = self.predict_slew_time_seconds(satellite_data, max_rate=max_rate)
         for _ in range(max_iterations):
             future_radec = self.get_target_radec_and_rates(satellite_data, est_slew_time)
-            try:
-                new_slew_time = self.predict_slew_time_seconds(satellite_data, est_slew_time)
-            except TypeError:
-                # Fallback for legacy predict_slew_time_seconds signature
-                new_slew_time = self.predict_slew_time_seconds(satellite_data)
+            new_slew_time = self.predict_slew_time_seconds(satellite_data, est_slew_time, max_rate=max_rate)
             if abs(new_slew_time - est_slew_time) < tolerance:
                 break
             est_slew_time = new_slew_time
