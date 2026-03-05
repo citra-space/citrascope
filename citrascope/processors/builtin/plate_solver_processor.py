@@ -289,11 +289,16 @@ class PlateSolverProcessor(AbstractImageProcessor):
                 header = primary.header
                 ra_center = header.get("CRVAL1")
                 dec_center = header.get("CRVAL2")
+                naxis1 = int(header.get("NAXIS1", 0))  # type: ignore[arg-type]
+                naxis2 = int(header.get("NAXIS2", 0))  # type: ignore[arg-type]
                 # proj_plane_pixel_scales handles both CDELT and CD-matrix WCS conventions
                 try:
                     pixel_scale = float(proj_plane_pixel_scales(WCS(header)).mean()) * 3600
                 except Exception:
                     pixel_scale = 0.0
+
+            field_width_deg = naxis1 * pixel_scale / 3600 if pixel_scale and naxis1 > 0 else None
+            field_height_deg = naxis2 * pixel_scale / 3600 if pixel_scale and naxis2 > 0 else None
 
             elapsed = time.time() - start_time
 
@@ -304,6 +309,8 @@ class PlateSolverProcessor(AbstractImageProcessor):
                     "ra_center": ra_center,
                     "dec_center": dec_center,
                     "pixel_scale": pixel_scale,
+                    "field_width_deg": field_width_deg,
+                    "field_height_deg": field_height_deg,
                     "wcs_image_path": str(wcs_image_path),
                 },
                 confidence=1.0,

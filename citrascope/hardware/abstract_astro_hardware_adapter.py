@@ -60,6 +60,7 @@ class AbstractAstroHardwareAdapter(ABC):
     _slew_min_distance_deg: float = 2.0
     scope_slew_rate_degrees_per_second: float = 0.0
     telescope_record: dict | None = None
+    observed_fov_short_deg: float | None = None
     DEFAULT_FOCUS_POSITION: int = 0  # Default focus position, can be overridden by subclasses
 
     def __init__(self, images_dir: Path, **kwargs):
