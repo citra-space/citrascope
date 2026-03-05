@@ -126,9 +126,9 @@ class AbstractBaseTelescopeTask(ABC):
             self.daemon.task_manager.remove_task_from_all_stages(task_id)
             return
 
-        # Log extracted data
+        # Log processing summary (human-readable, not the raw dict)
         if result and result.extracted_data:
-            self.logger.info(f"Extracted data: {result.extracted_data}")
+            self.logger.info(self._format_processing_summary(task_id, result.extracted_data))
 
         # Feed plate solve result to hardware adapter so mount model can update (e.g. alignment offsets)
         if result and result.extracted_data and self.daemon.hardware_adapter:
@@ -180,6 +180,39 @@ class AbstractBaseTelescopeTask(ABC):
             self.daemon.task_manager.record_task_failed()
             self.logger.error(f"Task {task_id} upload failed - not retrying")
         self.daemon.task_manager.remove_task_from_all_stages(task_id)
+
+    @staticmethod
+    def _format_processing_summary(task_id: str, data: dict) -> str:
+        parts = [f"Processing results for {task_id[:8]}:"]
+
+        solved = data.get("plate_solver.plate_solved")
+        if solved is not None:
+            parts.append(f"solved={'yes' if solved else 'NO'}")
+        ra = data.get("plate_solver.ra_center")
+        dec = data.get("plate_solver.dec_center")
+        if ra is not None and dec is not None:
+            parts.append(f"RA={ra:.4f}° DEC={dec:.4f}°")
+        scale = data.get("plate_solver.pixel_scale")
+        if scale is not None:
+            parts.append(f'scale={scale:.2f}"/px')
+
+        sources = data.get("source_extractor.num_sources")
+        if sources is not None:
+            parts.append(f"{sources} sources")
+
+        zp = data.get("photometry.zero_point")
+        cal = data.get("photometry.num_calibration_stars")
+        if zp is not None:
+            zp_str = f"ZP={zp:.2f}"
+            if cal is not None:
+                zp_str += f" ({cal} cal stars)"
+            parts.append(zp_str)
+
+        sats = data.get("satellite_matcher.num_satellites_detected")
+        if sats is not None:
+            parts.append(f"{sats} satellite{'s' if sats != 1 else ''}")
+
+        return ", ".join(parts)
 
     def set_filter_for_task(self) -> None:
         """Resolve the assigned filter for this task and command the hardware to switch.

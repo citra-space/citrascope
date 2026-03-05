@@ -86,4 +86,4 @@ class Task:
             return (self.local_status_msg, self.retry_scheduled_time, self.is_being_executed)
 
     def __repr__(self):
-        return f"<Task {self.id} {self.type} {self.status}>"
+        return f"<Task {self.id[:8]} {self.type} '{self.satelliteName}' {self.status}>"

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import atexit
+import os
 import signal
 import time
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as pkg_version
 from pathlib import Path
 
 from citrascope.api.citra_api_client import AbstractCitraApiClient, CitraApiClient
@@ -37,6 +40,14 @@ class CitraScopeDaemon:
             log_path = self.settings.config_manager.get_current_log_path()
             setup_file_logging(log_path, backup_count=self.settings.log_retention_days)
             CITRASCOPE_LOGGER.info(f"Logging to file: {log_path}")
+
+        try:
+            ver = pkg_version("citrascope")
+        except PackageNotFoundError:
+            ver = "dev"
+        CITRASCOPE_LOGGER.info("=" * 60)
+        CITRASCOPE_LOGGER.info(f"CitraScope {ver} starting (PID {os.getpid()})")
+        CITRASCOPE_LOGGER.info("=" * 60)
 
         self.api_client = api_client
         self.hardware_adapter = hardware_adapter
@@ -91,7 +102,9 @@ class CitraScopeDaemon:
         """
         try:
             if reload_settings:
-                CITRASCOPE_LOGGER.info("Reloading configuration...")
+                CITRASCOPE_LOGGER.info("\u2500" * 60)
+                CITRASCOPE_LOGGER.info("Configuration reload requested")
+                CITRASCOPE_LOGGER.info("\u2500" * 60)
                 # Reload settings from file (preserving web_port)
                 new_settings = CitraScopeSettings(web_port=self.settings.web_port)
                 self.settings = new_settings
@@ -288,6 +301,18 @@ class CitraScopeDaemon:
             self._save_filter_config()
             # Sync discovered filters to backend on startup
             self._sync_filters_to_backend()
+
+            adapter_name = type(self.hardware_adapter).__name__
+            slew_rate = self.hardware_adapter.scope_slew_rate_degrees_per_second
+            filter_cfg = self.hardware_adapter.get_filter_config()
+            enabled = sum(1 for f in filter_cfg.values() if f.get("enabled", False)) if filter_cfg else 0
+            gs_name = self.ground_station.get("name", "?") if self.ground_station else "?"
+            scope_name = citra_telescope_record.get("name", "?")
+            CITRASCOPE_LOGGER.info(
+                f"Hardware ready: adapter={adapter_name}, slew={slew_rate} deg/s, "
+                f"filters={enabled}/{len(filter_cfg)}, "
+                f"station={gs_name}, telescope={scope_name}"
+            )
 
             # Safety monitor MUST be online before any mount motion.
             # connect() above establishes the serial link and syncs site/time
@@ -512,13 +537,15 @@ class CitraScopeDaemon:
         try:
             # Try to initialize components
             success, error = self._initialize_components()
-            if not success:
+            if success:
+                CITRASCOPE_LOGGER.info("=" * 60)
+                CITRASCOPE_LOGGER.info("CitraScope ready \u2014 watching for tasks")
+                CITRASCOPE_LOGGER.info("=" * 60)
+            else:
                 CITRASCOPE_LOGGER.warning(
                     f"Could not start telescope operations: {error}. "
                     f"Configure via web interface at http://{self.web_server.host}:{self.web_server.port}"
                 )
-
-            CITRASCOPE_LOGGER.info("Starting telescope task daemon... (press Ctrl+C to exit)")
             self._keep_running()
         finally:
             self._shutdown()
@@ -583,8 +610,9 @@ class CitraScopeDaemon:
             except Exception as e:
                 CITRASCOPE_LOGGER.warning(f"Error disconnecting hardware: {e}")
 
-        # 5. Stop web server
+        CITRASCOPE_LOGGER.info("Shutdown complete.")
+
+        # 5. Stop web server (tears down log handler — must be last)
         if self.web_server:
-            CITRASCOPE_LOGGER.info("Stopping web server...")
             if self.web_server.web_log_handler:
                 CITRASCOPE_LOGGER.removeHandler(self.web_server.web_log_handler)
