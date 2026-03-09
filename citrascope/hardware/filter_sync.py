@@ -80,14 +80,14 @@ def sync_filters_to_backend(api_client, telescope_id: str, filter_config: dict, 
         logger.debug("No filter configuration to sync")
         return False
 
-    # Extract enabled filter names, excluding trash hardware defaults
+    # Extract all enabled filter names (trash defaults filtered out below)
     enabled_filter_names = extract_enabled_filter_names(filter_config)
 
     if not enabled_filter_names:
         logger.debug("No enabled filters to sync")
         return False
 
-    real_names = [n for n in enabled_filter_names if not is_trash_filter_name(n)]
+    real_names = [n.strip() for n in enabled_filter_names if not is_trash_filter_name(n)]
     if not real_names:
         logger.warning(
             f"All {len(enabled_filter_names)} enabled filters have placeholder names "

@@ -499,7 +499,8 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         hw_count = self.filter_wheel.get_filter_count()
 
         for i in range(hw_count):
-            hw_name = hw_names[i] if i < len(hw_names) else ""
+            raw_hw_name = hw_names[i] if i < len(hw_names) else ""
+            hw_name = raw_hw_name.strip() if raw_hw_name else ""
 
             if i not in self.filter_map:
                 name = hw_name if not is_trash_filter_name(hw_name) else f"Filter {i + 1}"
