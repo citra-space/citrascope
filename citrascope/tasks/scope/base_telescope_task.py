@@ -565,12 +565,15 @@ class AbstractBaseTelescopeTask(ABC):
         """Total angular rate of the satellite on the sky (deg/s).
 
         Combines RA and Dec rates with cos(dec) correction for RA projection.
+        Uses ``.arcseconds.per_second`` (the same accessor the tracking task uses)
+        to avoid ambiguity about what ``.degrees`` returns for Rate objects.
         """
         _, dec, ra_rate, dec_rate = self.get_target_radec_and_rates(satellite_data)
-        # frame_latlon_and_rates returns Rate objects; .degrees gives arcsec/s
-        ra_rate_deg_s = ra_rate.degrees / 3600 * math.cos(math.radians(dec.degrees))  # type: ignore[union-attr]
-        dec_rate_deg_s = dec_rate.degrees / 3600  # type: ignore[union-attr]
-        return math.sqrt(ra_rate_deg_s**2 + dec_rate_deg_s**2)
+        ra_arcsec_s: float = ra_rate.arcseconds.per_second  # type: ignore[union-attr]
+        dec_arcsec_s: float = dec_rate.arcseconds.per_second  # type: ignore[union-attr]
+        ra_deg_s = (ra_arcsec_s / 3600) * math.cos(math.radians(dec.degrees))  # type: ignore[union-attr]
+        dec_deg_s = dec_arcsec_s / 3600
+        return math.sqrt(ra_deg_s**2 + dec_deg_s**2)
 
     def compute_satellite_timing(self, satellite_data: dict) -> dict:
         """Compute real-time timing for satellite FOV crossing.

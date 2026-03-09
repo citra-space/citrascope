@@ -30,7 +30,7 @@ class StaticTelescopeTask(AbstractBaseTelescopeTask):
             else:
                 raise RuntimeError(f"Unsupported observation strategy: {strategy}")
 
-        except RuntimeError as e:
+        except Exception as e:
             self.logger.error(f"Observation failed for task {self.task.id}: {e}")
             return False
 
@@ -119,11 +119,30 @@ class StaticTelescopeTask(AbstractBaseTelescopeTask):
                 timing["time_to_center_s"],
             )
 
+            _MAX_TIMING_WAIT_S = 120.0
             wait = timing["time_to_fov_entry_s"] - exposure
+            if wait > _MAX_TIMING_WAIT_S:
+                self.logger.warning(
+                    "Timing gate wants %.1fs wait — capping at %.0fs (check FOV/lead calculation)",
+                    wait,
+                    _MAX_TIMING_WAIT_S,
+                )
+                wait = _MAX_TIMING_WAIT_S
             if wait > 0:
-                self.task.set_status_msg(f"Waiting {wait:.0f}s for satellite...")
                 self.logger.info("Timing gate: waiting %.1fs for satellite to approach FOV", wait)
-                time.sleep(wait)
+                _poll_interval = 0.1
+                _status_interval = 1.0
+                _waited = 0.0
+                _last_status = -_status_interval
+                while _waited < wait:
+                    if self.is_cancelled:
+                        raise RuntimeError("Task cancelled")
+                    if _waited - _last_status >= _status_interval:
+                        remaining = wait - _waited
+                        self.task.set_status_msg(f"Waiting {remaining:.0f}s for satellite...")
+                        _last_status = _waited
+                    time.sleep(min(_poll_interval, wait - _waited))
+                    _waited += _poll_interval
             elif timing["closure_rate_deg_per_s"] <= 0:
                 self.logger.warning(
                     "Satellite is not approaching our pointing (closure rate %.3f\u00b0/s) "

@@ -625,12 +625,19 @@ class TestComputeAngularRate:
         adapter = _make_hardware_adapter()
         return ConcreteTask(MagicMock(), adapter, MagicMock(), _make_task_dict(), daemon)
 
+    @staticmethod
+    def _make_rate_mock(arcsec_per_s: float) -> MagicMock:
+        """Build a mock Skyfield Rate with .arcseconds.per_second."""
+        rate = MagicMock()
+        rate.arcseconds.per_second = arcsec_per_s
+        return rate
+
     def test_pure_dec_rate(self):
         """A satellite moving purely in Dec: angular rate = Dec rate."""
         ct = self._make_concrete()
         dec_mock = MagicMock(degrees=0.0)
-        ra_rate = MagicMock(degrees=0.0)  # arcsec/s via .degrees
-        dec_rate = MagicMock(degrees=3600.0)  # 3600 arcsec/s = 1 deg/s
+        ra_rate = self._make_rate_mock(0.0)
+        dec_rate = self._make_rate_mock(3600.0)  # 3600 arcsec/s = 1 deg/s
         with patch.object(ct, "get_target_radec_and_rates", return_value=(None, dec_mock, ra_rate, dec_rate)):
             rate = ct.compute_angular_rate({})
         assert abs(rate - 1.0) < 0.001
@@ -639,28 +646,28 @@ class TestComputeAngularRate:
         """At dec=0, RA rate on sky equals the RA rate directly."""
         ct = self._make_concrete()
         dec_mock = MagicMock(degrees=0.0)
-        ra_rate = MagicMock(degrees=3600.0)  # 1 deg/s in RA
-        dec_rate = MagicMock(degrees=0.0)
+        ra_rate = self._make_rate_mock(3600.0)  # 1 deg/s in RA
+        dec_rate = self._make_rate_mock(0.0)
         with patch.object(ct, "get_target_radec_and_rates", return_value=(None, dec_mock, ra_rate, dec_rate)):
             rate = ct.compute_angular_rate({})
         assert abs(rate - 1.0) < 0.001
 
     def test_ra_rate_contracts_at_high_dec(self):
-        """At dec=60, RA rate on sky is halved (cos(60°) = 0.5)."""
+        """At dec=60, RA rate on sky is halved (cos(60) = 0.5)."""
         ct = self._make_concrete()
         dec_mock = MagicMock(degrees=60.0)
-        ra_rate = MagicMock(degrees=3600.0)  # 1 deg/s in RA coordinate
-        dec_rate = MagicMock(degrees=0.0)
+        ra_rate = self._make_rate_mock(3600.0)  # 1 deg/s in RA coordinate
+        dec_rate = self._make_rate_mock(0.0)
         with patch.object(ct, "get_target_radec_and_rates", return_value=(None, dec_mock, ra_rate, dec_rate)):
             rate = ct.compute_angular_rate({})
         assert abs(rate - 0.5) < 0.001
 
     def test_combined_rate(self):
-        """Both RA and Dec rates combine as sqrt(ra²+dec²) on sky."""
+        """Both RA and Dec rates combine as sqrt(ra^2+dec^2) on sky."""
         ct = self._make_concrete()
         dec_mock = MagicMock(degrees=0.0)
-        ra_rate = MagicMock(degrees=3600.0)  # 1 deg/s in RA
-        dec_rate = MagicMock(degrees=3600.0)  # 1 deg/s in Dec
+        ra_rate = self._make_rate_mock(3600.0)  # 1 deg/s in RA
+        dec_rate = self._make_rate_mock(3600.0)  # 1 deg/s in Dec
         with patch.object(ct, "get_target_radec_and_rates", return_value=(None, dec_mock, ra_rate, dec_rate)):
             rate = ct.compute_angular_rate({})
         assert abs(rate - math.sqrt(2)) < 0.001
