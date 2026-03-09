@@ -317,13 +317,21 @@ async function saveConfiguration(event) {
         const result = await saveConfig(config);
 
         if (result.ok) {
+            // Capture previous adapter before updating so we can detect switches
+            const previousAdapter = store.savedAdapter;
+
             // Update saved adapter to match newly saved config
             if (typeof Alpine !== 'undefined' && Alpine.store) {
                 Alpine.store('citrascope').savedAdapter = config.hardware_adapter;
             }
 
-            // After config saved successfully, save any modified filter focus positions
-            const filterResults = await saveModifiedFilters();
+            // Only push filter changes when staying on the same adapter.
+            // On adapter switch, store.filters holds stale data from the
+            // old adapter — skip it and just reload the new adapter's filters.
+            const adapterChanged = config.hardware_adapter !== previousAdapter;
+            const filterResults = adapterChanged
+                ? { success: 0, failed: 0 }
+                : await saveModifiedFilters();
 
             // Build success message based on results
             let message = result.data.message || 'Configuration saved and applied successfully!';

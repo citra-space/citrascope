@@ -265,9 +265,15 @@ class CitraScopeSettings(BaseModel):
         """
         config.pop("web_port", None)
 
+        # Flush the current adapter's live state so it isn't lost on switch
+        if self.hardware_adapter:
+            self._all_adapter_settings[self.hardware_adapter] = self.adapter_settings
+
         adapter = config.get("hardware_adapter", self.hardware_adapter)
         if adapter:
-            self._all_adapter_settings[adapter] = config.get("adapter_settings", {})
+            existing = self._all_adapter_settings.get(adapter, {})
+            incoming = config.get("adapter_settings", {})
+            self._all_adapter_settings[adapter] = {**existing, **incoming}
         config["adapter_settings"] = self._all_adapter_settings
 
         merged = self.to_dict()
