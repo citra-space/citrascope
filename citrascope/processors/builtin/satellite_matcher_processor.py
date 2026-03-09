@@ -187,6 +187,8 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
                 dec_deg = topo.declination
 
                 delta_ra = abs(ra_center - ra_deg)
+                if delta_ra > 180.0:
+                    delta_ra = 360.0 - delta_ra
                 delta_dec = abs(dec_center - dec_deg)
                 distance_from_center = math.sqrt(delta_ra**2 + delta_dec**2)
                 in_field = delta_ra < _FIELD_RADIUS_DEG and delta_dec < _FIELD_RADIUS_DEG
@@ -305,13 +307,13 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
                 {
                     "norad_id": p["satellite_id"],
                     "name": p["name"],
-                    "ra": row["ra"],
-                    "dec": row["dec"],
-                    "mag": row["mag"],
+                    "ra": float(row["ra"]),
+                    "dec": float(row["dec"]),
+                    "mag": float(row["mag"]),
                     "filter": filter_name,
                     "timestamp": timestamp_str,
                     "phase_angle": round(p["phase_angle"], 1),
-                    "fwhm": row["fwhm"],
+                    "fwhm": float(row["fwhm"]),
                 }
             )
 

@@ -150,11 +150,11 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
+import pandas as pd
 from astropy.io import fits
 
 if TYPE_CHECKING:
-    import pandas as pd
-
     from citrascope.processors.processor_result import AggregatedResult, ProcessingContext
 
 logger = logging.getLogger("citrascope.artifact_writer")
@@ -185,9 +185,24 @@ _FITS_HEADER_KEYS = (
 
 
 def _safe_value(v: Any) -> Any:
-    """Coerce a value to something JSON-serialisable."""
+    """Coerce a single value to something JSON-serialisable.
+
+    Handles NumPy/Pandas scalar types, NaN, Path, bytes, and Timestamps.
+    """
+    # NumPy/Pandas NaN and NA (must check before generic float/int conversion)
+    if v is pd.NA:
+        return None
     if isinstance(v, float) and (v != v):  # NaN
         return None
+    # numpy scalar -> native Python (np.float64 -> float, np.int64 -> int, np.bool_ -> bool)
+    if isinstance(v, np.generic):
+        native = v.item()
+        if isinstance(native, float) and (native != native):
+            return None
+        return native
+    # pandas Timestamp -> ISO string
+    if isinstance(v, pd.Timestamp):
+        return v.isoformat()
     if isinstance(v, Path):
         return str(v)
     if isinstance(v, bytes):
@@ -196,18 +211,16 @@ def _safe_value(v: Any) -> Any:
 
 
 def _sanitize(obj: Any) -> Any:
-    """Recursively make a data structure JSON-safe (NaN -> None, Path -> str)."""
-    if isinstance(obj, float) and (obj != obj):
-        return None
+    """Recursively make a data structure JSON-safe.
+
+    Converts NaN -> None, numpy scalars -> native Python types,
+    pd.Timestamp -> ISO string, Path -> str, bytes -> str.
+    """
     if isinstance(obj, dict):
         return {k: _sanitize(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
         return [_sanitize(v) for v in obj]
-    if isinstance(obj, Path):
-        return str(obj)
-    if isinstance(obj, bytes):
-        return obj.decode("utf-8", errors="replace")
-    return obj
+    return _safe_value(obj)
 
 
 def dump_json(working_dir: Path, filename: str, data: Any) -> None:
@@ -217,7 +230,7 @@ def dump_json(working_dir: Path, filename: str, data: Any) -> None:
     """
     try:
         path = working_dir / filename
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(_sanitize(data), f, indent=2, default=str)
     except Exception as exc:
         logger.warning("Failed to write artifact %s: %s", filename, exc)

@@ -88,6 +88,22 @@ class TestDumpJson:
         data = json.loads((working_dir / "nan.json").read_text())
         assert data["v"] is None
 
+    def test_handles_numpy_scalars(self, working_dir):
+        data = {
+            "float64": np.float64(3.14),
+            "int64": np.int64(42),
+            "bool_": np.bool_(True),
+            "nan_float64": np.float64("nan"),
+            "nested": [np.float64(1.0), {"inner": np.int64(2)}],
+        }
+        dump_json(working_dir, "numpy.json", data)
+        loaded = json.loads((working_dir / "numpy.json").read_text())
+        assert loaded["float64"] == 3.14
+        assert loaded["int64"] == 42
+        assert loaded["bool_"] is True
+        assert loaded["nan_float64"] is None
+        assert loaded["nested"] == [1.0, {"inner": 2}]
+
     def test_swallows_write_errors(self, tmp_path):
         nonexistent = tmp_path / "no" / "such" / "dir"
         dump_json(nonexistent, "fail.json", {"x": 1})
