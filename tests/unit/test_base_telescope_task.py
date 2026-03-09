@@ -1,5 +1,6 @@
 """Tests for AbstractBaseTelescopeTask and StaticTelescopeTask."""
 
+import math
 from unittest.mock import MagicMock, create_autospec, patch
 
 import pytest
@@ -573,3 +574,241 @@ class TestFormatProcessingSummary:
             {"plate_solver.plate_solved": True, "plate_solver.pixel_scale": 7.95},
         )
         assert "FOV=" not in result
+
+
+class TestGetFovRadiusDeg:
+    """Tests for _get_fov_radius_deg helper."""
+
+    def _make_concrete(self, **adapter_kwargs):
+        from citrascope.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+
+        class ConcreteTask(AbstractBaseTelescopeTask):
+            def execute(self):
+                pass
+
+        daemon = _make_daemon()
+        adapter = _make_hardware_adapter(**adapter_kwargs)
+        return ConcreteTask(MagicMock(), adapter, MagicMock(), _make_task_dict(), daemon)
+
+    def test_from_observed_fov(self):
+        ct = self._make_concrete(observed_fov_short_deg=2.0)
+        assert ct._get_fov_radius_deg() == 1.0
+
+    def test_from_telescope_record(self):
+        tr = {
+            "pixelSize": 5.86,
+            "focalLength": 200.0,
+            "horizontalPixelCount": 4112,
+            "verticalPixelCount": 3008,
+        }
+        ct = self._make_concrete(telescope_record=tr)
+        pixel_scale = 5.86 / 200.0 * 206.265
+        expected = (3008 * pixel_scale / 3600) / 2
+        assert abs(ct._get_fov_radius_deg() - expected) < 0.01
+
+    def test_fallback_when_nothing_available(self):
+        ct = self._make_concrete()
+        assert ct._get_fov_radius_deg() == 0.5
+
+
+class TestComputeAngularRate:
+    """Tests for compute_angular_rate."""
+
+    def _make_concrete(self):
+        from citrascope.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+
+        class ConcreteTask(AbstractBaseTelescopeTask):
+            def execute(self):
+                pass
+
+        daemon = _make_daemon()
+        adapter = _make_hardware_adapter()
+        return ConcreteTask(MagicMock(), adapter, MagicMock(), _make_task_dict(), daemon)
+
+    def test_pure_dec_rate(self):
+        """A satellite moving purely in Dec: angular rate = Dec rate."""
+        ct = self._make_concrete()
+        dec_mock = MagicMock(degrees=0.0)
+        ra_rate = MagicMock(degrees=0.0)  # arcsec/s via .degrees
+        dec_rate = MagicMock(degrees=3600.0)  # 3600 arcsec/s = 1 deg/s
+        with patch.object(ct, "get_target_radec_and_rates", return_value=(None, dec_mock, ra_rate, dec_rate)):
+            rate = ct.compute_angular_rate({})
+        assert abs(rate - 1.0) < 0.001
+
+    def test_pure_ra_rate_at_equator(self):
+        """At dec=0, RA rate on sky equals the RA rate directly."""
+        ct = self._make_concrete()
+        dec_mock = MagicMock(degrees=0.0)
+        ra_rate = MagicMock(degrees=3600.0)  # 1 deg/s in RA
+        dec_rate = MagicMock(degrees=0.0)
+        with patch.object(ct, "get_target_radec_and_rates", return_value=(None, dec_mock, ra_rate, dec_rate)):
+            rate = ct.compute_angular_rate({})
+        assert abs(rate - 1.0) < 0.001
+
+    def test_ra_rate_contracts_at_high_dec(self):
+        """At dec=60, RA rate on sky is halved (cos(60°) = 0.5)."""
+        ct = self._make_concrete()
+        dec_mock = MagicMock(degrees=60.0)
+        ra_rate = MagicMock(degrees=3600.0)  # 1 deg/s in RA coordinate
+        dec_rate = MagicMock(degrees=0.0)
+        with patch.object(ct, "get_target_radec_and_rates", return_value=(None, dec_mock, ra_rate, dec_rate)):
+            rate = ct.compute_angular_rate({})
+        assert abs(rate - 0.5) < 0.001
+
+    def test_combined_rate(self):
+        """Both RA and Dec rates combine as sqrt(ra²+dec²) on sky."""
+        ct = self._make_concrete()
+        dec_mock = MagicMock(degrees=0.0)
+        ra_rate = MagicMock(degrees=3600.0)  # 1 deg/s in RA
+        dec_rate = MagicMock(degrees=3600.0)  # 1 deg/s in Dec
+        with patch.object(ct, "get_target_radec_and_rates", return_value=(None, dec_mock, ra_rate, dec_rate)):
+            rate = ct.compute_angular_rate({})
+        assert abs(rate - math.sqrt(2)) < 0.001
+
+
+class TestComputeSatelliteTiming:
+    """Tests for compute_satellite_timing."""
+
+    def _make_concrete(self, fov_short_deg=2.0):
+        from citrascope.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+
+        class ConcreteTask(AbstractBaseTelescopeTask):
+            def execute(self):
+                pass
+
+        daemon = _make_daemon()
+        adapter = _make_hardware_adapter(observed_fov_short_deg=fov_short_deg)
+        adapter.get_telescope_direction.return_value = (180.0, 45.0)
+        return ConcreteTask(MagicMock(), adapter, MagicMock(), _make_task_dict(), daemon)
+
+    def test_approaching_satellite(self):
+        """Satellite is 5° away and closing at 1°/s — should report ~4s to FOV entry."""
+        ct = self._make_concrete(fov_short_deg=2.0)
+        ct.hardware_adapter.angular_distance.side_effect = [5.0, 4.0]  # now=5°, 1s later=4°
+
+        sat_now = (MagicMock(degrees=185.0), MagicMock(degrees=45.0), None, None)
+        sat_1s = (MagicMock(degrees=184.0), MagicMock(degrees=45.0), None, None)
+        with patch.object(ct, "get_target_radec_and_rates", side_effect=[sat_now, sat_1s]):
+            timing = ct.compute_satellite_timing({})
+
+        assert abs(timing["closure_rate_deg_per_s"] - 1.0) < 0.001
+        assert abs(timing["time_to_center_s"] - 5.0) < 0.01
+        assert abs(timing["fov_radius_deg"] - 1.0) < 0.01
+        assert abs(timing["time_to_fov_entry_s"] - 4.0) < 0.01
+
+    def test_receding_satellite(self):
+        """Satellite is moving away — closure rate <= 0, time_to_fov_entry = 0."""
+        ct = self._make_concrete(fov_short_deg=2.0)
+        ct.hardware_adapter.angular_distance.side_effect = [3.0, 4.0]  # getting further away
+
+        sat_now = (MagicMock(degrees=183.0), MagicMock(degrees=45.0), None, None)
+        sat_1s = (MagicMock(degrees=184.0), MagicMock(degrees=45.0), None, None)
+        with patch.object(ct, "get_target_radec_and_rates", side_effect=[sat_now, sat_1s]):
+            timing = ct.compute_satellite_timing({})
+
+        assert timing["closure_rate_deg_per_s"] <= 0
+        assert timing["time_to_center_s"] == 0.0
+        assert timing["time_to_fov_entry_s"] == 0.0
+
+    def test_tangential_satellite(self):
+        """Satellite at constant distance — closure rate ~0, no waiting."""
+        ct = self._make_concrete(fov_short_deg=2.0)
+        ct.hardware_adapter.angular_distance.side_effect = [3.0, 3.0]
+
+        sat_now = (MagicMock(degrees=183.0), MagicMock(degrees=45.0), None, None)
+        sat_1s = (MagicMock(degrees=183.0), MagicMock(degrees=46.0), None, None)
+        with patch.object(ct, "get_target_radec_and_rates", side_effect=[sat_now, sat_1s]):
+            timing = ct.compute_satellite_timing({})
+
+        assert timing["closure_rate_deg_per_s"] == 0.0
+        assert timing["time_to_fov_entry_s"] == 0.0
+
+    def test_already_in_fov(self):
+        """Satellite is already within the FOV — time_to_fov_entry = 0."""
+        ct = self._make_concrete(fov_short_deg=2.0)
+        ct.hardware_adapter.angular_distance.side_effect = [0.5, 0.3]  # within 1° radius, approaching
+
+        sat_now = (MagicMock(degrees=180.5), MagicMock(degrees=45.0), None, None)
+        sat_1s = (MagicMock(degrees=180.3), MagicMock(degrees=45.0), None, None)
+        with patch.object(ct, "get_target_radec_and_rates", side_effect=[sat_now, sat_1s]):
+            timing = ct.compute_satellite_timing({})
+
+        assert timing["closure_rate_deg_per_s"] > 0
+        assert timing["time_to_fov_entry_s"] == 0.0
+
+
+class TestEstimateLeadPositionExtraLead:
+    """Tests for extra_lead_seconds parameter in estimate_lead_position."""
+
+    def _make_concrete(self):
+        from citrascope.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+
+        class ConcreteTask(AbstractBaseTelescopeTask):
+            def execute(self):
+                pass
+
+        daemon = _make_daemon()
+        adapter = _make_hardware_adapter()
+        adapter.scope_slew_rate_degrees_per_second = 5.0
+        return ConcreteTask(MagicMock(), adapter, MagicMock(), _make_task_dict(), daemon)
+
+    def test_zero_extra_lead_matches_original(self):
+        ct = self._make_concrete()
+        ra_mock = MagicMock(degrees=100.0)
+        dec_mock = MagicMock(degrees=30.0)
+        with patch.object(ct, "predict_slew_time_seconds", return_value=3.0):
+            with patch.object(ct, "get_target_radec_and_rates", return_value=(ra_mock, dec_mock, None, None)):
+                _, _, total_lead = ct.estimate_lead_position({}, extra_lead_seconds=0.0)
+        assert abs(total_lead - 3.0) < 0.01
+
+    def test_extra_lead_adds_to_slew_time(self):
+        ct = self._make_concrete()
+        ra_mock = MagicMock(degrees=100.0)
+        dec_mock = MagicMock(degrees=30.0)
+        with patch.object(ct, "predict_slew_time_seconds", return_value=3.0):
+            with patch.object(ct, "get_target_radec_and_rates", return_value=(ra_mock, dec_mock, None, None)):
+                _, _, total_lead = ct.estimate_lead_position({}, extra_lead_seconds=10.0)
+        assert abs(total_lead - 13.0) < 0.01
+
+    def test_extra_lead_recomputes_position(self):
+        """With extra lead, get_target_radec_and_rates is called again with total_lead."""
+        ct = self._make_concrete()
+        ra_mock = MagicMock(degrees=100.0)
+        dec_mock = MagicMock(degrees=30.0)
+        call_args = []
+
+        def track_calls(sat_data, seconds_from_now=0.0):
+            call_args.append(seconds_from_now)
+            return (ra_mock, dec_mock, None, None)
+
+        with patch.object(ct, "predict_slew_time_seconds", return_value=3.0):
+            with patch.object(ct, "get_target_radec_and_rates", side_effect=track_calls):
+                ct.estimate_lead_position({}, extra_lead_seconds=10.0)
+
+        # Last call should be with total_lead = 3.0 + 10.0 = 13.0
+        assert abs(call_args[-1] - 13.0) < 0.01
+
+
+class TestVerifyPointing:
+    """Tests for verify_pointing helper."""
+
+    def _make_concrete(self):
+        from citrascope.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+
+        class ConcreteTask(AbstractBaseTelescopeTask):
+            def execute(self):
+                pass
+
+        daemon = _make_daemon()
+        adapter = _make_hardware_adapter()
+        return ConcreteTask(MagicMock(), adapter, MagicMock(), _make_task_dict(), daemon)
+
+    def test_returns_true_on_success(self):
+        ct = self._make_concrete()
+        ct.hardware_adapter.perform_alignment.return_value = True
+        assert ct.verify_pointing(180.0, 45.0) is True
+
+    def test_returns_false_on_failure(self):
+        ct = self._make_concrete()
+        ct.hardware_adapter.perform_alignment.return_value = False
+        assert ct.verify_pointing(180.0, 45.0) is False

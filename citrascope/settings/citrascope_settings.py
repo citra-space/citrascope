@@ -93,6 +93,12 @@ class CitraScopeSettings(BaseModel):
     # Exposure duration for take_image calls (seconds), used by both static and tracking modes.
     exposure_seconds: float = 2.0
 
+    # Number of images to capture per observation task (burst count).
+    num_exposures: int = 3
+
+    # Plate-solve after slewing to verify pointing before imaging.
+    plate_solve_after_slew: bool = True
+
     # MSI / elset cache
     elset_refresh_interval_hours: float = 6
 
@@ -154,6 +160,20 @@ class CitraScopeSettings(BaseModel):
         if v not in ("auto", "tracking", "static"):
             CITRASCOPE_LOGGER.warning("Invalid observation_mode (%r). Falling back to 'auto'.", v)
             return "auto"
+        return v
+
+    @field_validator("num_exposures", mode="before")
+    @classmethod
+    def _validate_num_exposures(cls, v: Any) -> int:
+        try:
+            v = int(v)
+        except (TypeError, ValueError):
+            CITRASCOPE_LOGGER.warning("Invalid num_exposures (%r). Falling back to 3.", v)
+            return 3
+        if v < 1 or v > 50:
+            clamped = max(1, min(50, v))
+            CITRASCOPE_LOGGER.warning("num_exposures %d out of range [1, 50]. Clamped to %d.", v, clamped)
+            return clamped
         return v
 
     @field_validator("exposure_seconds", mode="before")
