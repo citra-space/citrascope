@@ -161,4 +161,7 @@ class StaticTelescopeTask(AbstractBaseTelescopeTask):
             self.task.set_status_msg(f"Exposing {i + 1}/{num_exposures} ({exposure}s)...")
             filepaths.append(self.hardware_adapter.take_image(self.task.id, exposure))
 
+        if self.is_cancelled and not filepaths:
+            raise RuntimeError("Task cancelled before any exposures completed")
+
         return filepaths

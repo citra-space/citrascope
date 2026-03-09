@@ -442,35 +442,50 @@ class AbstractBaseTelescopeTask(ABC):
                 f"off by {abs(slew_duration - est_slew_time):.1f} sec."
             )
 
+            # Convergence: did we arrive at our intended target?
+            target_lead_ra_deg = float(lead_ra.degrees)  # type: ignore[union-attr]
+            target_lead_dec_deg = float(lead_dec.degrees)  # type: ignore[union-attr]
+            target_distance_deg = self.hardware_adapter.angular_distance(
+                post_slew_ra, post_slew_dec, target_lead_ra_deg, target_lead_dec_deg
+            )
+
+            # Satellite's current position (diagnostic only — may differ from
+            # target when extra_lead_seconds > 0 because we're ahead of it)
             current_satellite_position = self.get_target_radec_and_rates(satellite_data)
             sat_ra_deg = float(current_satellite_position[0].degrees)  # type: ignore[union-attr]
             sat_dec_deg = float(current_satellite_position[1].degrees)  # type: ignore[union-attr]
             current_angular_distance_deg = self.hardware_adapter.angular_distance(
                 post_slew_ra, post_slew_dec, sat_ra_deg, sat_dec_deg
             )
-            self.logger.info(f"Current angular distance to satellite is {current_angular_distance_deg:.3f} degrees.")
 
+            self.logger.info(
+                f"Distance to target: {target_distance_deg:.3f}°, "
+                f"distance to satellite: {current_angular_distance_deg:.3f}°"
+            )
+
+            converged = target_distance_deg <= max_angular_distance_deg
             iteration_log.append(
                 {
                     "attempt": attempts,
                     "pre_slew_ra_deg": round(pre_slew_ra, 4),
                     "pre_slew_dec_deg": round(pre_slew_dec, 4),
-                    "target_lead_ra_deg": round(float(lead_ra.degrees), 4),  # type: ignore[union-attr]
-                    "target_lead_dec_deg": round(float(lead_dec.degrees), 4),  # type: ignore[union-attr]
+                    "target_lead_ra_deg": round(target_lead_ra_deg, 4),
+                    "target_lead_dec_deg": round(target_lead_dec_deg, 4),
                     "estimated_slew_time_s": round(est_slew_time, 2),
                     "actual_slew_time_s": round(slew_duration, 2),
                     "post_slew_ra_deg": round(post_slew_ra, 4),
                     "post_slew_dec_deg": round(post_slew_dec, 4),
                     "slewed_distance_deg": round(slewed_distance, 4),
+                    "target_distance_deg": round(target_distance_deg, 4),
                     "satellite_ra_deg": round(sat_ra_deg, 4),
                     "satellite_dec_deg": round(sat_dec_deg, 4),
                     "angular_distance_to_satellite_deg": round(current_angular_distance_deg, 4),
                     "observed_slew_rate_deg_per_s": iter_observed_rate,
-                    "converged": current_angular_distance_deg <= max_angular_distance_deg,
+                    "converged": converged,
                 }
             )
 
-            if current_angular_distance_deg <= max_angular_distance_deg:
+            if converged:
                 self.logger.info("Telescope is within acceptable range of target.")
                 break
 
