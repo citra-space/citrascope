@@ -26,6 +26,7 @@ from citrascope.hardware.devices.filter_wheel import AbstractFilterWheel
 from citrascope.hardware.devices.focuser import AbstractFocuser
 from citrascope.hardware.devices.mount import AbstractMount
 from citrascope.hardware.devices.mount.mount_state_cache import MountStateCache
+from citrascope.hardware.filter_sync import is_trash_filter_name
 
 
 class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
@@ -485,14 +486,23 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         return success
 
     def _populate_filter_map_from_hardware(self) -> None:
-        """Sync filter_map with hardware filter wheel, preserving user config."""
+        """Sync filter_map with hardware filter wheel, preserving user config.
+
+        For each hardware position:
+        - New position with a real hardware name: use it.
+        - New position with a trash name (Undefined, blank, etc.): use "Filter {N}".
+        - Existing position with a real saved name: always keep it.
+        - Existing position with a trash saved name + real hardware name: use hardware.
+        """
         assert self.filter_wheel is not None
         hw_names = self.filter_wheel.get_filter_names()
         hw_count = self.filter_wheel.get_filter_count()
 
         for i in range(hw_count):
+            hw_name = hw_names[i] if i < len(hw_names) else ""
+
             if i not in self.filter_map:
-                name = hw_names[i] if i < len(hw_names) else f"Filter {i + 1}"
+                name = hw_name if not is_trash_filter_name(hw_name) else f"Filter {i + 1}"
                 self.filter_map[i] = {
                     "name": name,
                     "focus_position": None,
@@ -501,8 +511,8 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             else:
                 existing = self.filter_map[i]
                 existing_name = existing.get("name", "")
-                if i < len(hw_names) and (existing_name.startswith("Filter ") or existing_name == "Undefined"):
-                    existing["name"] = hw_names[i]
+                if is_trash_filter_name(existing_name) and not is_trash_filter_name(hw_name):
+                    existing["name"] = hw_name
 
         self.logger.info(f"Filter map: {self.filter_map}")
 

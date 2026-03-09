@@ -1,5 +1,24 @@
 """Filter synchronization utilities for syncing hardware filters to backend API."""
 
+TRASH_FILTER_NAMES: frozenset[str] = frozenset(
+    {
+        "",
+        "undefined",
+        "unknown",
+        "n/a",
+        "none",
+        "no name",
+        "default",
+    }
+)
+
+
+def is_trash_filter_name(name: str) -> bool:
+    """Return True if a filter name is a meaningless hardware default."""
+    if not name or not name.strip():
+        return True
+    return name.strip().lower() in TRASH_FILTER_NAMES
+
 
 def extract_enabled_filter_names(filter_config: dict) -> list[str]:
     """Extract names of enabled filters from hardware configuration.
@@ -61,17 +80,25 @@ def sync_filters_to_backend(api_client, telescope_id: str, filter_config: dict, 
         logger.debug("No filter configuration to sync")
         return False
 
-    # Extract enabled filter names
+    # Extract enabled filter names, excluding trash hardware defaults
     enabled_filter_names = extract_enabled_filter_names(filter_config)
 
     if not enabled_filter_names:
         logger.debug("No enabled filters to sync")
         return False
 
-    logger.info(f"Syncing {len(enabled_filter_names)} enabled filters to backend: {enabled_filter_names}")
+    real_names = [n for n in enabled_filter_names if not is_trash_filter_name(n)]
+    if not real_names:
+        logger.warning(
+            f"All {len(enabled_filter_names)} enabled filters have placeholder names "
+            f"({enabled_filter_names}) — skipping backend sync until filters are named"
+        )
+        return False
+
+    logger.info(f"Syncing {len(real_names)} named filters to backend: {real_names}")
 
     # Expand filter names to full spectral specs via API
-    expand_response = api_client.expand_filters(enabled_filter_names)
+    expand_response = api_client.expand_filters(real_names)
     if not expand_response or "filters" not in expand_response:
         logger.warning("Failed to expand filter names - API returned no data")
         return False
