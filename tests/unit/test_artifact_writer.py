@@ -161,6 +161,33 @@ class TestDumpContextArtifacts:
             "elsets": [{"tle": ["1 25544U ...", "2 25544 ..."], "creationEpoch": "2026-03-09T00:00:00Z"}],
         }
 
+        pointing_report = {
+            "convergence_threshold_deg": 0.3,
+            "max_attempts": 10,
+            "configured_slew_rate_deg_per_s": 5.0,
+            "attempts": 2,
+            "converged": True,
+            "final_angular_distance_deg": 0.15,
+            "final_telescope_ra_deg": 180.1,
+            "final_telescope_dec_deg": 45.2,
+            "iterations": [
+                {
+                    "attempt": 1,
+                    "pre_slew_ra_deg": 0.0,
+                    "post_slew_ra_deg": 179.5,
+                    "angular_distance_to_satellite_deg": 0.6,
+                    "converged": False,
+                },
+                {
+                    "attempt": 2,
+                    "pre_slew_ra_deg": 179.5,
+                    "post_slew_ra_deg": 180.1,
+                    "angular_distance_to_satellite_deg": 0.15,
+                    "converged": True,
+                },
+            ],
+        }
+
         context = ProcessingContext(
             image_path=sample_fits,
             working_image_path=sample_fits,
@@ -173,6 +200,7 @@ class TestDumpContextArtifacts:
             location_service=location_service,
             elset_cache=elset_cache,
             satellite_data=satellite_data,
+            pointing_report=pointing_report,
         )
 
         dump_context_artifacts(context)
@@ -183,6 +211,7 @@ class TestDumpContextArtifacts:
         assert (working_dir / "telescope_record.json").exists()
         assert (working_dir / "fits_header.json").exists()
         assert (working_dir / "target_satellite.json").exists()
+        assert (working_dir / "pointing_report.json").exists()
 
         task_data = json.loads((working_dir / "task.json").read_text())
         assert task_data["satelliteName"] == "STARLINK-1234"
@@ -203,6 +232,12 @@ class TestDumpContextArtifacts:
         target_sat = json.loads((working_dir / "target_satellite.json").read_text())
         assert target_sat["most_recent_elset"]["tle"] == ["1 25544U ...", "2 25544 ..."]
 
+        pointing = json.loads((working_dir / "pointing_report.json").read_text())
+        assert pointing["converged"] is True
+        assert pointing["attempts"] == 2
+        assert len(pointing["iterations"]) == 2
+        assert pointing["final_angular_distance_deg"] == 0.15
+
     def test_handles_missing_services(self, working_dir, sample_fits):
         context = ProcessingContext(
             image_path=sample_fits,
@@ -221,6 +256,7 @@ class TestDumpContextArtifacts:
         assert json.loads((working_dir / "observer_location.json").read_text()) == {}
         assert json.loads((working_dir / "telescope_record.json").read_text()) == {}
         assert not (working_dir / "target_satellite.json").exists()
+        assert not (working_dir / "pointing_report.json").exists()
 
 
 class TestDumpProcessorResult:

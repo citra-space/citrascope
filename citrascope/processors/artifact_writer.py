@@ -43,6 +43,27 @@ Context artifacts (written before processors run)
     cache TLE (see ``target_satellite`` section in
     ``satellite_matcher_debug.json``) to detect staleness.
 
+``pointing_report.json`` *(only present for MANUAL observation strategy)*
+    Iterative slew convergence telemetry from ``point_to_lead_position()``.
+    Top-level keys:
+
+    - ``convergence_threshold_deg``: the angular distance at which the
+      mount is considered "close enough" (derived from FOV)
+    - ``max_attempts``: hard limit on convergence iterations (10)
+    - ``configured_slew_rate_deg_per_s``: the rate from the telescope
+      record / API
+    - ``attempts``: how many iterations actually ran
+    - ``converged``: bool — did the loop exit because the threshold was met?
+    - ``final_angular_distance_deg``: how far off the telescope ended up
+    - ``final_telescope_ra_deg``, ``final_telescope_dec_deg``: where the
+      mount actually landed
+    - ``iterations``: list of per-attempt records, each containing:
+      pre_slew_ra/dec, target_lead_ra/dec (predicted satellite position),
+      estimated vs actual slew time, post_slew_ra/dec, slewed_distance,
+      satellite_ra/dec (true position at that moment),
+      angular_distance_to_satellite, observed_slew_rate (adaptive),
+      converged (bool for this attempt)
+
 Per-processor result artifacts
 ------------------------------
 Each ``*_result.json`` contains: processor_name, confidence (0–1),
@@ -277,6 +298,9 @@ def dump_context_artifacts(context: ProcessingContext) -> None:
 
         if context.satellite_data:
             dump_json(wd, "target_satellite.json", context.satellite_data)
+
+        if context.pointing_report:
+            dump_json(wd, "pointing_report.json", context.pointing_report)
     except Exception as exc:
         logger.warning("Failed to dump context artifacts: %s", exc)
 

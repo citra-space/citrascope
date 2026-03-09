@@ -85,6 +85,7 @@ class ProcessingQueue(BaseWorkQueue):
                 location_service=getattr(daemon, "location_service", None),
                 elset_cache=getattr(daemon, "elset_cache", None),
                 satellite_data=item["context"].get("satellite_data"),
+                pointing_report=item["context"].get("pointing_report"),
                 logger=self.logger,  # Pass logger to processors
             )
             result = daemon.processor_registry.process_all(context)
