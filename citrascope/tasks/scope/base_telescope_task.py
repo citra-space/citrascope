@@ -205,6 +205,12 @@ class AbstractBaseTelescopeTask(ABC):
 
             self._update_observed_fov_from_plate_solve(result.extracted_data)
 
+        # Surface annotated image to the web UI
+        if result and result.extracted_data:
+            annotated = result.extracted_data.get("annotated_image.image_path")
+            if annotated and Path(annotated).exists():
+                self.daemon.latest_annotated_image_path = annotated
+
         # Queue for upload
         self._queue_for_upload(filepath, processing_result=result)
 

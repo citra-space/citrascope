@@ -10,7 +10,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -111,6 +111,7 @@ class SystemStatus(BaseModel):
     mount_slewing: bool = False
     supports_direct_mount_control: bool = False
     safety_status: dict[str, Any] | None = None
+    latest_task_image_url: str | None = None
 
 
 class HardwareConfig(BaseModel):
@@ -236,6 +237,14 @@ class CitraScopeWebApp:
             if self.daemon:
                 self._update_status_from_daemon()
             return self.status
+
+        @self.app.get("/api/task-preview/latest")
+        async def get_latest_task_preview():
+            """Serve the latest annotated task image as a JPEG."""
+            ann_path = getattr(self.daemon, "latest_annotated_image_path", None)
+            if not ann_path or not Path(ann_path).exists():
+                return JSONResponse({"error": "No preview available"}, status_code=404)
+            return FileResponse(ann_path, media_type="image/jpeg")
 
         @self.app.get("/api/config")
         async def get_config():
@@ -1539,6 +1548,14 @@ class CitraScopeWebApp:
                     self.status.safety_status = None
             else:
                 self.status.safety_status = None
+
+            # Latest annotated task image for the Optics pane
+            ann_path = getattr(self.daemon, "latest_annotated_image_path", None)
+            if ann_path and Path(ann_path).exists():
+                mtime = int(Path(ann_path).stat().st_mtime)
+                self.status.latest_task_image_url = f"/api/task-preview/latest?t={mtime}"
+            else:
+                self.status.latest_task_image_url = None
 
             self.status.last_update = datetime.now().isoformat()
 

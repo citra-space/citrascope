@@ -24,6 +24,14 @@ function updateStoreFromStatus(status) {
         const sorted = [...store.tasks].sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
         store.nextTaskStartTime = sorted[0].start_time;
     }
+
+    // Update Optics pane with latest annotated task image (don't interrupt live loop)
+    if (status.latest_task_image_url && status.latest_task_image_url !== store._lastTaskImageUrl) {
+        store._lastTaskImageUrl = status.latest_task_image_url;
+        if (!store.isLooping) {
+            store.previewDataUrl = status.latest_task_image_url;
+        }
+    }
 }
 
 function updateStoreFromTasks(tasks) {
