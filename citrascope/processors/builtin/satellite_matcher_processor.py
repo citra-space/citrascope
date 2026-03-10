@@ -119,13 +119,10 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
         # Offset to mid-exposure for better satellite position prediction
         epoch = self._parse_fits_timestamp(str(timestamp_str))
         if exptime > 0:
-            mid_dt = datetime.fromisoformat(
-                normalize_fits_timestamp(str(timestamp_str)).replace("Z", "+00:00")
-            ) + timedelta(seconds=exptime / 2.0)
-            if mid_dt.tzinfo is None:
-                mid_dt = mid_dt.replace(tzinfo=timezone.utc)
+            # to_datetime() returns naive; tag as UTC so from_datetime() doesn't assume local TZ
+            mid_dt = epoch.to_datetime().replace(tzinfo=timezone.utc) + timedelta(seconds=exptime / 2.0)
             epoch = ktime.Epoch.from_datetime(mid_dt)
-            timestamp_str = mid_dt.strftime("%Y-%m-%dT%H:%M:%S.%f")
+            timestamp_str = mid_dt.isoformat()
 
         debug["field_center"] = {"ra_deg": ra_center, "dec_deg": dec_center}
         debug["epoch"] = str(timestamp_str)
