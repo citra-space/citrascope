@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import time
 from ctypes import create_string_buffer
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -425,7 +425,8 @@ class MoravianCamera(AbstractCamera):
         """Determine the best available exposure-start timestamp.
 
         Priority:
-        1. Hardware GPS timestamp (sub-microsecond, true exposure start)
+        1. Hardware GPS timestamp (true exposure start, microsecond resolution —
+           sub-microsecond detail from the camera is rounded, not preserved)
         2. Host clock captured before start_exposure() in capture_array()
         3. Host clock now (should never happen after the capture_array fix)
 
@@ -437,8 +438,11 @@ class MoravianCamera(AbstractCamera):
                 ts = self._gxccd.get_image_time_stamp()
                 if ts is not None:
                     year, month, day, hour, minute, second = ts
-                    microsecond = int((second % 1.0) * 1_000_000)
-                    gps_dt = datetime(year, month, day, hour, minute, int(second), microsecond, tzinfo=timezone.utc)
+                    whole_sec = int(second)
+                    microsecond = round((second - whole_sec) * 1_000_000)
+                    gps_dt = datetime(year, month, day, hour, minute, 0, tzinfo=timezone.utc) + timedelta(
+                        seconds=whole_sec, microseconds=microsecond
+                    )
                     return gps_dt, "gps"
             except Exception as e:
                 self.logger.debug(f"GPS timestamp unavailable: {e}")

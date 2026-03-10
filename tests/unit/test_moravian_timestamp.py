@@ -50,11 +50,13 @@ class TestSaveFitsTimestamp:
         buf = np.zeros((10, 10), dtype=np.uint16).tobytes()
         out = tmp_path / "test.fits"
 
+        before = datetime.now(timezone.utc)
         moravian_camera._save_fits(buf, 10, 10, 1.0, 0, 1, out)
+        after = datetime.now(timezone.utc)
 
         with fits.open(out) as hdul:
-            date_obs = hdul[0].header["DATE-OBS"]
-            assert "2026" in date_obs or "2025" in date_obs  # just verify it's a timestamp
+            date_obs = datetime.fromisoformat(hdul[0].header["DATE-OBS"])
+            assert before <= date_obs <= after
 
 
 class TestResolveExposureTimestamp:
@@ -116,3 +118,27 @@ class TestResolveExposureTimestamp:
         assert src == "gps"
         assert ts.microsecond == 500000
         assert ts.second == 45
+
+    def test_gps_float_rounding_not_truncation(self, moravian_camera):
+        """32.2 is 32.19999... in IEEE 754 — truncation gives 199999, round gives 200000."""
+        moravian_camera._has_gps = True
+        mock_cam = MagicMock()
+        mock_cam.get_image_time_stamp.return_value = (2026, 1, 1, 0, 0, 32.2)
+        moravian_camera._gxccd = mock_cam
+
+        ts, _ = moravian_camera._resolve_exposure_timestamp()
+
+        assert ts.second == 32
+        assert ts.microsecond == 200000
+
+    def test_gps_float_rounding_carry(self, moravian_camera):
+        """59.9999999 should round to 60.000000 and carry into the next second."""
+        moravian_camera._has_gps = True
+        mock_cam = MagicMock()
+        mock_cam.get_image_time_stamp.return_value = (2026, 1, 1, 0, 0, 59.9999999)
+        moravian_camera._gxccd = mock_cam
+
+        ts, _ = moravian_camera._resolve_exposure_timestamp()
+
+        assert ts.second == 0
+        assert ts.minute == 1
