@@ -269,7 +269,7 @@ class AnnotatedImageProcessor(AbstractImageProcessor):
     def _get_font():
         """Get a font for annotations. Uses Pillow's bundled font (no system deps)."""
         try:
-            return ImageFont.load_default(size=_FONT_SIZE)
+            return ImageFont.load_default(size=_FONT_SIZE)  # type: ignore[call-arg]
         except TypeError:
             return ImageFont.load_default()
         except Exception:
