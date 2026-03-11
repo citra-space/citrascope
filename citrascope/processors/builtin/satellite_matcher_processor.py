@@ -3,6 +3,7 @@
 import math
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 import astropy.units as u
@@ -26,6 +27,7 @@ from .processor_dependencies import normalize_fits_timestamp
 _FWHM_THRESHOLD = 1.5
 _FIELD_RADIUS_DEG = 2.0
 _MATCH_RADIUS_DEG = 1.0 / 60.0  # 1 arcminute
+_STAR_MATCH_TOLERANCE_DEG = 1.0 / 3600.0  # 1 arcsecond — tight match for star subtraction
 
 
 class SatelliteMatcherProcessor(AbstractImageProcessor):
@@ -42,6 +44,56 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
     name = "satellite_matcher"
     friendly_name = "Satellite Matcher"
     description = "Match detected sources with TLE predictions (requires full pipeline)"
+
+    @staticmethod
+    def _subtract_known_stars(candidates: pd.DataFrame, working_dir: Path) -> tuple[pd.DataFrame, dict[str, Any]]:
+        """Remove sources that matched APASS catalog stars in the photometry step.
+
+        Reads photometry_crossmatch.csv (written by PhotometryProcessor) and removes
+        any candidate whose position matches a cataloged star within 1 arcsecond.
+        Returns the filtered DataFrame and a stats dict for the debug bundle.
+        """
+        crossmatch_path = working_dir / "photometry_crossmatch.csv"
+        if not crossmatch_path.exists():
+            return candidates, {"source": "skipped", "reason": "photometry_crossmatch.csv not found"}
+
+        try:
+            xmatch = pd.read_csv(crossmatch_path)
+        except Exception:
+            return candidates, {"source": "skipped", "reason": "failed to parse photometry_crossmatch.csv"}
+
+        # Prefer APASS catalog positions (radeg/decdeg) over detected source positions (ra/dec).
+        # Using detected source positions would falsely remove a satellite that happened to
+        # land in the crossmatch by proximity to a catalog star.
+        if "radeg" in xmatch.columns and "decdeg" in xmatch.columns:
+            ra_col, dec_col = "radeg", "decdeg"
+        elif "ra" in xmatch.columns and "dec" in xmatch.columns:
+            ra_col, dec_col = "ra", "dec"
+        else:
+            return candidates, {"source": "skipped", "reason": "crossmatch CSV missing coordinate columns"}
+
+        if xmatch.empty:
+            return candidates, {"source": "skipped", "reason": "crossmatch CSV empty"}
+
+        before = len(candidates)
+        star_coords = xmatch[[ra_col, dec_col]].values
+        star_tree = KDTree(star_coords)
+
+        cand_coords = candidates[["ra", "dec"]].values
+        dists, _ = star_tree.query(cand_coords)
+        keep_mask = np.asarray(dists) >= _STAR_MATCH_TOLERANCE_DEG
+
+        filtered = candidates[keep_mask].copy()
+        removed = before - len(filtered)
+
+        stats: dict[str, Any] = {
+            "source": "photometry_crossmatch.csv",
+            "catalog_stars_in_crossmatch": len(xmatch),
+            "candidates_before": before,
+            "candidates_after": len(filtered),
+            "catalog_stars_removed": removed,
+        }
+        return filtered, stats
 
     def _parse_fits_timestamp(self, timestamp_str: str) -> ktime.Epoch:
         """Parse FITS DATE-OBS timestamp into a Keplemon Epoch.
@@ -91,8 +143,12 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
             "fwhm_mean": float(fwhm_vals.mean()) if len(fwhm_vals) else None,
         }
 
+        # Subtract known catalog stars from candidates
+        potential_sats, star_sub_stats = self._subtract_known_stars(potential_sats, context.working_dir)
+        debug["star_subtraction"] = star_sub_stats
+
         if potential_sats.empty:
-            debug["early_exit"] = "no satellite candidates after FWHM filtering"
+            debug["early_exit"] = "no satellite candidates after FWHM filtering and star subtraction"
             return [], debug
 
         # Observer location
@@ -303,16 +359,19 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
             reverse_match.append(entry)
         debug["reverse_match"] = reverse_match
 
+        # Build observations from reverse match: one best source per prediction.
+        # The forward match (source->prediction) allows many sources to match the same
+        # satellite, flooding results with false positives from nearby stars.
         filter_name = (context.task.assigned_filter_name if context.task else None) or "Clear"
         observations: list[dict[str, Any]] = []
-        for i in range(len(potential_sats)):
-            if not valid_mask[i]:
+        for i, p in enumerate(predictions):
+            dist_deg = float(np.asarray(pred_distances)[i])
+            if dist_deg >= _MATCH_RADIUS_DEG:
                 continue
-            idx = int(np.asarray(indices)[i])
-            if idx < 0 or idx >= len(predictions):
+            src_idx = int(np.asarray(pred_indices)[i])
+            if src_idx < 0 or src_idx >= len(potential_sats):
                 continue
-            p = predictions[idx]
-            row = potential_sats.iloc[i]
+            row = potential_sats.iloc[src_idx]
             observations.append(
                 {
                     "norad_id": p["satellite_id"],
@@ -364,7 +423,10 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
                 names=["mag", "magerr", "ra", "dec", "fwhm"],
             )
 
-            satellite_observations, debug_info = self._match_satellites(sources_df, context, tracking_mode="rate")
+            tracking_mode = context.tracking_mode or "sidereal"
+            satellite_observations, debug_info = self._match_satellites(
+                sources_df, context, tracking_mode=tracking_mode
+            )
 
             elapsed = time.time() - start_time
 

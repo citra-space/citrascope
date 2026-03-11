@@ -466,6 +466,7 @@ class TestFullPipelineDemoFits:
             settings=settings,
             location_service=FakeLocationService(),
             elset_cache=None,  # no hot list: use single-TLE from task (backward compatibility)
+            tracking_mode="rate",
             logger=Mock(),
         )
 
@@ -542,6 +543,7 @@ class TestFullPipelineDemoFits:
             settings=settings,
             location_service=FakeLocationService(),
             elset_cache=elset_cache,
+            tracking_mode="rate",
             logger=Mock(),
         )
 
@@ -684,6 +686,7 @@ class TestSatelliteMatcherProcessor:
             settings=settings,
             location_service=FakeLocationService(),
             elset_cache=elset_cache,
+            tracking_mode="rate",
             logger=Mock(),
         )
 
