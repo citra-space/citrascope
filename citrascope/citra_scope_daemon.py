@@ -58,6 +58,7 @@ class CitraScopeDaemon:
         self.telescope_record = None
         self.safety_monitor = None
         self.configuration_error: str | None = None
+        self.latest_annotated_image_path: str | None = None
         self._stop_requested = False
         self._shutdown_done = False
 

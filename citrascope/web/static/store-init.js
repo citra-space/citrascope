@@ -57,6 +57,7 @@ import { FILTER_COLORS } from './filters.js';
             previewDataUrl: null,
             loopCount: 0,
             previewExposure: 0.01,
+            _lastTaskImageUrl: null,
 
             // Spread all formatter functions from shared module
             ...formatters,

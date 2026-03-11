@@ -197,19 +197,17 @@ class UploadQueue(BaseWorkQueue):
                 self.logger.debug(f"Deleted {filepath}")
 
             # Delete related files (.new, .cat, .wcs, etc.)
+            related_suffixes = {".new", ".cat", ".wcs", ".solved", ".axy", ".corr", ".match", ".rdls"}
             for related in path.parent.glob(f"{path.stem}.*"):
-                if related != path and related.suffix in [
-                    ".new",
-                    ".cat",
-                    ".wcs",
-                    ".solved",
-                    ".axy",
-                    ".corr",
-                    ".match",
-                    ".rdls",
-                ]:
+                if related != path and related.suffix in related_suffixes:
                     related.unlink()
                     self.logger.debug(f"Deleted {related}")
+
+            # Delete per-task annotated preview
+            annotated = path.parent / f"{path.stem}_annotated.png"
+            if annotated.exists():
+                annotated.unlink()
+                self.logger.debug(f"Deleted {annotated}")
 
         except Exception as e:
             self.logger.warning(f"Failed to cleanup files for {filepath}: {e}")
