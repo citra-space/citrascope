@@ -70,6 +70,7 @@ class AnnotatedImageProcessor(AbstractImageProcessor):
             self._draw_overlay(draw, img.width, task_name, epoch_str, match_count, font)
 
             preview_path = self._save_preview(img, context.image_path.parent)
+            self._save_per_task(img, context.image_path.parent, context.image_path.stem)
             working_path = self._save_to_working_dir(img, context.working_dir)
 
             elapsed = time.time() - start_time
@@ -280,6 +281,14 @@ class AnnotatedImageProcessor(AbstractImageProcessor):
         out_path = images_dir / "latest_preview.png"
         img.save(str(out_path), _IMAGE_FORMAT)
         return out_path
+
+    @staticmethod
+    def _save_per_task(img: Image.Image, images_dir: Path, stem: str) -> None:
+        """Save a per-task annotated PNG alongside the original FITS in the images directory."""
+        try:
+            img.save(str(images_dir / f"{stem}_annotated.png"), _IMAGE_FORMAT)
+        except Exception:
+            pass
 
     @staticmethod
     def _save_to_working_dir(img: Image.Image, working_dir: Path) -> Path | None:

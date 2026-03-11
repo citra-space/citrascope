@@ -190,7 +190,7 @@ class TestFailOpen:
 
 
 class TestAnnotatedImageSaving:
-    def test_saves_permanent_and_working_copies(self, tmp_path):
+    def test_saves_preview_per_task_and_working_copies(self, tmp_path):
         proc = AnnotatedImageProcessor()
         debug = _make_debug_json()
         ctx = _make_context(tmp_path, debug_json=debug)
@@ -206,6 +206,10 @@ class TestAnnotatedImageSaving:
         assert permanent.name == "latest_preview.png"
         assert working.exists()
         assert working.name == "annotated.png"
+
+        per_task = ctx.image_path.parent / f"{ctx.image_path.stem}_annotated.png"
+        assert per_task.exists()
+        assert per_task.suffix == ".png"
 
     def test_output_is_valid_png(self, tmp_path):
         proc = AnnotatedImageProcessor()
