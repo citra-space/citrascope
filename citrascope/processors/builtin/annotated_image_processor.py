@@ -69,14 +69,14 @@ class AnnotatedImageProcessor(AbstractImageProcessor):
             task_name = context.task.satelliteName if context.task else None
             self._draw_overlay(draw, img.width, task_name, epoch_str, match_count, font)
 
-            permanent_path = self._save_annotated(img, context.image_path)
+            preview_path = self._save_preview(img, context.image_path.parent)
             working_path = self._save_to_working_dir(img, context.working_dir)
 
             elapsed = time.time() - start_time
             return ProcessorResult(
                 should_upload=True,
                 extracted_data={
-                    "image_path": str(permanent_path),
+                    "image_path": str(preview_path),
                     "working_dir_path": str(working_path) if working_path else None,
                 },
                 confidence=1.0,
@@ -275,9 +275,9 @@ class AnnotatedImageProcessor(AbstractImageProcessor):
             return None
 
     @staticmethod
-    def _save_annotated(img: Image.Image, original_path: Path) -> Path:
-        """Save annotated PNG alongside the original FITS image (permanent)."""
-        out_path = original_path.parent / f"{original_path.stem}.annotated.png"
+    def _save_preview(img: Image.Image, images_dir: Path) -> Path:
+        """Save annotated PNG as a single rotating preview file (overwritten each time)."""
+        out_path = images_dir / "latest_preview.png"
         img.save(str(out_path), _IMAGE_FORMAT)
         return out_path
 

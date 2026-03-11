@@ -203,7 +203,7 @@ class TestAnnotatedImageSaving:
         working = Path(result.extracted_data["working_dir_path"])
         assert permanent.exists()
         assert permanent.suffix == ".png"
-        assert permanent.stem == "test_image.annotated"
+        assert permanent.name == "latest_preview.png"
         assert working.exists()
         assert working.name == "annotated.png"
 
