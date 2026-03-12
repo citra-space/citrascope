@@ -501,7 +501,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             for item in data:
                 self._update_all_ids(item, id_counter)
 
-    def perform_observation_sequence(self, task, satellite_data) -> str | list[str]:
+    def perform_observation_sequence(self, task, satellite_data) -> list[str]:
         """Create and execute a NINA sequence for the given satellite.
 
         Args:
@@ -509,7 +509,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             satellite_data: Satellite data including TLE information
 
         Returns:
-            str: Path to the captured image
+            list[str]: Paths to the captured images
         """
         assert self._event_listener is not None
         elset = satellite_data["most_recent_elset"]
