@@ -49,7 +49,7 @@ def _task_to_dict(task: Any) -> dict:
 
 def _resolve_autofocus_target_name(settings: Any) -> str:
     """Return a human-readable name for the active autofocus target."""
-    preset_key = settings.autofocus_target_preset
+    preset_key = settings.autofocus_target_preset or "mirach"
 
     if preset_key == "current":
         return "Current position"
