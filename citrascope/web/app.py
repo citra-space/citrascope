@@ -3,7 +3,7 @@
 import asyncio
 import json
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
@@ -34,6 +34,17 @@ FILTER_NAME_OPTIONS = [
     {"group": "Sloan", "names": ["sloan_u", "sloan_g", "sloan_r", "sloan_i", "sloan_z"]},
     {"group": "Narrowband", "names": ["Ha", "Hb", "OIII", "SII"]},
 ]
+
+
+def _task_to_dict(task: Any) -> dict:
+    """Format a Task object into the dict shape the web layer expects."""
+    return {
+        "id": task.id,
+        "start_time": task.taskStart,
+        "stop_time": task.taskStop or None,
+        "status": task.status,
+        "target": task.satelliteName,
+    }
 
 
 def _resolve_autofocus_target_name(settings: Any) -> str:
@@ -465,34 +476,7 @@ class CitraScopeWebApp:
                 return []
 
             task_manager = self.daemon.task_manager
-            tasks = []
-
-            # Get IDs of tasks that are actively in a stage
-            with task_manager._stage_lock:
-                active_ids = set()
-                active_ids.update(task_manager.imaging_tasks.keys())
-                active_ids.update(task_manager.processing_tasks.keys())
-                active_ids.update(task_manager.uploading_tasks.keys())
-
-            with task_manager.heap_lock:
-                for start_time, stop_time, task_id, task in task_manager.task_heap:
-                    # Only include tasks not currently in a stage (scheduled future work)
-                    if task_id not in active_ids:
-                        tasks.append(
-                            {
-                                "id": task_id,
-                                "start_time": datetime.fromtimestamp(start_time, tz=timezone.utc).isoformat(),
-                                "stop_time": (
-                                    datetime.fromtimestamp(stop_time, tz=timezone.utc).isoformat()
-                                    if stop_time
-                                    else None
-                                ),
-                                "status": task.status,
-                                "target": getattr(task, "satelliteName", getattr(task, "target", "unknown")),
-                            }
-                        )
-
-            return tasks
+            return [_task_to_dict(t) for t in task_manager.get_tasks_snapshot(exclude_active=True)]
 
         @self.app.get("/api/tasks/active")
         async def get_active_tasks():
@@ -725,7 +709,7 @@ class CitraScopeWebApp:
                             )
 
                 # Phase 3: Save once after all updates
-                self.daemon._save_filter_config()
+                self.daemon.save_filter_config()
 
                 return {"success": True, "updated_count": len(validated_updates)}
 
@@ -743,7 +727,7 @@ class CitraScopeWebApp:
                 return JSONResponse({"error": "Hardware adapter not initialized"}, status_code=503)
 
             try:
-                self.daemon._sync_filters_to_backend()
+                self.daemon.sync_filters_to_backend()
                 return {"success": True, "message": "Filters synced to backend"}
             except Exception as e:
                 CITRASCOPE_LOGGER.error(f"Error syncing filters to backend: {e}", exc_info=True)
@@ -1428,8 +1412,7 @@ class CitraScopeWebApp:
                 self.status.alignment_requested = task_manager.alignment_manager.is_requested()
                 self.status.alignment_running = task_manager.alignment_manager.is_running()
                 self.status.alignment_progress = task_manager.alignment_manager.progress
-                with task_manager.heap_lock:
-                    self.status.tasks_pending = len(task_manager.task_heap)
+                self.status.tasks_pending = task_manager.pending_task_count
 
             # Get autofocus timing information
             if self.daemon.settings:
@@ -1581,22 +1564,7 @@ class CitraScopeWebApp:
             return
 
         task_manager = self.daemon.task_manager
-        tasks = []
-
-        with task_manager.heap_lock:
-            for start_time, stop_time, task_id, task in task_manager.task_heap:
-                tasks.append(
-                    {
-                        "id": task_id,
-                        "start_time": datetime.fromtimestamp(start_time, tz=timezone.utc).isoformat(),
-                        "stop_time": (
-                            datetime.fromtimestamp(stop_time, tz=timezone.utc).isoformat() if stop_time else None
-                        ),
-                        "status": task.status,
-                        "target": getattr(task, "satelliteName", getattr(task, "target", "unknown")),
-                    }
-                )
-
+        tasks = [_task_to_dict(t) for t in task_manager.get_tasks_snapshot()]
         await self.connection_manager.broadcast({"type": "tasks", "data": tasks})
 
     async def broadcast_log(self, log_entry: dict):

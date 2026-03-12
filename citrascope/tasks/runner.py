@@ -23,16 +23,26 @@ class TaskManager:
         api_client,
         logger,
         hardware_adapter: AbstractAstroHardwareAdapter,
-        daemon,
         settings,
         processor_registry,
+        elset_cache=None,
+        safety_monitor=None,
+        location_service=None,
+        telescope_record: dict | None = None,
+        ground_station: dict | None = None,
+        on_annotated_image=None,
     ):
         self.api_client = api_client
         self.logger = logger
         self.hardware_adapter = hardware_adapter
-        self.daemon = daemon
         self.settings = settings
         self.processor_registry = processor_registry
+        self.elset_cache = elset_cache
+        self.safety_monitor = safety_monitor
+        self.location_service = location_service
+        self.telescope_record = telescope_record
+        self.ground_station = ground_station
+        self._on_annotated_image = on_annotated_image
 
         # Initialize work queues (TaskManager now owns these)
         from citrascope.tasks.imaging_queue import ImagingQueue
@@ -76,14 +86,16 @@ class TaskManager:
         self.autofocus_manager = AutofocusManager(
             self.logger,
             self.hardware_adapter,
-            self.daemon,
+            self.settings,
             imaging_queue=self.imaging_queue,
         )
         self.alignment_manager = AlignmentManager(
             self.logger,
             self.hardware_adapter,
-            self.daemon,
+            self.settings,
             imaging_queue=self.imaging_queue,
+            safety_monitor=self.safety_monitor,
+            location_service=self.location_service,
         )
         self.homing_manager = HomingManager(
             self.logger,
@@ -98,7 +110,7 @@ class TaskManager:
         self.total_tasks_failed: int = 0
         # Automated scheduling state (initialized from server on startup)
         self._automated_scheduling = (
-            daemon.telescope_record.get("automatedScheduling", False) if daemon.telescope_record else False
+            self.telescope_record.get("automatedScheduling", False) if self.telescope_record else False
         )
 
     def update_task_stage(self, task_id: str, stage: str):
@@ -200,16 +212,17 @@ class TaskManager:
             }
 
     def poll_tasks(self):
+        if self.telescope_record is None:
+            self.logger.error("poll_tasks called without telescope_record; cannot poll for tasks")
+            return
+
         while not self._stop_event.is_set():
             try:
-                # Refresh elset hot list when stale (for satellite matcher)
-                if getattr(self.daemon, "elset_cache", None) and self.daemon.telescope_record:
-                    interval_hours = getattr(self.daemon.settings, "elset_refresh_interval_hours", 6)
-                    self.daemon.elset_cache.refresh_if_stale(
-                        self.api_client, self.logger, interval_hours=interval_hours
-                    )
+                if self.elset_cache:
+                    interval_hours = self.settings.elset_refresh_interval_hours
+                    self.elset_cache.refresh_if_stale(self.api_client, self.logger, interval_hours=interval_hours)
                 self._report_online()
-                tasks = self.api_client.get_telescope_tasks(self.daemon.telescope_record["id"])
+                tasks = self.api_client.get_telescope_tasks(self.telescope_record["id"])
 
                 # If API call failed (timeout, network error, etc.), wait before retrying
                 if tasks is None:
@@ -291,7 +304,9 @@ class TaskManager:
         """
         PUT to /telescopes to report this telescope as online.
         """
-        telescope_id = self.daemon.telescope_record["id"]
+        if self.telescope_record is None:
+            return
+        telescope_id = self.telescope_record["id"]
         iso_timestamp = datetime.now(timezone.utc).isoformat()
         self.api_client.put_telescope_status([{"id": telescope_id, "last_connection_epoch": iso_timestamp}])
         self.logger.debug(f"Reported online status for telescope {telescope_id} at {iso_timestamp}")
@@ -371,7 +386,7 @@ class TaskManager:
 
     def _evaluate_safety(self) -> bool:
         """Run safety monitor evaluation; return True if the loop should yield."""
-        safety_monitor = getattr(self.daemon, "safety_monitor", None)
+        safety_monitor = self.safety_monitor
         if not safety_monitor:
             return False
 
@@ -424,7 +439,7 @@ class TaskManager:
         - "tracking": always TrackingTelescopeTask.
         - "static": always StaticTelescopeTask.
         """
-        mode = self.daemon.settings.observation_mode
+        mode = self.settings.observation_mode
 
         use_tracking = False
         if mode == "tracking":
@@ -443,8 +458,40 @@ class TaskManager:
             self.hardware_adapter,
             self.logger,
             task,
-            self.daemon,
+            settings=self.settings,
+            task_manager=self,
+            location_service=self.location_service,
+            telescope_record=self.telescope_record,
+            ground_station=self.ground_station,
+            elset_cache=self.elset_cache,
+            processor_registry=self.processor_registry,
+            on_annotated_image=self._set_latest_annotated_image,
         )
+
+    @property
+    def pending_task_count(self) -> int:
+        """Return the number of tasks on the scheduling heap (thread-safe)."""
+        with self.heap_lock:
+            return len(self.task_heap)
+
+    def get_tasks_snapshot(self, exclude_active: bool = False) -> list[Task]:
+        """Return a thread-safe snapshot of tasks on the scheduling heap.
+
+        If exclude_active is True, omits tasks currently in imaging/processing/upload stages.
+        """
+        if exclude_active:
+            with self._stage_lock:
+                active_ids = set(self.imaging_tasks) | set(self.processing_tasks) | set(self.uploading_tasks)
+        else:
+            active_ids = set()
+
+        with self.heap_lock:
+            return [task for _start, _stop, task_id, task in self.task_heap if task_id not in active_ids]
+
+    def _set_latest_annotated_image(self, path: str) -> None:
+        """Forward annotated image path to daemon for web UI display."""
+        if self._on_annotated_image:
+            self._on_annotated_image(path)
 
     def get_task_by_id(self, task_id: str):
         """Get a task by ID. Thread-safe."""
