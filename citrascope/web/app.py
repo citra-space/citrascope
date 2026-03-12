@@ -36,6 +36,17 @@ FILTER_NAME_OPTIONS = [
 ]
 
 
+def _task_to_dict(task: Any) -> dict:
+    """Format a Task object into the dict shape the web layer expects."""
+    return {
+        "id": task.id,
+        "start_time": task.taskStart,
+        "stop_time": task.taskStop or None,
+        "status": task.status,
+        "target": task.satelliteName,
+    }
+
+
 def _resolve_autofocus_target_name(settings: Any) -> str:
     """Return a human-readable name for the active autofocus target."""
     preset_key = getattr(settings, "autofocus_target_preset", None) or "mirach"
@@ -465,9 +476,7 @@ class CitraScopeWebApp:
                 return []
 
             task_manager = self.daemon.task_manager
-            tasks = task_manager.get_scheduled_tasks_snapshot()
-
-            return tasks
+            return [_task_to_dict(t) for t in task_manager.get_tasks_snapshot(exclude_active=True)]
 
         @self.app.get("/api/tasks/active")
         async def get_active_tasks():
@@ -1555,7 +1564,7 @@ class CitraScopeWebApp:
             return
 
         task_manager = self.daemon.task_manager
-        tasks = task_manager.get_all_tasks_snapshot()
+        tasks = [_task_to_dict(t) for t in task_manager.get_tasks_snapshot()]
         await self.connection_manager.broadcast({"type": "tasks", "data": tasks})
 
     async def broadcast_log(self, log_entry: dict):

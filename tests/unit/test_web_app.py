@@ -126,8 +126,7 @@ def mock_daemon(mock_settings):
     d.task_manager.is_processing_active.return_value = True
     d.task_manager._automated_scheduling = False
     d.task_manager.get_tasks_by_stage.return_value = {}
-    d.task_manager.get_scheduled_tasks_snapshot.return_value = []
-    d.task_manager.get_all_tasks_snapshot.return_value = []
+    d.task_manager.get_tasks_snapshot.return_value = []
     d.task_manager.pending_task_count = 0
     d.task_manager.imaging_queue = MagicMock()
     d.task_manager.imaging_queue.get_stats.return_value = {"attempts": 0, "successes": 0, "permanent_failures": 0}

@@ -470,53 +470,19 @@ class TaskManager:
         with self.heap_lock:
             return len(self.task_heap)
 
-    def get_scheduled_tasks_snapshot(self) -> list[dict]:
-        """Return a snapshot of queued tasks not currently in a processing stage.
+    def get_tasks_snapshot(self, exclude_active: bool = False) -> list[Task]:
+        """Return a thread-safe snapshot of tasks on the scheduling heap.
 
-        Encapsulates locking so the web layer doesn't need to touch internal
-        locks or data structures. Each dict includes id, start/stop times,
-        status, and target name.
+        If exclude_active is True, omits tasks currently in imaging/processing/upload stages.
         """
-        with self._stage_lock:
-            active_ids = set(self.imaging_tasks) | set(self.processing_tasks) | set(self.uploading_tasks)
+        if exclude_active:
+            with self._stage_lock:
+                active_ids = set(self.imaging_tasks) | set(self.processing_tasks) | set(self.uploading_tasks)
+        else:
+            active_ids = set()
 
-        tasks: list[dict] = []
         with self.heap_lock:
-            for start_time, stop_time, task_id, task in self.task_heap:
-                if task_id not in active_ids:
-                    tasks.append(
-                        {
-                            "id": task_id,
-                            "start_time": datetime.fromtimestamp(start_time, tz=timezone.utc).isoformat(),
-                            "stop_time": (
-                                datetime.fromtimestamp(stop_time, tz=timezone.utc).isoformat() if stop_time else None
-                            ),
-                            "status": task.status,
-                            "target": getattr(task, "satelliteName", getattr(task, "target", "unknown")),
-                        }
-                    )
-        return tasks
-
-    def get_all_tasks_snapshot(self) -> list[dict]:
-        """Return a snapshot of all tasks on the heap (for broadcast).
-
-        Like ``get_scheduled_tasks_snapshot`` but includes tasks in active stages.
-        """
-        tasks: list[dict] = []
-        with self.heap_lock:
-            for start_time, stop_time, task_id, task in self.task_heap:
-                tasks.append(
-                    {
-                        "id": task_id,
-                        "start_time": datetime.fromtimestamp(start_time, tz=timezone.utc).isoformat(),
-                        "stop_time": (
-                            datetime.fromtimestamp(stop_time, tz=timezone.utc).isoformat() if stop_time else None
-                        ),
-                        "status": task.status,
-                        "target": getattr(task, "satelliteName", getattr(task, "target", "unknown")),
-                    }
-                )
-        return tasks
+            return [task for _start, _stop, task_id, task in self.task_heap if task_id not in active_ids]
 
     def _set_latest_annotated_image(self, path: str) -> None:
         """Forward annotated image path to daemon for web UI display."""
