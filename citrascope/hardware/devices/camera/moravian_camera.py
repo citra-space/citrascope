@@ -21,6 +21,7 @@ from citrascope.hardware.devices.camera import AbstractCamera
 from citrascope.hardware.devices.filter_wheel import AbstractFilterWheel
 
 if TYPE_CHECKING:
+    from citrascope.hardware.devices.camera.abstract_camera import CalibrationProfile
     from citrascope.hardware.devices.moravian_bindings import GxccdCamera
 
 
@@ -390,6 +391,7 @@ class MoravianCamera(AbstractCamera):
         gain: int | None = None,
         offset: int | None = None,
         binning: int = 1,
+        shutter_closed: bool = False,
     ) -> np.ndarray:
         if not self.is_connected():
             raise RuntimeError("Camera not connected")
@@ -403,9 +405,14 @@ class MoravianCamera(AbstractCamera):
         cam.set_gain(gain_val)
         cam.set_binning(binning, binning)
 
-        self.logger.debug(f"Starting {duration}s exposure (gain={gain_val}, binning={binning}x{binning})")
+        # use_shutter=False tells the SDK this is a dark/bias frame (shutter stays closed)
+        use_shutter = not shutter_closed
+        self.logger.debug(
+            f"Starting {duration}s exposure (gain={gain_val}, binning={binning}x{binning}, "
+            f"shutter={'closed' if shutter_closed else 'open'})"
+        )
         self._last_exposure_start = datetime.now(timezone.utc)
-        cam.start_exposure(duration, True, 0, 0, w, h)
+        cam.start_exposure(duration, use_shutter, 0, 0, w, h)
 
         # Sleep for most of the exposure, then poll (per gxccd.h recommendation)
         if duration > 0.5:
@@ -457,8 +464,9 @@ class MoravianCamera(AbstractCamera):
         offset: int | None = None,
         binning: int = 1,
         save_path: Path | None = None,
+        shutter_closed: bool = False,
     ) -> Path:
-        data = self.capture_array(duration, gain, offset, binning)
+        data = self.capture_array(duration, gain, offset, binning, shutter_closed=shutter_closed)
         exposure_start, date_src = self._resolve_exposure_timestamp()
 
         if save_path is None:
@@ -615,6 +623,26 @@ class MoravianCamera(AbstractCamera):
 
     def get_camera_info(self) -> dict:
         return self._camera_info.copy()
+
+    def get_calibration_profile(self) -> CalibrationProfile:
+        from citrascope.hardware.devices.camera.abstract_camera import CalibrationProfile
+
+        serial = self._camera_info.get("serial_number", "")
+        model = self._camera_info.get("model", "MoravianCamera")
+        max_gain = self._camera_info.get("max_gain", 0)
+        return CalibrationProfile(
+            calibration_applicable=True,
+            camera_id=serial or model,
+            model=model,
+            has_mechanical_shutter=True,
+            has_cooling=self._has_cooler,
+            current_gain=self._default_gain,
+            current_binning=self._default_binning,
+            current_temperature=self.get_temperature(),
+            target_temperature=self._target_temp,
+            gain_range=(0, max_gain) if max_gain > 0 else None,
+            supported_binning=[1, 2, 3, 4],
+        )
 
 
 # ---------------------------------------------------------------------------

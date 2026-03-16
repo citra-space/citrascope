@@ -124,6 +124,7 @@ class SystemStatus(BaseModel):
     safety_status: dict[str, Any] | None = None
     elset_health: dict[str, Any] | None = None
     latest_task_image_url: str | None = None
+    calibration_status: dict[str, Any] | None = None
 
 
 class HardwareConfig(BaseModel):
@@ -891,6 +892,98 @@ class CitraScopeWebApp:
                 CITRASCOPE_LOGGER.error(f"Error cancelling alignment: {e}", exc_info=True)
                 return JSONResponse({"error": str(e)}, status_code=500)
 
+        # ── Calibration endpoints ─────────────────────────────────────
+
+        @self.app.get("/api/calibration/status")
+        async def get_calibration_status():
+            """Return calibration library status for the connected camera."""
+            if not self.daemon:
+                return JSONResponse({"error": "Daemon not available"}, status_code=503)
+            lib = getattr(self.daemon, "calibration_library", None)
+            hw = self.daemon.hardware_adapter
+            if not lib or not hw or not hw.supports_direct_camera_control():
+                return {"available": False}
+
+            camera = hw.camera
+            if not camera:
+                return {"available": False}
+
+            profile = camera.get_calibration_profile()
+            if not profile.calibration_applicable:
+                return {"available": False}
+
+            library_status = lib.get_library_status(profile.camera_id)
+            tm = self.daemon.task_manager
+            cal_mgr = tm.calibration_manager if tm else None
+            return {
+                "available": True,
+                "camera_id": profile.camera_id,
+                "model": profile.model,
+                "has_mechanical_shutter": profile.has_mechanical_shutter,
+                "has_cooling": profile.has_cooling,
+                "current_gain": profile.current_gain,
+                "current_binning": profile.current_binning,
+                "current_temperature": profile.current_temperature,
+                "target_temperature": profile.target_temperature,
+                "gain_range": list(profile.gain_range) if profile.gain_range else None,
+                "supported_binning": profile.supported_binning,
+                "library": library_status,
+                "masters_dir": str(lib.masters_dir),
+                "capture_running": cal_mgr.is_running() if cal_mgr else False,
+                "capture_requested": cal_mgr.is_requested() if cal_mgr else False,
+                "capture_progress": cal_mgr.get_progress() if cal_mgr else {},
+                "frame_count_setting": self.daemon.settings.calibration_frame_count if self.daemon.settings else 30,
+            }
+
+        @self.app.post("/api/calibration/capture")
+        async def trigger_calibration_capture(request: dict[str, Any]):
+            """Queue a calibration capture job."""
+            if not self.daemon:
+                return JSONResponse({"error": "Daemon not available"}, status_code=503)
+            try:
+                ok, err = self.daemon.trigger_calibration(request)
+                if not ok:
+                    return JSONResponse({"error": err}, status_code=400)
+                return {"success": True, "message": "Calibration queued"}
+            except Exception as e:
+                CITRASCOPE_LOGGER.error("Error triggering calibration: %s", e, exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.post("/api/calibration/cancel")
+        async def cancel_calibration():
+            """Cancel pending or active calibration capture."""
+            if not self.daemon:
+                return JSONResponse({"error": "Daemon not available"}, status_code=503)
+            try:
+                was_cancelled = self.daemon.cancel_calibration()
+                return {"success": was_cancelled}
+            except Exception as e:
+                CITRASCOPE_LOGGER.error("Error cancelling calibration: %s", e, exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.delete("/api/calibration/master")
+        async def delete_calibration_master(request: dict[str, Any]):
+            """Delete a specific master calibration frame."""
+            if not self.daemon:
+                return JSONResponse({"error": "Daemon not available"}, status_code=503)
+            lib = getattr(self.daemon, "calibration_library", None)
+            if not lib:
+                return JSONResponse({"error": "Calibration not available"}, status_code=400)
+            try:
+                deleted = lib.delete_master(
+                    frame_type=request.get("frame_type", ""),
+                    camera_id=request.get("camera_id", ""),
+                    gain=int(request.get("gain", 0)),
+                    binning=int(request.get("binning", 1)),
+                    exposure_time=float(request.get("exposure_time", 0)),
+                    temperature=request.get("temperature"),
+                    filter_name=request.get("filter_name", ""),
+                )
+                return {"success": deleted}
+            except Exception as e:
+                CITRASCOPE_LOGGER.error("Error deleting calibration master: %s", e, exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
         @self.app.post("/api/adapter/sync")
         async def manual_sync(request: dict[str, Any]):
             """Manually sync the mount to given RA/Dec coordinates."""
@@ -1293,6 +1386,78 @@ class CitraScopeWebApp:
                 CITRASCOPE_LOGGER.error(f"WebSocket error: {e}")
                 self.connection_manager.disconnect(websocket)
 
+    def _build_calibration_status(self) -> dict[str, Any] | None:
+        """Build calibration status dict for SystemStatus."""
+        if not self.daemon:
+            return None
+        lib = getattr(self.daemon, "calibration_library", None)
+        hw = self.daemon.hardware_adapter
+        if not lib or not hw or not hw.supports_direct_camera_control():
+            return None
+
+        camera = hw.camera
+        if not camera:
+            return None
+
+        profile = camera.get_calibration_profile()
+        if not profile.calibration_applicable:
+            return None
+
+        cam_id = profile.camera_id
+        gain = profile.current_gain or 0
+        binning = profile.current_binning
+        temperature = profile.current_temperature
+
+        settings = self.daemon.settings
+        exposure = settings.exposure_seconds if settings else 2.0
+        filter_name = ""
+        filter_pos = hw.get_filter_position() if hasattr(hw, "get_filter_position") else None
+        if filter_pos is not None and hasattr(hw, "filter_map"):
+            fdata = hw.filter_map.get(filter_pos, {})
+            filter_name = fdata.get("name", "")
+
+        has_bias = lib.get_master_bias(cam_id, gain, binning) is not None
+        has_dark = (
+            lib.get_master_dark(cam_id, gain, binning, exposure, temperature or 0.0) is not None
+            if temperature is not None
+            else False
+        )
+        has_flat = lib.get_master_flat(cam_id, gain, binning, filter_name) is not None if filter_name else True
+
+        missing: list[str] = []
+        if not has_bias:
+            missing.append(f"bias (gain {gain}, bin {binning})")
+        if not has_dark:
+            temp_str = f"{temperature:.1f}C" if temperature is not None else "unknown"
+            missing.append(f"dark ({exposure}s at {temp_str}, gain {gain}, bin {binning})")
+        if filter_name and not has_flat:
+            missing.append(f"flat ({filter_name}, gain {gain}, bin {binning})")
+
+        # CalibrationManager state
+        tm = self.daemon.task_manager
+        cal_mgr = tm.calibration_manager if tm else None
+        capture_running = cal_mgr.is_running() if cal_mgr else False
+        capture_requested = cal_mgr.is_requested() if cal_mgr else False
+        capture_progress = cal_mgr.get_progress() if cal_mgr else {}
+
+        return {
+            "has_bias": has_bias,
+            "has_dark": has_dark,
+            "has_flat": has_flat,
+            "missing": missing,
+            "missing_summary": ", ".join(missing) if missing else "",
+            "capture_running": capture_running,
+            "capture_requested": capture_requested,
+            "capture_progress": capture_progress,
+            "calibration_applicable": True,
+            "has_mechanical_shutter": profile.has_mechanical_shutter,
+            "has_cooling": profile.has_cooling,
+            "camera_id": cam_id,
+            "current_gain": gain,
+            "current_binning": binning,
+            "current_temperature": temperature,
+        }
+
     def _update_status_from_daemon(self):
         """Update status from daemon state."""
         if not self.daemon:
@@ -1546,6 +1711,9 @@ class CitraScopeWebApp:
                 self.status.latest_task_image_url = f"/api/task-preview/latest?t={mtime_ns}"
             else:
                 self.status.latest_task_image_url = None
+
+            # Calibration status
+            self.status.calibration_status = self._build_calibration_status()
 
             self.status.last_update = datetime.now().isoformat()
 

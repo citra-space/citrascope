@@ -130,10 +130,29 @@
 
                 <span class="badge rounded-pill"
                       data-bs-toggle="tooltip" data-bs-theme="dark"
-                      :data-bs-title="$store.citrascope.status?.camera_connected
-                          ? ('Camera connected' + ($store.citrascope.status?.camera_temperature != null ? ' \u00b7 ' + $store.citrascope.status.camera_temperature.toFixed(1) + ' \u00b0C' : ''))
-                          : 'Camera disconnected'"
-                      :class="$store.citrascope.status?.camera_connected ? 'bg-success' : 'bg-danger'"
+                      :data-bs-title="(() => {
+                          let s = $store.citrascope.status;
+                          if (!s?.camera_connected) return 'Camera disconnected';
+                          let tip = 'Camera connected';
+                          if (s.camera_temperature != null) tip += ' \u00b7 ' + s.camera_temperature.toFixed(1) + ' \u00b0C';
+                          let cal = s.calibration_status;
+                          if (cal && cal.calibration_applicable) {
+                              if (cal.has_bias && cal.has_dark && cal.has_flat) tip += ' \u00b7 Calibrated';
+                              else if (cal.missing_summary) tip += ' \u00b7 Missing: ' + cal.missing_summary;
+                              else tip += ' \u00b7 Uncalibrated';
+                          }
+                          return tip;
+                      })()"
+                      :class="(() => {
+                          let s = $store.citrascope.status;
+                          if (!s?.camera_connected) return 'bg-danger';
+                          let cal = s.calibration_status;
+                          if (cal && cal.calibration_applicable) {
+                              if (cal.has_bias && cal.has_dark && cal.has_flat) return 'bg-success';
+                              return 'bg-warning text-dark';
+                          }
+                          return 'bg-success';
+                      })()"
                       x-text="$store.citrascope.status?.camera_connected && $store.citrascope.status?.camera_temperature != null
                           ? 'Camera ' + $store.citrascope.status.camera_temperature.toFixed(1) + '\u00b0C'
                           : 'Camera'"></span>
