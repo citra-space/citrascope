@@ -75,7 +75,7 @@
                          calPollTimer: null,
                          calFrameType: 'bias',
                          calExposure: 2.0,
-                         calFilterName: '',
+                         calFilterPosition: null,
                          async loadCalStatus() {
                              try {
                                  const resp = await fetch('/api/calibration/status');
@@ -106,7 +106,7 @@
                                      body.exposure_time = this.calExposure;
                                  }
                                  if (this.calFrameType === 'flat') {
-                                     body.filter_name = this.calFilterName;
+                                     body.filter_position = this.calFilterPosition;
                                  }
                                  await fetch('/api/calibration/capture', {
                                      method: 'POST',
@@ -274,9 +274,14 @@
                                         </div>
                                         <div class="col-auto" x-show="calFrameType === 'flat'">
                                             <label class="form-label small mb-0">Filter</label>
-                                            <input type="text" class="form-control form-control-sm" style="width: 120px;"
-                                                   x-model="calFilterName" placeholder="e.g. Luminance"
-                                                   :disabled="calFrameType !== 'flat'">
+                                            <select class="form-select form-select-sm" style="width: 140px;"
+                                                    x-model.number="calFilterPosition"
+                                                    :disabled="calFrameType !== 'flat'">
+                                                <option :value="null">Select filter…</option>
+                                                <template x-for="f in (calStatus?.filters || [])" :key="f.position">
+                                                    <option :value="f.position" x-text="f.name"></option>
+                                                </template>
+                                            </select>
                                         </div>
                                         <div class="col-auto">
                                             <button type="button" class="btn btn-primary btn-sm" @click="captureFrames()" :disabled="calCapturing">

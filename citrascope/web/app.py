@@ -915,6 +915,15 @@ class CitraScopeWebApp:
             library_status = lib.get_library_status(profile.camera_id)
             tm = self.daemon.task_manager
             cal_mgr = tm.calibration_manager if tm else None
+
+            filters: list[dict[str, Any]] = []
+            if hw.supports_filter_management():
+                filters = [
+                    {"name": f["name"], "position": int(pos)}
+                    for pos, f in hw.get_filter_config().items()
+                    if f.get("enabled", True) and f.get("name")
+                ]
+
             return {
                 "available": True,
                 "camera_id": profile.camera_id,
@@ -927,6 +936,7 @@ class CitraScopeWebApp:
                 "target_temperature": profile.target_temperature,
                 "gain_range": list(profile.gain_range) if profile.gain_range else None,
                 "supported_binning": profile.supported_binning,
+                "filters": filters,
                 "library": library_status,
                 "masters_dir": str(lib.masters_dir),
                 "capture_running": cal_mgr.is_running() if cal_mgr else False,
@@ -941,6 +951,17 @@ class CitraScopeWebApp:
             if not self.daemon:
                 return JSONResponse({"error": "Daemon not available"}, status_code=503)
             try:
+                if request.get("frame_type") == "flat":
+                    fp = request.get("filter_position")
+                    if fp is None:
+                        return JSONResponse({"error": "filter_position is required for flat frames"}, status_code=400)
+                    fp_int = int(fp)
+                    fm = self.daemon.hardware_adapter.filter_map if self.daemon.hardware_adapter else {}
+                    if fp_int not in fm:
+                        return JSONResponse({"error": f"Unknown filter position: {fp_int}"}, status_code=400)
+                    request["filter_position"] = fp_int
+                    request["filter_name"] = fm[fp_int]["name"]
+
                 ok, err = self.daemon.trigger_calibration(request)
                 if not ok:
                     return JSONResponse({"error": err}, status_code=400)

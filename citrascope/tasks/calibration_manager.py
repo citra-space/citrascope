@@ -235,7 +235,21 @@ class CalibrationManager:
                 )
             elif frame_type == "flat":
                 exposure_time = float(params.get("exposure_time", 1.0))
-                filter_name = params.get("filter_name", "")
+                filter_name = str(params.get("filter_name", ""))
+                filter_position = params.get("filter_position")
+
+                if filter_position is not None:
+                    filter_position = int(filter_position)
+                    if not filter_name:
+                        fdata = self.hardware_adapter.filter_map.get(filter_position, {})
+                        filter_name = fdata.get("name", f"Filter {filter_position}")
+
+                    with self._lock:
+                        self._progress = {"running": True, "status": f"Moving filter wheel to {filter_name}..."}
+                    if not self.hardware_adapter.set_filter(filter_position):
+                        self.logger.error("Failed to set filter %s (position %d)", filter_name, filter_position)
+                        return
+
                 builder.build_flat(
                     count=count,
                     exposure_time=exposure_time,
