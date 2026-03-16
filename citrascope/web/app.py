@@ -934,6 +934,7 @@ class CitraScopeWebApp:
                 "current_binning": profile.current_binning,
                 "current_temperature": profile.current_temperature,
                 "target_temperature": profile.target_temperature,
+                "read_mode": profile.read_mode or "default",
                 "gain_range": list(profile.gain_range) if profile.gain_range else None,
                 "supported_binning": profile.supported_binning,
                 "filters": filters,
@@ -999,6 +1000,7 @@ class CitraScopeWebApp:
                     exposure_time=float(request.get("exposure_time", 0)),
                     temperature=request.get("temperature"),
                     filter_name=request.get("filter_name", ""),
+                    read_mode=request.get("read_mode", ""),
                 )
                 return {"success": deleted}
             except Exception as e:
@@ -1428,6 +1430,7 @@ class CitraScopeWebApp:
         gain = profile.current_gain or 0
         binning = profile.current_binning
         temperature = profile.current_temperature
+        read_mode = profile.read_mode
 
         settings = self.daemon.settings
         exposure = settings.exposure_seconds if settings else 2.0
@@ -1437,13 +1440,15 @@ class CitraScopeWebApp:
             fdata = hw.filter_map.get(filter_pos, {})
             filter_name = fdata.get("name", "")
 
-        has_bias = lib.get_master_bias(cam_id, gain, binning) is not None
+        has_bias = lib.get_master_bias(cam_id, gain, binning, read_mode) is not None
         has_dark = (
-            lib.get_master_dark(cam_id, gain, binning, exposure, temperature or 0.0) is not None
+            lib.get_master_dark(cam_id, gain, binning, exposure, temperature or 0.0, read_mode) is not None
             if temperature is not None
             else False
         )
-        has_flat = lib.get_master_flat(cam_id, gain, binning, filter_name) is not None if filter_name else True
+        has_flat = (
+            lib.get_master_flat(cam_id, gain, binning, filter_name, read_mode) is not None if filter_name else True
+        )
 
         missing: list[str] = []
         if not has_bias:

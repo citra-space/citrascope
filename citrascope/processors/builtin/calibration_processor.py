@@ -67,17 +67,27 @@ class CalibrationProcessor(AbstractImageProcessor):
         exposure = float(header.get("EXPTIME", 0))  # type: ignore[arg-type]
         temperature = header.get("CCD-TEMP")
         filter_name = str(header.get("FILTER", "")).strip()
+        read_mode = str(header.get("READMODE", "")).strip()
 
         # Check if this camera has any masters at all — if not, skip silently
         if not self._library.has_any_masters(camera_id):
             return self._skip(start, "No calibration masters for this camera (silent)")
 
         # Look up matching masters
-        bias_path = self._library.get_master_bias(camera_id, gain, binning)
+        bias_path = self._library.get_master_bias(camera_id, gain, binning, read_mode)
         dark_path = None
         if temperature is not None:
-            dark_path = self._library.get_master_dark(camera_id, gain, binning, exposure, float(temperature))  # type: ignore[arg-type]
-        flat_path = self._library.get_master_flat(camera_id, gain, binning, filter_name) if filter_name else None
+            dark_path = self._library.get_master_dark(
+                camera_id,
+                gain,
+                binning,
+                exposure,
+                float(temperature),  # type: ignore[arg-type]
+                read_mode,
+            )
+        flat_path = (
+            self._library.get_master_flat(camera_id, gain, binning, filter_name, read_mode) if filter_name else None
+        )
 
         # Log warnings for missing masters
         missing: list[str] = []

@@ -67,22 +67,43 @@ class CalibrationLibrary:
         return value.replace(" ", "_").replace("/", "-").replace("\\", "-")
 
     @classmethod
-    def _bias_filename(cls, camera_id: str, gain: int, binning: int) -> str:
-        cam = cls._safe_name(camera_id)
-        return f"master_bias_{cam}_g{gain}_bin{binning}.fits"
+    def _read_mode_slug(cls, read_mode: str) -> str:
+        """Produce a compact filename-safe slug from a read mode name.
+
+        '12-bit Slow' → '12bit-Slow', '' → 'default'.
+        """
+        if not read_mode:
+            return "default"
+        return cls._safe_name(read_mode).replace(" ", "-")
 
     @classmethod
-    def _dark_filename(cls, camera_id: str, gain: int, binning: int, exposure_time: float, temperature: float) -> str:
+    def _bias_filename(cls, camera_id: str, gain: int, binning: int, read_mode: str = "") -> str:
         cam = cls._safe_name(camera_id)
+        rm = cls._read_mode_slug(read_mode)
+        return f"master_bias_{cam}_g{gain}_bin{binning}_{rm}.fits"
+
+    @classmethod
+    def _dark_filename(
+        cls,
+        camera_id: str,
+        gain: int,
+        binning: int,
+        exposure_time: float,
+        temperature: float,
+        read_mode: str = "",
+    ) -> str:
+        cam = cls._safe_name(camera_id)
+        rm = cls._read_mode_slug(read_mode)
         exp_ms = round(exposure_time * 1000)
         temp_str = f"{temperature:+.0f}".replace("+", "p").replace("-", "m").replace(".", "d")
-        return f"master_dark_{cam}_g{gain}_bin{binning}_{exp_ms}ms_{temp_str}C.fits"
+        return f"master_dark_{cam}_g{gain}_bin{binning}_{rm}_{exp_ms}ms_{temp_str}C.fits"
 
     @classmethod
-    def _flat_filename(cls, camera_id: str, gain: int, binning: int, filter_name: str) -> str:
+    def _flat_filename(cls, camera_id: str, gain: int, binning: int, filter_name: str, read_mode: str = "") -> str:
         cam = cls._safe_name(camera_id)
+        rm = cls._read_mode_slug(read_mode)
         filt = cls._safe_name(filter_name) if filter_name else "nofilter"
-        return f"master_flat_{cam}_g{gain}_bin{binning}_{filt}.fits"
+        return f"master_flat_{cam}_g{gain}_bin{binning}_{rm}_{filt}.fits"
 
     # ------------------------------------------------------------------
     # Save
@@ -100,14 +121,15 @@ class CalibrationLibrary:
         filter_name: str = "",
         ncombine: int = 0,
         camera_model: str = "",
+        read_mode: str = "",
     ) -> Path:
         """Write a master frame to the library and return its path."""
         if frame_type == "bias":
-            name = self._bias_filename(camera_id, gain, binning)
+            name = self._bias_filename(camera_id, gain, binning, read_mode)
         elif frame_type == "dark":
-            name = self._dark_filename(camera_id, gain, binning, exposure_time, temperature or 0.0)
+            name = self._dark_filename(camera_id, gain, binning, exposure_time, temperature or 0.0, read_mode)
         elif frame_type == "flat":
-            name = self._flat_filename(camera_id, gain, binning, filter_name)
+            name = self._flat_filename(camera_id, gain, binning, filter_name, read_mode)
         else:
             raise ValueError(f"Unknown frame_type: {frame_type}")
 
@@ -121,6 +143,7 @@ class CalibrationLibrary:
         hdr["CAMSER"] = (camera_id, "Camera serial or model id")
         hdr["GAIN"] = (gain, "Camera gain")
         hdr["XBINNING"] = (binning, "Horizontal binning")
+        hdr["READMODE"] = (read_mode or "default", "Camera read mode")
         hdr["DATE-OBS"] = (datetime.now(timezone.utc).isoformat(), "Master creation time UTC")
 
         if frame_type in ("dark",) and exposure_time > 0:
@@ -138,8 +161,8 @@ class CalibrationLibrary:
     # Lookup
     # ------------------------------------------------------------------
 
-    def get_master_bias(self, camera_id: str, gain: int, binning: int) -> Path | None:
-        name = self._bias_filename(camera_id, gain, binning)
+    def get_master_bias(self, camera_id: str, gain: int, binning: int, read_mode: str = "") -> Path | None:
+        name = self._bias_filename(camera_id, gain, binning, read_mode)
         path = self._masters_dir / name
         return path if path.exists() else None
 
@@ -150,13 +173,15 @@ class CalibrationLibrary:
         binning: int,
         exposure_time: float,
         temperature: float,
+        read_mode: str = "",
     ) -> Path | None:
         """Find the best matching dark master.
 
-        Exact match on camera_id, gain, binning.  Closest match on
-        exposure_time and temperature within tolerance.
+        Exact match on camera_id, gain, binning, read_mode.  Closest match
+        on exposure_time and temperature within tolerance.
         """
-        prefix = f"master_dark_{self._safe_name(camera_id)}_g{gain}_bin{binning}_"
+        rm = self._read_mode_slug(read_mode)
+        prefix = f"master_dark_{self._safe_name(camera_id)}_g{gain}_bin{binning}_{rm}_"
         candidates: list[tuple[float, Path]] = []
 
         for p in self._masters_dir.glob(f"{prefix}*.fits"):
@@ -169,7 +194,6 @@ class CalibrationLibrary:
                         continue
                     if abs(float(d_temp) - temperature) > self.DARK_TEMP_TOLERANCE_C:
                         continue
-                    # Score: prefer exact exposure match, then closest temp
                     score = abs(float(d_exp) - exposure_time) + abs(float(d_temp) - temperature) * 0.1
                     candidates.append((score, p))
             except Exception:
@@ -180,8 +204,15 @@ class CalibrationLibrary:
         candidates.sort(key=lambda t: t[0])
         return candidates[0][1]
 
-    def get_master_flat(self, camera_id: str, gain: int, binning: int, filter_name: str) -> Path | None:
-        name = self._flat_filename(camera_id, gain, binning, filter_name)
+    def get_master_flat(
+        self,
+        camera_id: str,
+        gain: int,
+        binning: int,
+        filter_name: str,
+        read_mode: str = "",
+    ) -> Path | None:
+        name = self._flat_filename(camera_id, gain, binning, filter_name, read_mode)
         path = self._masters_dir / name
         return path if path.exists() else None
 
@@ -198,14 +229,15 @@ class CalibrationLibrary:
         exposure_time: float = 0.0,
         temperature: float | None = None,
         filter_name: str = "",
+        read_mode: str = "",
     ) -> bool:
         """Delete a specific master frame. Returns True if deleted."""
         if frame_type == "bias":
-            name = self._bias_filename(camera_id, gain, binning)
+            name = self._bias_filename(camera_id, gain, binning, read_mode)
         elif frame_type == "dark":
-            name = self._dark_filename(camera_id, gain, binning, exposure_time, temperature or 0.0)
+            name = self._dark_filename(camera_id, gain, binning, exposure_time, temperature or 0.0, read_mode)
         elif frame_type == "flat":
-            name = self._flat_filename(camera_id, gain, binning, filter_name)
+            name = self._flat_filename(camera_id, gain, binning, filter_name, read_mode)
         else:
             return False
 
@@ -240,6 +272,7 @@ class CalibrationLibrary:
                         "ncombine": int(hdr.get("NCOMBINE", 0)),
                         "gain": int(hdr.get("GAIN", 0)),
                         "binning": int(hdr.get("XBINNING", 1)),
+                        "read_mode": str(hdr.get("READMODE", "")),
                     }
                     if cal_type == "bias":
                         result["bias"].append(entry)

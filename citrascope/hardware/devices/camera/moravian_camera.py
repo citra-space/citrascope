@@ -225,6 +225,7 @@ class MoravianCamera(AbstractCamera):
         self._last_exposure_start: datetime | None = None
         self._has_gps: bool = False
         self._has_mechanical_shutter: bool = False
+        self._active_read_mode: str = ""
 
     def connect(self) -> bool:
         try:
@@ -335,6 +336,7 @@ class MoravianCamera(AbstractCamera):
                 mode_label = self._read_modes[default] if default < len(self._read_modes) else str(default)
 
             # Determine actual bit depth from the active read mode name
+            self._active_read_mode = mode_label or ""
             active_mode = mode_label.lower() if mode_label else ""
             if "8-bit" in active_mode or "8bit" in active_mode:
                 self._camera_info["bit_depth"] = 8
@@ -439,13 +441,12 @@ class MoravianCamera(AbstractCamera):
 
         use_shutter = not shutter_closed
         self.logger.info(
-            "Starting %.3fs exposure (gain=%d, binning=%dx%d, use_shutter=%s, shutter_closed=%s)",
+            "Starting %.3fs exposure (gain=%d, binning=%dx%d, shutter=%s)",
             duration,
             gain_val,
             binning,
             binning,
-            use_shutter,
-            shutter_closed,
+            "open" if use_shutter else "closed",
         )
         self._last_exposure_start = datetime.now(timezone.utc)
         cam.start_exposure(duration, use_shutter, 0, 0, w, h)
@@ -458,8 +459,7 @@ class MoravianCamera(AbstractCamera):
         while not cam.image_ready():
             time.sleep(0.05)
 
-        actual_wait = time.monotonic() - t0
-        self.logger.info("image_ready after %.3fs (requested %.3fs)", actual_wait, duration)
+        self.logger.debug("image_ready after %.3fs (requested %.3fs)", time.monotonic() - t0, duration)
 
         binned_w = w // binning
         binned_h = h // binning
@@ -468,7 +468,7 @@ class MoravianCamera(AbstractCamera):
         cam.read_image(buf, buf_size)
 
         data = np.frombuffer(bytes(buf), dtype=np.uint16).reshape((binned_h, binned_w))
-        self.logger.info(
+        self.logger.debug(
             "Exposure complete: %dx%d, min=%d, max=%d, median=%d, mean=%.0f",
             binned_w,
             binned_h,
@@ -569,6 +569,7 @@ class MoravianCamera(AbstractCamera):
         hdr["DATE-OBS"] = (date_obs.isoformat(), "UTC exposure start")
         hdr["DATE-SRC"] = (date_src, "Timestamp source: gps or host")
         hdr["INSTRUME"] = (self._camera_info.get("model", ""), "Camera model")
+        hdr["READMODE"] = (self._active_read_mode or "default", "Camera read mode")
 
         serial = self._camera_info.get("serial_number", "")
         if serial:
@@ -707,6 +708,7 @@ class MoravianCamera(AbstractCamera):
             current_temperature=self.get_temperature(),
             target_temperature=self._target_temp,
             bit_depth=self._camera_info.get("bit_depth", 16),
+            read_mode=self._active_read_mode,
             gain_range=(0, max_gain) if max_gain > 0 else None,
             supported_binning=[1, 2, 3, 4],
         )

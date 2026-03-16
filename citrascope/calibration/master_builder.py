@@ -76,6 +76,7 @@ class MasterBuilder:
             binning=binning,
             ncombine=len(raw_paths),
             camera_model=self._profile.model,
+            read_mode=self._profile.read_mode,
         )
 
     def build_dark(
@@ -107,7 +108,8 @@ class MasterBuilder:
         master = self._median_stack(raw_paths)
 
         # Subtract master bias if available
-        bias_path = self._library.get_master_bias(self._profile.camera_id, gain_val, binning)
+        rm = self._profile.read_mode
+        bias_path = self._library.get_master_bias(self._profile.camera_id, gain_val, binning, rm)
         if bias_path:
             with fits.open(bias_path) as hdul:
                 bias_data = hdul[0].data.astype(np.float32)  # type: ignore[index]
@@ -128,6 +130,7 @@ class MasterBuilder:
             temperature=temperature,
             ncombine=len(raw_paths),
             camera_model=self._profile.model,
+            read_mode=rm,
         )
 
     def build_flat(
@@ -175,7 +178,8 @@ class MasterBuilder:
         master = self._median_stack(raw_paths)
 
         # Subtract master bias if available
-        bias_path = self._library.get_master_bias(self._profile.camera_id, gain_val, binning)
+        rm = self._profile.read_mode
+        bias_path = self._library.get_master_bias(self._profile.camera_id, gain_val, binning, rm)
         if bias_path:
             with fits.open(bias_path) as hdul:
                 bias_data = hdul[0].data.astype(np.float32)  # type: ignore[index]
@@ -200,6 +204,7 @@ class MasterBuilder:
             filter_name=filter_name,
             ncombine=len(raw_paths),
             camera_model=self._profile.model,
+            read_mode=rm,
         )
 
     # ------------------------------------------------------------------

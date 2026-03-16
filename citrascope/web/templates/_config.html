@@ -132,7 +132,8 @@
                                      binning: entry.binning,
                                      exposure_time: entry.exposure_time || 0,
                                      temperature: entry.temperature,
-                                     filter_name: entry.filter || ''
+                                     filter_name: entry.filter || '',
+                                     read_mode: entry.read_mode || ''
                                  })
                              });
                              this.loadCalStatus();
@@ -158,6 +159,7 @@
                                     (<span x-text="calStatus?.camera_id"></span>)
                                     · Gain <span x-text="calStatus?.current_gain"></span>
                                     · Bin <span x-text="calStatus?.current_binning"></span>x<span x-text="calStatus?.current_binning"></span>
+                                    · <span x-text="calStatus?.read_mode || 'default'"></span>
                                     <template x-if="calStatus?.current_temperature != null">
                                         <span> · <span x-text="calStatus.current_temperature.toFixed(1)"></span>°C
                                             <template x-if="calStatus?.target_temperature != null">
@@ -179,6 +181,7 @@
                                     <thead>
                                         <tr>
                                             <th>Type</th>
+                                            <th>Mode</th>
                                             <th>Gain</th>
                                             <th>Bin</th>
                                             <th>Exp</th>
@@ -193,6 +196,7 @@
                                         <template x-for="b in (calStatus?.library?.bias || [])" :key="b.filename">
                                             <tr>
                                                 <td>Bias</td>
+                                                <td><small x-text="b.read_mode || '—'"></small></td>
                                                 <td x-text="b.gain"></td>
                                                 <td x-text="b.binning + 'x' + b.binning"></td>
                                                 <td class="text-muted">&mdash;</td>
@@ -206,6 +210,7 @@
                                         <template x-for="d in (calStatus?.library?.darks || [])" :key="d.filename">
                                             <tr>
                                                 <td>Dark</td>
+                                                <td><small x-text="d.read_mode || '—'"></small></td>
                                                 <td x-text="d.gain"></td>
                                                 <td x-text="d.binning + 'x' + d.binning"></td>
                                                 <td x-text="d.exposure_time + 's'"></td>
@@ -219,6 +224,7 @@
                                         <template x-for="f in (calStatus?.library?.flats || [])" :key="f.filename">
                                             <tr>
                                                 <td>Flat</td>
+                                                <td><small x-text="f.read_mode || '—'"></small></td>
                                                 <td x-text="f.gain"></td>
                                                 <td x-text="f.binning + 'x' + f.binning"></td>
                                                 <td class="text-muted">&mdash;</td>
@@ -230,7 +236,7 @@
                                             </tr>
                                         </template>
                                         <tr x-show="!(calStatus?.library?.bias?.length || calStatus?.library?.darks?.length || calStatus?.library?.flats?.length)">
-                                            <td colspan="9" class="text-muted text-center">No master frames yet</td>
+                                            <td colspan="10" class="text-muted text-center">No master frames yet</td>
                                         </tr>
                                     </tbody>
                                 </table>

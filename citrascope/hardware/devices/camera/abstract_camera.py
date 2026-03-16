@@ -33,6 +33,7 @@ class CalibrationProfile:
     current_temperature: float | None
     target_temperature: float | None = None
     bit_depth: int = 16
+    read_mode: str = ""
     gain_range: tuple[int, int] | None = None
     supported_binning: list[int] = field(default_factory=lambda: [1])
 
