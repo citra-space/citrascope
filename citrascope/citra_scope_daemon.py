@@ -584,6 +584,17 @@ class CitraScopeDaemon:
             return False, "Calibration already in progress"
         return True, None
 
+    def trigger_calibration_suite(self, jobs: list[dict]) -> tuple[bool, str | None]:
+        """Request a batch calibration suite at next safe point between tasks."""
+        if not self.task_manager or not self.task_manager.calibration_manager:
+            return False, "Calibration not available (no direct camera control)"
+        if not jobs:
+            return False, "No calibration jobs specified"
+        ok = self.task_manager.calibration_manager.request_suite(jobs)
+        if not ok:
+            return False, "Calibration already in progress"
+        return True, None
+
     def cancel_calibration(self) -> bool:
         """Cancel calibration whether queued or actively running."""
         if not self.task_manager or not self.task_manager.calibration_manager:

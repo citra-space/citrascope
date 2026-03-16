@@ -47,6 +47,10 @@ class CalibrationManager:
         self._lock = threading.Lock()
         self._cancel_event = threading.Event()
 
+        self._job_queue: list[dict[str, Any]] = []
+        self._batch_total: int = 0
+        self._batch_index: int = 0
+
     # ------------------------------------------------------------------
     # Public API (called from web endpoints)
     # ------------------------------------------------------------------
@@ -67,12 +71,31 @@ class CalibrationManager:
             self.logger.info("Calibration capture requested: %s", capture_params)
             return True
 
+    def request_suite(self, jobs: list[dict[str, Any]]) -> bool:
+        """Queue a batch of calibration jobs to execute sequentially.
+
+        Returns False if calibration is already running.
+        """
+        if not jobs:
+            return False
+        with self._lock:
+            if self._running:
+                self.logger.info("Calibration already in progress")
+                return False
+            self._job_queue = list(jobs)
+            self._batch_total = len(jobs)
+            self._batch_index = 0
+            self._requested = True
+            self.logger.info("Calibration suite queued: %d jobs", len(jobs))
+            return True
+
     def cancel(self) -> bool:
         """Cancel calibration whether queued or actively running."""
         with self._lock:
             was_requested = self._requested
             is_running = self._running
             self._requested = False
+            self._job_queue.clear()
 
         if is_running:
             self._cancel_event.set()
@@ -103,11 +126,12 @@ class CalibrationManager:
         """Check if calibration should run and execute if so.
 
         Call this between tasks in the runner loop.  Returns True if
-        calibration ran.
+        calibration ran.  Handles both single jobs and batch suites.
         """
         with self._lock:
             should_run = self._requested
-            params = dict(self._capture_params) if should_run else {}
+            has_batch = len(self._job_queue) > 0
+            params = dict(self._capture_params) if should_run and not has_batch else {}
             if should_run:
                 self._requested = False
 
@@ -120,7 +144,10 @@ class CalibrationManager:
                 self._requested = True
             return False
 
-        self._execute(params)
+        if has_batch:
+            self._execute_batch()
+        else:
+            self._execute(params)
         return True
 
     # ------------------------------------------------------------------
@@ -129,13 +156,32 @@ class CalibrationManager:
 
     def _on_progress(self, current: int, total: int, frame_type: str, status: str) -> None:
         with self._lock:
-            self._progress = {
+            progress: dict[str, Any] = {
                 "running": True,
                 "frame_type": frame_type,
                 "current_frame": current,
                 "total_frames": total,
                 "status": status,
             }
+            if self._batch_total > 0:
+                progress["batch_current"] = self._batch_index
+                progress["batch_total"] = self._batch_total
+            self._progress = progress
+
+    @staticmethod
+    def _make_batch_label(params: dict[str, Any]) -> str:
+        """Short human-readable label for a batch job (e.g. "dark bin2 2.0s")."""
+        ft = params.get("frame_type", "?")
+        binning = params.get("binning", 1)
+        label = f"{ft} bin{binning}"
+        if ft == "dark":
+            exp = params.get("exposure_time", "?")
+            label += f" {exp}s"
+        elif ft == "flat":
+            fname = params.get("filter_name", "")
+            if fname:
+                label += f" {fname}"
+        return label
 
     # Temperature tolerance for considering the sensor "at target" (degrees C).
     TEMP_STABILITY_TOLERANCE = 1.0
@@ -184,94 +230,139 @@ class CalibrationManager:
 
         return False
 
+    def _execute_batch(self) -> None:
+        """Execute all queued jobs sequentially."""
+        with self._lock:
+            jobs = list(self._job_queue)
+            self._job_queue.clear()
+            self._batch_total = len(jobs)
+            self._batch_index = 0
+            self._running = True
+            self._progress = {"running": True, "status": f"Starting suite ({len(jobs)} jobs)..."}
+
+        self._cancel_event.clear()
+        try:
+            for i, params in enumerate(jobs):
+                if self._cancel_event.is_set():
+                    self.logger.info("Calibration suite cancelled at job %d/%d", i + 1, len(jobs))
+                    break
+
+                with self._lock:
+                    self._batch_index = i + 1
+                label = self._make_batch_label(params)
+                self.logger.info("Suite job %d/%d: %s", i + 1, len(jobs), label)
+                with self._lock:
+                    self._progress = {
+                        "running": True,
+                        "status": f"Job {i + 1}/{len(jobs)}: {label}",
+                        "batch_current": i + 1,
+                        "batch_total": len(jobs),
+                    }
+
+                self._execute_single(params)
+
+            if not self._cancel_event.is_set():
+                self.logger.info("Calibration suite completed: %d jobs", len(jobs))
+        finally:
+            with self._lock:
+                self._running = False
+                self._batch_total = 0
+                self._batch_index = 0
+                self._progress = {}
+
     def _execute(self, params: dict[str, Any]) -> None:
+        """Execute a single standalone calibration job (non-batch)."""
         self._cancel_event.clear()
         with self._lock:
             self._running = True
             self._progress = {"running": True, "status": "Starting calibration..."}
 
         try:
-            camera = self.hardware_adapter.camera
-            if camera is None:
-                self.logger.error("No direct camera available for calibration")
-                return
-
-            profile = camera.get_calibration_profile()
-            if not profile.calibration_applicable:
-                self.logger.error("Camera does not support CCD-style calibration")
-                return
-
-            frame_type = params.get("frame_type", "bias")
-
-            if not self._wait_for_temperature(camera, frame_type):
-                self.logger.info("Calibration cancelled while waiting for temperature")
-                return
-
-            profile = camera.get_calibration_profile()
-            builder = MasterBuilder(camera, self.library, profile)
-
-            count = int(params.get("count", 30))
-            gain = params.get("gain")
-            if gain is not None:
-                gain = int(gain)
-            binning = int(params.get("binning", profile.current_binning))
-
-            if frame_type == "bias":
-                builder.build_bias(
-                    count=count,
-                    gain=gain,
-                    binning=binning,
-                    cancel_event=self._cancel_event,
-                    on_progress=self._on_progress,
-                )
-            elif frame_type == "dark":
-                exposure_time = float(params.get("exposure_time", 1.0))
-                builder.build_dark(
-                    count=count,
-                    exposure_time=exposure_time,
-                    gain=gain,
-                    binning=binning,
-                    cancel_event=self._cancel_event,
-                    on_progress=self._on_progress,
-                )
-            elif frame_type == "flat":
-                exposure_time = float(params.get("exposure_time", 1.0))
-                filter_name = str(params.get("filter_name", ""))
-                filter_position = params.get("filter_position")
-
-                if filter_position is not None:
-                    filter_position = int(filter_position)
-                    if not filter_name:
-                        fdata = self.hardware_adapter.filter_map.get(filter_position, {})
-                        filter_name = fdata.get("name", f"Filter {filter_position}")
-
-                    with self._lock:
-                        self._progress = {"running": True, "status": f"Moving filter wheel to {filter_name}..."}
-                    if not self.hardware_adapter.set_filter(filter_position):
-                        self.logger.error("Failed to set filter %s (position %d)", filter_name, filter_position)
-                        return
-
-                builder.build_flat(
-                    count=count,
-                    exposure_time=exposure_time,
-                    filter_name=filter_name,
-                    gain=gain,
-                    binning=binning,
-                    cancel_event=self._cancel_event,
-                    on_progress=self._on_progress,
-                )
-            else:
-                self.logger.error("Unknown calibration frame type: %s", frame_type)
-                return
+            self._execute_single(params)
 
             if self._cancel_event.is_set():
                 self.logger.info("Calibration capture was cancelled")
             else:
-                self.logger.info("Calibration capture completed: %s", frame_type)
-
+                ft = params.get("frame_type", "?")
+                self.logger.info("Calibration capture completed: %s", ft)
         except Exception as e:
             self.logger.error("Calibration capture failed: %s", e, exc_info=True)
         finally:
             with self._lock:
                 self._running = False
                 self._progress = {}
+
+    def _execute_single(self, params: dict[str, Any]) -> None:
+        """Run one calibration job.  Used by both _execute and _execute_batch."""
+        camera = self.hardware_adapter.camera
+        if camera is None:
+            self.logger.error("No direct camera available for calibration")
+            return
+
+        profile = camera.get_calibration_profile()
+        if not profile.calibration_applicable:
+            self.logger.error("Camera does not support CCD-style calibration")
+            return
+
+        frame_type = params.get("frame_type", "bias")
+
+        if not self._wait_for_temperature(camera, frame_type):
+            self.logger.info("Calibration cancelled while waiting for temperature")
+            return
+
+        profile = camera.get_calibration_profile()
+        builder = MasterBuilder(camera, self.library, profile)
+
+        count = int(params.get("count", 30))
+        gain = params.get("gain")
+        if gain is not None:
+            gain = int(gain)
+        binning = int(params.get("binning", profile.current_binning))
+
+        if frame_type == "bias":
+            builder.build_bias(
+                count=count,
+                gain=gain,
+                binning=binning,
+                cancel_event=self._cancel_event,
+                on_progress=self._on_progress,
+            )
+        elif frame_type == "dark":
+            exposure_time = float(params.get("exposure_time", 1.0))
+            builder.build_dark(
+                count=count,
+                exposure_time=exposure_time,
+                gain=gain,
+                binning=binning,
+                cancel_event=self._cancel_event,
+                on_progress=self._on_progress,
+            )
+        elif frame_type == "flat":
+            exposure_time = float(params.get("exposure_time", 1.0))
+            filter_name = str(params.get("filter_name", ""))
+            filter_position = params.get("filter_position")
+
+            if filter_position is not None:
+                filter_position = int(filter_position)
+                if not filter_name:
+                    fdata = self.hardware_adapter.filter_map.get(filter_position, {})
+                    filter_name = fdata.get("name", f"Filter {filter_position}")
+
+                with self._lock:
+                    self._progress = {"running": True, "status": f"Moving filter wheel to {filter_name}..."}
+                if not self.hardware_adapter.set_filter(filter_position):
+                    self.logger.error("Failed to set filter %s (position %d)", filter_name, filter_position)
+                    return
+
+            builder.build_flat(
+                count=count,
+                exposure_time=exposure_time,
+                filter_name=filter_name,
+                gain=gain,
+                binning=binning,
+                cancel_event=self._cancel_event,
+                on_progress=self._on_progress,
+            )
+        else:
+            self.logger.error("Unknown calibration frame type: %s", frame_type)
+            return

@@ -983,6 +983,57 @@ class CitraScopeWebApp:
                 CITRASCOPE_LOGGER.error("Error cancelling calibration: %s", e, exc_info=True)
                 return JSONResponse({"error": str(e)}, status_code=500)
 
+        @self.app.post("/api/calibration/capture-suite")
+        async def trigger_calibration_suite(request: dict[str, Any]):
+            """Queue a calibration suite (bias_and_dark or all_flats)."""
+            if not self.daemon:
+                return JSONResponse({"error": "Daemon not available"}, status_code=503)
+            try:
+                from citrascope.calibration.calibration_suites import all_flats_suite, bias_and_dark_suite
+
+                suite_name = request.get("suite", "")
+                hw = self.daemon.hardware_adapter
+                if not hw or not hw.supports_direct_camera_control():
+                    return JSONResponse({"error": "No direct camera control"}, status_code=400)
+
+                camera = hw.camera
+                if not camera:
+                    return JSONResponse({"error": "Camera not connected"}, status_code=400)
+
+                profile = camera.get_calibration_profile()
+                if not profile.calibration_applicable:
+                    return JSONResponse({"error": "Camera does not support calibration"}, status_code=400)
+
+                frame_count = self.daemon.settings.calibration_frame_count if self.daemon.settings else 30
+
+                if suite_name == "bias_and_dark":
+                    exp = self.daemon.settings.exposure_seconds if self.daemon.settings else 2.0
+                    jobs = bias_and_dark_suite(profile, exp, frame_count)
+                elif suite_name == "all_flats":
+                    filters: list[dict[str, Any]] = []
+                    if hw.supports_filter_management():
+                        filters = [
+                            {"name": f["name"], "position": int(pos)}
+                            for pos, f in hw.get_filter_config().items()
+                            if f.get("enabled", True) and f.get("name")
+                        ]
+                    if not filters:
+                        return JSONResponse({"error": "No filters configured"}, status_code=400)
+                    jobs = all_flats_suite(profile, filters, frame_count)
+                else:
+                    return JSONResponse({"error": f"Unknown suite: {suite_name}"}, status_code=400)
+
+                if not jobs:
+                    return JSONResponse({"error": "Suite generated no jobs"}, status_code=400)
+
+                ok, err = self.daemon.trigger_calibration_suite(jobs)
+                if not ok:
+                    return JSONResponse({"error": err}, status_code=400)
+                return {"success": True, "message": f"Suite queued: {len(jobs)} jobs", "job_count": len(jobs)}
+            except Exception as e:
+                CITRASCOPE_LOGGER.error("Error triggering calibration suite: %s", e, exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
         @self.app.delete("/api/calibration/master")
         async def delete_calibration_master(request: dict[str, Any]):
             """Delete a specific master calibration frame."""
