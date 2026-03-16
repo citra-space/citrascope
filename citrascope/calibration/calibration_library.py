@@ -95,7 +95,7 @@ class CalibrationLibrary:
         cam = cls._safe_name(camera_id)
         rm = cls._read_mode_slug(read_mode)
         exp_ms = round(exposure_time * 1000)
-        temp_str = f"{temperature:+.0f}".replace("+", "p").replace("-", "m").replace(".", "d")
+        temp_str = f"{temperature:+.1f}".replace("+", "p").replace("-", "m").replace(".", "d")
         return f"master_dark_{cam}_g{gain}_bin{binning}_{rm}_{exp_ms}ms_{temp_str}C.fits"
 
     @classmethod
@@ -122,6 +122,7 @@ class CalibrationLibrary:
         ncombine: int = 0,
         camera_model: str = "",
         read_mode: str = "",
+        bias_subtracted: bool | None = None,
     ) -> Path:
         """Write a master frame to the library and return its path."""
         if frame_type == "bias":
@@ -150,6 +151,8 @@ class CalibrationLibrary:
             hdr["EXPTIME"] = (exposure_time, "Exposure time in seconds")
         if temperature is not None:
             hdr["CCD-TEMP"] = (temperature, "Sensor temperature in C")
+        if bias_subtracted is not None:
+            hdr["BIASSUB"] = (bias_subtracted, "Bias subtracted during master build")
         if filter_name:
             hdr["FILTER"] = (filter_name, "Filter name")
 

@@ -110,10 +110,12 @@ class MasterBuilder:
         # Subtract master bias if available
         rm = self._profile.read_mode
         bias_path = self._library.get_master_bias(self._profile.camera_id, gain_val, binning, rm)
+        did_subtract_bias = False
         if bias_path:
             with fits.open(bias_path) as hdul:
                 bias_data = hdul[0].data.astype(np.float32)  # type: ignore[index]
             master = master - bias_data
+            did_subtract_bias = True
             logger.info("Subtracted master bias from dark")
 
         self._library.cleanup_tmp()
@@ -131,6 +133,7 @@ class MasterBuilder:
             ncombine=len(raw_paths),
             camera_model=self._profile.model,
             read_mode=rm,
+            bias_subtracted=did_subtract_bias,
         )
 
     def build_flat(
@@ -354,7 +357,7 @@ class MasterBuilder:
                 logger.info("Calibration capture cancelled at frame %d/%d", i + 1, count)
                 break
 
-            self._report(on_progress, i, count, frame_type, f"Capturing {label} ({i + 1}/{count})")
+            self._report(on_progress, i + 1, count, frame_type, f"Capturing {label} ({i + 1}/{count})")
             data = self._camera.capture_array(
                 duration=duration,
                 gain=gain,

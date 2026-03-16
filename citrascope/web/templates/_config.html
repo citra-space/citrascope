@@ -338,7 +338,7 @@
                                             </select>
                                         </div>
                                         <div class="col-auto">
-                                            <button type="button" class="btn btn-primary btn-sm" @click="captureFrames()" :disabled="calCapturing">
+                                            <button type="button" class="btn btn-primary btn-sm" @click="captureFrames()" :disabled="calStatus?.capture_running || calStatus?.capture_requested">
                                                 Capture
                                             </button>
                                         </div>

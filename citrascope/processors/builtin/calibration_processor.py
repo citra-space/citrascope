@@ -111,38 +111,70 @@ class CalibrationProcessor(AbstractImageProcessor):
         # Apply calibration
         calibrated = raw_data.astype(np.float32)
 
-        if dark_path and bias_path:
-            with fits.open(bias_path) as hdul:
-                bias_data = hdul[0].data.astype(np.float32)  # type: ignore[index]
+        if dark_path:
             with fits.open(dark_path) as hdul:
                 dark_hdr = hdul[0].header  # type: ignore[index]
                 dark_data = hdul[0].data.astype(np.float32)  # type: ignore[index]
             dark_exposure = float(dark_hdr.get("EXPTIME", exposure))
-            # dark_data is already bias-subtracted by MasterBuilder, so it
-            # contains only the thermal component D(T_ref).  Scale it to the
-            # science exposure and subtract the full bias separately:
-            #   calibrated = raw - bias - D(T_ref) * (T_science / T_ref)
-            if dark_exposure > 0 and exposure > 0:
-                scale = exposure / dark_exposure
-                calibrated = calibrated - bias_data - dark_data * scale
-                if logger:
-                    logger.info(
-                        "Applied dark scaling: %.1fs ref → %.1fs science (scale %.3f) from %s",
-                        dark_exposure,
-                        exposure,
-                        scale,
-                        dark_path.name,
-                    )
+            dark_bias_subtracted = bool(dark_hdr.get("BIASSUB", True))
+
+            if bias_path and dark_bias_subtracted:
+                # Dark is already bias-subtracted — contains only thermal D(T_ref).
+                # Subtract bias and scaled thermal separately:
+                #   calibrated = raw - bias - D(T_ref) * (T_science / T_ref)
+                with fits.open(bias_path) as hdul:
+                    bias_data = hdul[0].data.astype(np.float32)  # type: ignore[index]
+                if dark_exposure > 0 and exposure > 0:
+                    scale = exposure / dark_exposure
+                    calibrated = calibrated - bias_data - dark_data * scale
+                    if logger:
+                        logger.info(
+                            "Applied dark scaling (bias-sub'd ref): %.1fs → %.1fs (×%.3f) from %s",
+                            dark_exposure,
+                            exposure,
+                            scale,
+                            dark_path.name,
+                        )
+                else:
+                    calibrated = calibrated - bias_data - dark_data
+                    if logger:
+                        logger.info("Applied bias + dark (unscaled): %s", dark_path.name)
+            elif not dark_bias_subtracted:
+                # Dark still contains bias+thermal. Scale the whole thing;
+                # don't subtract bias separately or it'll be double-counted.
+                if dark_exposure > 0 and exposure > 0:
+                    scale = exposure / dark_exposure
+                    calibrated = calibrated - dark_data * scale
+                    if logger:
+                        logger.info(
+                            "Applied dark scaling (bias-incl'd ref): %.1fs → %.1fs (×%.3f) from %s",
+                            dark_exposure,
+                            exposure,
+                            scale,
+                            dark_path.name,
+                        )
+                else:
+                    calibrated = calibrated - dark_data
+                    if logger:
+                        logger.info("Applied dark (no bias sub, unscaled): %s", dark_path.name)
             else:
-                calibrated = calibrated - bias_data - dark_data
-                if logger:
-                    logger.info("Applied bias + dark (unscaled): %s", dark_path.name)
-        elif dark_path:
-            with fits.open(dark_path) as hdul:
-                dark_data = hdul[0].data.astype(np.float32)  # type: ignore[index]
-            calibrated = calibrated - dark_data
-            if logger:
-                logger.info("Applied master dark (no bias for scaling): %s", dark_path.name)
+                # dark_bias_subtracted=True but no bias master available now —
+                # apply the bias-subtracted dark as-is (thermal-only).
+                if dark_exposure > 0 and exposure > 0:
+                    scale = exposure / dark_exposure
+                    calibrated = calibrated - dark_data * scale
+                    if logger:
+                        logger.info(
+                            "Applied dark scaling (no current bias): %.1fs → %.1fs (×%.3f) from %s",
+                            dark_exposure,
+                            exposure,
+                            scale,
+                            dark_path.name,
+                        )
+                else:
+                    calibrated = calibrated - dark_data
+                    if logger:
+                        logger.info("Applied dark (thermal-only, unscaled): %s", dark_path.name)
         elif bias_path:
             with fits.open(bias_path) as hdul:
                 bias_data = hdul[0].data.astype(np.float32)  # type: ignore[index]

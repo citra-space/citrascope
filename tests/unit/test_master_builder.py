@@ -90,6 +90,7 @@ class TestDarkBuild:
             data = hdul[0].data  # type: ignore[index]
             # 200 (median) - 50 (bias) = 150
             np.testing.assert_array_almost_equal(data, 150.0)
+            assert hdul[0].header["BIASSUB"] is True  # type: ignore[index]
 
     def test_dark_without_bias(self, library: CalibrationLibrary, profile: CalibrationProfile):
         frames = [np.full((4, 4), 200.0, dtype=np.uint16)] * 3
@@ -100,6 +101,7 @@ class TestDarkBuild:
         with fits.open(path) as hdul:
             data = hdul[0].data  # type: ignore[index]
             np.testing.assert_array_almost_equal(data, 200.0)
+            assert hdul[0].header["BIASSUB"] is False  # type: ignore[index]
 
 
 class TestFlatBuild:
