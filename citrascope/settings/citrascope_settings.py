@@ -97,7 +97,7 @@ class CitraScopeSettings(BaseModel):
     num_exposures: int = 3
 
     # Plate-solve after slewing to verify pointing before imaging.
-    plate_solve_after_slew: bool = True
+    plate_solve_after_slew: bool = False
 
     # MSI / elset cache
     elset_refresh_interval_hours: float = 6
