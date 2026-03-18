@@ -65,6 +65,10 @@ class MasterBuilder:
             on_progress=on_progress,
         )
 
+        if not raw_paths:
+            self._library.cleanup_tmp()
+            raise ValueError("No bias frames captured (cancelled?)")
+
         self._report(on_progress, count, count, "bias", f"Stacking {len(raw_paths)} frames...")
         master = self._median_stack(raw_paths)
         self._library.cleanup_tmp()
@@ -104,6 +108,10 @@ class MasterBuilder:
             cancel_event=cancel_event,
             on_progress=on_progress,
         )
+
+        if not raw_paths:
+            self._library.cleanup_tmp()
+            raise ValueError("No dark frames captured (cancelled?)")
 
         self._report(on_progress, count, count, "dark", f"Stacking {len(raw_paths)} frames...")
         master = self._median_stack(raw_paths)
@@ -146,11 +154,14 @@ class MasterBuilder:
         binning: int = 1,
         cancel_event: threading.Event | None = None,
         on_progress: ProgressCallback | None = None,
-    ) -> Path:
+    ) -> Path | None:
         """Capture and build a master flat (bias-subtracted, normalised to median=1.0).
 
         Runs auto-exposure before the main capture to find an exposure time
         that places the median ADU at ~50% of the sensor's dynamic range.
+
+        Returns the saved master path, or ``None`` if quality validation
+        rejected the flat.
         """
         gain_val = gain if gain is not None else (self._profile.current_gain or 0)
 
@@ -178,6 +189,10 @@ class MasterBuilder:
             on_progress=on_progress,
         )
 
+        if not raw_paths:
+            self._library.cleanup_tmp()
+            return None
+
         self._report(on_progress, count, count, "flat", f"Stacking {len(raw_paths)} frames...")
         master = self._median_stack(raw_paths)
 
@@ -196,7 +211,7 @@ class MasterBuilder:
         ok, reason = self._validate_flat_quality(master, max_adu, filter_name)
         if not ok:
             logger.warning("Flat quality check failed for %s: %s — master NOT saved", filter_name or "nofilter", reason)
-            return Path()
+            return None
 
         # Normalise to median = 1.0
         med = float(np.median(master))
@@ -256,6 +271,7 @@ class MasterBuilder:
         max_adu = float(self._camera.get_max_pixel_value(binning))
         target_adu = max_adu * self.TARGET_ADU_FRACTION
         lo = max_adu * (self.TARGET_ADU_FRACTION - self.ADU_TOLERANCE)
+        hi = max_adu * (self.TARGET_ADU_FRACTION + self.ADU_TOLERANCE)
 
         # Per-filter state: file paths on disk, not in-memory arrays
         frame_paths: dict[str, list[Path]] = {f["name"]: [] for f in filters}
@@ -350,7 +366,7 @@ class MasterBuilder:
             rnd_elapsed = time.monotonic() - rnd_t0
             round_times.append(rnd_elapsed)
 
-            if rnd % reexpose_interval == 0 and rnd < count:
+            if reexpose_interval > 0 and rnd % reexpose_interval == 0 and rnd < count:
                 self._reexpose_check(
                     filters,
                     exposures,
@@ -360,6 +376,7 @@ class MasterBuilder:
                     binning,
                     target_adu,
                     lo,
+                    hi,
                     on_progress,
                     cancel_event,
                 )
@@ -608,6 +625,7 @@ class MasterBuilder:
         binning: int,
         target_adu: float,
         lo_adu: float,
+        hi_adu: float,
         on_progress: ProgressCallback | None,
         cancel_event: threading.Event | None,
     ) -> None:
@@ -622,7 +640,7 @@ class MasterBuilder:
             latest_median = last_median[fname]
             drift = abs(latest_median - target_adu) / target_adu if target_adu > 0 else 0
 
-            if drift > self.ADU_DRIFT_THRESHOLD and latest_median < lo_adu:
+            if drift > self.ADU_DRIFT_THRESHOLD and (latest_median < lo_adu or latest_median > hi_adu):
                 logger.info(
                     "ADU drift %.0f%% for %s (median %.0f, target %.0f) — re-exposing",
                     drift * 100,
@@ -679,7 +697,12 @@ class MasterBuilder:
 
     @staticmethod
     def _median_stack(paths: list[Path]) -> np.ndarray:
-        """Load temporary FITS files and compute the pixel-wise median."""
+        """Load temporary FITS files and compute the pixel-wise median.
+
+        Raises ``ValueError`` if *paths* is empty (caller should guard).
+        """
+        if not paths:
+            raise ValueError("Cannot median-stack zero frames")
         arrays: list[np.ndarray] = []
         for p in paths:
             with fits.open(p) as hdul:

@@ -199,7 +199,7 @@ class CalibrationManager:
         without cooling.  Returns True if stable (or not applicable), False
         if cancelled or timed out.
         """
-        if frame_type in ("bias", "flat"):
+        if frame_type in ("bias", "flat", "interleaved_flat"):
             return True
 
         profile = camera.get_calibration_profile()
@@ -358,7 +358,7 @@ class CalibrationManager:
                     self.logger.error("Failed to set filter %s (position %d)", filter_name, filter_position)
                     return
 
-            builder.build_flat(
+            result = builder.build_flat(
                 count=count,
                 exposure_time=exposure_time,
                 filter_name=filter_name,
@@ -367,6 +367,8 @@ class CalibrationManager:
                 cancel_event=self._cancel_event,
                 on_progress=self._on_progress,
             )
+            if result is None:
+                self.logger.warning("Flat capture completed but master was rejected by quality validation")
         elif frame_type == "interleaved_flat":
             filters = params.get("filters", [])
             if not filters:

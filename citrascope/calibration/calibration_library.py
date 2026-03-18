@@ -299,7 +299,8 @@ class CalibrationLibrary:
                         result["bias"].append(entry)
                     elif cal_type == "dark":
                         entry["exposure_time"] = float(hdr.get("EXPTIME", 0))
-                        entry["temperature"] = hdr.get("CCD-TEMP")
+                        raw_temp = hdr.get("CCD-TEMP")
+                        entry["temperature"] = float(raw_temp) if raw_temp is not None else None
                         result["darks"].append(entry)
                     elif cal_type == "flat":
                         entry["filter"] = str(hdr.get("FILTER", ""))
