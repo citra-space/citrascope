@@ -165,3 +165,21 @@ export function formatGPSLocation(gpsLocation) {
 
     return `${accuracy}${sats} sats, ${fixType}`;
 }
+
+/**
+ * Format operating location as compact coordinate string for the Telescope card.
+ * @param {Object} status - SystemStatus object with location_latitude/longitude/altitude
+ * @returns {string} e.g. "38.840°N, 104.821°W, 2743m"
+ */
+export function formatCompactLocation(status) {
+    if (status?.location_latitude == null || status?.location_longitude == null) return '-';
+    const lat = status.location_latitude;
+    const lon = status.location_longitude;
+    const ns = lat >= 0 ? 'N' : 'S';
+    const ew = lon >= 0 ? 'E' : 'W';
+    let s = `${Math.abs(lat).toFixed(3)}\u00b0${ns}, ${Math.abs(lon).toFixed(3)}\u00b0${ew}`;
+    if (status.location_altitude != null) {
+        s += `, ${Math.round(status.location_altitude)}m`;
+    }
+    return s;
+}

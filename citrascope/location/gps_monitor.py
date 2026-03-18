@@ -26,6 +26,11 @@ class GPSFix:
     eph: float | None = None  # estimated horizontal position error (meters)
     sep: float | None = None  # spherical error probable (meters)
 
+    # gpsd subsystem diagnostics (from VERSION and DEVICES messages)
+    gpsd_version: str | None = None  # e.g. "3.25"
+    device_path: str | None = None  # e.g. "/dev/ttyACM0"
+    device_driver: str | None = None  # e.g. "u-blox"
+
     @property
     def is_strong_fix(self) -> bool:
         """Check if this is a strong GPS fix (3D with 4+ satellites and valid coordinates)."""
@@ -253,8 +258,17 @@ class GPSMonitor:
                     data = json.loads(line)
                     msg_class = data.get("class")
 
-                    # Extract position and fix mode from TPV message
-                    if msg_class == "TPV":
+                    if msg_class == "VERSION":
+                        fix.gpsd_version = data.get("release")
+
+                    elif msg_class == "DEVICES":
+                        devices = data.get("devices", [])
+                        if devices:
+                            dev = devices[0]
+                            fix.device_path = dev.get("path")
+                            fix.device_driver = dev.get("driver")
+
+                    elif msg_class == "TPV":
                         if "mode" in data:
                             fix.fix_mode = data["mode"]
                         if "lat" in data:
@@ -268,8 +282,7 @@ class GPSMonitor:
                         if "sep" in data:
                             fix.sep = data["sep"]
 
-                    # Extract satellite count from SKY message
-                    if msg_class == "SKY":
+                    elif msg_class == "SKY":
                         # Prefer uSat (used satellites) if available
                         if "uSat" in data:
                             fix.satellites = data["uSat"]
@@ -280,8 +293,10 @@ class GPSMonitor:
                 except json.JSONDecodeError:
                     continue
 
-            # Only return fix if we got at least position data
+            # Return fix if we got position data OR gpsd subsystem info
             if fix.latitude is not None and fix.longitude is not None:
+                return fix
+            elif fix.gpsd_version is not None or fix.device_path is not None:
                 return fix
             else:
                 return None

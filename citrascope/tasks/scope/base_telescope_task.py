@@ -631,12 +631,17 @@ class AbstractBaseTelescopeTask(ABC):
             return
 
         adapter.observed_fov_short_deg = min(field_w, field_h)
+        adapter.observed_fov_w_deg = field_w
+        adapter.observed_fov_h_deg = field_h
+
+        solved_scale = extracted_data.get("plate_solver.pixel_scale")
+        if solved_scale:
+            adapter.observed_pixel_scale_arcsec = float(solved_scale)
 
         tr = adapter.telescope_record
         if tr:
             try:
                 nominal_scale = float(tr["pixelSize"]) / float(tr["focalLength"]) * 206.265
-                solved_scale = extracted_data.get("plate_solver.pixel_scale")
                 if solved_scale and nominal_scale > 0:
                     pct_diff = abs(solved_scale - nominal_scale) / nominal_scale
                     if pct_diff > 0.1:

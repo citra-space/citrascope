@@ -87,6 +87,13 @@ class SystemStatus(BaseModel):
     ground_station_id: str | None = None
     ground_station_name: str | None = None
     ground_station_url: str | None = None
+    ground_station_latitude: float | None = None
+    ground_station_longitude: float | None = None
+    ground_station_altitude: float | None = None
+    location_source: str | None = None  # "gps" or "ground_station"
+    location_latitude: float | None = None
+    location_longitude: float | None = None
+    location_altitude: float | None = None
     autofocus_requested: bool = False
     autofocus_running: bool = False
     autofocus_progress: str = ""
@@ -126,6 +133,7 @@ class SystemStatus(BaseModel):
     elset_health: dict[str, Any] | None = None
     latest_task_image_url: str | None = None
     calibration_status: dict[str, Any] | None = None
+    config_health: dict[str, Any] | None = None
 
 
 class HardwareConfig(BaseModel):
@@ -1750,6 +1758,9 @@ class CitraScopeWebApp:
                         "eph": gps_fix.eph,
                         "sep": gps_fix.sep,
                         "source": "gps",
+                        "gpsd_version": gps_fix.gpsd_version,
+                        "device_path": gps_fix.device_path,
+                        "device_driver": gps_fix.device_driver,
                     }
                 else:
                     self.status.gps_location = None
@@ -1769,6 +1780,28 @@ class CitraScopeWebApp:
                 self.status.ground_station_id = gs_id
                 self.status.ground_station_name = gs_name
                 self.status.ground_station_url = f"{base_url}/ground-stations/{gs_id}" if gs_id else None
+                self.status.ground_station_latitude = gs_record.get("latitude")
+                self.status.ground_station_longitude = gs_record.get("longitude")
+                self.status.ground_station_altitude = gs_record.get("altitude")
+
+            # Resolve active operating location from data already fetched above
+            # (avoids calling get_current_location() which can block on subprocess)
+            gps = self.status.gps_location
+            if gps and gps.get("is_strong") and gps.get("latitude") is not None:
+                self.status.location_source = "gps"
+                self.status.location_latitude = gps["latitude"]
+                self.status.location_longitude = gps["longitude"]
+                self.status.location_altitude = gps.get("altitude")
+            elif self.status.ground_station_latitude is not None:
+                self.status.location_source = "ground_station"
+                self.status.location_latitude = self.status.ground_station_latitude
+                self.status.location_longitude = self.status.ground_station_longitude
+                self.status.location_altitude = self.status.ground_station_altitude
+            else:
+                self.status.location_source = None
+                self.status.location_latitude = None
+                self.status.location_longitude = None
+                self.status.location_altitude = None
 
             # Update task processing state
             if hasattr(self.daemon, "task_manager") and self.daemon.task_manager:
@@ -1837,6 +1870,24 @@ class CitraScopeWebApp:
 
             # Calibration status
             self.status.calibration_status = self._build_calibration_status()
+
+            # Config health: compare server telescope record vs hardware + plate solve
+            adapter = self.daemon.hardware_adapter
+            if self.daemon.telescope_record and adapter:
+                from citrascope.hardware.config_health import assess_config_health
+
+                camera_info = adapter.get_camera_info()
+                health = assess_config_health(
+                    telescope_record=self.daemon.telescope_record,
+                    camera_info=camera_info,
+                    observed_pixel_scale=adapter.observed_pixel_scale_arcsec,
+                    observed_fov_w=adapter.observed_fov_w_deg,
+                    observed_fov_h=adapter.observed_fov_h_deg,
+                    observed_slew_rate=adapter.observed_slew_rate_deg_per_s,
+                )
+                self.status.config_health = health.to_dict()
+            else:
+                self.status.config_health = None
 
             self.status.last_update = datetime.now().isoformat()
 
