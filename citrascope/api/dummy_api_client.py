@@ -183,6 +183,7 @@ class DummyApiClient(AbstractCitraApiClient):
                         "tle": [cat["tle_line1"], cat["tle_line2"]],
                         "tle_line1": cat["tle_line1"],
                         "tle_line2": cat["tle_line2"],
+                        "epoch": now_iso,
                         "creationEpoch": now_iso,
                     }
                 ],
@@ -260,6 +261,7 @@ class DummyApiClient(AbstractCitraApiClient):
 
                 cat = self._satellite_catalog[satellite_id]
                 line1, line2 = cat["tle_line1"], cat["tle_line2"]
+                now_iso = datetime.now(timezone.utc).isoformat()
                 satellite = {
                     "id": satellite_id,
                     "name": cat["name"],
@@ -268,7 +270,8 @@ class DummyApiClient(AbstractCitraApiClient):
                             "tle": [line1, line2],
                             "tle_line1": line1,
                             "tle_line2": line2,
-                            "creationEpoch": datetime.now(timezone.utc).isoformat(),
+                            "epoch": now_iso,
+                            "creationEpoch": now_iso,
                         }
                     ],
                 }
@@ -281,6 +284,26 @@ class DummyApiClient(AbstractCitraApiClient):
             if self.logger:
                 self.logger.debug(f"DummyApiClient: get_satellite({satellite_id})")
             return satellite
+
+    def get_best_elset(self, satellite_id) -> dict | None:
+        """Return the single elset for a dummy satellite (mimics server's best-elset logic)."""
+        with self._data_lock:
+            satellites = self.data.get("satellites", {})
+            satellite = satellites.get(satellite_id)
+            if not satellite:
+                if satellite_id in self._satellite_catalog:
+                    cat = self._satellite_catalog[satellite_id]
+                    now_iso = datetime.now(timezone.utc).isoformat()
+                    return {
+                        "tle": [cat["tle_line1"], cat["tle_line2"]],
+                        "epoch": now_iso,
+                        "creationEpoch": now_iso,
+                    }
+                return None
+            elsets = satellite.get("elsets", [])
+            if not elsets:
+                return None
+            return elsets[0]
 
     def get_telescope_tasks(self, telescope_id):
         """Fetch tasks for telescope (returns only Pending/Scheduled).
