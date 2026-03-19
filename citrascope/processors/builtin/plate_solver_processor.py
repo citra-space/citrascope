@@ -151,6 +151,26 @@ class PlateSolverProcessor(AbstractImageProcessor):
     Typical processing time: a few seconds (Tetra3).
     """
 
+    _tetra_loaded: bool = False
+
+    @classmethod
+    def warm_cache(cls, logger: logging.Logger | None = None) -> None:
+        """Pre-download and load the Tetra3 star database so the first solve is fast."""
+        if cls._tetra_loaded:
+            return
+        try:
+            from pixelemon import TetraSolver
+
+            if logger:
+                logger.info("Pre-loading Tetra3 star database...")
+            TetraSolver.high_memory()
+            cls._tetra_loaded = True
+            if logger:
+                logger.info("Tetra3 star database loaded")
+        except Exception as e:
+            if logger:
+                logger.warning(f"Failed to pre-load Tetra3 database (will retry on first solve): {e}")
+
     name = "plate_solver"
     friendly_name = "Plate Solver"
     description = "Astrometric calibration via Pixelemon/Tetra3 (determines exact pointing and WCS)"
@@ -210,7 +230,9 @@ class PlateSolverProcessor(AbstractImageProcessor):
         """
         from pixelemon import TelescopeImage, TetraSolver
 
-        TetraSolver.high_memory()
+        if not PlateSolverProcessor._tetra_loaded:
+            TetraSolver.high_memory()
+            PlateSolverProcessor._tetra_loaded = True
         telescope = _build_telescope_for_image(image_path, context)
         image = TelescopeImage.from_fits_file(image_path, telescope)
         solve = image.plate_solve  # triggers internal fit_wcs_from_points(sip_degree=5)

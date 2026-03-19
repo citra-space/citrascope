@@ -52,6 +52,9 @@ class ProcessorRegistry:
         processor_names = [p.name for p in self.processors]
         self.logger.info(f"ProcessorRegistry initialized with {len(self.processors)} processors: {processor_names}")
 
+        # Pre-download and load the Tetra3 star database so first solve is immediate
+        PlateSolverProcessor.warm_cache(logger=self.logger)
+
     def get_processor_stats(self) -> dict:
         """Return a consistent snapshot of per-processor lifetime stats."""
         with self._stats_lock:
