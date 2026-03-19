@@ -415,20 +415,20 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
         """
         start_time = time.time()
 
-        # Check prerequisites
-        catalog_path = context.working_dir / "output.cat"
-        if not catalog_path.exists():
-            return ProcessorResult(
-                should_upload=True,
-                extracted_data={},
-                confidence=0.0,
-                reason="Source catalog not found",
-                processing_time_seconds=time.time() - start_time,
-                processor_name=self.name,
-            )
-
-        try:
-            # Load sources (SExtractor format: no header, cols 4=mag 5=magerr 8=ra 9=dec 10=fwhm)
+        # Prefer in-memory sources from plate solver; fall back to output.cat on disk
+        if context.detected_sources is not None:
+            sources_df = context.detected_sources
+        else:
+            catalog_path = context.working_dir / "output.cat"
+            if not catalog_path.exists():
+                return ProcessorResult(
+                    should_upload=True,
+                    extracted_data={},
+                    confidence=0.0,
+                    reason="Source catalog not found",
+                    processing_time_seconds=time.time() - start_time,
+                    processor_name=self.name,
+                )
             sources_df = pd.read_csv(
                 catalog_path,
                 sep=r"\s+",
@@ -437,6 +437,8 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
                 usecols=[4, 5, 8, 9, 10],
                 names=["mag", "magerr", "ra", "dec", "fwhm"],
             )
+
+        try:
 
             tracking_mode = context.tracking_mode or "sidereal"
             satellite_observations, debug_info = self._match_satellites(

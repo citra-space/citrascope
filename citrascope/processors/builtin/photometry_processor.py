@@ -178,20 +178,20 @@ class PhotometryProcessor(AbstractImageProcessor):
         """
         start_time = time.time()
 
-        # Check if sources were extracted
-        catalog_path = context.working_dir / "output.cat"
-        if not catalog_path.exists():
-            return ProcessorResult(
-                should_upload=True,
-                extracted_data={},
-                confidence=0.0,
-                reason="Source catalog not found (source extraction must run first)",
-                processing_time_seconds=time.time() - start_time,
-                processor_name=self.name,
-            )
-
-        try:
-            # Load source catalog (SExtractor format: no header, cols 4=mag 5=magerr 8=ra 9=dec 10=fwhm)
+        # Prefer in-memory sources from plate solver; fall back to output.cat on disk
+        if context.detected_sources is not None:
+            sources_df = context.detected_sources
+        else:
+            catalog_path = context.working_dir / "output.cat"
+            if not catalog_path.exists():
+                return ProcessorResult(
+                    should_upload=True,
+                    extracted_data={},
+                    confidence=0.0,
+                    reason="Source catalog not found (source extraction must run first)",
+                    processing_time_seconds=time.time() - start_time,
+                    processor_name=self.name,
+                )
             sources_df = pd.read_csv(
                 catalog_path,
                 sep=r"\s+",
@@ -200,6 +200,8 @@ class PhotometryProcessor(AbstractImageProcessor):
                 usecols=[4, 5, 8, 9, 10],
                 names=["mag", "magerr", "ra", "dec", "fwhm"],
             )
+
+        try:
 
             # Get filter name
             filter_name = context.task.assigned_filter_name if context.task else None
