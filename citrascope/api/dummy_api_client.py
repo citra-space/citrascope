@@ -183,6 +183,7 @@ class DummyApiClient(AbstractCitraApiClient):
                         "tle": [cat["tle_line1"], cat["tle_line2"]],
                         "tle_line1": cat["tle_line1"],
                         "tle_line2": cat["tle_line2"],
+                        "epoch": now_iso,
                         "creationEpoch": now_iso,
                     }
                 ],
@@ -260,6 +261,7 @@ class DummyApiClient(AbstractCitraApiClient):
 
                 cat = self._satellite_catalog[satellite_id]
                 line1, line2 = cat["tle_line1"], cat["tle_line2"]
+                now_iso = datetime.now(timezone.utc).isoformat()
                 satellite = {
                     "id": satellite_id,
                     "name": cat["name"],
@@ -268,7 +270,8 @@ class DummyApiClient(AbstractCitraApiClient):
                             "tle": [line1, line2],
                             "tle_line1": line1,
                             "tle_line2": line2,
-                            "creationEpoch": datetime.now(timezone.utc).isoformat(),
+                            "epoch": now_iso,
+                            "creationEpoch": now_iso,
                         }
                     ],
                 }

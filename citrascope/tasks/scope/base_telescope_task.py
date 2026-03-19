@@ -135,10 +135,9 @@ class AbstractBaseTelescopeTask(ABC):
         elsets = satellite_data.get("elsets", [])
         if not elsets:
             return None
-        _EPOCH_FLOOR = dtparser.isoparse("1970-01-01T00:00:00Z")
         most_recent_elset = max(
             elsets,
-            key=lambda e: dtparser.isoparse(e["epoch"]) if e.get("epoch") else _EPOCH_FLOOR,
+            key=lambda e: dtparser.isoparse(e.get("epoch") or e.get("creationEpoch") or "1970-01-01T00:00:00Z"),
         )
         return most_recent_elset
 
