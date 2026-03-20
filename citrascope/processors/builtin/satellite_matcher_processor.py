@@ -28,6 +28,7 @@ _ELONGATION_THRESHOLD = 1.5
 _FIELD_RADIUS_DEG = 2.0
 _MATCH_RADIUS_DEG = 1.0 / 60.0  # 1 arcminute
 _STAR_MATCH_TOLERANCE_DEG = 1.0 / 3600.0  # 1 arcsecond — tight match for star subtraction
+_STAR_SUBTRACTION_ENABLED = False
 
 
 class SatelliteMatcherProcessor(AbstractImageProcessor):
@@ -158,9 +159,9 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
             "elongation_mean": float(elong_vals.mean()) if len(elong_vals) else None,
         }
 
-        # Subtract known catalog stars from candidates
-        potential_sats, star_sub_stats = self._subtract_known_stars(potential_sats, context.working_dir)
-        debug["star_subtraction"] = star_sub_stats
+        if _STAR_SUBTRACTION_ENABLED:
+            potential_sats, star_sub_stats = self._subtract_known_stars(potential_sats, context.working_dir)
+            debug["star_subtraction"] = star_sub_stats
 
         if potential_sats.empty:
             debug["early_exit"] = "no satellite candidates after elongation filtering and star subtraction"
