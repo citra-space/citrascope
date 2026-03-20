@@ -201,6 +201,10 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
         debug["exptime"] = exptime
         debug["mid_exposure_offset_s"] = exptime / 2.0 if exptime > 0 else 0.0
 
+        zero_point = context.zero_point if context.zero_point is not None else 0.0
+        debug["zero_point"] = zero_point
+        debug["zero_point_available"] = context.zero_point is not None
+
         # Sun position (km, J2000/ECI) via astropy ERFA — no external ephemeris file required
         _t = AstropyTime(epoch.to_datetime())
         _sun_bary, _ = get_body_barycentric_posvel("sun", _t)
@@ -388,13 +392,15 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
             if src_idx < 0 or src_idx >= len(potential_sats):
                 continue
             row = potential_sats.iloc[src_idx]
+            inst_mag = float(row["mag"])
             observations.append(
                 {
                     "norad_id": p["satellite_id"],
                     "name": p["name"],
                     "ra": float(row["ra"]),
                     "dec": float(row["dec"]),
-                    "mag": float(row["mag"]),
+                    "mag": inst_mag + zero_point,
+                    "mag_instrumental": inst_mag,
                     "filter": filter_name,
                     "timestamp": timestamp_str,
                     "phase_angle": round(p["phase_angle"], 1),
@@ -440,11 +446,14 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
 
             elapsed = time.time() - start_time
 
+            zero_point_applied = debug_info.get("zero_point", 0.0)
+
             result = ProcessorResult(
                 should_upload=True,
                 extracted_data={
                     "num_satellites_detected": len(satellite_observations),
                     "satellite_observations": satellite_observations,
+                    "zero_point": zero_point_applied,
                 },
                 confidence=1.0 if satellite_observations else 0.5,
                 reason=f"Matched {len(satellite_observations)} satellite(s) in {elapsed:.1f}s",
