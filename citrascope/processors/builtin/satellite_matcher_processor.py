@@ -1,5 +1,6 @@
 """Satellite association processor using TLE propagation."""
 
+import json
 import math
 import time
 from datetime import datetime, timedelta, timezone
@@ -94,6 +95,26 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
             "catalog_stars_removed": removed,
         }
         return filtered, stats
+
+    @staticmethod
+    def _read_zero_point(working_dir: Path) -> tuple[float, str]:
+        """Read the photometric zero point written by PhotometryProcessor.
+
+        Returns (zero_point, source_label). Falls back to (0.0, "none") when the
+        photometry result is missing or unparseable.
+        """
+        photometry_path = working_dir / "photometry_result.json"
+        if not photometry_path.exists():
+            return 0.0, "none"
+        try:
+            with open(photometry_path) as f:
+                phot_result = json.load(f)
+            zp_val = phot_result.get("extracted_data", {}).get("zero_point")
+            if zp_val is not None:
+                return float(zp_val), "photometry_result.json"
+        except (json.JSONDecodeError, ValueError, TypeError):
+            pass
+        return 0.0, "none"
 
     def _parse_fits_timestamp(self, timestamp_str: str) -> ktime.Epoch:
         """Parse FITS DATE-OBS timestamp into a Keplemon Epoch.
@@ -200,6 +221,10 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
         debug["epoch"] = str(timestamp_str)
         debug["exptime"] = exptime
         debug["mid_exposure_offset_s"] = exptime / 2.0 if exptime > 0 else 0.0
+
+        zero_point, zp_source = self._read_zero_point(context.working_dir)
+        debug["zero_point"] = zero_point
+        debug["zero_point_source"] = zp_source
 
         # Sun position (km, J2000/ECI) via astropy ERFA — no external ephemeris file required
         _t = AstropyTime(epoch.to_datetime())
@@ -388,13 +413,15 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
             if src_idx < 0 or src_idx >= len(potential_sats):
                 continue
             row = potential_sats.iloc[src_idx]
+            inst_mag = float(row["mag"])
             observations.append(
                 {
                     "norad_id": p["satellite_id"],
                     "name": p["name"],
                     "ra": float(row["ra"]),
                     "dec": float(row["dec"]),
-                    "mag": float(row["mag"]),
+                    "mag": inst_mag + zero_point,
+                    "mag_instrumental": inst_mag,
                     "filter": filter_name,
                     "timestamp": timestamp_str,
                     "phase_angle": round(p["phase_angle"], 1),
@@ -440,11 +467,14 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
 
             elapsed = time.time() - start_time
 
+            zero_point_applied = debug_info.get("zero_point", 0.0)
+
             result = ProcessorResult(
                 should_upload=True,
                 extracted_data={
                     "num_satellites_detected": len(satellite_observations),
                     "satellite_observations": satellite_observations,
+                    "zero_point": zero_point_applied,
                 },
                 confidence=1.0 if satellite_observations else 0.5,
                 reason=f"Matched {len(satellite_observations)} satellite(s) in {elapsed:.1f}s",
