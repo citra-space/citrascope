@@ -459,17 +459,27 @@ class TestGeoDetectionFromTle:
 class TestAdaptiveMatchRadius:
     """GEO/slow-mover targets use a wider match radius than LEO targets."""
 
-    def test_geo_gets_wider_radius(self):
+    def test_slow_mover_gets_wider_radius(self):
         """When is_slow_mover is True, the wider GEO radius is selected."""
         is_slow_mover = True
-        match_radius_deg = _GEO_MATCH_RADIUS_DEG if is_slow_mover else _MATCH_RADIUS_DEG
+        geo_detected_from_tle = False
+        match_radius_deg = _GEO_MATCH_RADIUS_DEG if (is_slow_mover or geo_detected_from_tle) else _MATCH_RADIUS_DEG
+        assert match_radius_deg == _GEO_MATCH_RADIUS_DEG
+        assert match_radius_deg * 60.0 == 5.0  # 5 arcminutes
+
+    def test_geo_tle_detection_gets_wider_radius(self):
+        """When geo_detected_from_tle is True, the wider GEO radius is selected."""
+        is_slow_mover = False
+        geo_detected_from_tle = True
+        match_radius_deg = _GEO_MATCH_RADIUS_DEG if (is_slow_mover or geo_detected_from_tle) else _MATCH_RADIUS_DEG
         assert match_radius_deg == _GEO_MATCH_RADIUS_DEG
         assert match_radius_deg * 60.0 == 5.0  # 5 arcminutes
 
     def test_leo_gets_standard_radius(self):
-        """When is_slow_mover is False, the standard LEO radius is selected."""
+        """When neither is_slow_mover nor geo_detected_from_tle, standard radius is used."""
         is_slow_mover = False
-        match_radius_deg = _GEO_MATCH_RADIUS_DEG if is_slow_mover else _MATCH_RADIUS_DEG
+        geo_detected_from_tle = False
+        match_radius_deg = _GEO_MATCH_RADIUS_DEG if (is_slow_mover or geo_detected_from_tle) else _MATCH_RADIUS_DEG
         assert match_radius_deg == _MATCH_RADIUS_DEG
         assert match_radius_deg * 60.0 == 1.0  # 1 arcminute
 

@@ -257,9 +257,11 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
             target_section["cache_tle_note"] = "target satellite not found in elset cache"
         debug["target_satellite"] = target_section
 
-        # TLE-based GEO detection: override is_slow_mover when the target satellite's
-        # mean motion indicates a geosynchronous orbit (~1.0 rev/day). This catches GEO
-        # targets when pointing_report is absent (e.g. SEQUENCE_TO_CONTROLLER strategy).
+        # TLE-based GEO detection: widen match radius when the target satellite's
+        # mean motion indicates a geosynchronous orbit (~1.0 rev/day). GEO TLE
+        # propagation errors are typically 1-5 arcmin, exceeding the standard
+        # 1-arcmin radius. The elongation filter is NOT bypassed — in sidereal
+        # tracking, real GEO satellites produce streaks that pass the filter.
         geo_detected_from_tle = False
         target_elset = cache_match or next((e for e in elsets if len(e.get("tle", [])) >= 2), None)
         if target_elset:
@@ -271,26 +273,9 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
                 except Exception:
                     pass
 
-        if geo_detected_from_tle and not is_slow_mover:
-            is_slow_mover = True
-            elongation_filter_applied = False
-            potential_sats = sources.copy()
-            debug.update({
-                "is_slow_mover": True,
-                "is_slow_mover_source": "tle_mean_motion",
-                "elongation_filter_applied": False,
-            })
-            debug["source_classification"].update({
-                "satellite_candidate_count": len(potential_sats),
-                "star_like_count": 0,
-            })
-            if _STAR_SUBTRACTION_ENABLED:
-                potential_sats, star_sub_stats = self._subtract_known_stars(potential_sats, context.working_dir)
-                debug["star_subtraction"] = star_sub_stats
-
         debug["geo_detected_from_tle"] = geo_detected_from_tle
 
-        match_radius_deg = _GEO_MATCH_RADIUS_DEG if is_slow_mover else _MATCH_RADIUS_DEG
+        match_radius_deg = _GEO_MATCH_RADIUS_DEG if (is_slow_mover or geo_detected_from_tle) else _MATCH_RADIUS_DEG
         debug["match_radius_arcmin"] = match_radius_deg * 60.0
 
         # Propagate all TLEs, keep only those within the field, collect predictions
