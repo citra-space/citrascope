@@ -1,7 +1,6 @@
 """Tests for photometry processor with local APASS catalog."""
 
 import sqlite3
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import astropy.units as u

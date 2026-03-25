@@ -7,7 +7,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import astropy.units as u
-import numpy as np
 import pandas as pd
 import pytest
 from astropy_healpix import HEALPix

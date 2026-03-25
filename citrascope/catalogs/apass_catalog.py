@@ -67,7 +67,8 @@ class ApassCatalog:
         except OSError:
             return False
 
-    def ensure_available(self, api_client: AbstractCitraApiClient | None = None, logger: logging.Logger | None = None) -> bool:
+    def ensure_available(self, api_client: AbstractCitraApiClient | None = None,
+                         logger: logging.Logger | None = None) -> bool:
         """Download the catalog if it is not already present.
 
         Args:
