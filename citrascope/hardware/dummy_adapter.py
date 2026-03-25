@@ -510,7 +510,7 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
                 "default": _DEFAULT_TEST_FITS_DIR,
                 "description": (
                     "Absolute path to a folder of user-provided FITS images for testing. "
-                    "One or more files are served round-robin."
+                    "One or more files are served round-robin. "
                     "See test-fits/README.md in the repo for the full workflow."
                 ),
                 "required": False,
