@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 
 import httpx
 from keplemon.elements import TopocentricElements
-from keplemon.enums import TimeSystem
 from keplemon.time import Epoch
 
 from .abstract_api_client import AbstractCitraApiClient
@@ -108,19 +107,6 @@ class CitraApiClient(AbstractCitraApiClient):
         response = self._request("PATCH", "/telescopes", json=payload)
         return response is not None
 
-    @staticmethod
-    def _normalize_timestamp_for_keplemon(raw_ts: str) -> str:
-        """Normalize an ISO timestamp to the Z-terminated format keplemon expects.
-
-        Keplemon's Epoch.from_iso requires ``YYYY-MM-DDTHH:MM:SSZ`` — no microseconds,
-        no ``+00:00`` offset.  The satellite matcher can produce either format depending
-        on whether mid-exposure offset was applied.
-        """
-        dt = datetime.fromisoformat(raw_ts.replace("Z", "+00:00") if "Z" in raw_ts else raw_ts)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-
     def upload_optical_observations(
         self,
         observations: list,
@@ -157,8 +143,11 @@ class CitraApiClient(AbstractCitraApiClient):
         skipped = 0
         for obs in observations:
             try:
-                normalized_ts = self._normalize_timestamp_for_keplemon(obs["timestamp"])
-                obs_epoch = Epoch.from_iso(normalized_ts, time_system=TimeSystem.UTC)
+                dt = datetime.fromisoformat(obs["timestamp"].replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                obs_epoch = Epoch.from_datetime(dt)
+                epoch_str = dt.isoformat().replace("+00:00", "Z")
                 topo = TopocentricElements.from_j2000(obs_epoch, obs["ra"], obs["dec"])
             except Exception as e:
                 skipped += 1
@@ -173,7 +162,7 @@ class CitraApiClient(AbstractCitraApiClient):
             entry = {
                 "satelliteId": obs["norad_id"],
                 "telescopeId": telescope_id,
-                "epoch": normalized_ts,
+                "epoch": epoch_str,
                 "rightAscension": topo.right_ascension,
                 "declination": topo.declination,
                 "sensorLatitude": sensor_location["latitude"],
@@ -194,7 +183,7 @@ class CitraApiClient(AbstractCitraApiClient):
             if self.logger:
                 self.logger.debug(
                     f"upload_optical_observations: built entry for satellite {obs['norad_id']} "
-                    f"at epoch={normalized_ts}, teme_ra={topo.right_ascension:.4f}, "
+                    f"at epoch={epoch_str}, teme_ra={topo.right_ascension:.4f}, "
                     f"teme_dec={topo.declination:.4f}"
                 )
 
