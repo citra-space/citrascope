@@ -447,6 +447,10 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
     def get_tracking_rate(self) -> tuple[float, float]:
         return (0, 0)  # TODO: make real
 
+    @property
+    def sequence_provides_tracking(self) -> bool:
+        return True
+
     def _get_sequence_template(self) -> str:
         """Load the sequence template as a string for placeholder replacement."""
         template_path = os.path.join(os.path.dirname(__file__), "survey_template.json")

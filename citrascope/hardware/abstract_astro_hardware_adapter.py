@@ -276,6 +276,19 @@ class AbstractAstroHardwareAdapter(ABC):
         """
         return False
 
+    @property
+    def sequence_provides_tracking(self) -> bool:
+        """Whether the adapter's observation sequence handles TLE rate tracking internally.
+
+        When True and the observation strategy is SEQUENCE_TO_CONTROLLER, the
+        processing pipeline will treat images as rate-tracked (tracking_mode="rate")
+        even though citrascope did not call set_custom_tracking_rate().
+
+        Returns False by default. Override in adapters whose sequence controller
+        (e.g. NINA with PlaneWave TLE plugins) manages satellite tracking.
+        """
+        return False
+
     def perform_alignment(self, target_ra: float, target_dec: float) -> bool:
         """Perform plate-solve alignment to correct the mount's pointing model.
 
