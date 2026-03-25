@@ -238,7 +238,7 @@ class TestDrawAnnotations:
         proc._draw_matches(draw, wcs, matches, font, img.height)
 
         arr = np.array(img)
-        assert arr.sum() > 0
+        assert arr.sum() > 0  # something was drawn
 
     def test_draws_dashed_prediction_circle(self):
         img = Image.new("RGB", (200, 200), color=(0, 0, 0))
@@ -253,7 +253,7 @@ class TestDrawAnnotations:
         proc._draw_predictions(draw, wcs, predictions, font, img.height)
 
         arr = np.array(img)
-        assert arr.sum() > 0
+        assert arr.sum() > 0  # something was drawn
 
     def test_overlay_strip_includes_task_name(self):
         img = Image.new("RGB", (400, 200), color=(0, 0, 0))
@@ -313,7 +313,7 @@ class TestDrawStars:
         proc._draw_stars(draw, wcs, sources, img.height)
 
         arr = np.array(img)
-        assert arr.sum() > 0
+        assert arr.sum() > 0  # something was drawn
 
     def test_skips_elongated_sources(self):
         import pandas as pd
