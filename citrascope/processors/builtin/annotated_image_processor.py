@@ -220,7 +220,7 @@ class AnnotatedImageProcessor(AbstractImageProcessor):
             return
 
         point_like = sources[sources["elongation"] < _STAR_ELONGATION_LIMIT]
-        brightest = point_like.nsmallest(_MAX_STAR_MARKERS, "mag")
+        brightest = point_like.sort_values(by="mag").head(_MAX_STAR_MARKERS)  # type: ignore[call-overload]
 
         s = _STAR_MARKER_SIZE
         for _, row in brightest.iterrows():
