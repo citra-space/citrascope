@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -214,7 +215,7 @@ def _section_plate_solve(plate: dict | None, sat_debug: dict | None) -> str:
     if sat_debug and isinstance(sat_debug.get("target_satellite"), dict):
         ts = sat_debug["target_satellite"]
         tle_match = ts.get("tle_match")
-        match_text = "Match" if tle_match else ("Stale" if tle_match is False else "Unknown")
+        match_text = "Match" if tle_match else ("Different" if tle_match is False else "Unknown")
         match_class = "ok" if tle_match else "fail"
         tle_info = f"""
             <span class="label">Pointing TLE vs Cache</span>
@@ -549,8 +550,6 @@ def _build_report(working_dir: Path) -> Path:
     phot = _load_json(working_dir / "photometry_result.json")
     sat_debug = _load_json(working_dir / "satellite_matcher_debug.json")
     pointing = _load_json(working_dir / "pointing_report.json")
-
-    from datetime import datetime, timezone
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
