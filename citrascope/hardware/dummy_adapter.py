@@ -499,7 +499,7 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
                 "required": False,
                 "options": [
                     {"value": "generated", "label": "Generated Starfields"},
-                    {"value": "fits_directory", "label": "Real FITS Images"},
+                    {"value": "fits_directory", "label": "FITS Image(s)"},
                 ],
                 "group": "Imaging",
             },
@@ -509,8 +509,8 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
                 "type": "str",
                 "default": _DEFAULT_TEST_FITS_DIR,
                 "description": (
-                    "Absolute path to a folder of real FITS images. "
-                    "Files are served round-robin instead of generating synthetic starfields. "
+                    "Absolute path to a folder of user-provided FITS images for testing. "
+                    "One or more files are served round-robin."
                     "See test-fits/README.md in the repo for the full workflow."
                 ),
                 "required": False,

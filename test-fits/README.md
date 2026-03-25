@@ -9,17 +9,17 @@ processing pipeline without a telescope connected.
 2. Open the citrascope web UI (`http://localhost:24872`).
 3. In **Configuration**:
    - Set **Hardware Adapter** to **Dummy Adapter**.
-   - Under the Dummy Adapter settings, set **Image Source** to **Real FITS Images**.
+   - Under the Dummy Adapter settings, set **Image Source** to **FITS Image(s)**.
      The **FITS Directory** will appear pre-filled with this folder's path.
    - Enable **Image Processing Pipeline**.
-   - Check **Use Dummy API** to avoid uploading results to a real server.
+   - Check **Use Dummy API** to avoid uploading results to a real server or check "Skip upload after processing" if referencing a telescope from the actual API.
    - Set **Number of Exposures** to `1` if you only have one FITS file.
 4. With the Dummy API, tasks are auto-generated for DirecTV GEO satellites. If
    you need a task targeting a specific satellite (matching your FITS image),
    use the dev API endpoint instead and create a matching task there.
 5. Start the daemon (`python -m citrascope`). It will pick up the next due task,
    "image" by serving your FITS file, and run the full processing pipeline.
-6. Check the web UI for the annotated image and the logs for satellite matcher
+6. Check the citrascope web UI for the annotated image and the logs for satellite matcher
    results.
 
 ## How it works
