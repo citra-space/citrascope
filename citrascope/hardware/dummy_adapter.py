@@ -441,7 +441,8 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         self.simulate_slow = kwargs.get("simulate_slow_operations", False)
         self.slow_delay = kwargs.get("slow_delay_seconds", 2.0)
 
-        # FITS injection: serve real images instead of synthetic starfields
+        # FITS injection: serve real images as option to test
+        # vs. default synthetic starfields option
         image_source = kwargs.get("image_source", "generated")
         fits_dir = kwargs.get("fits_directory", "")
         self._fits_injection_files: list[Path] = []
@@ -449,9 +450,7 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         if image_source == "fits_directory" and fits_dir:
             p = Path(fits_dir)
             if p.is_dir():
-                self._fits_injection_files = sorted(
-                    f for f in p.iterdir() if f.suffix.lower() in (".fits", ".fit")
-                )
+                self._fits_injection_files = sorted(f for f in p.iterdir() if f.suffix.lower() in (".fits", ".fit"))
                 if self._fits_injection_files:
                     logger.info(
                         "DummyAdapter: FITS injection enabled — %d file(s) from %s",
