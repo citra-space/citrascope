@@ -170,11 +170,21 @@ def _normalize_pixelemon_wcs(header: fits.Header, img_height: int) -> None:
     which negates the y-column of the CD matrix, shifts CRPIX2, and flips the
     sign of SIP polynomial coefficients by their y-power parity.
     """
-    # Linear WCS: negate the y-column of the CD matrix and shift CRPIX2.
+    # Linear WCS: shift CRPIX2 and negate the y-column of the rotation matrix.
+    # Astropy's fit_wcs_from_points may produce either CD matrix or PC+CDELT;
+    # handle whichever representation is present.
     # FITS header values are floats at runtime; casts satisfy pyright.
     header["CRPIX2"] = img_height + 1 - float(header["CRPIX2"])  # type: ignore[arg-type]
-    header["CD1_2"] = -float(header["CD1_2"])  # type: ignore[arg-type]
-    header["CD2_2"] = -float(header["CD2_2"])  # type: ignore[arg-type]
+    if "CD1_2" in header:
+        header["CD1_2"] = -float(header["CD1_2"])  # type: ignore[arg-type]
+        header["CD2_2"] = -float(header["CD2_2"])  # type: ignore[arg-type]
+    elif "PC1_2" in header:
+        header["PC1_2"] = -float(header["PC1_2"])  # type: ignore[arg-type]
+        header["PC2_2"] = -float(header["PC2_2"])  # type: ignore[arg-type]
+    else:
+        # CDELT-only (no rotation): negate CDELT2
+        if "CDELT2" in header:
+            header["CDELT2"] = -float(header["CDELT2"])  # type: ignore[arg-type]
 
     # SIP distortion: v_new = -v_old, so each coefficient picks up (-1)^q
     # from its y-power q.  The B (y-distortion) and BP (inverse y) polynomials

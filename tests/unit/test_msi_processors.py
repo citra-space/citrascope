@@ -201,7 +201,12 @@ class TestPlateSolverProcessor:
 class TestNormalizePixelemonWcs:
     """Verify _normalize_pixelemon_wcs produces a standard FITS WCS from Pixelemon's y-flipped one."""
 
-    def test_linear_wcs_round_trips_with_flipped_y(self):
+    @pytest.mark.parametrize(
+        "matrix_format",
+        ["cd", "pc"],
+        ids=["CD-matrix", "PC+CDELT"],
+    )
+    def test_linear_wcs_round_trips_with_flipped_y(self, matrix_format):
         """After normalization, WCS(x, y_sep) should equal the original WCS(x, H-1-y_sep)."""
         from astropy.wcs import WCS
 
@@ -218,17 +223,24 @@ class TestNormalizePixelemonWcs:
         header["CRPIX2"] = 100.0
         header["CRVAL1"] = 180.0
         header["CRVAL2"] = 45.0
-        header["CD1_1"] = -0.0005
-        header["CD1_2"] = 0.0001
-        header["CD2_1"] = -0.0001
-        header["CD2_2"] = -0.0005
+        if matrix_format == "cd":
+            header["CD1_1"] = -0.0005
+            header["CD1_2"] = 0.0001
+            header["CD2_1"] = -0.0001
+            header["CD2_2"] = -0.0005
+        else:
+            header["PC1_1"] = -0.5
+            header["PC1_2"] = 0.1
+            header["PC2_1"] = -0.1
+            header["PC2_2"] = -0.5
+            header["CDELT1"] = 0.001
+            header["CDELT2"] = 0.001
 
         original_wcs = WCS(header)
 
         _normalize_pixelemon_wcs(header, img_height)
         normalized_wcs = WCS(header)
 
-        # For several test pixels, verify: normalized(x, y) == original(x, H-1-y)
         import numpy as np
 
         test_x = np.array([10.0, 150.0, 290.0, 50.0])
@@ -241,7 +253,7 @@ class TestNormalizePixelemonWcs:
         np.testing.assert_allclose(ra_norm, ra_orig, atol=1e-10)
         np.testing.assert_allclose(dec_norm, dec_orig, atol=1e-10)
 
-    def test_crpix2_is_flipped(self):
+    def test_cd_matrix_is_flipped(self):
         from citrascope.processors.builtin.plate_solver_processor import _normalize_pixelemon_wcs
 
         header = fits.Header()
@@ -255,6 +267,28 @@ class TestNormalizePixelemonWcs:
         assert header["CRPIX2"] == 200 + 1 - 80.0  # 121
         assert header["CD1_2"] == -0.1
         assert header["CD2_2"] == 0.5
+
+    def test_pc_matrix_is_flipped(self):
+        """fit_wcs_from_points produces PC+CDELT format, not CD format."""
+        from citrascope.processors.builtin.plate_solver_processor import _normalize_pixelemon_wcs
+
+        header = fits.Header()
+        header["CRPIX2"] = 80.0
+        header["PC1_1"] = 1.0
+        header["PC1_2"] = 0.1
+        header["PC2_1"] = -0.1
+        header["PC2_2"] = -0.5
+        header["CDELT1"] = 0.001
+        header["CDELT2"] = 0.001
+        img_height = 200
+
+        _normalize_pixelemon_wcs(header, img_height)
+
+        assert header["CRPIX2"] == 200 + 1 - 80.0
+        assert header["PC1_2"] == -0.1
+        assert header["PC2_2"] == 0.5
+        assert header["PC1_1"] == 1.0
+        assert header["PC2_1"] == -0.1
 
     def test_sip_coefficients_are_flipped(self):
         from citrascope.processors.builtin.plate_solver_processor import _normalize_pixelemon_wcs
