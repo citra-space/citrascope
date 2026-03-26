@@ -56,15 +56,12 @@ def tiny_db(tmp_path):
         (180.001, 45.001, 11.0, 10.5, 11.5, 10.8, 10.2, 10.0, 10.3, 0.02, 0.01, 0.03, 0.02, 0.01, 0.01, 0.02),
         (180.011, 45.011, 11.5, 11.0, 12.0, 11.3, 10.7, 10.5, 10.8, 0.02, 0.01, 0.03, 0.02, 0.01, 0.01, 0.02),
         (180.021, 44.991, 12.5, 12.0, 13.0, 12.3, 11.7, 11.5, 11.8, 0.03, 0.02, 0.04, 0.03, 0.02, 0.02, 0.03),
-        (179.981, 45.021, 10.0, 9.5,  10.5, 9.8,  9.2,  9.0,  9.3,  0.01, 0.01, 0.02, 0.01, 0.01, 0.01, 0.01),
-        (190.0,   50.0,   8.5,  8.0,  9.0,  8.3,  7.7,  7.5,  7.8,  0.01, 0.01, 0.02, 0.01, 0.01, 0.01, 0.01),
+        (179.981, 45.021, 10.0, 9.5, 10.5, 9.8, 9.2, 9.0, 9.3, 0.01, 0.01, 0.02, 0.01, 0.01, 0.01, 0.01),
+        (190.0, 50.0, 8.5, 8.0, 9.0, 8.3, 7.7, 7.5, 7.8, 0.01, 0.01, 0.02, 0.01, 0.01, 0.01, 0.01),
     ]
-    stars = [
-        (ra, dec, _healpix_for(ra, dec), *mags)
-        for ra, dec, *mags in star_positions
-    ]
+    stars = [(ra, dec, _healpix_for(ra, dec), *mags) for ra, dec, *mags in star_positions]
     conn.executemany(
-        'INSERT INTO stars VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        "INSERT INTO stars VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         stars,
     )
     conn.commit()
@@ -256,3 +253,52 @@ class TestEnsureAvailable:
         catalog_dir = tmp_path / "catalog"
         if catalog_dir.exists():
             assert not list(catalog_dir.glob("*.tmp"))
+
+
+class TestBackgroundDownload:
+    """Tests for start_background_download (threaded)."""
+
+    def test_skips_when_already_available(self, tiny_db):
+        cat = ApassCatalog(db_path=tiny_db)
+        cat.start_background_download(api_client=None)
+        assert not cat.is_downloading
+
+    def test_skips_when_already_downloading(self, tmp_path):
+        cat = ApassCatalog(db_path=tmp_path / "missing.db")
+        # Simulate an in-flight download thread
+        import threading
+
+        blocker = threading.Event()
+        cat._download_thread = threading.Thread(target=blocker.wait, daemon=True)
+        cat._download_thread.start()
+        try:
+            assert cat.is_downloading
+            cat.start_background_download(api_client=MagicMock())
+            # Should not have replaced the existing thread
+            assert cat._download_thread.is_alive()
+        finally:
+            blocker.set()
+            cat._download_thread.join(timeout=2)
+
+    def test_download_runs_in_background(self, tmp_path):
+        """start_background_download returns immediately; catalog becomes available async."""
+        db_bytes = _make_tiny_sqlite(tmp_path / "source.db")
+        cat = ApassCatalog(db_path=tmp_path / "catalog" / "apass_dr10.db")
+
+        with patch("requests.get") as mock_stream:
+            mock_response = MagicMock()
+            mock_response.headers = {"content-length": str(len(db_bytes))}
+            mock_response.iter_content.return_value = [db_bytes]
+            mock_response.__enter__ = lambda s: s
+            mock_response.__exit__ = MagicMock(return_value=False)
+            mock_stream.return_value = mock_response
+
+            api = MagicMock()
+            api.get_catalog_download_url.return_value = {"url": "https://example.com/db", "sha256": None}
+
+            cat.start_background_download(api_client=api)
+            assert cat._download_thread is not None
+            cat._download_thread.join(timeout=5)
+
+        assert cat.is_available()
+        assert not cat.is_downloading

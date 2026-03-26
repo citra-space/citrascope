@@ -8,6 +8,7 @@ import logging
 import shutil
 import sqlite3
 import tempfile
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -52,6 +53,7 @@ class ApassCatalog:
 
     def __init__(self, db_path: Path | str | None = None):
         self._db_path = Path(db_path) if db_path is not None else _default_db_path()
+        self._download_thread: threading.Thread | None = None
 
     @property
     def db_path(self) -> Path:
@@ -67,8 +69,9 @@ class ApassCatalog:
         except OSError:
             return False
 
-    def ensure_available(self, api_client: AbstractCitraApiClient | None = None,
-                         logger: logging.Logger | None = None) -> bool:
+    def ensure_available(
+        self, api_client: AbstractCitraApiClient | None = None, logger: logging.Logger | None = None
+    ) -> bool:
         """Download the catalog if it is not already present.
 
         Args:
@@ -109,6 +112,37 @@ class ApassCatalog:
 
         return self._download(url, expected_sha256=expected_sha256, logger=log)
 
+    @property
+    def is_downloading(self) -> bool:
+        """Return True if a background download is currently in progress."""
+        return self._download_thread is not None and self._download_thread.is_alive()
+
+    def start_background_download(
+        self, api_client: AbstractCitraApiClient | None = None, logger: logging.Logger | None = None
+    ) -> None:
+        """Kick off ensure_available() in a daemon thread.
+
+        If the catalog is already present or a download is already running,
+        this is a no-op.  The photometry processor checks is_available() on
+        each invocation, so it will start using the catalog automatically
+        once the download finishes.
+        """
+        if self.is_available() or self.is_downloading:
+            return
+
+        log = logger or _logger
+
+        def _run() -> None:
+            ok = self.ensure_available(api_client, logger=log)
+            if ok:
+                log.info("ApassCatalog: background download complete — photometry now available")
+            else:
+                log.warning("ApassCatalog: background download failed — photometry will be unavailable")
+
+        self._download_thread = threading.Thread(target=_run, name="apass-catalog-download", daemon=True)
+        self._download_thread.start()
+        log.info("ApassCatalog: download started in background thread")
+
     def _download(self, url: str, expected_sha256: str | None = None, logger: logging.Logger | None = None) -> bool:
         """Download and decompress the catalog from a URL.
 
@@ -121,9 +155,7 @@ class ApassCatalog:
         log = logger or _logger
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        tmp_fd = tempfile.NamedTemporaryFile(
-            dir=self._db_path.parent, suffix=".tmp", delete=False
-        )
+        tmp_fd = tempfile.NamedTemporaryFile(dir=self._db_path.parent, suffix=".tmp", delete=False)
         tmp_path = Path(tmp_fd.name)
         tmp_fd.close()
         decompressed_path: Path | None = None
@@ -167,9 +199,7 @@ class ApassCatalog:
                         sha.update(block)
                 actual = sha.hexdigest()
                 if actual != expected_sha256:
-                    log.error(
-                        f"ApassCatalog: checksum mismatch (expected={expected_sha256}, got={actual})"
-                    )
+                    log.error(f"ApassCatalog: checksum mismatch (expected={expected_sha256}, got={actual})")
                     tmp_path.unlink(missing_ok=True)
                     return False
 
@@ -215,11 +245,11 @@ class ApassCatalog:
         import math
 
         import astropy.units as u
-        from astropy_healpix import HEALPix
+        from astropy_healpix import HEALPix  # type: ignore[reportMissingImports]
 
         # Find all HEALPix pixels overlapping the search cone
         hp = HEALPix(nside=_HEALPIX_NSIDE, order=_HEALPIX_ORDER)
-        pixels = hp.cone_search_lonlat(ra * u.deg, dec * u.deg, radius * u.deg)
+        pixels = hp.cone_search_lonlat(ra * u.deg, dec * u.deg, radius * u.deg)  # type: ignore[reportAttributeAccessIssue]
         pixel_list = [int(p) for p in pixels]
 
         if not pixel_list:

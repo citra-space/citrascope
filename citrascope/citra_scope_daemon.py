@@ -207,8 +207,10 @@ class CitraScopeDaemon:
             self.elset_cache.load_from_file(expected_source=self.api_client.cache_source_key)
             self._refresh_elset_cache_with_retry()
 
-            # Download APASS catalog if not already present (non-fatal if it fails)
-            self.apass_catalog.ensure_available(self.api_client, logger=CITRASCOPE_LOGGER)
+            # Start APASS catalog download in background (non-blocking).
+            # Photometry processor checks is_available() per-image and gracefully
+            # skips until the download finishes.
+            self.apass_catalog.start_background_download(self.api_client, logger=CITRASCOPE_LOGGER)
 
             # Initialize hardware adapter
             self.hardware_adapter = self._create_hardware_adapter()
