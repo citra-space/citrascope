@@ -238,7 +238,7 @@ class TestAnnotatedImageSaving:
         assert working.exists()
         assert working.name == "annotated.jpg"
 
-    def test_output_is_valid_png(self, tmp_path):
+    def test_output_is_valid_jpeg(self, tmp_path):
         proc = AnnotatedImageProcessor()
         debug = _make_debug_json()
         ctx = _make_context(tmp_path, debug_json=debug)

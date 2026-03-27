@@ -105,9 +105,9 @@ class AnnotatedImageProcessor(AbstractImageProcessor):
             task_name = context.task.satelliteName if context.task else None
             self._draw_overlay(draw, img.width, task_name, epoch_str, match_count, font)
 
-            png_bytes = self._encode_image(img)
-            preview_path = self._save_preview(png_bytes, context.image_path.parent)
-            working_path = self._save_to_working_dir(png_bytes, context.working_dir)
+            image_bytes = self._encode_image(img)
+            preview_path = self._save_preview(image_bytes, context.image_path.parent)
+            working_path = self._save_to_working_dir(image_bytes, context.working_dir)
 
             elapsed = time.time() - start_time
             return ProcessorResult(
@@ -524,24 +524,24 @@ class AnnotatedImageProcessor(AbstractImageProcessor):
         return buf.getvalue()
 
     @staticmethod
-    def _save_preview(png_bytes: bytes, images_dir: Path) -> Path:
-        """Save annotated PNG as a single rotating preview file (overwritten each time).
+    def _save_preview(image_bytes: bytes, images_dir: Path) -> Path:
+        """Save annotated image as a single rotating preview file (overwritten each time).
 
         Uses atomic write (temp file + rename) to prevent serving a partially
         written image when the web endpoint reads during an overwrite.
         """
         out_path = images_dir / "latest_preview.jpg"
         tmp_path = images_dir / "latest_preview.tmp.jpg"
-        tmp_path.write_bytes(png_bytes)
+        tmp_path.write_bytes(image_bytes)
         tmp_path.replace(out_path)
         return out_path
 
     @staticmethod
-    def _save_to_working_dir(png_bytes: bytes, working_dir: Path) -> Path | None:
-        """Save annotated PNG in the processing working directory."""
+    def _save_to_working_dir(image_bytes: bytes, working_dir: Path) -> Path | None:
+        """Save annotated image in the processing working directory."""
         try:
             out_path = working_dir / "annotated.jpg"
-            out_path.write_bytes(png_bytes)
+            out_path.write_bytes(image_bytes)
             return out_path
         except Exception:
             return None
