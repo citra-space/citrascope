@@ -26,7 +26,7 @@ _POWER_EXPONENT = 3.0
 _MATCH_COLOR = (237, 79, 0)  # #ED4F00 — confirmed satellite matches
 _PREDICTION_COLOR = (238, 162, 1)  # #EEA201 — TLE-predicted positions
 _DETECTION_COLOR = (154, 186, 56)  # #9ABA38 — satellite detections (elongated sources)
-_STAR_COLOR = (64, 151, 138)  # #40978A — star detections (point-like sources)
+_STAR_COLOR = (64, 151, 138)  # #2d6b61 — star detections (point-like sources)
 _TEXT_BG_COLOR = (0, 0, 0)  # Black overlay strip
 _TEXT_COLOR = (255, 255, 255)  # White text
 
@@ -95,7 +95,9 @@ class AnnotatedImageProcessor(AbstractImageProcessor):
 
             if wcs is not None:
                 if context.detected_sources is not None:
-                    self._draw_stars(draw, wcs, context.detected_sources, original_height, pixel_scale)
+                    self._draw_stars(
+                        draw, wcs, context.detected_sources, original_height, context.tracking_mode, pixel_scale
+                    )
                     self._draw_detections(
                         draw, wcs, context.detected_sources, original_height, context.tracking_mode, pixel_scale
                     )
@@ -258,13 +260,27 @@ class AnnotatedImageProcessor(AbstractImageProcessor):
             self._draw_label_below(draw, px, py, name, _PREDICTION_COLOR, font)
 
     def _draw_stars(
-        self, draw: ImageDraw.ImageDraw, wcs: WCS, sources: pd.DataFrame, img_height: int, pixel_scale: float = 1.0
+        self,
+        draw: ImageDraw.ImageDraw,
+        wcs: WCS,
+        sources: pd.DataFrame,
+        img_height: int,
+        tracking_mode: str | None,
+        pixel_scale: float = 1.0,
     ) -> None:
-        """Draw teal circles on the brightest point-like detected sources."""
+        """Draw teal circles on the brightest point-like detected sources.
+
+        In sidereal tracking, stars are round (elongation < threshold).
+        In rate tracking, the mount follows the satellite so stars streak
+        (elongation >= threshold).
+        """
         if sources.empty:
             return
 
-        point_like = sources[sources["elongation"] < _ELONGATION_THRESHOLD]
+        if tracking_mode == "rate":
+            point_like = sources[sources["elongation"] >= _ELONGATION_THRESHOLD]
+        else:
+            point_like = sources[sources["elongation"] < _ELONGATION_THRESHOLD]
         brightest = point_like.sort_values(by="mag").head(_MAX_STAR_MARKERS)  # type: ignore[call-overload]
 
         for _, row in brightest.iterrows():
