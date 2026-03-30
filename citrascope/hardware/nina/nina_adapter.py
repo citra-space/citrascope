@@ -139,15 +139,18 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
                 )
                 response.raise_for_status()
                 mount_status = response.json()
+                if not mount_status.get("Success"):
+                    raise RuntimeError(f"Mount slew rejected by NINA: {mount_status.get('Error')}")
                 self.logger.info(f"Mount {mount_status['Response']}")
             except requests.Timeout as e:
                 raise RuntimeError("Mount slew request timed out") from e
             except requests.RequestException as e:
                 raise RuntimeError(f"Mount slew failed: {e}") from e
 
+            time.sleep(2)
             while self.telescope_is_moving():
                 self.logger.info("Waiting for mount to finish slewing...")
-                time.sleep(5)
+                time.sleep(2)
         else:
             self.logger.info("Autofocus at current position (no slew)")
 
@@ -175,18 +178,32 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
         HARDWARE_TIMEOUT_SECONDS = 60
 
-        self._event_listener.filter_changed.clear()
-        requests.get(self.nina_api_path + self.FILTERWHEEL_URL + "change-filter?filterId=" + str(filter_id))
-        if not self._event_listener.filter_changed.wait(timeout=HARDWARE_TIMEOUT_SECONDS):
-            raise RuntimeError(f"Filterwheel failed to change to filter {filter_id} within {HARDWARE_TIMEOUT_SECONDS}s")
-        self.logger.info(f"Filter changed to ID {filter_id}")
+        current_filter = self._get_current_filter_id()
+        if current_filter == filter_id:
+            self.logger.info(f"Already on filter {filter_id} ({filter_name}), skipping change")
+        else:
+            self._event_listener.filter_changed.clear()
+            resp = requests.get(
+                self.nina_api_path + self.FILTERWHEEL_URL + "change-filter?filterId=" + str(filter_id), timeout=30
+            ).json()
+            if not resp.get("Success"):
+                raise RuntimeError(f"Filter change to {filter_id} rejected by NINA: {resp.get('Error')}")
+            if not self._event_listener.filter_changed.wait(timeout=HARDWARE_TIMEOUT_SECONDS):
+                raise RuntimeError(
+                    f"Filterwheel failed to change to filter {filter_id} within {HARDWARE_TIMEOUT_SECONDS}s"
+                )
+            self.logger.info(f"Filter changed to ID {filter_id}")
 
         self.logger.info("Moving focus to autofocus starting position ...")
         starting_focus_position = self.DEFAULT_FOCUS_POSITION
-        requests.get(self.nina_api_path + self.FOCUSER_URL + "move?position=" + str(starting_focus_position))
+        move_resp = requests.get(
+            self.nina_api_path + self.FOCUSER_URL + "move?position=" + str(starting_focus_position), timeout=30
+        ).json()
+        if not move_resp.get("Success"):
+            raise RuntimeError(f"Focuser move rejected by NINA: {move_resp.get('Error')}")
         deadline = time.time() + HARDWARE_TIMEOUT_SECONDS
         while True:
-            focuser_status = requests.get(self.nina_api_path + self.FOCUSER_URL + "info").json()
+            focuser_status = requests.get(self.nina_api_path + self.FOCUSER_URL + "info", timeout=10).json()
             if int(focuser_status["Response"]["Position"]) == starting_focus_position:
                 break
             if time.time() > deadline:
@@ -205,8 +222,10 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         prev_af_callback = self._event_listener.on_af_point
         self._event_listener.on_af_point = on_af_point
 
-        focuser_status = requests.get(self.nina_api_path + self.FOCUSER_URL + "auto-focus").json()
-        self.logger.info(f"Focuser {focuser_status['Response']}")
+        af_resp = requests.get(self.nina_api_path + self.FOCUSER_URL + "auto-focus", timeout=30).json()
+        if not af_resp.get("Success"):
+            raise RuntimeError(f"Autofocus trigger rejected by NINA: {af_resp.get('Error')}")
+        self.logger.info(f"Focuser {af_resp['Response']}")
 
         try:
             deadline = time.time() + AUTOFOCUS_TIMEOUT_SECONDS
@@ -225,7 +244,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             self._event_listener.on_af_point = prev_af_callback
 
         if self._event_listener.autofocus_finished.is_set():
-            last_af = requests.get(self.nina_api_path + self.FOCUSER_URL + "last-af").json()
+            last_af = requests.get(self.nina_api_path + self.FOCUSER_URL + "last-af", timeout=10).json()
             if last_af.get("Success"):
                 resp = last_af["Response"]
                 position = resp["CalculatedFocusPoint"]["Position"]
@@ -329,6 +348,22 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             self.logger.error(f"Failed to connect to NINA Advanced API: {e}")
             return False
 
+    def _get_current_filter_id(self) -> int | None:
+        """Query NINA for the currently selected filter wheel position.
+
+        Returns the filter Id (0-indexed int) or None if the query fails.
+        """
+        try:
+            resp = requests.get(self.nina_api_path + self.FILTERWHEEL_URL + "info", timeout=10).json()
+            if not resp.get("Success"):
+                return None
+            selected = resp.get("Response", {}).get("SelectedFilter")
+            if selected is not None and "Id" in selected:
+                return int(selected["Id"])
+            return None
+        except Exception:
+            return None
+
     def discover_filters(self):
         self.logger.info("Discovering filters ...")
         filterwheel_info = requests.get(self.nina_api_path + self.FILTERWHEEL_URL + "info", timeout=5).json()
@@ -365,6 +400,10 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             finally:
                 self._event_listener = None
 
+    def get_filter_position(self) -> int | None:
+        """Get the current filter wheel position from NINA."""
+        return self._get_current_filter_id()
+
     def supports_autofocus(self) -> bool:
         """Indicates that NINA adapter supports autofocus."""
         return True
@@ -396,7 +435,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         return True
 
     def get_telescope_direction(self) -> tuple[float, float]:
-        mount_info = requests.get(self.nina_api_path + self.MOUNT_URL + "info").json()
+        mount_info = requests.get(self.nina_api_path + self.MOUNT_URL + "info", timeout=10).json()
         if mount_info.get("Success"):
             ra_degrees = mount_info["Response"]["Coordinates"]["RADegrees"]
             dec_degrees = mount_info["Response"]["Coordinates"]["Dec"]
@@ -406,7 +445,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             raise RuntimeError(f"Failed to get mount info: {mount_info.get('Error')}")
 
     def telescope_is_moving(self) -> bool:
-        mount_info = requests.get(self.nina_api_path + self.MOUNT_URL + "info").json()
+        mount_info = requests.get(self.nina_api_path + self.MOUNT_URL + "info", timeout=10).json()
         if mount_info.get("Success"):
             return mount_info["Response"]["Slewing"]
         else:
