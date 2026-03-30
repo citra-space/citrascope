@@ -8,6 +8,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
+import platformdirs
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -25,7 +26,7 @@ from citrascope.hardware.adapter_registry import get_adapter_schema as get_schem
 from citrascope.hardware.adapter_registry import list_adapters
 from citrascope.location.twilight import compute_twilight
 from citrascope.logging import CITRASCOPE_LOGGER
-from citrascope.settings.citrascope_settings import CitraScopeSettings
+from citrascope.settings.citrascope_settings import APP_AUTHOR, APP_NAME, CitraScopeSettings
 
 # Standard astronomical filter names for the editable filter name dropdown.
 # Mirrors the canonical names from the Citra API's filter library so that
@@ -243,6 +244,11 @@ class CitraScopeWebApp:
             for name, field in CitraScopeSettings.model_fields.items()
             if name.startswith(("detection_", "background_"))
         }
+        default_data_base = Path(platformdirs.user_data_dir(APP_NAME, appauthor=APP_AUTHOR))
+        self.templates.env.globals["default_data_dir"] = str(default_data_base / "processing")
+        self.templates.env.globals["default_log_dir"] = str(
+            Path(platformdirs.user_log_dir(APP_NAME, appauthor=APP_AUTHOR))
+        )
 
         # Register routes
         self._setup_routes()
@@ -296,8 +302,7 @@ class CitraScopeWebApp:
             # Get images directory path
             images_dir_path = str(settings.get_images_dir())
 
-            # Get processing working directory path (sibling to images directory)
-            processing_dir_path = str(settings.get_images_dir().parent / "processing")
+            processing_dir_path = str(settings.get_processing_dir())
 
             return {
                 **settings.to_dict(),
@@ -451,6 +456,23 @@ class CitraScopeWebApp:
                                         {"error": f"Field '{field_name}' must be a number"},
                                         status_code=400,
                                     )
+
+                for dir_field in ("custom_data_dir", "custom_log_dir"):
+                    dir_value = config.get(dir_field, "")
+                    if dir_value:
+                        dir_path = Path(dir_value)
+                        if not dir_path.is_absolute():
+                            return JSONResponse(
+                                {"error": f"{dir_field} must be an absolute path"},
+                                status_code=400,
+                            )
+                        try:
+                            dir_path.mkdir(parents=True, exist_ok=True)
+                        except OSError as e:
+                            return JSONResponse(
+                                {"error": f"Cannot create {dir_field} '{dir_value}': {e}"},
+                                status_code=400,
+                            )
 
                 self.daemon.settings.update_and_save(config)
 

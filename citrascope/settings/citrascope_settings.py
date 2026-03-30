@@ -75,6 +75,10 @@ class CitraScopeSettings(BaseModel):
     file_logging_enabled: bool = True
     log_retention_days: int = 30
 
+    # Custom directory overrides (empty = use platformdirs defaults)
+    custom_data_dir: str = ""
+    custom_log_dir: str = ""
+
     # Autofocus
     scheduled_autofocus_enabled: bool = False
     autofocus_interval_minutes: int = 60
@@ -372,7 +376,17 @@ class CitraScopeSettings(BaseModel):
 
         instance = cls.model_validate(config)
         instance._config_manager = mgr
-        instance._images_dir = Path(platformdirs.user_data_dir(APP_NAME, appauthor=APP_AUTHOR)) / "images"
+
+        data_base = (
+            Path(instance.custom_data_dir)
+            if instance.custom_data_dir
+            else Path(platformdirs.user_data_dir(APP_NAME, appauthor=APP_AUTHOR))
+        )
+        instance._images_dir = data_base / "images"
+
+        if instance.custom_log_dir:
+            mgr.set_log_dir(Path(instance.custom_log_dir))
+
         instance._all_adapter_settings = all_adapter_settings
         instance.adapter_settings = all_adapter_settings.get(instance.hardware_adapter, {})
         return instance
@@ -387,6 +401,10 @@ class CitraScopeSettings(BaseModel):
     def get_images_dir(self) -> Path:
         """Get the path to the images directory."""
         return self._images_dir
+
+    def get_processing_dir(self) -> Path:
+        """Get the path to the processing output directory (sibling to images)."""
+        return self._images_dir.parent / "processing"
 
     def ensure_images_directory(self) -> None:
         """Create images directory if it doesn't exist."""

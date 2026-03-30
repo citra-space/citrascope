@@ -104,6 +104,10 @@ class SettingsFileManager:
         # Could add more validation here for required fields, types, etc.
         return True, None
 
+    def set_log_dir(self, path: Path) -> None:
+        """Override the log directory (e.g. from a custom_log_dir setting)."""
+        self.log_dir = path
+
     def ensure_log_directory(self) -> None:
         """Create log directory if it doesn't exist."""
         if not self.log_dir.exists():
