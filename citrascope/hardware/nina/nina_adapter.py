@@ -204,6 +204,8 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         deadline = time.time() + HARDWARE_TIMEOUT_SECONDS
         while True:
             focuser_status = requests.get(self.nina_api_path + self.FOCUSER_URL + "info", timeout=10).json()
+            if not focuser_status.get("Success"):
+                raise RuntimeError(f"Focuser info query failed: {focuser_status.get('Error')}")
             if int(focuser_status["Response"]["Position"]) == starting_focus_position:
                 break
             if time.time() > deadline:
