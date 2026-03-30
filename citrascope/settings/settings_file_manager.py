@@ -105,8 +105,11 @@ class SettingsFileManager:
         return True, None
 
     def set_log_dir(self, path: Path) -> None:
-        """Override the log directory (e.g. from a custom_log_dir setting)."""
-        self.log_dir = path
+        """Override the log directory (e.g. from a custom_log_dir setting).
+
+        The path is normalized via expanduser/resolve to ensure it is absolute.
+        """
+        self.log_dir = Path(path).expanduser().resolve()
 
     def ensure_log_directory(self) -> None:
         """Create log directory if it doesn't exist."""

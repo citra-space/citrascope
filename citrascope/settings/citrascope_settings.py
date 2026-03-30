@@ -396,6 +396,18 @@ class CitraScopeSettings(BaseModel):
             return clamped
         return v
 
+    @field_validator("custom_data_dir", "custom_log_dir", mode="before")
+    @classmethod
+    def _validate_custom_dir(cls, v: Any) -> str:
+        if not v:
+            return ""
+        v = str(v)
+        p = Path(v).expanduser().resolve()
+        if not p.is_absolute():
+            CITRASCOPE_LOGGER.warning("custom dir path %r is not absolute. Ignoring.", v)
+            return ""
+        return str(p)
+
     # ── Factory ───────────────────────────────────────────────────────
 
     @classmethod

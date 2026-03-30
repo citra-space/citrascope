@@ -628,12 +628,23 @@
                                 <!-- Source Detection Parameters -->
                                 <script>
                                     const DETECTION_DEFAULTS = {{ detection_defaults | tojson }};
+                                    const DETECTION_RANGES = {{ detection_ranges | tojson }};
                                     function isFieldOutOfRange(val, el) {
                                         if (val === '' || val === null || val === undefined) return false;
                                         const v = parseFloat(val);
                                         if (isNaN(v)) return true;
                                         if (el.min !== '' && v < parseFloat(el.min)) return true;
                                         if (el.max !== '' && v > parseFloat(el.max)) return true;
+                                        return false;
+                                    }
+                                    function hasDetectionErrors(config) {
+                                        for (const [field, range] of Object.entries(DETECTION_RANGES)) {
+                                            const v = config[field];
+                                            if (v === '' || v === null || v === undefined) continue;
+                                            const n = parseFloat(v);
+                                            if (isNaN(n) || n < range.min || n > range.max) return true;
+                                        }
+                                        if (config.detection_kernel_size % 2 === 0) return true;
                                         return false;
                                     }
                                 </script>
@@ -992,7 +1003,7 @@
             <!-- Save Button -->
             <div class="row">
                 <div class="col">
-                    <button type="submit" class="btn btn-primary" :disabled="$store.citrascope.isSavingConfig || document.querySelectorAll('.is-invalid').length > 0">
+                    <button type="submit" class="btn btn-primary" :disabled="$store.citrascope.isSavingConfig || hasDetectionErrors($store.citrascope.config)">
                         <span x-text="$store.citrascope.isSavingConfig ? 'Saving...' : 'Save Configuration'"></span>
                         <span x-show="$store.citrascope.isSavingConfig" class="spinner-border spinner-border-sm ms-2" role="status"></span>
                     </button>

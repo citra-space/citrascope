@@ -34,9 +34,10 @@ _MIN_SOURCE_SNR = 3.0
 
 def _setting(settings: Any | None, name: str) -> Any:
     """Read a detection/background setting, falling back to the Pydantic field default."""
+    default = CitraScopeSettings.model_fields[name].default
     if settings is not None:
-        return getattr(settings, name)
-    return CitraScopeSettings.model_fields[name].default
+        return getattr(settings, name, default)
+    return default
 
 
 def _detection_settings(settings: Any | None = None) -> DetectionSettings:
