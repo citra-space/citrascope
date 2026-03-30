@@ -26,7 +26,7 @@ _POWER_EXPONENT = 3.0
 _MATCH_COLOR = (237, 79, 0)  # #ED4F00 — confirmed satellite matches
 _PREDICTION_COLOR = (238, 162, 1)  # #EEA201 — TLE-predicted positions
 _DETECTION_COLOR = (154, 186, 56)  # #9ABA38 — satellite detections (elongated sources)
-_STAR_COLOR = (64, 151, 138)  # #2d6b61 — star detections (point-like sources)
+_STAR_COLOR = (64, 151, 138)  # #40978A — star detections (point-like sources)
 _TEXT_BG_COLOR = (0, 0, 0)  # Black overlay strip
 _TEXT_COLOR = (255, 255, 255)  # White text
 
