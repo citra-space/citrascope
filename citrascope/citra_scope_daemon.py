@@ -205,11 +205,14 @@ class CitraScopeDaemon:
 
             # Warm-start elset cache from disk (source-aware: discards if API source changed)
             self.elset_cache.load_from_file(expected_source=self.api_client.cache_source_key)
-            threading.Thread(
-                target=self._refresh_elset_cache_with_retry,
-                name="elset-refresh",
-                daemon=True,
-            ).start()
+            elset_thread = getattr(self, "_elset_refresh_thread", None)
+            if elset_thread is None or not elset_thread.is_alive():
+                self._elset_refresh_thread = threading.Thread(
+                    target=self._refresh_elset_cache_with_retry,
+                    name="elset-refresh",
+                    daemon=True,
+                )
+                self._elset_refresh_thread.start()
 
             if self.settings.use_local_apass_catalog:
                 self.apass_catalog.start_background_download(self.api_client)

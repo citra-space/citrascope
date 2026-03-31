@@ -13,7 +13,7 @@
                                         :disabled="$store.citrascope.isReconnecting || $store.citrascope.isSavingConfig"
                                         @click.stop="$store.citrascope.reconnectHardware()"
                                         data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="bottom"
-                                        title="Disconnect and reconnect all hardware">
+                                        title="Reinitialize hardware and services (may briefly pause active tasks)">
                                     <i class="bi" :class="$store.citrascope.isReconnecting ? 'bi-arrow-repeat spin' : 'bi-arrow-repeat'"></i>
                                     <span x-text="$store.citrascope.isReconnecting ? 'Reconnecting...' : 'Reconnect'"></span>
                                 </button>
