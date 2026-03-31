@@ -168,18 +168,48 @@
                         <p>
                             <strong>Current version:</strong> <span x-text="$store.citrascope.versionCheckResult?.currentVersion === 'development' ? 'development' : 'v' + ($store.citrascope.versionCheckResult?.currentVersion || '-')"></span>
                         </p>
+                        <template x-if="$store.citrascope.versionCheckResult?.gitHash">
+                            <p class="text-muted mb-0" style="font-size: 0.85rem;">
+                                <span x-text="($store.citrascope.versionCheckResult?.gitBranch || '?') + '@' + $store.citrascope.versionCheckResult.gitHash"></span>
+                                <span x-show="$store.citrascope.versionCheckResult?.installType" x-text="' · ' + ($store.citrascope.versionCheckResult.installType === 'editable' ? 'Git install' : $store.citrascope.versionCheckResult.installType)"></span>
+                            </p>
+                        </template>
                     </div>
                     <div x-show="$store.citrascope.versionCheckState === 'update-available'">
-                        <p class="text-warning">A new version of CitraScope is available!</p>
-                        <p class="mb-3">
-                            <strong>Current:</strong> <span x-text="'v' + ($store.citrascope.versionCheckResult?.currentVersion || '-')"></span><br>
-                            <strong>Latest:</strong> <span x-text="$store.citrascope.versionCheckResult?.latestVersion || '-'"></span>
-                        </p>
-                        <p class="mb-2">To upgrade, run:</p>
-                        <pre class="bg-secondary p-2 rounded"><code>pip install -U citrascope</code></pre>
-                        <p class="mb-0">
-                            <a :href="$store.citrascope.versionCheckResult?.releaseUrl || '#'" target="_blank" class="text-info">View release notes on GitHub →</a>
-                        </p>
+                        <!-- Git install: commits behind -->
+                        <template x-if="$store.citrascope.versionCheckResult?.behindBy">
+                            <div>
+                                <p class="text-warning">Your install is <span x-text="$store.citrascope.versionCheckResult.behindBy"></span> commit<span x-show="$store.citrascope.versionCheckResult.behindBy !== 1">s</span> behind main.</p>
+                                <p class="mb-3">
+                                    <strong>Version:</strong> <span x-text="'v' + ($store.citrascope.versionCheckResult?.currentVersion || '-')"></span><br>
+                                    <strong>Branch:</strong> <span x-text="$store.citrascope.versionCheckResult?.gitBranch || '-'"></span>
+                                    @ <code x-text="$store.citrascope.versionCheckResult?.gitHash || '-'"></code>
+                                </p>
+                                <p x-show="$store.citrascope.versionCheckResult?.gitDirty" class="text-warning mb-2" style="font-size: 0.85rem;">
+                                    ⚠ Working tree has uncommitted changes
+                                </p>
+                                <p class="mb-2">To upgrade, run:</p>
+                                <pre class="bg-secondary p-2 rounded"><code>git pull && pip install -e .</code></pre>
+                                <p class="mb-0">
+                                    <a href="https://github.com/citra-space/citrascope" target="_blank" class="text-info">View repository on GitHub →</a>
+                                </p>
+                            </div>
+                        </template>
+                        <!-- PyPI install: new release -->
+                        <template x-if="$store.citrascope.versionCheckResult?.latestVersion">
+                            <div>
+                                <p class="text-warning">A new version of CitraScope is available!</p>
+                                <p class="mb-3">
+                                    <strong>Current:</strong> <span x-text="'v' + ($store.citrascope.versionCheckResult?.currentVersion || '-')"></span><br>
+                                    <strong>Latest:</strong> <span x-text="$store.citrascope.versionCheckResult?.latestVersion || '-'"></span>
+                                </p>
+                                <p class="mb-2">To upgrade, run:</p>
+                                <pre class="bg-secondary p-2 rounded"><code>pip install -U citrascope</code></pre>
+                                <p class="mb-0">
+                                    <a :href="$store.citrascope.versionCheckResult?.releaseUrl || '#'" target="_blank" class="text-info">View release notes on GitHub →</a>
+                                </p>
+                            </div>
+                        </template>
                     </div>
                     <div x-show="$store.citrascope.versionCheckState === 'error'">
                         <p class="text-muted">Unable to check for updates. You may be offline or GitHub is unreachable.</p>
