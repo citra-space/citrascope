@@ -168,7 +168,12 @@ def client(web_app):
 def test_get_version(client):
     resp = client.get("/api/version")
     assert resp.status_code == 200
-    assert "version" in resp.json()
+    data = resp.json()
+    assert "version" in data
+    assert "install_type" in data
+    assert data["install_type"] in ("pypi", "editable", "source")
+    assert "git_hash" in data
+    assert "git_dirty" in data
 
 
 def test_get_hardware_adapters(client):

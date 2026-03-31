@@ -4,7 +4,6 @@ import asyncio
 import json
 import time
 from datetime import datetime
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
@@ -326,12 +325,10 @@ class CitraScopeWebApp:
 
         @self.app.get("/api/version")
         async def get_version():
-            """Get CitraScope version."""
-            try:
-                pkg_version = version("citrascope")
-                return {"version": pkg_version}
-            except PackageNotFoundError:
-                return {"version": "development"}
+            """Get CitraScope version and install metadata."""
+            from citrascope.version import get_version_info
+
+            return get_version_info()
 
         @self.app.get("/api/hardware-adapters")
         async def get_hardware_adapters():

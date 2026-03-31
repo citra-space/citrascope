@@ -5,8 +5,6 @@ import os
 import signal
 import threading
 import time
-from importlib.metadata import PackageNotFoundError
-from importlib.metadata import version as pkg_version
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -47,10 +45,10 @@ class CitraScopeDaemon:
             setup_file_logging(log_path, backup_count=self.settings.log_retention_days)
             CITRASCOPE_LOGGER.info(f"Logging to file: {log_path}")
 
-        try:
-            ver = pkg_version("citrascope")
-        except PackageNotFoundError:
-            ver = "dev"
+        from citrascope.version import format_version_log, get_version_info
+
+        ver_info = get_version_info()
+        ver = format_version_log(ver_info)
         CITRASCOPE_LOGGER.info("=" * 60)
         CITRASCOPE_LOGGER.info(f"CitraScope {ver} starting (PID {os.getpid()})")
 

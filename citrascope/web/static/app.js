@@ -101,8 +101,15 @@ async function fetchVersion() {
         const response = await fetch('/api/version');
         const data = await response.json();
         const store = Alpine.store('citrascope');
+        store.versionData = data;
         if (data.version) {
-            store.version = data.version === 'development' ? 'dev' : 'v' + data.version;
+            if (data.version === 'development') {
+                store.version = 'dev';
+            } else if (data.git_branch && data.git_branch !== 'main' && data.install_type !== 'pypi') {
+                store.version = `v${data.version} (${data.git_branch})`;
+            } else {
+                store.version = 'v' + data.version;
+            }
         } else {
             store.version = 'v?';
         }
@@ -117,28 +124,51 @@ async function checkForUpdates() {
     try {
         const versionResponse = await fetch('/api/version');
         const versionData = await versionResponse.json();
+        store.versionData = versionData;
         const currentVersion = versionData.version;
+        const installType = versionData.install_type || 'pypi';
+        const gitHash = versionData.git_hash;
+        const gitBranch = versionData.git_branch;
+        const gitDirty = versionData.git_dirty || false;
+        const base = { currentVersion, installType, gitHash, gitBranch, gitDirty };
+
+        if (currentVersion === 'development' || currentVersion === 'unknown') {
+            store.updateIndicator = '';
+            return { status: 'up-to-date', ...base };
+        }
+
+        if (installType !== 'pypi' && gitHash) {
+            const compareResponse = await fetch(
+                `https://api.github.com/repos/citra-space/citrascope/compare/${gitHash}...main`
+            );
+            if (!compareResponse.ok) {
+                return { status: 'error', ...base };
+            }
+            const compareData = await compareResponse.json();
+            const behindBy = compareData.ahead_by || 0;
+            if (behindBy > 0) {
+                store.updateIndicator = `${behindBy} commit${behindBy !== 1 ? 's' : ''} behind`;
+                return { status: 'update-available', ...base, behindBy };
+            }
+            store.updateIndicator = '';
+            return { status: 'up-to-date', ...base };
+        }
 
         const githubResponse = await fetch('https://api.github.com/repos/citra-space/citrascope/releases/latest');
         if (!githubResponse.ok) {
-            return { status: 'error', currentVersion };
+            return { status: 'error', ...base };
         }
 
         const releaseData = await githubResponse.json();
         const latestVersion = releaseData.tag_name.replace(/^v/, '');
         const releaseUrl = releaseData.html_url;
 
-        if (currentVersion === 'development' || currentVersion === 'unknown') {
-            store.updateIndicator = '';
-            return { status: 'up-to-date', currentVersion };
-        }
-
         if (compareVersions(latestVersion, currentVersion) > 0) {
             store.updateIndicator = `${latestVersion} Available!`;
-            return { status: 'update-available', currentVersion, latestVersion, releaseUrl };
+            return { status: 'update-available', ...base, latestVersion, releaseUrl };
         } else {
             store.updateIndicator = '';
-            return { status: 'up-to-date', currentVersion };
+            return { status: 'up-to-date', ...base };
         }
     } catch (error) {
         console.debug('Update check failed:', error);

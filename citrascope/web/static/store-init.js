@@ -39,6 +39,7 @@ import { FILTER_COLORS } from './filters.js';
             filterAdapterChangeMessageVisible: false,
             currentSection: 'monitoring',
             version: '',
+            versionData: null,
             updateIndicator: '',
             versionCheckState: 'idle',
             versionCheckResult: null,
@@ -258,56 +259,11 @@ import { FILTER_COLORS } from './filters.js';
                 const modal = new bootstrap.Modal(document.getElementById('versionModal'));
                 modal.show();
 
-                // Check for updates (inline implementation)
-                try {
-                    const versionResponse = await fetch('/api/version');
-                    const versionData = await versionResponse.json();
-                    const currentVersion = versionData.version;
-
-                    const githubResponse = await fetch('https://api.github.com/repos/citra-space/citrascope/releases/latest');
-                    if (!githubResponse.ok) {
-                        this.versionCheckState = 'error';
-                        this.versionCheckResult = { status: 'error', currentVersion };
-                        return;
-                    }
-
-                    const releaseData = await githubResponse.json();
-                    const latestVersion = releaseData.tag_name.replace(/^v/, '');
-                    const releaseUrl = releaseData.html_url;
-
-                    if (currentVersion === 'development' || currentVersion === 'unknown') {
-                        this.updateIndicator = '';
-                        this.versionCheckState = 'up-to-date';
-                        this.versionCheckResult = { status: 'up-to-date', currentVersion };
-                        return;
-                    }
-
-                    // Compare versions
-                    const v1 = latestVersion.split('.').map(n => parseInt(n) || 0);
-                    const v2 = currentVersion.split('.').map(n => parseInt(n) || 0);
-                    const maxLen = Math.max(v1.length, v2.length);
-                    let comparison = 0;
-                    for (let i = 0; i < maxLen; i++) {
-                        const num1 = v1[i] || 0;
-                        const num2 = v2[i] || 0;
-                        if (num1 > num2) { comparison = 1; break; }
-                        if (num1 < num2) { comparison = -1; break; }
-                    }
-
-                    if (comparison > 0) {
-                        this.updateIndicator = `${latestVersion} Available!`;
-                        this.versionCheckState = 'update-available';
-                        this.versionCheckResult = { status: 'update-available', currentVersion, latestVersion, releaseUrl };
-                    } else {
-                        this.updateIndicator = '';
-                        this.versionCheckState = 'up-to-date';
-                        this.versionCheckResult = { status: 'up-to-date', currentVersion };
-                    }
-                } catch (error) {
-                    console.debug('Update check failed:', error);
-                    this.versionCheckState = 'error';
-                    this.versionCheckResult = { status: 'error', currentVersion: 'unknown' };
-                }
+                const result = await checkForUpdates();
+                this.versionCheckResult = result;
+                this.versionCheckState = result.status === 'update-available' ? 'update-available'
+                    : result.status === 'error' ? 'error'
+                    : 'up-to-date';
             },
 
             showConfigSection() {
