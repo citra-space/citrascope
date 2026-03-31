@@ -1,11 +1,13 @@
 """Unit tests for GPSMonitor and LocationService."""
 
+import subprocess
 import time
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from citrascope.location.gps_monitor import GPSFix, GPSMonitor
+from citrascope.location.location_service import LocationService
 
 # ---------------------------------------------------------------------------
 # GPSFix dataclass
@@ -195,23 +197,112 @@ def test_gps_monitor_satellite_count_fallback():
     assert fix.satellites == 2
 
 
+def test_gps_monitor_query_gpsd_timeout_parses_partial():
+    """TimeoutExpired should still parse whatever output was captured."""
+    gm = GPSMonitor()
+    partial_output = (
+        '{"class":"VERSION","release":"3.25"}\n'
+        '{"class":"DEVICES","devices":[{"path":"/dev/ttyAMA0","driver":"MTK-3301"}]}\n'
+        '{"class":"TPV","mode":1}\n'
+    )
+    timeout_exc = subprocess.TimeoutExpired(cmd=["gpspipe"], timeout=5, output=partial_output)
+
+    with patch("subprocess.run", side_effect=timeout_exc):
+        fix = gm._query_gpsd()
+
+    assert fix is not None
+    assert fix.gpsd_version == "3.25"
+    assert fix.device_path == "/dev/ttyAMA0"
+    assert fix.device_driver == "MTK-3301"
+    assert fix.fix_mode == 1
+    assert fix.latitude is None
+
+
+def test_gps_monitor_query_gpsd_timeout_empty():
+    """TimeoutExpired with no captured output should return None."""
+    gm = GPSMonitor()
+    timeout_exc = subprocess.TimeoutExpired(cmd=["gpspipe"], timeout=5, output=None)
+
+    with patch("subprocess.run", side_effect=timeout_exc):
+        assert gm._query_gpsd() is None
+
+
 # ---------------------------------------------------------------------------
 # LocationService
 # ---------------------------------------------------------------------------
 
 
-def test_location_service_gps_unavailable():
+def test_location_service_gps_unavailable_keeps_monitor():
     with patch.object(GPSMonitor, "is_available", return_value=False):
-        from citrascope.location.location_service import LocationService
-
         ls = LocationService()
-    assert ls.gps_monitor is None
+    assert ls.gps_monitor is not None
+    assert ls._gps_started is False
+
+
+def test_location_service_gps_available_at_init():
+    with patch.object(GPSMonitor, "is_available", return_value=True), patch.object(GPSMonitor, "start"):
+        ls = LocationService()
+    assert ls._gps_started is True
+
+
+def test_location_service_retry_loop_starts_gps():
+    """Background retry thread should start GPS when gpsd becomes available."""
+    call_count = 0
+
+    def availability_sequence():
+        nonlocal call_count
+        call_count += 1
+        return call_count >= 2
+
+    with (
+        patch.object(GPSMonitor, "is_available", side_effect=availability_sequence),
+        patch.object(GPSMonitor, "start"),
+        patch.object(LocationService, "GPS_RETRY_INTERVAL_SECONDS", 0.01),
+        patch.object(LocationService, "GPS_RETRY_TIMEOUT_SECONDS", 5),
+    ):
+        ls = LocationService()
+        assert ls._gps_started is False
+        ls._retry_thread.join(timeout=2)
+
+    assert ls._gps_started is True
+
+
+def test_location_service_retry_loop_gives_up():
+    """Background retry thread should stop after deadline."""
+    with (
+        patch.object(GPSMonitor, "is_available", return_value=False),
+        patch.object(LocationService, "GPS_RETRY_INTERVAL_SECONDS", 0.01),
+        patch.object(LocationService, "GPS_RETRY_TIMEOUT_SECONDS", 0.03),
+    ):
+        ls = LocationService()
+        ls._retry_thread.join(timeout=2)
+
+    assert ls._gps_started is False
+
+
+def test_location_service_get_gps_fix_never_blocks_on_retry():
+    """get_gps_fix() must not call _try_start_gps() — retry is background only."""
+    with patch.object(GPSMonitor, "is_available", return_value=False):
+        ls = LocationService()
+
+    assert ls.get_gps_fix(allow_blocking=False) is None
+    assert ls.get_gps_fix(allow_blocking=True) is None
+    assert ls._gps_started is False
+
+
+def test_location_service_get_gps_fix_returns_data_when_started():
+    with patch.object(GPSMonitor, "is_available", return_value=True), patch.object(GPSMonitor, "start"):
+        ls = LocationService()
+
+    fix_obj = GPSFix(latitude=40.0, longitude=-74.0, altitude=100.0, fix_mode=3, satellites=8, timestamp=time.time())
+    with patch.object(GPSMonitor, "get_current_fix", return_value=fix_obj):
+        result = ls.get_gps_fix(allow_blocking=False)
+
+    assert result is fix_obj
 
 
 def test_location_service_get_current_location_from_ground_station():
     with patch.object(GPSMonitor, "is_available", return_value=False):
-        from citrascope.location.location_service import LocationService
-
         ls = LocationService()
     ls.set_ground_station({"id": "gs1", "latitude": 40.0, "longitude": -74.0, "altitude": 100.0})
     loc = ls.get_current_location()
@@ -221,16 +312,12 @@ def test_location_service_get_current_location_from_ground_station():
 
 def test_location_service_get_current_location_none():
     with patch.object(GPSMonitor, "is_available", return_value=False):
-        from citrascope.location.location_service import LocationService
-
         ls = LocationService()
     assert ls.get_current_location() is None
 
 
 def test_location_service_on_gps_fix_no_settings():
     with patch.object(GPSMonitor, "is_available", return_value=False):
-        from citrascope.location.location_service import LocationService
-
         ls = LocationService()
     ls.settings = None
     fix = GPSFix(latitude=40.0, longitude=-74.0, altitude=100.0, fix_mode=3, satellites=8)
@@ -245,8 +332,6 @@ def test_location_service_on_gps_fix_updates_server():
     mock_settings.gps_update_interval_minutes = 0
 
     with patch.object(GPSMonitor, "is_available", return_value=False):
-        from citrascope.location.location_service import LocationService
-
         ls = LocationService(api_client=mock_api, settings=mock_settings)
 
     ls.set_ground_station({"id": "gs1", "latitude": 0.0, "longitude": 0.0, "altitude": 0.0})
@@ -263,8 +348,6 @@ def test_location_service_on_gps_fix_rate_limited():
     mock_settings.gps_update_interval_minutes = 999
 
     with patch.object(GPSMonitor, "is_available", return_value=False):
-        from citrascope.location.location_service import LocationService
-
         ls = LocationService(api_client=mock_api, settings=mock_settings)
 
     ls.set_ground_station({"id": "gs1", "latitude": 0.0, "longitude": 0.0, "altitude": 0.0})
@@ -275,10 +358,18 @@ def test_location_service_on_gps_fix_rate_limited():
     mock_api.update_ground_station_location.assert_not_called()
 
 
-def test_location_service_stop():
-    with patch.object(GPSMonitor, "is_available", return_value=False):
-        from citrascope.location.location_service import LocationService
+def test_location_service_stop_started():
+    with patch.object(GPSMonitor, "is_available", return_value=True), patch.object(GPSMonitor, "start"):
+        ls = LocationService()
+    assert ls._gps_started is True
 
+    with patch.object(GPSMonitor, "stop"):
+        ls.stop()
+    assert ls._gps_started is False
+
+
+def test_location_service_stop_not_started():
+    with patch.object(GPSMonitor, "is_available", return_value=False):
         ls = LocationService()
     ls.stop()
-    assert ls.gps_monitor is None
+    assert ls._gps_started is False
