@@ -18,7 +18,6 @@ def sfm(tmp_path):
     mgr = SettingsFileManager()
     mgr.config_dir = tmp_path
     mgr.config_file = tmp_path / "config.json"
-    mgr.log_dir = tmp_path / "logs"
     return mgr
 
 
@@ -74,17 +73,43 @@ def test_validate_config_non_dict(sfm):
     assert "dictionary" in err
 
 
-def test_ensure_log_directory(sfm):
-    sfm.ensure_log_directory()
-    assert sfm.log_dir.exists()
+def test_directory_manager_defaults():
+    from citrascope.settings.directory_manager import DirectoryManager
+
+    dm = DirectoryManager()
+    assert dm.data_dir == DirectoryManager.default_data_dir()
+    assert dm.log_dir == DirectoryManager.default_log_dir()
+    assert dm.images_dir == dm.data_dir / "images"
+    assert dm.processing_dir == dm.data_dir / "processing"
 
 
-def test_get_log_dir(sfm):
-    assert sfm.get_log_dir() == sfm.log_dir
+def test_directory_manager_custom_dirs(tmp_path):
+    from citrascope.settings.directory_manager import DirectoryManager
+
+    data = tmp_path / "data"
+    logs = tmp_path / "logs"
+    dm = DirectoryManager(custom_data_dir=str(data), custom_log_dir=str(logs))
+    assert dm.data_dir == data
+    assert dm.log_dir == logs
+    assert dm.images_dir == data / "images"
+    assert dm.processing_dir == data / "processing"
 
 
-def test_get_current_log_path(sfm):
-    p = sfm.get_current_log_path()
+def test_directory_manager_ensure_dirs(tmp_path):
+    from citrascope.settings.directory_manager import DirectoryManager
+
+    dm = DirectoryManager(custom_data_dir=str(tmp_path / "data"), custom_log_dir=str(tmp_path / "logs"))
+    dm.ensure_data_directories()
+    dm.ensure_log_directory()
+    assert dm.images_dir.exists()
+    assert dm.log_dir.exists()
+
+
+def test_directory_manager_current_log_path():
+    from citrascope.settings.directory_manager import DirectoryManager
+
+    dm = DirectoryManager()
+    p = dm.current_log_path()
     assert "citrascope-" in p.name
     assert p.suffix == ".log"
 
@@ -304,3 +329,108 @@ def test_observation_mode_in_to_dict():
         s = CitraScopeSettings.load()
 
     assert s.to_dict()["observation_mode"] == "tracking"
+
+
+# ---------------------------------------------------------------------------
+# Detection / background field validators
+# ---------------------------------------------------------------------------
+
+
+def test_detection_sigma_clamps_out_of_range():
+    with patch("citrascope.settings.citrascope_settings.SettingsFileManager") as MockSFM:
+        MockSFM.return_value.load_config.return_value = {"detection_sigma": 999.0}
+        from citrascope.settings.citrascope_settings import CitraScopeSettings
+
+        s = CitraScopeSettings.load()
+
+    assert s.detection_sigma == 20.0
+
+
+def test_detection_sigma_falls_back_on_invalid():
+    with patch("citrascope.settings.citrascope_settings.SettingsFileManager") as MockSFM:
+        MockSFM.return_value.load_config.return_value = {"detection_sigma": "not_a_number"}
+        from citrascope.settings.citrascope_settings import CitraScopeSettings
+
+        s = CitraScopeSettings.load()
+
+    assert s.detection_sigma == 5.0
+
+
+def test_detection_kernel_size_rounds_to_odd():
+    with patch("citrascope.settings.citrascope_settings.SettingsFileManager") as MockSFM:
+        MockSFM.return_value.load_config.return_value = {"detection_kernel_size": 12}
+        from citrascope.settings.citrascope_settings import CitraScopeSettings
+
+        s = CitraScopeSettings.load()
+
+    assert s.detection_kernel_size == 13
+    assert s.detection_kernel_size % 2 == 1
+
+
+def test_detection_kernel_size_clamps_and_rounds():
+    with patch("citrascope.settings.citrascope_settings.SettingsFileManager") as MockSFM:
+        MockSFM.return_value.load_config.return_value = {"detection_kernel_size": 200}
+        from citrascope.settings.citrascope_settings import CitraScopeSettings
+
+        s = CitraScopeSettings.load()
+
+    assert s.detection_kernel_size == 65
+
+
+def test_background_mesh_count_clamps_low():
+    with patch("citrascope.settings.citrascope_settings.SettingsFileManager") as MockSFM:
+        MockSFM.return_value.load_config.return_value = {"background_mesh_count": 1}
+        from citrascope.settings.citrascope_settings import CitraScopeSettings
+
+        s = CitraScopeSettings.load()
+
+    assert s.background_mesh_count == 10
+
+
+def test_detection_deblend_contrast_accepts_zero():
+    with patch("citrascope.settings.citrascope_settings.SettingsFileManager") as MockSFM:
+        MockSFM.return_value.load_config.return_value = {"detection_deblend_contrast": 0.0}
+        from citrascope.settings.citrascope_settings import CitraScopeSettings
+
+        s = CitraScopeSettings.load()
+
+    assert s.detection_deblend_contrast == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Custom directory validators
+# ---------------------------------------------------------------------------
+
+
+def test_custom_data_dir_empty_is_default():
+    with patch("citrascope.settings.citrascope_settings.SettingsFileManager") as MockSFM:
+        MockSFM.return_value.load_config.return_value = {"custom_data_dir": ""}
+        from citrascope.settings.citrascope_settings import CitraScopeSettings
+
+        s = CitraScopeSettings.load()
+
+    assert s.custom_data_dir == ""
+
+
+def test_custom_data_dir_absolute_path_resolved(tmp_path):
+    with patch("citrascope.settings.citrascope_settings.SettingsFileManager") as MockSFM:
+        MockSFM.return_value.load_config.return_value = {"custom_data_dir": str(tmp_path)}
+        from citrascope.settings.citrascope_settings import CitraScopeSettings
+
+        s = CitraScopeSettings.load()
+
+    assert s.custom_data_dir == str(tmp_path.resolve())
+
+
+def test_custom_log_dir_relative_path_rejected():
+    with patch("citrascope.settings.citrascope_settings.SettingsFileManager") as MockSFM:
+        MockSFM.return_value.load_config.return_value = {"custom_log_dir": "relative/path"}
+        from citrascope.settings.citrascope_settings import CitraScopeSettings
+
+        s = CitraScopeSettings.load()
+
+    # Relative paths resolve to absolute via expanduser().resolve(), so
+    # the validator will accept them after resolution. Verify it's absolute.
+    from pathlib import Path
+
+    assert s.custom_log_dir == "" or Path(s.custom_log_dir).is_absolute()

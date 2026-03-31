@@ -22,6 +22,7 @@ from pixelemon.sensors._base_sensor import BaseSensor
 from citrascope.processors.abstract_processor import AbstractImageProcessor
 from citrascope.processors.artifact_writer import dump_processor_result
 from citrascope.processors.processor_result import ProcessingContext, ProcessorResult
+from citrascope.settings.citrascope_settings import CitraScopeSettings
 
 from .processor_dependencies import check_pixelemon, normalize_fits_timestamp
 
@@ -31,29 +32,40 @@ if TYPE_CHECKING:
 _MIN_SOURCE_SNR = 3.0
 
 
-def _detection_settings() -> DetectionSettings:
-    """SEP detection settings derived from MSI's tuned SExtractor config.
+def _setting(settings: Any | None, name: str) -> Any:
+    """Read a detection/background setting, falling back to the Pydantic field default."""
+    default = CitraScopeSettings.model_fields[name].default
+    if settings is not None:
+        return getattr(settings, name, default)
+    return default
 
-    These replace Pixelemon's streak_source_defaults (detection_sigma=2,
-    deblend_mesh_count=1, deblend_contrast=1.0) which effectively disable
-    deblending and cause bright stars to be missed.
+
+def _detection_settings(settings: Any | None = None) -> DetectionSettings:
+    """SEP detection settings, read from CitraScopeSettings when available.
+
+    Falls back to Pydantic field defaults from CitraScopeSettings when no
+    settings object is provided (e.g. standalone reprocessing without config).
     """
     return DetectionSettings(
-        detection_sigma=5.0,
-        min_pixel_count=3,
-        deblend_mesh_count=32,
-        deblend_contrast=0.005,
+        detection_sigma=_setting(settings, "detection_sigma"),
+        min_pixel_count=_setting(settings, "detection_min_pixel_count"),
+        deblend_mesh_count=_setting(settings, "detection_deblend_mesh_count"),
+        deblend_contrast=_setting(settings, "detection_deblend_contrast"),
         merge_small_detections=True,
-        full_width_half_maximum=5,
-        kernel_array_size=13,
+        full_width_half_maximum=_setting(settings, "detection_fwhm"),
+        kernel_array_size=_setting(settings, "detection_kernel_size"),
     )
 
 
-def _background_settings() -> BackgroundSettings:
-    """SEP background settings derived from MSI's tuned SExtractor config."""
+def _background_settings(settings: Any | None = None) -> BackgroundSettings:
+    """SEP background settings, read from CitraScopeSettings when available.
+
+    Falls back to Pydantic field defaults from CitraScopeSettings when no
+    settings object is provided.
+    """
     return BackgroundSettings(
-        mesh_count=64,
-        filter_size=3,
+        mesh_count=_setting(settings, "background_mesh_count"),
+        filter_size=_setting(settings, "background_filter_size"),
     )
 
 
@@ -327,8 +339,8 @@ class PlateSolverProcessor(AbstractImageProcessor):
             PlateSolverProcessor._tetra_loaded = True
         telescope = _build_telescope_for_image(image_path, context)
         image = _TelescopeImage.from_fits_file(image_path, telescope)
-        image.detection_settings = _detection_settings()
-        image.background_settings = _background_settings()
+        image.detection_settings = _detection_settings(context.settings if context else None)
+        image.background_settings = _background_settings(context.settings if context else None)
         solve = image.plate_solve  # triggers internal fit_wcs_from_points(sip_degree=5)
 
         if solve is None:

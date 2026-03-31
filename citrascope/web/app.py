@@ -25,6 +25,11 @@ from citrascope.hardware.adapter_registry import get_adapter_schema as get_schem
 from citrascope.hardware.adapter_registry import list_adapters
 from citrascope.location.twilight import compute_twilight
 from citrascope.logging import CITRASCOPE_LOGGER
+from citrascope.settings.citrascope_settings import (
+    DETECTION_FIELD_RANGES,
+    CitraScopeSettings,
+)
+from citrascope.settings.directory_manager import DirectoryManager
 
 # Standard astronomical filter names for the editable filter name dropdown.
 # Mirrors the canonical names from the Citra API's filter library so that
@@ -227,7 +232,7 @@ class CitraScopeWebApp:
 
         # Mount images directory for camera captures (read-only access)
         if daemon and hasattr(daemon, "settings"):
-            images_dir = daemon.settings.get_images_dir()
+            images_dir = daemon.settings.directories.images_dir
             if images_dir.exists():
                 self.app.mount("/images", StaticFiles(directory=str(images_dir)), name="images")
 
@@ -237,6 +242,14 @@ class CitraScopeWebApp:
         self.templates = Jinja2Templates(directory=str(templates_dir))
         self._cache_bust = str(int(time.time()))
         self.templates.env.globals["cache_bust"] = self._cache_bust
+        self.templates.env.globals["detection_defaults"] = {
+            name: field.default
+            for name, field in CitraScopeSettings.model_fields.items()
+            if name.startswith(("detection_", "background_"))
+        }
+        self.templates.env.globals["detection_ranges"] = DETECTION_FIELD_RANGES
+        self.templates.env.globals["default_data_dir"] = str(DirectoryManager.default_data_dir())
+        self.templates.env.globals["default_log_dir"] = str(DirectoryManager.default_log_dir())
 
         # Register routes
         self._setup_routes()
@@ -283,15 +296,12 @@ class CitraScopeWebApp:
             config_path = str(settings.config_manager.get_config_path())
 
             # Get current log file path
-            log_file_path = (
-                str(settings.config_manager.get_current_log_path()) if settings.file_logging_enabled else None
-            )
+            log_file_path = str(settings.directories.current_log_path()) if settings.file_logging_enabled else None
 
             # Get images directory path
-            images_dir_path = str(settings.get_images_dir())
+            images_dir_path = str(settings.directories.images_dir)
 
-            # Get processing working directory path (sibling to images directory)
-            processing_dir_path = str(settings.get_images_dir().parent / "processing")
+            processing_dir_path = str(settings.directories.processing_dir)
 
             return {
                 **settings.to_dict(),
@@ -445,6 +455,23 @@ class CitraScopeWebApp:
                                         {"error": f"Field '{field_name}' must be a number"},
                                         status_code=400,
                                     )
+
+                for dir_field in ("custom_data_dir", "custom_log_dir"):
+                    dir_value = config.get(dir_field, "")
+                    if dir_value:
+                        dir_path = Path(dir_value)
+                        if not dir_path.is_absolute():
+                            return JSONResponse(
+                                {"error": f"{dir_field} must be an absolute path"},
+                                status_code=400,
+                            )
+                        try:
+                            dir_path.mkdir(parents=True, exist_ok=True)
+                        except OSError as e:
+                            return JSONResponse(
+                                {"error": f"Cannot create {dir_field} '{dir_value}': {e}"},
+                                status_code=400,
+                            )
 
                 self.daemon.settings.update_and_save(config)
 

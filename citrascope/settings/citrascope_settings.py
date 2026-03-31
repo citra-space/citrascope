@@ -10,8 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import platformdirs
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationInfo, field_validator
 
 # Application constants for platformdirs
 # Defined before imports to avoid circular dependency
@@ -20,7 +19,21 @@ APP_AUTHOR = "citra-space"
 
 from citrascope.constants import DEFAULT_API_PORT, DEFAULT_WEB_PORT, PROD_API_HOST
 from citrascope.logging import CITRASCOPE_LOGGER
+from citrascope.settings.directory_manager import DirectoryManager
 from citrascope.settings.settings_file_manager import SettingsFileManager
+
+# Valid ranges for SEP detection/background parameters.
+# Consumed by field validators, exported to the web UI for client-side validation.
+DETECTION_FIELD_RANGES: dict[str, dict[str, float]] = {
+    "detection_sigma": {"min": 1.0, "max": 20.0},
+    "detection_min_pixel_count": {"min": 1, "max": 50},
+    "detection_deblend_mesh_count": {"min": 1, "max": 64},
+    "detection_deblend_contrast": {"min": 0.0, "max": 1.0},
+    "detection_fwhm": {"min": 1, "max": 20},
+    "detection_kernel_size": {"min": 3, "max": 65},
+    "background_mesh_count": {"min": 10, "max": 100},
+    "background_filter_size": {"min": 1, "max": 10},
+}
 
 
 class CitraScopeSettings(BaseModel):
@@ -56,6 +69,16 @@ class CitraScopeSettings(BaseModel):
     skip_upload: bool = False
     use_local_apass_catalog: bool = False
 
+    # Source detection (SEP/Pixelemon parameters, telescope-specific)
+    detection_sigma: float = 5.0
+    detection_min_pixel_count: int = 3
+    detection_deblend_mesh_count: int = 32
+    detection_deblend_contrast: float = 0.005
+    detection_fwhm: int = 5
+    detection_kernel_size: int = 13
+    background_mesh_count: int = 64
+    background_filter_size: int = 3
+
     # Task retry
     max_task_retries: int = 3
     initial_retry_delay_seconds: int = 30
@@ -64,6 +87,10 @@ class CitraScopeSettings(BaseModel):
     # Logging
     file_logging_enabled: bool = True
     log_retention_days: int = 30
+
+    # Custom directory overrides (empty = use platformdirs defaults)
+    custom_data_dir: str = ""
+    custom_log_dir: str = ""
 
     # Autofocus
     scheduled_autofocus_enabled: bool = False
@@ -114,7 +141,7 @@ class CitraScopeSettings(BaseModel):
 
     # ── Private infrastructure ────────────────────────────────────────
     _config_manager: SettingsFileManager = PrivateAttr()
-    _images_dir: Path = PrivateAttr()
+    _dir_manager: DirectoryManager = PrivateAttr()
     _all_adapter_settings: dict[str, dict[str, Any]] = PrivateAttr(default_factory=dict)
 
     # ── Validators (warn-and-fallback, never raise) ───────────────────
@@ -224,6 +251,72 @@ class CitraScopeSettings(BaseModel):
             return clamped
         return v
 
+    @field_validator("detection_sigma", "detection_deblend_contrast", mode="before")
+    @classmethod
+    def _validate_detection_float_field(cls, v: Any, info: ValidationInfo) -> float:
+        assert info.field_name is not None
+        r = DETECTION_FIELD_RANGES[info.field_name]
+        default: float = cls.model_fields[info.field_name].default
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            CITRASCOPE_LOGGER.warning("Invalid %s (%r). Falling back to %s.", info.field_name, v, default)
+            return default
+        if v < r["min"] or v > r["max"]:
+            clamped = max(r["min"], min(r["max"], v))
+            CITRASCOPE_LOGGER.warning(
+                "%s %s out of range [%s, %s]. Clamped to %s.", info.field_name, v, r["min"], r["max"], clamped
+            )
+            return clamped
+        return v
+
+    @field_validator(
+        "detection_min_pixel_count",
+        "detection_deblend_mesh_count",
+        "detection_fwhm",
+        "detection_kernel_size",
+        "background_mesh_count",
+        "background_filter_size",
+        mode="before",
+    )
+    @classmethod
+    def _validate_detection_int_field(cls, v: Any, info: ValidationInfo) -> int:
+        assert info.field_name is not None
+        r = DETECTION_FIELD_RANGES[info.field_name]
+        default: int = cls.model_fields[info.field_name].default
+        try:
+            v = int(v)
+        except (TypeError, ValueError):
+            CITRASCOPE_LOGGER.warning("Invalid %s (%r). Falling back to %s.", info.field_name, v, default)
+            return default
+        if v < r["min"] or v > r["max"]:
+            clamped = int(max(r["min"], min(r["max"], v)))
+            CITRASCOPE_LOGGER.warning(
+                "%s %d out of range [%s, %s]. Clamped to %d.", info.field_name, v, r["min"], r["max"], clamped
+            )
+            return clamped
+        return v
+
+    @field_validator("detection_kernel_size", mode="after")
+    @classmethod
+    def _validate_kernel_size_odd(cls, v: int) -> int:
+        if v % 2 == 0:
+            v += 1
+            CITRASCOPE_LOGGER.warning("detection_kernel_size must be odd. Rounded up to %d.", v)
+        return v
+
+    @field_validator("custom_data_dir", "custom_log_dir", mode="before")
+    @classmethod
+    def _validate_custom_dir(cls, v: Any) -> str:
+        if not v:
+            return ""
+        v = str(v)
+        p = Path(v).expanduser().resolve()
+        if not p.is_absolute():
+            CITRASCOPE_LOGGER.warning("custom dir path %r is not absolute. Ignoring.", v)
+            return ""
+        return str(p)
+
     # ── Factory ───────────────────────────────────────────────────────
 
     @classmethod
@@ -241,7 +334,8 @@ class CitraScopeSettings(BaseModel):
 
         instance = cls.model_validate(config)
         instance._config_manager = mgr
-        instance._images_dir = Path(platformdirs.user_data_dir(APP_NAME, appauthor=APP_AUTHOR)) / "images"
+        instance._dir_manager = DirectoryManager(instance.custom_data_dir, instance.custom_log_dir)
+
         instance._all_adapter_settings = all_adapter_settings
         instance.adapter_settings = all_adapter_settings.get(instance.hardware_adapter, {})
         return instance
@@ -253,14 +347,10 @@ class CitraScopeSettings(BaseModel):
         """Access the underlying file manager (for path queries, etc.)."""
         return self._config_manager
 
-    def get_images_dir(self) -> Path:
-        """Get the path to the images directory."""
-        return self._images_dir
-
-    def ensure_images_directory(self) -> None:
-        """Create images directory if it doesn't exist."""
-        if not self._images_dir.exists():
-            self._images_dir.mkdir(parents=True)
+    @property
+    def directories(self) -> DirectoryManager:
+        """Centralized directory paths (data, images, processing, logs)."""
+        return self._dir_manager
 
     def is_configured(self) -> bool:
         """Check if minimum required configuration is present."""
