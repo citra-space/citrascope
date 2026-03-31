@@ -466,7 +466,10 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             response = resp.get("Response", {})
             if not response.get("Connected"):
                 return None
-            return bool(response.get("IsSafe"))
+            is_safe = response.get("IsSafe")
+            if isinstance(is_safe, bool):
+                return is_safe
+            return None
         except Exception:
             return None
 

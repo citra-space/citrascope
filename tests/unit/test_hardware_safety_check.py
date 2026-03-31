@@ -84,3 +84,29 @@ class TestHardwareSafetyCheck:
         status = check.get_status()
         assert status["name"] == "hardware_safety"
         assert status["is_safe"] is None
+
+    def test_critical_logged_only_on_transition_to_unsafe(self):
+        logger = MagicMock()
+        check = HardwareSafetyCheck(logger, lambda: False)
+        check.check()
+        assert logger.critical.call_count == 1
+
+        logger.critical.reset_mock()
+        check.check()
+        assert logger.critical.call_count == 0
+
+    def test_critical_logged_again_after_recovery_and_re_trigger(self):
+        state = {"safe": False}
+        logger = MagicMock()
+        check = HardwareSafetyCheck(logger, lambda: state["safe"])
+
+        check.check()
+        assert logger.critical.call_count == 1
+
+        state["safe"] = True
+        check.check()
+
+        logger.critical.reset_mock()
+        state["safe"] = False
+        check.check()
+        assert logger.critical.call_count == 1

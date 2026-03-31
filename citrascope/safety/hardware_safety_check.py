@@ -26,12 +26,14 @@ class HardwareSafetyCheck(SafetyCheck):
         self._logger = logger
         self._query_fn = query_fn
         self._is_safe: bool | None = None
+        self._prev_safe: bool | None = None
 
     @property
     def name(self) -> str:
         return "hardware_safety"
 
     def check(self) -> SafetyAction:
+        self._prev_safe = self._is_safe
         try:
             self._is_safe = self._query_fn()
         except Exception:
@@ -42,7 +44,8 @@ class HardwareSafetyCheck(SafetyCheck):
         if self._is_safe is None:
             return SafetyAction.WARN
         if not self._is_safe:
-            self._logger.critical("Hardware safety monitor reports UNSAFE conditions")
+            if self._prev_safe is not False:
+                self._logger.critical("Hardware safety monitor reports UNSAFE conditions")
             return SafetyAction.EMERGENCY
         return SafetyAction.SAFE
 
