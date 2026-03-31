@@ -70,15 +70,18 @@ class LocationService:
         )
 
         self._gps_started = False
-        self._gps_retry_deadline = time.time() + self.GPS_RETRY_TIMEOUT_SECONDS
-        self._last_gps_retry: float = 0.0
-        self._try_start_gps()
+
+        if not self._try_start_gps():
+            # gpsd wasn't ready at init — retry in background so we never
+            # block the async web event loop with subprocess calls later.
+            self._retry_thread = threading.Thread(target=self._gps_retry_loop, daemon=True)
+            self._retry_thread.start()
 
     def _try_start_gps(self) -> bool:
         """Attempt to start GPS monitoring if gpsd is available.
 
-        Safe to call repeatedly — respects a retry interval and a deadline
-        so systems without GPS hardware don't keep spawning subprocesses.
+        Calls ``is_available()`` which spawns a short-lived subprocess,
+        so this must only be called from synchronous / background contexts.
 
         Returns:
             True if the GPS monitor is (now) running.
@@ -86,29 +89,30 @@ class LocationService:
         if self._gps_started:
             return True
 
-        now = time.time()
-        if now > self._gps_retry_deadline:
-            return False
-        if now - self._last_gps_retry < self.GPS_RETRY_INTERVAL_SECONDS:
-            return False
-
-        self._last_gps_retry = now
-
         if self.gps_monitor.is_available():
             self.gps_monitor.start()
             self._gps_started = True
             CITRASCOPE_LOGGER.info("GPS monitoring started by location service")
             return True
 
-        CITRASCOPE_LOGGER.debug("GPS not yet available — will retry")
         return False
 
-    def get_gps_fix(self, allow_blocking: bool = True) -> GPSFix | None:
-        """Get GPS fix, lazily starting the monitor if gpsd became available.
+    def _gps_retry_loop(self) -> None:
+        """Background thread that retries GPS availability until deadline.
 
-        This is the preferred entry point for callers that need GPS data.
-        It handles retry logic internally so callers don't need to check
-        whether the monitor was successfully started at boot.
+        Runs only when gpsd wasn't responsive at init.  Exits on first
+        success or after GPS_RETRY_TIMEOUT_SECONDS.
+        """
+        deadline = time.time() + self.GPS_RETRY_TIMEOUT_SECONDS
+        while not self._gps_started and time.time() < deadline:
+            time.sleep(self.GPS_RETRY_INTERVAL_SECONDS)
+            if self._try_start_gps():
+                return
+        if not self._gps_started:
+            CITRASCOPE_LOGGER.info("GPS not available after retries — location service using API-only mode")
+
+    def get_gps_fix(self, allow_blocking: bool = True) -> GPSFix | None:
+        """Get GPS fix data, never blocking on gpsd availability probes.
 
         Args:
             allow_blocking: If False, never blocks on a subprocess call.
@@ -117,9 +121,6 @@ class LocationService:
         Returns:
             Current GPS fix, or None if GPS is unavailable.
         """
-        if not self._gps_started:
-            self._try_start_gps()
-
         if self._gps_started:
             return self.gps_monitor.get_current_fix(allow_blocking=allow_blocking)
         return None

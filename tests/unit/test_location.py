@@ -245,8 +245,8 @@ def test_location_service_gps_available_at_init():
     assert ls._gps_started is True
 
 
-def test_location_service_lazy_retry_starts_gps():
-    """GPS unavailable at init, then becomes available on a later call."""
+def test_location_service_retry_loop_starts_gps():
+    """Background retry thread should start GPS when gpsd becomes available."""
     call_count = 0
 
     def availability_sequence():
@@ -254,59 +254,51 @@ def test_location_service_lazy_retry_starts_gps():
         call_count += 1
         return call_count >= 2
 
-    with patch.object(GPSMonitor, "is_available", side_effect=availability_sequence):
+    with (
+        patch.object(GPSMonitor, "is_available", side_effect=availability_sequence),
+        patch.object(GPSMonitor, "start"),
+        patch.object(LocationService, "GPS_RETRY_INTERVAL_SECONDS", 0.01),
+        patch.object(LocationService, "GPS_RETRY_TIMEOUT_SECONDS", 5),
+    ):
         ls = LocationService()
         assert ls._gps_started is False
+        ls._retry_thread.join(timeout=2)
 
-        # Force past the retry interval
-        ls._last_gps_retry = 0.0
-
-        with patch.object(GPSMonitor, "start"):
-            result = ls._try_start_gps()
-
-    assert result is True
     assert ls._gps_started is True
 
 
-def test_location_service_retry_respects_deadline():
-    with patch.object(GPSMonitor, "is_available", return_value=False):
+def test_location_service_retry_loop_gives_up():
+    """Background retry thread should stop after deadline."""
+    with (
+        patch.object(GPSMonitor, "is_available", return_value=False),
+        patch.object(LocationService, "GPS_RETRY_INTERVAL_SECONDS", 0.01),
+        patch.object(LocationService, "GPS_RETRY_TIMEOUT_SECONDS", 0.03),
+    ):
         ls = LocationService()
+        ls._retry_thread.join(timeout=2)
 
-    # Push deadline into the past
-    ls._gps_retry_deadline = time.time() - 1
-    ls._last_gps_retry = 0.0
-
-    assert ls._try_start_gps() is False
     assert ls._gps_started is False
 
 
-def test_location_service_retry_respects_interval():
-    with patch.object(GPSMonitor, "is_available", return_value=False):
-        ls = LocationService()
-
-    # Recent retry should be throttled even though deadline hasn't passed
-    ls._last_gps_retry = time.time()
-    assert ls._try_start_gps() is False
-
-
-def test_location_service_get_gps_fix_triggers_retry():
-    """get_gps_fix() should attempt lazy start when monitor isn't running."""
+def test_location_service_get_gps_fix_never_blocks_on_retry():
+    """get_gps_fix() must not call _try_start_gps() — retry is background only."""
     with patch.object(GPSMonitor, "is_available", return_value=False):
         ls = LocationService()
 
     assert ls.get_gps_fix(allow_blocking=False) is None
+    assert ls.get_gps_fix(allow_blocking=True) is None
+    assert ls._gps_started is False
 
-    # Simulate GPS becoming available
-    ls._last_gps_retry = 0.0
+
+def test_location_service_get_gps_fix_returns_data_when_started():
     with patch.object(GPSMonitor, "is_available", return_value=True), patch.object(GPSMonitor, "start"):
-        fix_obj = GPSFix(
-            latitude=40.0, longitude=-74.0, altitude=100.0, fix_mode=3, satellites=8, timestamp=time.time()
-        )
-        with patch.object(GPSMonitor, "get_current_fix", return_value=fix_obj):
-            result = ls.get_gps_fix(allow_blocking=False)
+        ls = LocationService()
+
+    fix_obj = GPSFix(latitude=40.0, longitude=-74.0, altitude=100.0, fix_mode=3, satellites=8, timestamp=time.time())
+    with patch.object(GPSMonitor, "get_current_fix", return_value=fix_obj):
+        result = ls.get_gps_fix(allow_blocking=False)
 
     assert result is fix_obj
-    assert ls._gps_started is True
 
 
 def test_location_service_get_current_location_from_ground_station():
