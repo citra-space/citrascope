@@ -10,7 +10,7 @@
                             <div class="d-flex align-items-center gap-2">
                                 <button class="btn btn-sm btn-outline-secondary"
                                         x-show="$store.citrascope.config.hardware_adapter"
-                                        :disabled="$store.citrascope.isReconnecting"
+                                        :disabled="$store.citrascope.isReconnecting || $store.citrascope.isSavingConfig"
                                         @click.stop="$store.citrascope.reconnectHardware()"
                                         data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="bottom"
                                         title="Disconnect and reconnect all hardware">
