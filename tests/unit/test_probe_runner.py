@@ -436,7 +436,10 @@ class TestFallbackCaching:
             )
             assert mock_probe.call_count == 1
 
-        with patch("citrascope.hardware.devices.abstract_hardware_device.time") as mock_time:
+        with (
+            patch("citrascope.hardware.devices.abstract_hardware_device.time") as mock_time,
+            patch("citrascope.hardware.probe_runner.run_hardware_probe") as mock_probe2,
+        ):
             mock_time.time.return_value = time.time() + 86400 * 365  # one year later
             result = ZwoEafFocuser._cached_hardware_probe(
                 _succeeds,
@@ -444,3 +447,4 @@ class TestFallbackCaching:
                 timeout=5.0,
             )
             assert result == ["devices"]
+            assert mock_probe2.call_count == 0  # cache hit, no subprocess spawned

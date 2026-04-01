@@ -225,6 +225,15 @@ def test_scan_hardware_unknown_adapter(client):
     assert resp.status_code == 404
 
 
+def test_scan_hardware_invalid_current_settings(client):
+    resp = client.post(
+        "/api/hardware/scan",
+        json={"adapter_name": "nina", "current_settings": "not_a_dict"},
+    )
+    assert resp.status_code == 400
+    assert "current_settings" in resp.json()["error"]
+
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------

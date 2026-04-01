@@ -407,10 +407,12 @@ class CitraScopeWebApp:
             can explicitly re-enumerate USB devices, serial ports, etc.
             """
             adapter_name = body.get("adapter_name", "")
-            current_settings: dict[str, Any] = body.get("current_settings", {})
-
             if not adapter_name:
                 return JSONResponse({"error": "adapter_name is required"}, status_code=400)
+
+            current_settings = body.get("current_settings", {})
+            if not isinstance(current_settings, dict):
+                return JSONResponse({"error": "current_settings must be a JSON object"}, status_code=400)
 
             def _scan() -> list:
                 AbstractHardwareDevice._hardware_probe_cache.clear()
@@ -418,6 +420,13 @@ class CitraScopeWebApp:
                     from citrascope.hardware.devices.mount.zwo_am_mount import ZwoAmMount
 
                     ZwoAmMount._port_cache = None
+                    ZwoAmMount._port_cache_timestamp = 0
+                except ImportError:
+                    pass
+                try:
+                    from citrascope.hardware.devices.camera.moravian_camera import MoravianCamera
+
+                    MoravianCamera._read_mode_cache = None
                 except ImportError:
                     pass
                 return get_schema(adapter_name, **current_settings)

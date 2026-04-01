@@ -204,11 +204,22 @@ function getDefaultForType(type) {
 }
 
 /**
+ * Build reactive Alpine field objects from a raw schema + current values.
+ */
+function buildAdapterFields(schema, currentSettings = {}) {
+    return schema
+        .filter(field => !field.readonly)
+        .map(field => Alpine.reactive({
+            ...field,
+            value: currentSettings[field.name] ?? field.default ?? getDefaultForType(field.type),
+        }));
+}
+
+/**
  * Load adapter schema and merge with current values
  */
 async function loadAdapterSchema(adapterName, currentSettings = {}) {
     try {
-        // Pass current adapter settings for dynamic schema generation
         const settingsParam = Object.keys(currentSettings).length > 0
             ? `?current_settings=${encodeURIComponent(JSON.stringify(currentSettings))}`
             : '';
@@ -220,23 +231,11 @@ async function loadAdapterSchema(adapterName, currentSettings = {}) {
 
         console.log(`Schema API response:`, data);
 
-        const schema = data.schema || [];
-
-        // Merge schema with values into enriched field objects
-        // Use Alpine.reactive to ensure nested properties are reactive
-        const enrichedFields = schema
-            .filter(field => !field.readonly) // Skip readonly fields
-            .map(field => Alpine.reactive({
-                ...field,  // All schema properties (name, type, options, etc.)
-                value: currentSettings[field.name] ?? field.default ?? getDefaultForType(field.type)
-            }));
-
+        const enrichedFields = buildAdapterFields(data.schema || [], currentSettings);
         console.log('Loaded adapter fields:', enrichedFields.map(f => `${f.name}=${f.value} (${f.type})`));
 
-        // Update Alpine store with unified field objects
         if (typeof Alpine !== 'undefined' && Alpine.store) {
-            const store = Alpine.store('citrascope');
-            store.adapterFields = enrichedFields;
+            Alpine.store('citrascope').adapterFields = enrichedFields;
         }
     } catch (error) {
         console.error('Failed to load adapter schema:', error);
@@ -1043,14 +1042,7 @@ async function scanHardware() {
             return;
         }
 
-        const schema = data.schema || [];
-        const enrichedFields = schema
-            .filter(field => !field.readonly)
-            .map(field => Alpine.reactive({
-                ...field,
-                value: currentSettings[field.name] ?? field.default ?? getDefaultForType(field.type),
-            }));
-        store.adapterFields = enrichedFields;
+        store.adapterFields = buildAdapterFields(data.schema || [], currentSettings);
     } catch (error) {
         console.error('Hardware scan failed:', error);
         showConfigError('Hardware scan failed — check connection');
