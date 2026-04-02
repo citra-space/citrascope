@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, PropertyMock
 
 import pytest
 
@@ -50,27 +50,30 @@ class TestShortestArc:
 # ------------------------------------------------------------------
 
 
-class _CachedStateSequence:
-    """Returns sequential az_deg values from mount.cached_state attribute access."""
+def _snapshot_property(frames: list[tuple[float | None, bool]]) -> PropertyMock:
+    """Build a PropertyMock that yields a fresh MountSnapshot per access.
 
-    def __init__(self, azimuths: list[float | None]):
-        self._iter = iter(azimuths)
-        self.is_at_home = False
-
-    @property
-    def az_deg(self) -> float | None:
-        return next(self._iter, None)
+    Both ``az_deg`` and ``is_at_home`` are baked into the returned snapshot,
+    so field access order on the consumer side doesn't matter.
+    """
+    snapshots = [MountSnapshot(az_deg=az, is_at_home=home) for az, home in frames]
+    it = iter(snapshots)
+    return PropertyMock(side_effect=lambda: next(it, MountSnapshot()))
 
 
 def _make_mount(mode: str = "altaz", azimuths: list[float | None] | None = None):
-    mount = MagicMock()
+    class _Mount(MagicMock):
+        pass
+
+    mount = _Mount()
     mount.get_mount_mode.return_value = mode
     if azimuths is not None:
+        frames = [(az, False) for az in azimuths]
+        type(mount).cached_state = _snapshot_property(frames)
         mount.get_azimuth.side_effect = list(azimuths[1:]) if len(azimuths) > 1 else []
-        mount.cached_state = _CachedStateSequence(azimuths)
     else:
         mount.get_azimuth.return_value = None
-        mount.cached_state = MountSnapshot()
+        type(mount).cached_state = PropertyMock(return_value=MountSnapshot())
     mount.start_move.return_value = True
     mount.stop_move.return_value = True
     mount.stop_tracking.return_value = True
@@ -589,35 +592,15 @@ class TestCableWrapObserverLifecycle:
 # ------------------------------------------------------------------
 
 
-class _CachedStateWithHome:
-    """Returns sequential (az, is_at_home) pairs from mount.cached_state access."""
-
-    def __init__(self, frames: list[tuple[float | None, bool]]):
-        self._frames = iter(frames)
-        self._current_az: float | None = None
-        self._current_home: bool = False
-
-    def _advance(self) -> None:
-        try:
-            self._current_az, self._current_home = next(self._frames)
-        except StopIteration:
-            self._current_az = None
-
-    @property
-    def az_deg(self) -> float | None:
-        self._advance()
-        return self._current_az
-
-    @property
-    def is_at_home(self) -> bool:
-        return self._current_home
-
-
 def _make_mount_with_frames(frames: list[tuple[float | None, bool]]):
     """Create a mock mount that yields (az, is_at_home) per observation tick."""
-    mount = MagicMock()
+
+    class _Mount(MagicMock):
+        pass
+
+    mount = _Mount()
     mount.get_mount_mode.return_value = "altaz"
-    mount.cached_state = _CachedStateWithHome(frames)
+    type(mount).cached_state = _snapshot_property(frames)
     return mount
 
 

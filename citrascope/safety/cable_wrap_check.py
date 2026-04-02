@@ -420,7 +420,7 @@ class CableWrapCheck(SafetyCheck):
                 converged = True
                 break
 
-            if reason == "timeout" or reason == "no_az" or reason == "budget":
+            if reason in ("timeout", "no_az", "budget", "bad_delta"):
                 break
 
             if reason == "stall":
@@ -478,7 +478,8 @@ class CableWrapCheck(SafetyCheck):
         """Execute one continuous move segment.
 
         Returns (segment_travel_deg, poll_count, stop_reason).
-        stop_reason is one of: "converged", "stall", "timeout", "no_az", "budget", "start_failed", "gate".
+        stop_reason is one of: "converged", "stall", "timeout", "no_az", "budget",
+        "start_failed", "gate", "bad_delta".
         """
         if not self._mount.start_move(direction, rate=_UNWIND_RATE):
             self._logger.error("Mount does not support directional motion — cannot unwind")
@@ -517,23 +518,15 @@ class CableWrapCheck(SafetyCheck):
                     if self._last_az is not None:
                         delta = _shortest_arc(self._last_az, az)
                         if abs(delta) > _MAX_AZ_DELTA_PER_TICK_DEG:
-                            self._consecutive_rejections += 1
-                            if (
-                                self._consecutive_rejections == 1
-                                or self._consecutive_rejections > _REJECTION_HUSH_LIMIT
-                            ):
-                                self._logger.warning(
-                                    "Unwind: azimuth tracking suspended — " "impossible delta %.1f° (max %.1f°)",
-                                    delta,
-                                    _MAX_AZ_DELTA_PER_TICK_DEG,
-                                )
+                            self._logger.warning(
+                                "Unwind: aborting segment — impossible delta %.1f° "
+                                "(max %.1f°), cannot track position while commanding motion",
+                                delta,
+                                _MAX_AZ_DELTA_PER_TICK_DEG,
+                            )
+                            reason = "bad_delta"
+                            break
                         else:
-                            if self._consecutive_rejections:
-                                self._logger.info(
-                                    "Unwind: azimuth tracking resumed after %d rejected ticks",
-                                    self._consecutive_rejections,
-                                )
-                            self._consecutive_rejections = 0
                             self._cumulative_deg += delta
                             segment_travel += abs(delta)
                             self._last_az = az
