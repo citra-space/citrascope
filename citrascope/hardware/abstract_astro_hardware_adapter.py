@@ -8,6 +8,8 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict
 
+from citrascope.location.gps_fix import GPSFix
+
 if TYPE_CHECKING:
     import threading
 
@@ -138,6 +140,13 @@ class AbstractAstroHardwareAdapter(ABC):
                 return cam.get_camera_info()
             except Exception:
                 return None
+        return None
+
+    def get_gps_location(self) -> GPSFix | None:
+        """Return GPS location from hardware if available.
+
+        Direct adapters delegate to camera.get_gps_location().
+        """
         return None
 
     def point_telescope(self, ra: float, dec: float):
