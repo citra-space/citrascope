@@ -117,36 +117,20 @@ class SatelliteMatcherProcessor(AbstractImageProcessor):
         Returns (observations, debug_info) where debug_info contains the full diagnostic
         bundle for satellite_matcher_debug.json.
         """
-        # GEO/slow-mover detection: skip elongation filter when the target barely moves,
-        # because point-like GEO satellites are indistinguishable from stars by shape.
-        is_slow_mover = False
-        try:
-            slew_ahead = (context.pointing_report or {}).get("slew_ahead", {})
-            is_slow_mover = bool(slew_ahead.get("is_slow_mover", False))
-        except (AttributeError, TypeError):
-            pass
-
-        elongation_filter_applied = not is_slow_mover
-
         debug: dict[str, Any] = {
             "tracking_mode": tracking_mode,
-            "is_slow_mover": is_slow_mover,
-            "elongation_filter_applied": elongation_filter_applied,
+            "elongation_filter_applied": True,
             "elongation_threshold": _ELONGATION_THRESHOLD,
             "field_radius_deg": _FIELD_RADIUS_DEG,
             "match_radius_arcmin": _MATCH_RADIUS_DEG * 60.0,
         }
 
-        if elongation_filter_applied:
-            if tracking_mode == "rate":
-                potential_sats = sources[sources["elongation"] < _ELONGATION_THRESHOLD].copy()
-                star_like_count = int((sources["elongation"] >= _ELONGATION_THRESHOLD).sum())
-            else:
-                potential_sats = sources[sources["elongation"] >= _ELONGATION_THRESHOLD].copy()
-                star_like_count = int((sources["elongation"] < _ELONGATION_THRESHOLD).sum())
+        if tracking_mode == "rate":
+            potential_sats = sources[sources["elongation"] < _ELONGATION_THRESHOLD].copy()
+            star_like_count = int((sources["elongation"] >= _ELONGATION_THRESHOLD).sum())
         else:
-            potential_sats = sources.copy()
-            star_like_count = 0
+            potential_sats = sources[sources["elongation"] >= _ELONGATION_THRESHOLD].copy()
+            star_like_count = int((sources["elongation"] < _ELONGATION_THRESHOLD).sum())
 
         elong_vals = sources["elongation"]
         debug["source_classification"] = {

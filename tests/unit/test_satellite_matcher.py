@@ -115,10 +115,10 @@ class TestSubtractKnownStars:
 
 
 # ===================================================================
-# 2. Slow-mover elongation bypass
+# 2. Elongation filter is always applied based on tracking mode
 # ===================================================================
-class TestSlowMoverElongationBypass:
-    """When pointing_report indicates a slow mover, elongation filter should be skipped."""
+class TestElongationFilterAlwaysApplied:
+    """The elongation filter is always applied; tracking mode determines direction."""
 
     @staticmethod
     def _make_mixed_sources() -> pd.DataFrame:
@@ -133,61 +133,25 @@ class TestSlowMoverElongationBypass:
             }
         )
 
-    def test_slow_mover_uses_all_sources(self):
-        """With is_slow_mover=True, all sources become candidates (no elongation cut)."""
+    def test_sidereal_keeps_elongated_sources(self):
+        """Sidereal tracking: satellites streak, so keep elongation >= threshold."""
         sources = self._make_mixed_sources()
         from citrascope.processors.builtin.satellite_matcher_processor import (
             _ELONGATION_THRESHOLD,
         )
 
-        is_slow_mover = True
-        elongation_filter_applied = not is_slow_mover
+        potential_sats = sources[sources["elongation"] >= _ELONGATION_THRESHOLD].copy()
+        assert len(potential_sats) == 2
 
-        if elongation_filter_applied:
-            potential_sats = sources[sources["elongation"] >= _ELONGATION_THRESHOLD].copy()
-        else:
-            potential_sats = sources.copy()
-
-        assert len(potential_sats) == 4
-        assert not elongation_filter_applied
-
-    def test_fast_mover_applies_elongation_filter(self):
-        """With is_slow_mover=False (LEO), elongation filter is applied normally."""
+    def test_rate_keeps_point_like_sources(self):
+        """Rate tracking: satellite is point-like, so keep elongation < threshold."""
         sources = self._make_mixed_sources()
         from citrascope.processors.builtin.satellite_matcher_processor import (
             _ELONGATION_THRESHOLD,
         )
 
-        is_slow_mover = False
-        elongation_filter_applied = not is_slow_mover
-
-        if elongation_filter_applied:
-            potential_sats = sources[sources["elongation"] >= _ELONGATION_THRESHOLD].copy()
-        else:
-            potential_sats = sources.copy()
-
-        assert len(potential_sats) == 2  # only elongation >= 1.5
-        assert elongation_filter_applied
-
-    def test_missing_pointing_report_defaults_to_elongation_filter(self):
-        """When pointing_report is None, elongation filter should apply (safe default)."""
-        pointing_report = None
-        try:
-            slew_ahead = (pointing_report or {}).get("slew_ahead", {})
-            is_slow_mover = bool(slew_ahead.get("is_slow_mover", False))
-        except (AttributeError, TypeError):
-            is_slow_mover = False
-
-        assert is_slow_mover is False
-        assert not is_slow_mover  # elongation filter will apply
-
-    def test_pointing_report_without_slew_ahead_defaults_to_elongation_filter(self):
-        """A pointing_report that lacks slew_ahead defaults safely."""
-        pointing_report = {"converged": True, "final_telescope_ra_deg": 133.0}
-        slew_ahead = (pointing_report or {}).get("slew_ahead", {})
-        is_slow_mover = bool(slew_ahead.get("is_slow_mover", False))
-
-        assert is_slow_mover is False
+        potential_sats = sources[sources["elongation"] < _ELONGATION_THRESHOLD].copy()
+        assert len(potential_sats) == 2
 
 
 # ===================================================================
