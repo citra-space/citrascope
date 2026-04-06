@@ -94,7 +94,9 @@ class CitraScopeSettings(BaseModel):
 
     # Autofocus
     scheduled_autofocus_enabled: bool = False
+    autofocus_schedule_mode: str = "interval"
     autofocus_interval_minutes: int = 60
+    autofocus_after_sunset_offset_minutes: int = 60
     last_autofocus_timestamp: int | None = None
     autofocus_target_preset: str = "mirach"
     autofocus_target_custom_ra: float | None = None
@@ -177,6 +179,31 @@ class CitraScopeSettings(BaseModel):
                 return None
         return v
 
+    @field_validator("autofocus_schedule_mode", mode="before")
+    @classmethod
+    def _validate_autofocus_schedule_mode(cls, v: Any) -> str:
+        if v not in ("interval", "after_sunset"):
+            CITRASCOPE_LOGGER.warning("Invalid autofocus_schedule_mode (%r). Falling back to 'interval'.", v)
+            return "interval"
+        return v
+
+    @field_validator("autofocus_after_sunset_offset_minutes", mode="before")
+    @classmethod
+    def _validate_autofocus_sunset_offset(cls, v: Any) -> int:
+        try:
+            v = int(v)
+        except (ValueError, TypeError):
+            CITRASCOPE_LOGGER.warning(
+                "Invalid autofocus_after_sunset_offset_minutes (%s). Setting to default 60 minutes.", v
+            )
+            return 60
+        if v < 0 or v > 720:
+            CITRASCOPE_LOGGER.warning(
+                "autofocus_after_sunset_offset_minutes (%s) out of range [0, 720]. Setting to default 60.", v
+            )
+            return 60
+        return v
+
     @field_validator("autofocus_interval_minutes", mode="before")
     @classmethod
     def _validate_autofocus_interval(cls, v: Any) -> int:
@@ -185,7 +212,7 @@ class CitraScopeSettings(BaseModel):
         except (ValueError, TypeError):
             CITRASCOPE_LOGGER.warning("Invalid autofocus_interval_minutes (%s). Setting to default 60 minutes.", v)
             return 60
-        if v < 1 or v > 1439:
+        if v < 1 or v > 1440:
             CITRASCOPE_LOGGER.warning("Invalid autofocus_interval_minutes (%s). Setting to default 60 minutes.", v)
             return 60
         return v

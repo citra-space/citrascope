@@ -120,6 +120,7 @@ def mock_daemon(mock_settings):
     d.task_manager.autofocus_manager.is_requested.return_value = False
     d.task_manager.autofocus_manager.is_running.return_value = False
     d.task_manager.autofocus_manager.progress = ""
+    d.task_manager.autofocus_manager.get_next_autofocus_minutes.return_value = None
     d.task_manager.alignment_manager = MagicMock()
     d.task_manager.alignment_manager.is_requested.return_value = False
     d.task_manager.alignment_manager.is_running.return_value = False
@@ -745,6 +746,7 @@ def test_status_with_processors(client, mock_daemon):
 def test_status_scheduled_autofocus(client, mock_daemon):
     mock_daemon.settings.scheduled_autofocus_enabled = True
     mock_daemon.settings.last_autofocus_timestamp = int(__import__("time").time()) - 1800
+    mock_daemon.task_manager.autofocus_manager.get_next_autofocus_minutes.return_value = 30
     resp = client.get("/api/status")
     data = resp.json()
     assert data["next_autofocus_minutes"] is not None
@@ -753,6 +755,7 @@ def test_status_scheduled_autofocus(client, mock_daemon):
 def test_status_scheduled_autofocus_never_run(client, mock_daemon):
     mock_daemon.settings.scheduled_autofocus_enabled = True
     mock_daemon.settings.last_autofocus_timestamp = None
+    mock_daemon.task_manager.autofocus_manager.get_next_autofocus_minutes.return_value = 0
     resp = client.get("/api/status")
     assert resp.json()["next_autofocus_minutes"] == 0
 

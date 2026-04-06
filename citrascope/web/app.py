@@ -1813,8 +1813,16 @@ class CitraScopeWebApp:
                 self.status.last_alignment_timestamp = settings.last_alignment_timestamp
                 self.status.autofocus_target_name = _resolve_autofocus_target_name(settings)
 
-                # Calculate next autofocus time if scheduled is enabled
-                if settings.scheduled_autofocus_enabled:
+                # Calculate next autofocus time (delegates mode-aware logic to AutofocusManager)
+                if (
+                    hasattr(self.daemon, "task_manager")
+                    and self.daemon.task_manager
+                    and hasattr(self.daemon.task_manager, "autofocus_manager")
+                ):
+                    self.status.next_autofocus_minutes = (
+                        self.daemon.task_manager.autofocus_manager.get_next_autofocus_minutes()
+                    )
+                elif settings.scheduled_autofocus_enabled:
                     last_ts = settings.last_autofocus_timestamp
                     interval_minutes = settings.autofocus_interval_minutes
                     if last_ts is not None:
@@ -1822,7 +1830,6 @@ class CitraScopeWebApp:
                         remaining = max(0, interval_minutes - elapsed_minutes)
                         self.status.next_autofocus_minutes = int(remaining)
                     else:
-                        # Never run - will trigger immediately
                         self.status.next_autofocus_minutes = 0
                 else:
                     self.status.next_autofocus_minutes = None

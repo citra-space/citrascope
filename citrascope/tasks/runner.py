@@ -91,6 +91,7 @@ class TaskManager:
             self.hardware_adapter,
             self.settings,
             imaging_queue=self.imaging_queue,
+            location_service=self.location_service,
         )
         self.alignment_manager = AlignmentManager(
             self.logger,

@@ -5,12 +5,14 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from citrascope.constants import AUTOFOCUS_TARGET_PRESETS
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
 
 if TYPE_CHECKING:
+    from citrascope.location.location_service import LocationService
     from citrascope.settings.citrascope_settings import CitraScopeSettings
     from citrascope.tasks.base_work_queue import BaseWorkQueue
 
@@ -29,11 +31,13 @@ class AutofocusManager:
         hardware_adapter: AbstractAstroHardwareAdapter,
         settings: CitraScopeSettings,
         imaging_queue: BaseWorkQueue | None = None,
+        location_service: LocationService | None = None,
     ):
         self.logger = logger
         self.hardware_adapter = hardware_adapter
         self.settings = settings
         self.imaging_queue = imaging_queue
+        self.location_service = location_service
         self._requested = False
         self._running = False
         self._progress = ""
@@ -125,6 +129,13 @@ class AutofocusManager:
         if not self.hardware_adapter.supports_autofocus():
             return False
 
+        mode = self.settings.autofocus_schedule_mode
+        if mode == "after_sunset":
+            return self._should_run_after_sunset()
+        return self._should_run_interval()
+
+    def _should_run_interval(self) -> bool:
+        """Interval mode: trigger when elapsed time exceeds the configured interval."""
         interval_minutes = self.settings.autofocus_interval_minutes
         last_timestamp = self.settings.last_autofocus_timestamp
 
@@ -133,6 +144,94 @@ class AutofocusManager:
 
         elapsed_minutes = (int(time.time()) - last_timestamp) / 60
         return elapsed_minutes >= interval_minutes
+
+    def _should_run_after_sunset(self) -> bool:
+        """After-sunset mode: trigger once per night at sunset + offset."""
+        location = self._get_location()
+        if location is None:
+            return False
+
+        lat, lon = location
+        trigger_time = self._compute_sunset_trigger_time(lat, lon)
+        if trigger_time is None:
+            return False
+
+        now_utc = datetime.now(timezone.utc)
+        if now_utc < trigger_time:
+            return False
+
+        last_ts = self.settings.last_autofocus_timestamp
+        if last_ts is None:
+            return True
+
+        last_dt = datetime.fromtimestamp(last_ts, tz=timezone.utc)
+        return last_dt < trigger_time
+
+    def _get_location(self) -> tuple[float, float] | None:
+        """Get observatory lat/lon from location service, or None if unavailable."""
+        if self.location_service is None:
+            return None
+        loc = self.location_service.get_current_location()
+        if loc and loc.get("latitude") is not None and loc.get("longitude") is not None:
+            return loc["latitude"], loc["longitude"]
+        return None
+
+    def _compute_sunset_trigger_time(self, latitude: float, longitude: float) -> datetime | None:
+        """Return sunset + offset as a UTC datetime, or None on failure."""
+        try:
+            from citrascope.location.twilight import compute_sunset_utc
+
+            sunset = compute_sunset_utc(latitude, longitude)
+            if sunset is None:
+                self.logger.warning("Could not compute sunset for after-sunset autofocus (polar day?)")
+                return None
+            offset = self.settings.autofocus_after_sunset_offset_minutes
+            return sunset + timedelta(minutes=offset)
+        except Exception as e:
+            self.logger.warning(f"Failed to compute sunset time: {e}")
+            return None
+
+    def get_next_autofocus_minutes(self) -> int | None:
+        """Compute minutes until next scheduled autofocus, or None if not scheduled.
+
+        Used by the web status endpoint to display countdown.
+        """
+        if not self.settings or not self.settings.scheduled_autofocus_enabled:
+            return None
+        if not self.hardware_adapter.supports_autofocus():
+            return None
+
+        mode = self.settings.autofocus_schedule_mode
+        if mode == "after_sunset":
+            return self._next_minutes_after_sunset()
+        return self._next_minutes_interval()
+
+    def _next_minutes_interval(self) -> int:
+        last_ts = self.settings.last_autofocus_timestamp
+        interval = self.settings.autofocus_interval_minutes
+        if last_ts is None:
+            return 0
+        elapsed = (int(time.time()) - last_ts) / 60
+        return max(0, int(interval - elapsed))
+
+    def _next_minutes_after_sunset(self) -> int | None:
+        location = self._get_location()
+        if location is None:
+            return None
+        lat, lon = location
+        trigger_time = self._compute_sunset_trigger_time(lat, lon)
+        if trigger_time is None:
+            return None
+        now_utc = datetime.now(timezone.utc)
+        if now_utc >= trigger_time:
+            last_ts = self.settings.last_autofocus_timestamp
+            if last_ts is not None:
+                last_dt = datetime.fromtimestamp(last_ts, tz=timezone.utc)
+                if last_dt >= trigger_time:
+                    return None
+            return 0
+        remaining = (trigger_time - now_utc).total_seconds() / 60
+        return max(0, int(remaining))
 
     def _resolve_target(self) -> tuple[float | None, float | None]:
         """Resolve autofocus target RA/Dec from settings (preset or custom)."""
