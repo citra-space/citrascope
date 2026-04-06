@@ -57,6 +57,43 @@ def _get_skyfield_objects() -> tuple[Any, Any]:
     return _skyfield_ts, _skyfield_eph
 
 
+def compute_sunset_utc(latitude: float, longitude: float) -> datetime | None:
+    """Return the most recent or next upcoming sunset as a UTC datetime.
+
+    Searches a 36-hour window centred on 12 hours ago (to catch a sunset
+    that already happened this evening).  Returns the sunset closest to
+    *now* that is in the past, or the next future one if none has occurred
+    yet.  Returns ``None`` if no sunset is found (e.g. polar day).
+
+    Uses the standard refraction-corrected horizon (-0.8333 deg).
+    """
+    from skyfield import almanac
+    from skyfield.api import wgs84
+
+    ts, eph = _get_skyfield_objects()
+    topos = wgs84.latlon(latitude, longitude)
+
+    now_utc = datetime.now(timezone.utc)
+    t_start = ts.from_datetime(now_utc - timedelta(hours=12))
+    t_end = ts.from_datetime(now_utc + timedelta(hours=24))
+
+    times, events = almanac.find_discrete(
+        t_start,
+        t_end,
+        almanac.risings_and_settings(eph, eph["sun"], topos, horizon_degrees=-0.8333),
+    )
+
+    sunsets = [t for t, ev in zip(times, events, strict=True) if not ev]
+    if not sunsets:
+        return None
+
+    now_t = ts.from_datetime(now_utc)
+    past = [s for s in sunsets if s.tt <= now_t.tt]
+    if past:
+        return past[-1].utc_datetime()
+    return sunsets[0].utc_datetime()
+
+
 def compute_twilight(latitude: float, longitude: float) -> TwilightInfo:
     """Compute twilight flat windows for the given observatory location.
 

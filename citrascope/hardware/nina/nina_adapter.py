@@ -212,7 +212,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             self.logger.info(f"Filter changed to ID {filter_id}")
 
         self.logger.info("Moving focus to autofocus starting position ...")
-        starting_focus_position = self.DEFAULT_FOCUS_POSITION
+        starting_focus_position = existing_focus_position
         move_resp = requests.get(
             self.nina_api_path + self.FOCUSER_URL + "move?position=" + str(starting_focus_position),
             timeout=self.COMMAND_TIMEOUT,

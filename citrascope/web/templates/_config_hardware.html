@@ -242,22 +242,46 @@
                     </div>
                 </template>
                 <div class="mb-3">
-                    <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
                         <div class="form-check mb-0">
                             <input class="form-check-input" type="checkbox" id="scheduled_autofocus_enabled" x-model="$store.citrascope.config.scheduled_autofocus_enabled">
                             <label class="form-check-label text-nowrap" for="scheduled_autofocus_enabled">
                                 Scheduled
                             </label>
                         </div>
-                        <select id="autofocus_interval_minutes" class="form-select form-select-sm"
+                        <select id="autofocus_schedule_mode" class="form-select form-select-sm"
                             style="width: auto;"
-                            x-model.number="$store.citrascope.config.autofocus_interval_minutes"
+                            x-model="$store.citrascope.config.autofocus_schedule_mode"
                             :disabled="!$store.citrascope.config.scheduled_autofocus_enabled">
-                            <option value="30">every 30m</option>
-                            <option value="60">every 1h</option>
-                            <option value="120">every 2h</option>
-                            <option value="180">every 3h</option>
+                            <option value="interval">Interval</option>
+                            <option value="after_sunset">After sunset</option>
                         </select>
+                    </div>
+                </div>
+                <div class="mb-3" x-show="$store.citrascope.config.scheduled_autofocus_enabled && $store.citrascope.config.autofocus_schedule_mode !== 'after_sunset'">
+                    <select id="autofocus_interval_minutes" class="form-select form-select-sm"
+                        style="width: auto;"
+                        x-model.number="$store.citrascope.config.autofocus_interval_minutes">
+                        <option value="30">every 30m</option>
+                        <option value="60">every 1h</option>
+                        <option value="120">every 2h</option>
+                        <option value="180">every 3h</option>
+                        <option value="360">every 6h</option>
+                        <option value="720">every 12h</option>
+                        <option value="1440">every 24h</option>
+                    </select>
+                </div>
+                <div class="mb-3" x-show="$store.citrascope.config.scheduled_autofocus_enabled && $store.citrascope.config.autofocus_schedule_mode === 'after_sunset'">
+                    <div class="d-flex align-items-center gap-2">
+                        <label class="form-label small mb-0 text-nowrap">Sunset +</label>
+                        <input type="number" class="form-control form-control-sm" style="width: 5rem;"
+                            min="0" max="720" step="15"
+                            x-model.number="$store.citrascope.config.autofocus_after_sunset_offset_minutes"
+                            :disabled="!$store.citrascope.config.scheduled_autofocus_enabled">
+                        <span class="small text-muted text-nowrap">minutes</span>
+                    </div>
+                    <div class="form-text small" x-show="!$store.citrascope.status?.location_latitude">
+                        <i class="bi bi-exclamation-triangle text-warning me-1"></i>Location required for sunset scheduling
                     </div>
                 </div>
                 <div class="small text-muted" x-show="$store.citrascope.status?.next_autofocus_minutes != null">

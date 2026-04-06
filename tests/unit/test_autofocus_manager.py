@@ -1,8 +1,9 @@
 """Unit tests for AutofocusManager."""
 
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -27,7 +28,9 @@ def mock_hardware_adapter():
 def mock_settings():
     settings = MagicMock()
     settings.scheduled_autofocus_enabled = False
+    settings.autofocus_schedule_mode = "interval"
     settings.autofocus_interval_minutes = 60
+    settings.autofocus_after_sunset_offset_minutes = 60
     settings.last_autofocus_timestamp = None
     settings.autofocus_target_preset = "mirach"
     settings.autofocus_target_custom_ra = None
@@ -422,3 +425,143 @@ class TestDummyAdapterAutofocusTargeting:
             adapter.do_autofocus(target_ra=100.0, target_dec=None)
         with pytest.raises(ValueError, match="both be set or both be None"):
             adapter.do_autofocus(target_ra=None, target_dec=30.0)
+
+
+# ---------------------------------------------------------------------------
+# After-sunset scheduling
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def mock_location_service():
+    svc = MagicMock()
+    svc.get_current_location.return_value = {
+        "latitude": 33.0,
+        "longitude": -105.0,
+        "altitude": 2200.0,
+        "source": "ground_station",
+    }
+    return svc
+
+
+@pytest.fixture
+def sunset_manager(mock_logger, mock_hardware_adapter, mock_settings, mock_imaging_queue, mock_location_service):
+    mock_settings.autofocus_schedule_mode = "after_sunset"
+    mock_settings.scheduled_autofocus_enabled = True
+    mock_settings.autofocus_after_sunset_offset_minutes = 60
+    return AutofocusManager(
+        mock_logger,
+        mock_hardware_adapter,
+        mock_settings,
+        imaging_queue=mock_imaging_queue,
+        location_service=mock_location_service,
+    )
+
+
+class TestAfterSunsetScheduling:
+    """Tests for the after-sunset autofocus scheduling mode."""
+
+    def test_fires_when_past_trigger_and_never_run(self, sunset_manager):
+        sunset_two_hours_ago = datetime.now(timezone.utc) - timedelta(hours=2)
+        with patch("citrascope.tasks.autofocus_manager.AutofocusManager._compute_sunset_trigger_time") as mock_trigger:
+            mock_trigger.return_value = sunset_two_hours_ago + timedelta(minutes=60)
+            assert sunset_manager._should_run_after_sunset() is True
+
+    def test_skips_when_before_trigger_time(self, sunset_manager):
+        future_sunset = datetime.now(timezone.utc) + timedelta(hours=2)
+        with patch("citrascope.tasks.autofocus_manager.AutofocusManager._compute_sunset_trigger_time") as mock_trigger:
+            mock_trigger.return_value = future_sunset + timedelta(minutes=60)
+            assert sunset_manager._should_run_after_sunset() is False
+
+    def test_skips_when_already_run_after_trigger(self, sunset_manager, mock_settings):
+        trigger_time = datetime.now(timezone.utc) - timedelta(hours=1)
+        ran_after_trigger = trigger_time + timedelta(minutes=10)
+        mock_settings.last_autofocus_timestamp = int(ran_after_trigger.timestamp())
+        with patch("citrascope.tasks.autofocus_manager.AutofocusManager._compute_sunset_trigger_time") as mock_trigger:
+            mock_trigger.return_value = trigger_time
+            assert sunset_manager._should_run_after_sunset() is False
+
+    def test_fires_when_last_run_was_before_trigger(self, sunset_manager, mock_settings):
+        trigger_time = datetime.now(timezone.utc) - timedelta(minutes=30)
+        ran_before_trigger = trigger_time - timedelta(hours=12)
+        mock_settings.last_autofocus_timestamp = int(ran_before_trigger.timestamp())
+        with patch("citrascope.tasks.autofocus_manager.AutofocusManager._compute_sunset_trigger_time") as mock_trigger:
+            mock_trigger.return_value = trigger_time
+            assert sunset_manager._should_run_after_sunset() is True
+
+    def test_skips_when_no_location(self, sunset_manager, mock_location_service):
+        mock_location_service.get_current_location.return_value = None
+        assert sunset_manager._should_run_after_sunset() is False
+
+    def test_skips_when_no_location_service(
+        self, mock_logger, mock_hardware_adapter, mock_settings, mock_imaging_queue
+    ):
+        mock_settings.autofocus_schedule_mode = "after_sunset"
+        mock_settings.scheduled_autofocus_enabled = True
+        mgr = AutofocusManager(mock_logger, mock_hardware_adapter, mock_settings, imaging_queue=mock_imaging_queue)
+        assert mgr._should_run_after_sunset() is False
+
+    def test_skips_when_sunset_computation_fails(self, sunset_manager):
+        with patch("citrascope.tasks.autofocus_manager.AutofocusManager._compute_sunset_trigger_time") as mock_trigger:
+            mock_trigger.return_value = None
+            assert sunset_manager._should_run_after_sunset() is False
+
+    def test_check_and_execute_uses_sunset_mode(self, sunset_manager, mock_hardware_adapter):
+        trigger_time = datetime.now(timezone.utc) - timedelta(hours=1)
+        with patch("citrascope.tasks.autofocus_manager.AutofocusManager._compute_sunset_trigger_time") as mock_trigger:
+            mock_trigger.return_value = trigger_time
+            result = sunset_manager.check_and_execute()
+            assert result is True
+            mock_hardware_adapter.do_autofocus.assert_called_once()
+
+
+class TestGetNextAutofocusMinutes:
+    """Tests for the get_next_autofocus_minutes status helper."""
+
+    def test_interval_mode_with_recent_run(self, autofocus_manager, mock_settings):
+        mock_settings.scheduled_autofocus_enabled = True
+        mock_settings.autofocus_schedule_mode = "interval"
+        mock_settings.autofocus_interval_minutes = 60
+        mock_settings.last_autofocus_timestamp = int(time.time()) - 600
+        result = autofocus_manager.get_next_autofocus_minutes()
+        assert result is not None
+        assert 49 <= result <= 51
+
+    def test_interval_mode_never_run(self, autofocus_manager, mock_settings):
+        mock_settings.scheduled_autofocus_enabled = True
+        mock_settings.autofocus_schedule_mode = "interval"
+        mock_settings.last_autofocus_timestamp = None
+        assert autofocus_manager.get_next_autofocus_minutes() == 0
+
+    def test_returns_none_when_disabled(self, autofocus_manager, mock_settings):
+        mock_settings.scheduled_autofocus_enabled = False
+        assert autofocus_manager.get_next_autofocus_minutes() is None
+
+    def test_sunset_mode_returns_none_without_location(self, mock_logger, mock_hardware_adapter, mock_settings):
+        mock_settings.scheduled_autofocus_enabled = True
+        mock_settings.autofocus_schedule_mode = "after_sunset"
+        mock_hardware_adapter.supports_autofocus.return_value = True
+        mgr = AutofocusManager(mock_logger, mock_hardware_adapter, mock_settings)
+        assert mgr.get_next_autofocus_minutes() is None
+
+    def test_sunset_mode_future_trigger(self, sunset_manager):
+        future_trigger = datetime.now(timezone.utc) + timedelta(minutes=90)
+        with patch("citrascope.tasks.autofocus_manager.AutofocusManager._compute_sunset_trigger_time") as mock_trigger:
+            mock_trigger.return_value = future_trigger
+            result = sunset_manager.get_next_autofocus_minutes()
+            assert result is not None
+            assert 88 <= result <= 91
+
+    def test_sunset_mode_overdue(self, sunset_manager):
+        past_trigger = datetime.now(timezone.utc) - timedelta(minutes=30)
+        with patch("citrascope.tasks.autofocus_manager.AutofocusManager._compute_sunset_trigger_time") as mock_trigger:
+            mock_trigger.return_value = past_trigger
+            assert sunset_manager.get_next_autofocus_minutes() == 0
+
+    def test_sunset_mode_done_for_tonight(self, sunset_manager, mock_settings):
+        trigger_time = datetime.now(timezone.utc) - timedelta(hours=1)
+        ran_after = trigger_time + timedelta(minutes=5)
+        mock_settings.last_autofocus_timestamp = int(ran_after.timestamp())
+        with patch("citrascope.tasks.autofocus_manager.AutofocusManager._compute_sunset_trigger_time") as mock_trigger:
+            mock_trigger.return_value = trigger_time
+            assert sunset_manager.get_next_autofocus_minutes() is None
