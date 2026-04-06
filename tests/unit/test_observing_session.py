@@ -10,13 +10,13 @@ from citrascope.tasks.observing_session import ObservingSessionManager, SessionS
 
 
 def _make_settings(**overrides):
-    """Return a mock settings object with self-tasking defaults."""
+    """Return a mock settings object with observing session defaults."""
     s = MagicMock()
-    s.self_tasking_enabled = True
-    s.self_tasking_sun_altitude_threshold = -12.0
-    s.self_tasking_do_autofocus = True
-    s.self_tasking_do_alignment = False
-    s.self_tasking_do_park = True
+    s.observing_session_enabled = True
+    s.observing_session_sun_altitude_threshold = -12.0
+    s.observing_session_do_autofocus = True
+    s.observing_session_do_alignment = False
+    s.observing_session_do_park = True
     for k, v in overrides.items():
         setattr(s, k, v)
     return s
@@ -62,7 +62,7 @@ def test_initial_state_is_daytime():
 
 
 def test_stays_daytime_when_disabled():
-    settings = _make_settings(self_tasking_enabled=False)
+    settings = _make_settings(observing_session_enabled=False)
     mgr, *_ = _make_manager(settings=settings)
     with patch.object(mgr, "_refresh_observing_window"):
         mgr._observing_window = _DARK_WINDOW
@@ -107,7 +107,7 @@ def test_night_startup_unpark_then_autofocus():
 
 
 def test_night_startup_skips_unpark_when_disabled():
-    settings = _make_settings(self_tasking_do_park=False)
+    settings = _make_settings(observing_session_do_park=False)
     mgr, request_af, *_ = _make_manager(settings=settings)
 
     mgr._state = SessionState.NIGHT_STARTUP
@@ -120,7 +120,7 @@ def test_night_startup_skips_unpark_when_disabled():
 
 
 def test_night_startup_skips_autofocus_when_disabled():
-    settings = _make_settings(self_tasking_do_autofocus=False, self_tasking_do_park=False)
+    settings = _make_settings(observing_session_do_autofocus=False, observing_session_do_park=False)
     mgr, request_af, *_ = _make_manager(settings=settings)
 
     mgr._state = SessionState.NIGHT_STARTUP
@@ -178,6 +178,40 @@ def test_status_dict():
     assert sd["sun_altitude"] == -20.0
     assert sd["dark_window_start"] is not None
     assert sd["dark_window_end"] is not None
+    assert sd["observing_session_threshold"] == -12.0
+    assert sd["session_activity"] is None
+
+
+def test_status_dict_activity_during_startup():
+    mgr, *_ = _make_manager()
+    mgr._state = SessionState.NIGHT_STARTUP
+    mgr._observing_window = _DARK_WINDOW
+
+    sd = mgr.status_dict()
+    assert sd["session_activity"] == "Unparking mount"
+
+    mgr._unpark_done = True
+    sd = mgr.status_dict()
+    assert sd["session_activity"] == "Requesting autofocus"
+
+    mgr._autofocus_requested = True
+    # Autofocus is running
+    mgr._is_autofocus_running = MagicMock(return_value=True)
+    sd = mgr.status_dict()
+    assert sd["session_activity"] == "Autofocusing"
+
+
+def test_status_dict_activity_during_shutdown():
+    mgr, _, _, are_queues_idle, _, _ = _make_manager(queues_idle=False)
+    mgr._state = SessionState.NIGHT_SHUTDOWN
+    mgr._observing_window = _LIGHT_WINDOW
+
+    sd = mgr.status_dict()
+    assert sd["session_activity"] == "Draining queues"
+
+    are_queues_idle.return_value = True
+    sd = mgr.status_dict()
+    assert sd["session_activity"] == "Parking mount"
 
 
 def test_no_location_stays_in_state():

@@ -111,7 +111,13 @@ class SelfTaskingManager:
 
     def status_dict(self) -> dict[str, Any]:
         """Build a dict for the web status broadcast."""
+        next_request_seconds: float | None = None
+        if self._last_request_time > 0:
+            elapsed = time.monotonic() - self._last_request_time
+            remaining = _REQUEST_INTERVAL_SECONDS - elapsed
+            next_request_seconds = max(0.0, remaining)
         return {
             "last_batch_request": self._last_request_time if self._last_request_time > 0 else None,
             "last_batch_created": self._last_request_created,
+            "next_request_seconds": next_request_seconds,
         }

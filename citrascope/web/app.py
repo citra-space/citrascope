@@ -142,14 +142,18 @@ class SystemStatus(BaseModel):
     config_health: dict[str, Any] | None = None
     status_collection_ms: float | None = None
     status_collection_breakdown: dict[str, float] | None = None
-    # Self-tasking / observing session
+    # Observing session / self-tasking
+    observing_session_enabled: bool = False
     self_tasking_enabled: bool = False
     observing_session_state: str = "daytime"
+    session_activity: str | None = None
+    observing_session_threshold: float = -12.0
     sun_altitude: float | None = None
     dark_window_start: str | None = None
     dark_window_end: str | None = None
     last_batch_request: float | None = None
     last_batch_created: int | None = None
+    next_request_seconds: float | None = None
 
 
 class HardwareConfig(BaseModel):
@@ -683,12 +687,29 @@ class CitraScopeWebApp:
                 CITRASCOPE_LOGGER.error(f"Error updating automated scheduling: {e}", exc_info=True)
                 return JSONResponse({"error": str(e)}, status_code=500)
 
+        @self.app.patch("/api/observing-session")
+        async def toggle_observing_session(request: dict[str, bool]):
+            """Toggle observing session on/off."""
+            if not self.daemon:
+                return JSONResponse({"error": "Daemon not available"}, status_code=503)
+
+            enabled = request.get("enabled")
+            if enabled is None:
+                return JSONResponse({"error": "Missing 'enabled' field in request body"}, status_code=400)
+
+            self.daemon.settings.observing_session_enabled = enabled
+            self.daemon.settings.save()
+            CITRASCOPE_LOGGER.info(f"Observing session set to {'enabled' if enabled else 'disabled'}")
+            await self.broadcast_status()
+            return {"status": "success", "enabled": enabled}
+
         @self.app.patch("/api/self-tasking")
         async def toggle_self_tasking(request: dict[str, bool]):
             """Toggle self-tasking on/off.
 
-            When enabling, also enables Scheduling (server-side) and
-            Processing (local) so the autonomous pipeline is fully active.
+            When enabling, also enables Observing Session, Scheduling
+            (server-side), and Processing (local) so the autonomous
+            pipeline is fully active.
             """
             if not self.daemon:
                 return JSONResponse({"error": "Daemon not available"}, status_code=503)
@@ -699,6 +720,13 @@ class CitraScopeWebApp:
 
             self.daemon.settings.self_tasking_enabled = enabled
             self.daemon.settings.save()
+
+            if enabled:
+                # Ensure observing session is active (prerequisite)
+                if not self.daemon.settings.observing_session_enabled:
+                    self.daemon.settings.observing_session_enabled = True
+                    self.daemon.settings.save()
+                    CITRASCOPE_LOGGER.info("Self-tasking: auto-enabled observing session")
 
             if enabled and self.daemon.task_manager:
                 # Ensure processing is active
@@ -1988,6 +2016,8 @@ class CitraScopeWebApp:
                 if osm:
                     sd = osm.status_dict()
                     self.status.observing_session_state = sd.get("observing_session_state", "daytime")
+                    self.status.session_activity = sd.get("session_activity")
+                    self.status.observing_session_threshold = sd.get("observing_session_threshold", -12.0)
                     self.status.sun_altitude = sd.get("sun_altitude")
                     self.status.dark_window_start = sd.get("dark_window_start")
                     self.status.dark_window_end = sd.get("dark_window_end")
@@ -1995,7 +2025,9 @@ class CitraScopeWebApp:
                     st = stm.status_dict()
                     self.status.last_batch_request = st.get("last_batch_request")
                     self.status.last_batch_created = st.get("last_batch_created")
+                    self.status.next_request_seconds = st.get("next_request_seconds")
 
+            self.status.observing_session_enabled = self.daemon.settings.observing_session_enabled
             self.status.self_tasking_enabled = self.daemon.settings.self_tasking_enabled
 
             _mark("session")

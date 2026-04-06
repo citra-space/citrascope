@@ -141,6 +141,7 @@ def test_status_dict_before_any_request():
     sd = mgr.status_dict()
     assert sd["last_batch_request"] is None
     assert sd["last_batch_created"] is None
+    assert sd["next_request_seconds"] is None
 
 
 def test_status_dict_after_request():
@@ -149,3 +150,17 @@ def test_status_dict_after_request():
     sd = mgr.status_dict()
     assert sd["last_batch_request"] is not None
     assert sd["last_batch_created"] == 5
+    assert sd["next_request_seconds"] is not None
+    assert sd["next_request_seconds"] > 0
+
+
+def test_next_request_seconds_decreases_over_time():
+    mgr, _, _ = _make_manager()
+    mgr.check_and_request()
+
+    sd1 = mgr.status_dict()
+    # Simulate time passing by shifting _last_request_time back
+    mgr._last_request_time -= 60
+    sd2 = mgr.status_dict()
+
+    assert sd2["next_request_seconds"] < sd1["next_request_seconds"]

@@ -1,4 +1,4 @@
-"""Tests for the self-tasking web endpoint and status broadcast."""
+"""Tests for the observing-session and self-tasking web endpoints."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from citrascope.web.app import CitraScopeWebApp
 @pytest.fixture
 def mock_settings():
     s = MagicMock()
+    s.observing_session_enabled = False
     s.self_tasking_enabled = False
     s.host = "api.citra.space"
     s.port = 443
@@ -122,6 +123,33 @@ def client(web_app):
     return TestClient(web_app.app)
 
 
+def test_toggle_observing_session_enable(client, mock_daemon):
+    resp = client.patch("/api/observing-session", json={"enabled": True})
+    assert resp.status_code == 200
+    assert resp.json()["enabled"] is True
+    assert mock_daemon.settings.observing_session_enabled is True
+    mock_daemon.settings.save.assert_called()
+
+
+def test_toggle_observing_session_disable(client, mock_daemon):
+    mock_daemon.settings.observing_session_enabled = True
+    resp = client.patch("/api/observing-session", json={"enabled": False})
+    assert resp.status_code == 200
+    assert mock_daemon.settings.observing_session_enabled is False
+
+
+def test_toggle_observing_session_missing_field(client):
+    resp = client.patch("/api/observing-session", json={})
+    assert resp.status_code == 400
+
+
+def test_toggle_observing_session_no_daemon(web_app):
+    web_app.daemon = None
+    client = TestClient(web_app.app)
+    resp = client.patch("/api/observing-session", json={"enabled": True})
+    assert resp.status_code == 503
+
+
 def test_toggle_self_tasking_enable(client, mock_daemon):
     resp = client.patch("/api/self-tasking", json={"enabled": True})
     assert resp.status_code == 200
@@ -129,6 +157,15 @@ def test_toggle_self_tasking_enable(client, mock_daemon):
     assert data["enabled"] is True
     mock_daemon.settings.save.assert_called()
     assert mock_daemon.settings.self_tasking_enabled is True
+
+
+def test_toggle_self_tasking_enable_cascades_observing_session(client, mock_daemon):
+    """Enabling self-tasking should auto-enable observing session."""
+    mock_daemon.settings.observing_session_enabled = False
+
+    resp = client.patch("/api/self-tasking", json={"enabled": True})
+    assert resp.status_code == 200
+    assert mock_daemon.settings.observing_session_enabled is True
 
 
 def test_toggle_self_tasking_enable_cascades_scheduling(client, mock_daemon):
@@ -155,7 +192,8 @@ def test_toggle_self_tasking_enable_cascades_processing(client, mock_daemon):
 
 
 def test_toggle_self_tasking_enable_skips_cascade_when_already_active(client, mock_daemon):
-    """No cascade calls when scheduling and processing are already active."""
+    """No cascade calls when scheduling, processing, and session are already active."""
+    mock_daemon.settings.observing_session_enabled = True
     mock_daemon.task_manager.automated_scheduling = True
     mock_daemon.task_manager.is_processing_active.return_value = True
 
@@ -177,14 +215,16 @@ def test_toggle_self_tasking_enable_scheduling_failure_non_blocking(client, mock
 
 
 def test_toggle_self_tasking_disable_no_cascade(client, mock_daemon):
-    """Disabling self-tasking should NOT touch scheduling or processing."""
+    """Disabling self-tasking should NOT touch scheduling, processing, or session."""
     mock_daemon.settings.self_tasking_enabled = True
+    mock_daemon.settings.observing_session_enabled = True
     mock_daemon.task_manager.automated_scheduling = True
     mock_daemon.task_manager.is_processing_active.return_value = True
 
     resp = client.patch("/api/self-tasking", json={"enabled": False})
     assert resp.status_code == 200
     assert mock_daemon.settings.self_tasking_enabled is False
+    assert mock_daemon.settings.observing_session_enabled is True
 
     mock_daemon.task_manager.resume.assert_not_called()
     mock_daemon.api_client.update_telescope_automated_scheduling.assert_not_called()
@@ -203,10 +243,11 @@ def test_toggle_self_tasking_no_daemon(web_app):
 
 
 def test_status_includes_self_tasking_fields(web_app, mock_daemon):
-    """Verify the SystemStatus model has self-tasking fields."""
+    """Verify the SystemStatus model has observing session and self-tasking fields."""
     from citrascope.web.app import SystemStatus
 
     status = SystemStatus()
+    assert hasattr(status, "observing_session_enabled")
     assert hasattr(status, "self_tasking_enabled")
     assert hasattr(status, "observing_session_state")
     assert hasattr(status, "sun_altitude")

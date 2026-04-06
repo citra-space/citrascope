@@ -249,9 +249,15 @@ def compute_observing_window(
     )
 
     if not is_dark:
+        next_dark_start: str | None = None
+        for t, ev in zip(times, events, strict=True):
+            if not ev and t.utc_datetime() > now_utc:
+                next_dark_start = t.utc_iso()
+                break
         return ObservingWindow(
             is_dark=False,
             current_sun_altitude=round(current_alt, 2),
+            dark_start=next_dark_start,
         )
 
     # Sun is below threshold — find the bounding set (start) and rise (end).

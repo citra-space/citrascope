@@ -34,7 +34,7 @@ class ObservingSessionManager:
 
     State transitions::
 
-        DAYTIME → NIGHT_STARTUP    when self_tasking_enabled and sun below threshold
+        DAYTIME → NIGHT_STARTUP    when observing_session_enabled and sun below threshold
         NIGHT_STARTUP → OBSERVING  when all enabled startup actions complete
         OBSERVING → NIGHT_SHUTDOWN when sun rises above threshold
         NIGHT_SHUTDOWN → DAYTIME   when queues drained and mount parked (if enabled)
@@ -81,9 +81,9 @@ class ObservingSessionManager:
 
     def update(self) -> SessionState:
         """Recompute session state and trigger actions.  Call from poll loop."""
-        if not self._settings.self_tasking_enabled:
+        if not self._settings.observing_session_enabled:
             if self._state != SessionState.DAYTIME:
-                self._logger.info("Self-tasking disabled — resetting to DAYTIME")
+                self._logger.info("Observing session disabled — resetting to DAYTIME")
                 self._reset_to_daytime()
             return self._state
 
@@ -120,7 +120,7 @@ class ObservingSessionManager:
             self._observing_window = None
             return
         lat, lon = location
-        threshold = self._settings.self_tasking_sun_altitude_threshold
+        threshold = self._settings.observing_session_sun_altitude_threshold
         try:
             self._observing_window = compute_observing_window(lat, lon, threshold)
         except Exception:
@@ -130,7 +130,7 @@ class ObservingSessionManager:
     def _run_startup_actions(self) -> None:
         """Execute enabled startup actions in order: unpark → autofocus → done."""
         # Step 1: Unpark
-        if self._settings.self_tasking_do_park and not self._unpark_done:
+        if self._settings.observing_session_do_park and not self._unpark_done:
             if self._unpark_mount is not None:
                 self._logger.info("NIGHT_STARTUP: Unparking mount")
                 try:
@@ -141,7 +141,7 @@ class ObservingSessionManager:
             return
 
         # Step 2: Autofocus
-        if self._settings.self_tasking_do_autofocus and not self._autofocus_requested:
+        if self._settings.observing_session_do_autofocus and not self._autofocus_requested:
             self._logger.info("NIGHT_STARTUP: Requesting autofocus")
             try:
                 self._request_autofocus()
@@ -150,7 +150,7 @@ class ObservingSessionManager:
             self._autofocus_requested = True
             return
 
-        if self._settings.self_tasking_do_autofocus and self._is_autofocus_running():
+        if self._settings.observing_session_do_autofocus and self._is_autofocus_running():
             return  # Still waiting for autofocus to finish
 
         # All startup actions complete
@@ -162,7 +162,7 @@ class ObservingSessionManager:
         if not self._are_queues_idle():
             return  # Wait for work to finish
 
-        if self._settings.self_tasking_do_park and not self._park_done:
+        if self._settings.observing_session_do_park and not self._park_done:
             if self._park_mount is not None:
                 self._logger.info("NIGHT_SHUTDOWN: Parking mount")
                 try:
@@ -180,11 +180,32 @@ class ObservingSessionManager:
         self._autofocus_requested = False
         self._park_done = False
 
+    def _get_session_activity(self) -> str | None:
+        """Return a human-readable label for the current startup/shutdown sub-step."""
+        if self._state == SessionState.NIGHT_STARTUP:
+            if self._settings.observing_session_do_park and not self._unpark_done:
+                return "Unparking mount"
+            if self._settings.observing_session_do_autofocus:
+                if not self._autofocus_requested:
+                    return "Requesting autofocus"
+                if self._is_autofocus_running():
+                    return "Autofocusing"
+            return "Finishing startup"
+        if self._state == SessionState.NIGHT_SHUTDOWN:
+            if not self._are_queues_idle():
+                return "Draining queues"
+            if self._settings.observing_session_do_park and not self._park_done:
+                return "Parking mount"
+            return "Finishing shutdown"
+        return None
+
     def status_dict(self) -> dict[str, Any]:
         """Build a dict for the web status broadcast."""
         window = self._observing_window
         return {
             "observing_session_state": self._state.value,
+            "session_activity": self._get_session_activity(),
+            "observing_session_threshold": self._settings.observing_session_sun_altitude_threshold,
             "sun_altitude": window.current_sun_altitude if window else None,
             "dark_window_start": window.dark_start if window else None,
             "dark_window_end": window.dark_end if window else None,

@@ -33,7 +33,7 @@
                         </a>
                         <a class="nav-link" href="#" :class="{ active: configTab === 'selftasking' }"
                            @click.prevent="configTab = 'selftasking'">
-                            <i class="bi bi-robot me-2"></i>Self-Tasking
+                            <i class="bi bi-robot me-2"></i>Robotic Operations
                         </a>
                         <a class="nav-link" href="#" :class="{ active: configTab === 'advanced' }"
                            @click.prevent="configTab = 'advanced'">
@@ -927,20 +927,19 @@
 
 
                     <!-- ============================================ -->
-                    <!-- Self-Tasking Configuration                    -->
+                    <!-- Robotic Operations Configuration              -->
                     <!-- ============================================ -->
                     <div x-show="configTab === 'selftasking'">
+                        <!-- Robotic Session -->
                         <h5 class="mb-3 pb-2 border-bottom border-secondary d-flex align-items-center gap-2">
-                            <i class="bi bi-robot"></i>Self-Tasking
+                            <i class="bi bi-moon-stars"></i>Robotic Session
                         </h5>
 
                         <div class="row g-3 mb-4">
-                            <!-- Observing Session -->
                             <div class="col-md-6">
-                                <h6 class="text-muted mb-3"><i class="bi bi-moon-stars me-2"></i>Observing Session</h6>
-                                <label class="form-label" for="selfTaskingSunThreshold">Darkness Threshold</label>
-                                <select id="selfTaskingSunThreshold" class="form-select"
-                                        x-model.number="$store.citrascope.config.self_tasking_sun_altitude_threshold">
+                                <label class="form-label" for="sessionSunThreshold">Darkness Threshold</label>
+                                <select id="sessionSunThreshold" class="form-select"
+                                        x-model.number="$store.citrascope.config.observing_session_sun_altitude_threshold">
                                     <option value="-6">Civil Twilight (-6&deg;)</option>
                                     <option value="-12">Nautical Twilight (-12&deg;)</option>
                                     <option value="-18">Astronomical Twilight (-18&deg;)</option>
@@ -948,33 +947,36 @@
                                 <small class="text-muted d-block mt-1">When the sun drops below this altitude, the observing session begins.</small>
                             </div>
 
-                            <!-- Session Startup / Shutdown -->
                             <div class="col-md-6">
-                                <h6 class="text-muted mb-3"><i class="bi bi-power me-2"></i>Session Startup / Shutdown</h6>
+                                <label class="form-label">Startup / Shutdown</label>
                                 <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" id="selfTaskingDoAutofocus"
-                                           x-model="$store.citrascope.config.self_tasking_do_autofocus">
-                                    <label class="form-check-label" for="selfTaskingDoAutofocus">
+                                    <input class="form-check-input" type="checkbox" id="sessionDoAutofocus"
+                                           x-model="$store.citrascope.config.observing_session_do_autofocus">
+                                    <label class="form-check-label" for="sessionDoAutofocus">
                                         Autofocus at start of night
                                     </label>
                                 </div>
                                 <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" id="selfTaskingDoAlignment" disabled>
-                                    <label class="form-check-label text-muted" for="selfTaskingDoAlignment">
+                                    <input class="form-check-input" type="checkbox" id="sessionDoAlignment" disabled>
+                                    <label class="form-check-label text-muted" for="sessionDoAlignment">
                                         Alignment at start of night <span class="badge bg-secondary ms-1">coming soon</span>
                                     </label>
                                 </div>
                                 <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" id="selfTaskingDoPark"
-                                           x-model="$store.citrascope.config.self_tasking_do_park">
-                                    <label class="form-check-label" for="selfTaskingDoPark">
+                                    <input class="form-check-input" type="checkbox" id="sessionDoPark"
+                                           x-model="$store.citrascope.config.observing_session_do_park">
+                                    <label class="form-check-label" for="sessionDoPark">
                                         Unpark at dusk / Park at dawn
                                     </label>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Targeting -->
+                        <!-- Self-Tasking -->
+                        <h5 class="mb-3 pb-2 border-bottom border-secondary d-flex align-items-center gap-2">
+                            <i class="bi bi-robot"></i>Self-Tasking
+                        </h5>
+
                         <h6 class="text-muted mb-3"><i class="bi bi-crosshair me-2"></i>Targeting</h6>
                         <div class="row g-3 mb-4">
                             <div class="col-md-6"

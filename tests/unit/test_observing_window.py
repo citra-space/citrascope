@@ -114,6 +114,36 @@ def test_observing_window_dark():
     assert result.dark_end is not None
 
 
+def test_observing_window_daytime_returns_next_dark_start():
+    """During daytime, dark_start should be the next setting time (sun dropping below threshold)."""
+    now = datetime.now(timezone.utc)
+    t_next_set = MagicMock()
+    t_next_set.utc_datetime.return_value = now + timedelta(hours=4)
+    t_next_set.utc_iso.return_value = (now + timedelta(hours=4)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    t_next_rise = MagicMock()
+    t_next_rise.utc_datetime.return_value = now + timedelta(hours=14)
+    t_next_rise.utc_iso.return_value = (now + timedelta(hours=14)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    mock_ts, mock_eph, mock_almanac, mock_wgs84 = _mock_skyfield_env(
+        sun_alt=10.0,
+        crossing_times=[t_next_set, t_next_rise],
+        crossing_events=[False, True],  # set (future), then rise (future)
+    )
+
+    with (
+        patch("citrascope.location.twilight._get_skyfield_objects", return_value=(mock_ts, mock_eph)),
+        patch("skyfield.almanac.find_discrete", mock_almanac.find_discrete),
+        patch("skyfield.almanac.risings_and_settings", mock_almanac.risings_and_settings),
+        patch("skyfield.api.wgs84", mock_wgs84),
+    ):
+        result = compute_observing_window(38.0, -105.0)
+
+    assert result.is_dark is False
+    assert result.dark_start is not None
+    assert result.dark_end is None
+
+
 def test_observing_window_threshold_boundary():
     """At exactly -12 degrees, is_dark should be False (< not <=)."""
     mock_ts, mock_eph, mock_almanac, mock_wgs84 = _mock_skyfield_env(sun_alt=-12.0)
