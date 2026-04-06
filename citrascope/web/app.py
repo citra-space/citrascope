@@ -140,6 +140,15 @@ class SystemStatus(BaseModel):
     latest_task_image_url: str | None = None
     calibration_status: dict[str, Any] | None = None
     config_health: dict[str, Any] | None = None
+    status_collection_ms: float | None = None
+    # Self-tasking / observing session
+    self_tasking_enabled: bool = False
+    observing_session_state: str = "daytime"
+    sun_altitude: float | None = None
+    dark_window_start: str | None = None
+    dark_window_end: str | None = None
+    last_batch_request: float | None = None
+    last_batch_created: int | None = None
 
 
 class HardwareConfig(BaseModel):
@@ -672,6 +681,22 @@ class CitraScopeWebApp:
             except Exception as e:
                 CITRASCOPE_LOGGER.error(f"Error updating automated scheduling: {e}", exc_info=True)
                 return JSONResponse({"error": str(e)}, status_code=500)
+
+        @self.app.patch("/api/self-tasking")
+        async def toggle_self_tasking(request: dict[str, bool]):
+            """Toggle self-tasking on/off."""
+            if not self.daemon:
+                return JSONResponse({"error": "Daemon not available"}, status_code=503)
+
+            enabled = request.get("enabled")
+            if enabled is None:
+                return JSONResponse({"error": "Missing 'enabled' field in request body"}, status_code=400)
+
+            self.daemon.settings.self_tasking_enabled = enabled
+            self.daemon.settings.save()
+            CITRASCOPE_LOGGER.info(f"Self-tasking set to {'enabled' if enabled else 'disabled'}")
+            await self.broadcast_status()
+            return {"status": "success", "enabled": enabled}
 
         @self.app.get("/api/adapter/filters")
         async def get_filters():
@@ -1689,6 +1714,9 @@ class CitraScopeWebApp:
         if not self.daemon:
             return
 
+        import time as _time
+
+        _t0 = _time.perf_counter()
         try:
             self.status.hardware_adapter = self.daemon.settings.hardware_adapter
 
@@ -1906,6 +1934,22 @@ class CitraScopeWebApp:
                 self.status.processing_active = self.daemon.task_manager.is_processing_active()
                 self.status.automated_scheduling = self.daemon.task_manager.automated_scheduling
 
+                # Observing session / self-tasking status
+                osm = self.daemon.task_manager.observing_session_manager
+                stm = self.daemon.task_manager.self_tasking_manager
+                if osm:
+                    sd = osm.status_dict()
+                    self.status.observing_session_state = sd.get("observing_session_state", "daytime")
+                    self.status.sun_altitude = sd.get("sun_altitude")
+                    self.status.dark_window_start = sd.get("dark_window_start")
+                    self.status.dark_window_end = sd.get("dark_window_end")
+                if stm:
+                    st = stm.status_dict()
+                    self.status.last_batch_request = st.get("last_batch_request")
+                    self.status.last_batch_created = st.get("last_batch_created")
+
+            self.status.self_tasking_enabled = self.daemon.settings.self_tasking_enabled
+
             # Check for missing dependencies from adapter
             self.status.missing_dependencies = []
             if hasattr(self.daemon, "hardware_adapter") and self.daemon.hardware_adapter:
@@ -1988,6 +2032,7 @@ class CitraScopeWebApp:
                 self.status.config_health = None
 
             self.status.last_update = datetime.now().isoformat()
+            self.status.status_collection_ms = round((_time.perf_counter() - _t0) * 1000, 2)
 
         except Exception as e:
             CITRASCOPE_LOGGER.error(f"Error updating status: {e}")

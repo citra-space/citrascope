@@ -103,6 +103,48 @@
                 </template>
             </div>
 
+            <!-- ═══════════════ Observing Session ═══════════════ -->
+            <div class="card bg-dark text-light border-secondary mb-3"
+                 x-show="$store.citrascope.status?.self_tasking_enabled"
+                 x-data="{
+                     get ss() { return $store.citrascope.status || {}; },
+                     get state() { return this.ss.observing_session_state || 'daytime'; },
+                     get badgeClass() {
+                         const m = { daytime: 'bg-secondary', night_startup: 'bg-info text-dark', observing: 'bg-success', night_shutdown: 'bg-warning text-dark' };
+                         return m[this.state] || 'bg-secondary';
+                     },
+                     get stateLabel() {
+                         const m = { daytime: 'Daytime', night_startup: 'Night Startup', observing: 'Observing', night_shutdown: 'Night Shutdown' };
+                         return m[this.state] || this.state;
+                     }
+                 }">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i class="bi bi-moon-stars me-1"></i>Observing Session
+                    <span class="badge" :class="badgeClass" x-text="stateLabel"></span>
+                </div>
+                <div class="card-body py-2">
+                    <div class="row">
+                        <div class="col-auto">
+                            <small class="text-muted">Sun Altitude</small><br>
+                            <span x-text="ss.sun_altitude != null ? ss.sun_altitude.toFixed(1) + '\u00b0' : '\u2014'"></span>
+                        </div>
+                        <div class="col-auto">
+                            <small class="text-muted">Dark Window</small><br>
+                            <span x-text="ss.dark_window_start ? new Date(ss.dark_window_start).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '\u2014'"></span>
+                            &ndash;
+                            <span x-text="ss.dark_window_end ? new Date(ss.dark_window_end).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '\u2014'"></span>
+                        </div>
+                        <div class="col-auto" x-show="ss.last_batch_request">
+                            <small class="text-muted">Last Batch Request</small><br>
+                            <span x-text="ss.last_batch_request ? new Date(ss.last_batch_request * 1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '\u2014'"></span>
+                            <template x-if="ss.last_batch_created != null">
+                                <small class="text-muted" x-text="'(' + ss.last_batch_created + ' created)'"></small>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- ═══════════════ Main Cards Row ═══════════════ -->
             <div class="row g-3 mb-3">
 
