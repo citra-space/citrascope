@@ -40,6 +40,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
     # Hardware operation timeouts (seconds) — waiting for physical movement to complete
     HARDWARE_MOVE_TIMEOUT = 60
+    MOUNT_PARK_TIMEOUT = 120  # park/unpark can require a full-sky slew
     AUTOFOCUS_TIMEOUT = 300
     SEQUENCE_TIMEOUT_MINUTES = 60
 
@@ -519,7 +520,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
     def park_mount(self) -> bool:
         try:
-            resp = requests.get(f"{self.nina_api_path}{self.MOUNT_URL}park", timeout=self.HARDWARE_MOVE_TIMEOUT).json()
+            resp = requests.get(f"{self.nina_api_path}{self.MOUNT_URL}park", timeout=self.MOUNT_PARK_TIMEOUT).json()
             if resp.get("Success"):
                 self.logger.info("Mount parked via NINA")
                 return True
@@ -531,7 +532,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
     def unpark_mount(self) -> bool:
         try:
-            resp = requests.get(f"{self.nina_api_path}{self.MOUNT_URL}unpark", timeout=self.COMMAND_TIMEOUT).json()
+            resp = requests.get(f"{self.nina_api_path}{self.MOUNT_URL}unpark", timeout=self.MOUNT_PARK_TIMEOUT).json()
             if resp.get("Success"):
                 self.logger.info("Mount unparked via NINA")
                 return True

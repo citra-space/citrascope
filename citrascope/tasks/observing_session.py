@@ -111,7 +111,13 @@ class ObservingSessionManager:
                 self._autofocus_requested = False
 
         elif self._state == SessionState.NIGHT_STARTUP:
-            self._run_startup_actions()
+            if not is_dark:
+                self._logger.info("Sun rose during NIGHT_STARTUP — transitioning to NIGHT_SHUTDOWN")
+                self._state = SessionState.NIGHT_SHUTDOWN
+                self._park_done = False
+                self._shutdown_entered_at = time.monotonic()
+            else:
+                self._run_startup_actions()
 
         elif self._state == SessionState.OBSERVING:
             if not is_dark:
@@ -145,9 +151,12 @@ class ObservingSessionManager:
             if self._unpark_mount is not None:
                 self._logger.info("NIGHT_STARTUP: Unparking mount")
                 try:
-                    self._unpark_mount()
+                    if not self._unpark_mount():
+                        self._logger.warning("Unpark returned failure — will retry next cycle")
+                        return
                 except Exception:
-                    self._logger.warning("Unpark failed", exc_info=True)
+                    self._logger.warning("Unpark failed — will retry next cycle", exc_info=True)
+                    return
             self._unpark_done = True
             return
 
@@ -190,9 +199,16 @@ class ObservingSessionManager:
             if self._park_mount is not None:
                 self._logger.info("NIGHT_SHUTDOWN: Parking mount")
                 try:
-                    self._park_mount()
+                    if not self._park_mount():
+                        if not timed_out:
+                            self._logger.warning("Park returned failure — will retry next cycle")
+                            return
+                        self._logger.error("Park failed even on timeout — proceeding to DAYTIME anyway")
                 except Exception:
-                    self._logger.warning("Park failed", exc_info=True)
+                    if not timed_out:
+                        self._logger.warning("Park failed — will retry next cycle", exc_info=True)
+                        return
+                    self._logger.error("Park failed even on timeout — proceeding to DAYTIME anyway", exc_info=True)
             self._park_done = True
 
         self._logger.info("NIGHT_SHUTDOWN complete — transitioning to DAYTIME")

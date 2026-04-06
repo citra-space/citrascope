@@ -110,6 +110,57 @@ def test_night_startup_unpark_then_autofocus():
         assert mgr.state == SessionState.OBSERVING
 
 
+def test_night_startup_unpark_retries_on_failure():
+    mgr, _, _, _, _, _park, unpark = _make_manager()
+    unpark.return_value = False
+
+    mgr._state = SessionState.NIGHT_STARTUP
+    with patch.object(mgr, "_refresh_observing_window"):
+        mgr._observing_window = _DARK_WINDOW
+
+        # First call: unpark fails, stays in NIGHT_STARTUP, does not advance
+        mgr.update()
+        unpark.assert_called_once()
+        assert mgr._unpark_done is False
+        assert mgr.state == SessionState.NIGHT_STARTUP
+
+        # Second call: unpark succeeds, advances
+        unpark.return_value = True
+        mgr.update()
+        assert mgr._unpark_done is True
+
+
+def test_night_startup_unpark_retries_on_exception():
+    mgr, _, _, _, _, _park, unpark = _make_manager()
+    unpark.side_effect = RuntimeError("connection lost")
+
+    mgr._state = SessionState.NIGHT_STARTUP
+    with patch.object(mgr, "_refresh_observing_window"):
+        mgr._observing_window = _DARK_WINDOW
+
+        mgr.update()
+        assert mgr._unpark_done is False
+        assert mgr.state == SessionState.NIGHT_STARTUP
+
+        unpark.side_effect = None
+        unpark.return_value = True
+        mgr.update()
+        assert mgr._unpark_done is True
+
+
+def test_night_startup_aborts_if_sun_rises():
+    """If sun rises during NIGHT_STARTUP, skip to NIGHT_SHUTDOWN."""
+    mgr, *_ = _make_manager()
+    mgr._state = SessionState.NIGHT_STARTUP
+
+    with patch.object(mgr, "_refresh_observing_window"):
+        mgr._observing_window = _LIGHT_WINDOW
+        mgr.update()
+
+    assert mgr.state == SessionState.NIGHT_SHUTDOWN
+    assert mgr._shutdown_entered_at is not None
+
+
 def test_night_startup_skips_unpark_when_disabled():
     settings = _make_settings(observing_session_do_park=False)
     mgr, request_af, *_ = _make_manager(settings=settings)
@@ -170,6 +221,60 @@ def test_night_shutdown_parks_when_imaging_idle():
         mgr._observing_window = _LIGHT_WINDOW
         mgr.update()
 
+    assert mgr.state == SessionState.DAYTIME
+    park.assert_called_once()
+
+
+def test_night_shutdown_park_retries_on_failure():
+    mgr, _, _, _is_imaging_idle, _, park, _ = _make_manager(imaging_idle=True)
+    park.return_value = False
+    mgr._state = SessionState.NIGHT_SHUTDOWN
+    mgr._shutdown_entered_at = time.monotonic()
+
+    with patch.object(mgr, "_refresh_observing_window"):
+        mgr._observing_window = _LIGHT_WINDOW
+
+        # Park fails — stays in NIGHT_SHUTDOWN
+        mgr.update()
+        assert mgr.state == SessionState.NIGHT_SHUTDOWN
+        park.assert_called_once()
+
+        # Park succeeds on retry
+        park.return_value = True
+        mgr.update()
+        assert mgr.state == SessionState.DAYTIME
+
+
+def test_night_shutdown_park_retries_on_exception():
+    mgr, _, _, _is_imaging_idle, _, park, _ = _make_manager(imaging_idle=True)
+    park.side_effect = RuntimeError("mount error")
+    mgr._state = SessionState.NIGHT_SHUTDOWN
+    mgr._shutdown_entered_at = time.monotonic()
+
+    with patch.object(mgr, "_refresh_observing_window"):
+        mgr._observing_window = _LIGHT_WINDOW
+
+        mgr.update()
+        assert mgr.state == SessionState.NIGHT_SHUTDOWN
+
+        park.side_effect = None
+        park.return_value = True
+        mgr.update()
+        assert mgr.state == SessionState.DAYTIME
+
+
+def test_night_shutdown_force_parks_even_if_park_fails():
+    """On timeout, proceed to DAYTIME even if park itself fails."""
+    mgr, _, _, _is_imaging_idle, _, park, _ = _make_manager(imaging_idle=False)
+    park.return_value = False
+    mgr._state = SessionState.NIGHT_SHUTDOWN
+    mgr._shutdown_entered_at = time.monotonic() - _SHUTDOWN_TIMEOUT_SECONDS - 1
+
+    with patch.object(mgr, "_refresh_observing_window"):
+        mgr._observing_window = _LIGHT_WINDOW
+        mgr.update()
+
+    # Even though park failed, timeout forces transition to DAYTIME
     assert mgr.state == SessionState.DAYTIME
     park.assert_called_once()
 

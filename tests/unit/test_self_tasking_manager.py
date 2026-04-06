@@ -146,9 +146,13 @@ def test_status_dict_before_any_request():
 
 def test_status_dict_after_request():
     mgr, _, _ = _make_manager()
+    before = time.time()
     mgr.check_and_request()
+    after = time.time()
     sd = mgr.status_dict()
     assert sd["last_batch_request"] is not None
+    # Must be a wall-clock epoch, not a monotonic timestamp
+    assert before <= sd["last_batch_request"] <= after
     assert sd["last_batch_created"] == 5
     assert sd["next_request_seconds"] is not None
     assert sd["next_request_seconds"] > 0

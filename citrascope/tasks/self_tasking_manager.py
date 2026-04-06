@@ -52,7 +52,8 @@ class SelfTaskingManager:
         self._get_session_state = get_session_state
         self._get_observing_window = get_observing_window
 
-        self._last_request_time: float = 0.0
+        self._last_request_time: float = 0.0  # monotonic, for throttle
+        self._last_request_epoch: float | None = None  # wall-clock, for display
         self._last_request_created: int | None = None
 
     def check_and_request(self) -> None:
@@ -99,6 +100,7 @@ class SelfTaskingManager:
                 include_orbit_regimes=orbit_regimes,
             )
             self._last_request_time = time.monotonic()
+            self._last_request_epoch = time.time()
             if result is not None:
                 created = result.get("created", "?")
                 self._last_request_created = created if isinstance(created, int) else None
@@ -107,6 +109,7 @@ class SelfTaskingManager:
                 self._logger.warning("Self-tasking: batch request returned None — will retry next interval")
         except Exception:
             self._last_request_time = time.monotonic()
+            self._last_request_epoch = time.time()
             self._logger.error("Self-tasking: batch request failed", exc_info=True)
 
     def status_dict(self) -> dict[str, Any]:
@@ -117,7 +120,7 @@ class SelfTaskingManager:
             remaining = _REQUEST_INTERVAL_SECONDS - elapsed
             next_request_seconds = max(0.0, remaining)
         return {
-            "last_batch_request": self._last_request_time if self._last_request_time > 0 else None,
+            "last_batch_request": self._last_request_epoch,
             "last_batch_created": self._last_request_created,
             "next_request_seconds": next_request_seconds,
         }
