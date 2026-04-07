@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Callable
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from citrascope.location.twilight import ObservingWindow
@@ -91,7 +92,7 @@ class SelfTaskingManager:
 
         try:
             result = self._api_client.create_batch_collection_requests(
-                window_start=window.dark_start or "",
+                window_start=window.dark_start or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 window_stop=dark_end,
                 ground_station_id=self._ground_station_id,
                 discover_visible=not bool(group_ids),
