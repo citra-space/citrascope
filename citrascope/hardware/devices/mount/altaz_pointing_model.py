@@ -65,9 +65,13 @@ _TS = load.timescale()
 _MIN_POINTS_3TERM = 3
 _MIN_POINTS_5TERM = 8
 _MIN_AZ_SPREAD_5TERM = 90.0  # degrees — need this much azimuth diversity for 5-term
+_SIGMA_CLIP_THRESHOLD = 2.5
+_SIGMA_CLIP_MAX_ITER = 3
+_SIGMA_CLIP_FLOOR_DEG = 1.0 / 60.0  # never clip points with < 1 arcmin residual
 _HEALTH_WINDOW = 5
 _HEALTH_DEGRADED_FACTOR = 3.0
 _LIVE_ACCURACY_WINDOW = 20
+_NEARBY_POINT_MIN_SEP = 2.0  # degrees — operational feeding guard
 
 
 # ---------------------------------------------------------------------------
@@ -181,6 +185,17 @@ def altaz_to_radec(
 # ---------------------------------------------------------------------------
 
 
+def _altaz_angular_sep(a: tuple[float, float], b: tuple[float, float]) -> float:
+    """Angular separation between two (az, alt) points in degrees."""
+    d_alt = a[1] - b[1]
+    d_az = a[0] - b[0]
+    if d_az > 180.0:
+        d_az -= 360.0
+    elif d_az < -180.0:
+        d_az += 360.0
+    return math.sqrt(d_az**2 + d_alt**2)
+
+
 def generate_calibration_grid(
     current_az_deg: float,
     cable_wrap_cumulative_deg: float,
@@ -188,26 +203,21 @@ def generate_calibration_grid(
     overhead_limit_deg: float = 89.0,
     lat_deg: float = 0.0,
     lon_deg: float = 0.0,
-    n_points: int = 10,
+    n_points: int = 15,
     cable_wrap_soft_limit_deg: float = 240.0,
 ) -> list[tuple[float, float]]:
-    """Generate well-distributed sky positions for a calibration run.
+    """Generate well-distributed sky positions for a seed calibration.
 
     Returns an ordered list of ``(ra_deg, dec_deg)`` targets that:
-    - Stay within mount altitude limits
-    - Respect cable-wrap budget via boustrophedon azimuth ordering
-    - Provide good sky coverage for fitting the 5-term model
+    - Stay within mount altitude limits (drops 75° band — tan(75)=3.73
+      amplifies azimuth noise by nearly 4x)
+    - Respect cable-wrap budget (asymmetric CW/CCW allocation)
+    - Use nearest-neighbor ordering from the current mount position to
+      minimize total slew distance
 
     Cable wrap budget is **asymmetric**: unwinding the cable gives far
-    more range than further winding.  For example, at cumulative=+190°
-    with a 240° soft limit:
-
-    - CW (further winding): 50° remaining
-    - CCW (unwinding): 430° available
-    - Total usable: ~300° of azimuth diversity
-
-    The grid extends more in the unwinding direction to maximize sky
-    coverage for a well-conditioned fit.
+    more range than further winding.  The grid extends more in the
+    unwinding direction to maximize sky coverage.
 
     Args:
         current_az_deg: Mount's current azimuth in degrees.
@@ -217,7 +227,7 @@ def generate_calibration_grid(
         overhead_limit_deg: Maximum altitude (avoid zenith singularity).
         lat_deg: Observer latitude in degrees.
         lon_deg: Observer longitude in degrees.
-        n_points: Desired number of calibration points.
+        n_points: Desired number of calibration points (default 15).
         cable_wrap_soft_limit_deg: Cable-wrap soft limit for budget calculation.
 
     Returns:
@@ -237,7 +247,6 @@ def generate_calibration_grid(
 
     usable_range = min(total_budget * 0.8, 300.0)
 
-    # Distribute range proportionally to budget in each direction
     if total_budget > 0:
         frac_ccw = max(ccw_budget, 0.0) / total_budget
     else:
@@ -253,26 +262,18 @@ def generate_calibration_grid(
         current_az_deg,
     )
 
-    alt_bands = [alt for alt in [30.0, 45.0, 60.0, 75.0] if horizon_limit_deg <= alt <= overhead_limit_deg]
+    alt_bands = [alt for alt in [30.0, 45.0, 60.0] if horizon_limit_deg <= alt <= overhead_limit_deg]
     if not alt_bands:
-        alt_bands = [(horizon_limit_deg + overhead_limit_deg) / 2.0]
+        alt_bands = [(horizon_limit_deg + min(overhead_limit_deg, 65.0)) / 2.0]
 
     n_az = max(3, n_points // len(alt_bands))
     az_step = usable_range / max(n_az - 1, 1)
 
-    # Start near current_az (CW end) and step toward the CCW end.
-    # This way the first slew is a short CW hop (<= range_cw), and
-    # each subsequent step sweeps in the CCW (unwinding) direction.
-    # The mount's shortest-path slewing agrees with our intended
-    # direction as long as az_step < 180°.
-    cw_end = current_az_deg + range_cw
-    base_positions = [(cw_end - j * az_step) % 360.0 for j in range(n_az)]
+    az_start = current_az_deg - range_ccw
+    az_positions = [(az_start + j * az_step) % 360.0 for j in range(n_az)]
 
     grid_altaz: list[tuple[float, float]] = []
-    for i, alt in enumerate(alt_bands):
-        az_positions = list(base_positions)
-        if i % 2 == 1:
-            az_positions.reverse()
+    for alt in alt_bands:
         for az in az_positions:
             grid_altaz.append((az, alt))
 
@@ -280,8 +281,18 @@ def generate_calibration_grid(
         step = len(grid_altaz) / n_points
         grid_altaz = [grid_altaz[int(i * step)] for i in range(n_points)]
 
+    # Nearest-neighbor ordering starting from current mount position
+    current_alt = grid_altaz[0][1] if grid_altaz else 45.0
+    current_pos = (current_az_deg, current_alt)
+    ordered: list[tuple[float, float]] = []
+    remaining = list(grid_altaz)
+    while remaining:
+        nearest_idx = min(range(len(remaining)), key=lambda i: _altaz_angular_sep(current_pos, remaining[i]))
+        current_pos = remaining.pop(nearest_idx)
+        ordered.append(current_pos)
+
     targets: list[tuple[float, float]] = []
-    for az, alt in grid_altaz:
+    for az, alt in ordered:
         ra, dec = altaz_to_radec(az, alt, lat_deg, lon_deg)
         targets.append((ra, dec))
 
@@ -429,6 +440,10 @@ class AltAzPointingModel:
         count AND azimuth diversity.  The 5-term fit requires >= 90° of
         azimuth spread; with less, the terms become degenerate and the fit
         distributes error into CA/NPAE incorrectly.
+
+        Uses iterative sigma-clipping (2.5-sigma, up to 3 rounds) to reject
+        outliers.  Clipped points are excluded from the fit only — raw data
+        in ``self._points`` is preserved for diagnostics and persistence.
         """
         with self._lock:
             n = len(self._points)
@@ -449,38 +464,93 @@ class AltAzPointingModel:
                 n,
             )
 
-        rows_az = []
-        rows_alt = []
-        obs_az = []
-        obs_alt = []
+        active = list(range(len(points_snapshot)))
+        total_clipped = 0
+        # Need spare degrees of freedom for sigma-clipping to be meaningful
+        min_for_clip = (_MIN_POINTS_5TERM if use_5term else _MIN_POINTS_3TERM) + 3
+        A = np.empty((0, 0))
+        b = np.empty(0)
+        result = np.empty(0)
 
-        for az_deg, alt_deg, d_az, d_alt in points_snapshot:
-            az = math.radians(az_deg)
-            alt = math.radians(alt_deg)
+        for clip_iter in range(_SIGMA_CLIP_MAX_ITER + 1):
+            if len(active) < _MIN_POINTS_3TERM:
+                _logger.warning("Sigma clip: too few points remaining (%d) — aborting clip", len(active))
+                break
 
-            sin_az = math.sin(az)
-            cos_az = math.cos(az)
-            tan_alt = math.tan(alt) if abs(math.cos(alt)) > 1e-10 else 0.0
-            sec_alt = 1.0 / math.cos(alt) if abs(math.cos(alt)) > 1e-10 else 0.0
+            if use_5term and len(active) < _MIN_POINTS_5TERM:
+                use_5term = False
+                _logger.info("Sigma clip reduced points below %d — downgrading to 3-term", _MIN_POINTS_5TERM)
 
-            if use_5term:
-                rows_az.append([sin_az * tan_alt, -cos_az * tan_alt, 0.0, sec_alt, tan_alt])
-            else:
-                rows_az.append([sin_az * tan_alt, -cos_az * tan_alt, 0.0])
-            obs_az.append(d_az)
+            rows_az: list[list[float]] = []
+            rows_alt: list[list[float]] = []
+            obs_az: list[float] = []
+            obs_alt: list[float] = []
 
-            if use_5term:
-                rows_alt.append([-cos_az, -sin_az, 1.0, 0.0, 0.0])
-            else:
-                rows_alt.append([-cos_az, -sin_az, 1.0])
-            obs_alt.append(d_alt)
+            for idx in active:
+                az_deg, alt_deg, d_az, d_alt = points_snapshot[idx]
+                az = math.radians(az_deg)
+                alt = math.radians(alt_deg)
 
-        A = np.array(rows_az + rows_alt)
-        b = np.array(obs_az + obs_alt)
+                sin_az = math.sin(az)
+                cos_az = math.cos(az)
+                tan_alt = math.tan(alt) if abs(math.cos(alt)) > 1e-10 else 0.0
+                sec_alt = 1.0 / math.cos(alt) if abs(math.cos(alt)) > 1e-10 else 0.0
 
-        result, _residuals, _rank, _sv = np.linalg.lstsq(A, b, rcond=None)
+                if use_5term:
+                    rows_az.append([sin_az * tan_alt, -cos_az * tan_alt, 0.0, sec_alt, tan_alt])
+                    rows_alt.append([-cos_az, -sin_az, 1.0, 0.0, 0.0])
+                else:
+                    rows_az.append([sin_az * tan_alt, -cos_az * tan_alt, 0.0])
+                    rows_alt.append([-cos_az, -sin_az, 1.0])
+                obs_az.append(d_az)
+                obs_alt.append(d_alt)
 
-        # Compute RMS of fit residuals
+            A = np.array(rows_az + rows_alt)
+            b = np.array(obs_az + obs_alt)
+
+            result, _residuals, _rank, _sv = np.linalg.lstsq(A, b, rcond=None)
+
+            if clip_iter == _SIGMA_CLIP_MAX_ITER or len(active) < min_for_clip:
+                break
+
+            predicted = A @ result
+            fit_residuals = b - predicted
+            n_active = len(active)
+            resid_az = fit_residuals[:n_active]
+            resid_alt = fit_residuals[n_active:]
+
+            sky_resid = np.empty(n_active)
+            for k in range(n_active):
+                alt_deg = points_snapshot[active[k]][1]
+                cos_alt = math.cos(math.radians(alt_deg))
+                sky_resid[k] = math.sqrt((resid_az[k] * cos_alt) ** 2 + resid_alt[k] ** 2)
+
+            sigma = float(np.std(sky_resid)) if len(sky_resid) > 1 else 0.0
+            if sigma < 1e-12:
+                break
+
+            threshold = max(_SIGMA_CLIP_THRESHOLD * sigma, _SIGMA_CLIP_FLOOR_DEG)
+            new_active: list[int] = []
+            for k, idx in enumerate(active):
+                if sky_resid[k] <= threshold:
+                    new_active.append(idx)
+                else:
+                    az_deg, alt_deg = points_snapshot[idx][0], points_snapshot[idx][1]
+                    _logger.info(
+                        "Sigma clip: rejected point #%d (az=%.0f° alt=%.0f°, residual=%.1f' > %.1f' threshold)",
+                        idx + 1,
+                        az_deg,
+                        alt_deg,
+                        sky_resid[k] * 60.0,
+                        threshold * 60.0,
+                    )
+
+            clipped_this_round = len(active) - len(new_active)
+            total_clipped += clipped_this_round
+            if clipped_this_round == 0:
+                break
+            active = new_active
+
         predicted = A @ result
         fit_residuals = b - predicted
         rms_deg = float(np.sqrt(np.mean(fit_residuals**2)))
@@ -508,10 +578,12 @@ class AltAzPointingModel:
             tilt_dir = math.degrees(math.atan2(self._AW, self._AN)) % 360.0
 
         _logger.info(
-            "Pointing model fit (%d-term, %d points): AN=%.4f° AW=%.4f° IE=%.4f° CA=%.4f° NPAE=%.4f° "
+            "Pointing model fit (%d-term, %d used, %d clipped): "
+            "AN=%.4f° AW=%.4f° IE=%.4f° CA=%.4f° NPAE=%.4f° "
             "| tilt=%.3f° toward %.0f° | RMS=%.1f'",
             self._n_terms,
-            n,
+            len(active),
+            total_clipped,
             self._AN,
             self._AW,
             self._IE,
@@ -674,6 +746,24 @@ class AltAzPointingModel:
             if gap > max_gap:
                 max_gap = gap
         return 360.0 - max_gap
+
+    def has_nearby_point(self, az_deg: float, alt_deg: float, min_sep_deg: float = _NEARBY_POINT_MIN_SEP) -> bool:
+        """Check if any existing point is within ``min_sep_deg`` of (az, alt).
+
+        Used by operational feeders to avoid adding near-duplicate points
+        from repeated observations of the same target.
+        """
+        with self._lock:
+            for p_az, p_alt, _daz, _dalt in self._points:
+                d_alt = abs(alt_deg - p_alt)
+                if d_alt > min_sep_deg:
+                    continue
+                d_az = abs(az_deg - p_az)
+                if d_az > 180.0:
+                    d_az = 360.0 - d_az
+                if math.sqrt(d_az**2 + d_alt**2) < min_sep_deg:
+                    return True
+        return False
 
     def _compass_label(self, bearing_deg: float) -> str:
         """Convert a bearing in degrees to an 8-point compass label."""

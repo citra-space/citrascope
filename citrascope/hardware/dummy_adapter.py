@@ -918,6 +918,35 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
 
         return self._perform_alignment_with_model(target_ra, target_dec)
 
+    def update_from_plate_solve(
+        self,
+        solved_ra_deg: float,
+        solved_dec_deg: float,
+        expected_ra_deg: float | None = None,
+        expected_dec_deg: float | None = None,
+    ) -> None:
+        """Feed pipeline plate-solve results into the pointing model."""
+        if expected_ra_deg is None or expected_dec_deg is None:
+            return
+
+        error_arcmin = self.angular_distance(solved_ra_deg, solved_dec_deg, expected_ra_deg, expected_dec_deg) * 60.0
+
+        if self._pointing_model and self.location_service:
+            location = self.location_service.get_current_location()
+            if location:
+                from citrascope.hardware.devices.mount.altaz_pointing_model import radec_to_altaz
+
+                lat, lon = location["latitude"], location["longitude"]
+                cmd_az, cmd_alt = radec_to_altaz(expected_ra_deg, expected_dec_deg, lat, lon)
+                if not self._pointing_model.has_nearby_point(cmd_az, cmd_alt):
+                    self._pointing_model.add_point(
+                        expected_ra_deg, expected_dec_deg, solved_ra_deg, solved_dec_deg, lat, lon
+                    )
+                    self.logger.info("Pipeline fed pointing model (error %.1f')", error_arcmin)
+                else:
+                    self._pointing_model.record_verification_residual(error_arcmin)
+                    self.logger.debug("Pipeline skip: nearby point exists (error %.1f')", error_arcmin)
+
     def supports_autofocus(self) -> bool:
         """Dummy adapter supports autofocus."""
         return True

@@ -51,6 +51,25 @@ class FilterConfig(TypedDict):
     enabled: bool
 
 
+class PointingCorrection(TypedDict):
+    """Snapshot of the pointing model correction applied during a slew.
+
+    Created by ``point_telescope`` and flowed through ``pointing_report``
+    into the processing pipeline.  Gives a complete
+    target → correction → command chain for every observation.
+    """
+
+    target_ra_deg: float
+    target_dec_deg: float
+    correction_ra_deg: float
+    correction_dec_deg: float
+    correction_total_arcmin: float
+    command_ra_deg: float
+    command_dec_deg: float
+    model_n_terms: int
+    model_n_points: int
+
+
 class ObservationStrategy(Enum):
     MANUAL = 1
     SEQUENCE_TO_CONTROLLER = 2
@@ -266,11 +285,14 @@ class AbstractAstroHardwareAdapter(ABC):
         self.logger.error("Alignment failed: plate solve did not converge after all attempts")
         return False
 
-    def point_telescope(self, ra: float, dec: float):
+    def point_telescope(self, ra: float, dec: float) -> PointingCorrection:
         """Point the telescope to the specified RA/Dec coordinates.
 
         Applies pointing model correction automatically when the model is
         trained and site location is available.
+
+        Returns the full correction snapshot so the caller can thread it
+        through to processing artifacts without shared mutable state.
         """
         if self._safety_monitor and not self._safety_monitor.is_action_safe("slew", ra=ra, dec=dec):
             from citrascope.safety.safety_monitor import SafetyError
@@ -278,11 +300,34 @@ class AbstractAstroHardwareAdapter(ABC):
             raise SafetyError("Slew blocked by safety monitor")
 
         slew_ra, slew_dec = ra, dec
+        correction: PointingCorrection = {
+            "target_ra_deg": ra,
+            "target_dec_deg": dec,
+            "correction_ra_deg": 0.0,
+            "correction_dec_deg": 0.0,
+            "correction_total_arcmin": 0.0,
+            "command_ra_deg": ra,
+            "command_dec_deg": dec,
+            "model_n_terms": 0,
+            "model_n_points": 0,
+        }
+
         if self._pointing_model and self._pointing_model.is_active and self.location_service:
             location = self.location_service.get_current_location()
             if location:
                 slew_ra, slew_dec = self._pointing_model.correct(ra, dec, location["latitude"], location["longitude"])
                 correction_arcmin = self.angular_distance(ra, dec, slew_ra, slew_dec) * 60.0
+                correction.update(
+                    {
+                        "correction_ra_deg": slew_ra - ra,
+                        "correction_dec_deg": slew_dec - dec,
+                        "correction_total_arcmin": correction_arcmin,
+                        "command_ra_deg": slew_ra,
+                        "command_dec_deg": slew_dec,
+                        "model_n_terms": self._pointing_model._n_terms,
+                        "model_n_points": self._pointing_model.point_count,
+                    }
+                )
                 self.logger.info(
                     "Pointing model correction: %.1f' (RA %+.4f° Dec %+.4f°)",
                     correction_arcmin,
@@ -291,6 +336,7 @@ class AbstractAstroHardwareAdapter(ABC):
                 )
 
         self._do_point_telescope(slew_ra, slew_dec)
+        return correction
 
     @abstractmethod
     def _do_point_telescope(self, ra: float, dec: float):

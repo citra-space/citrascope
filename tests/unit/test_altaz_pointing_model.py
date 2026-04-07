@@ -99,6 +99,8 @@ def _synthetic_points(
     n: int = 12,
     lat: float = 40.0,
     lon: float = -74.0,
+    noise_arcsec: float = 0.0,
+    seed: int = 42,
 ) -> list[tuple[float, float, float, float, float, float]]:
     """Generate synthetic calibration point pairs with a known error model.
 
@@ -106,9 +108,14 @@ def _synthetic_points(
     while the optics actually point to (az_enc + d_az, alt_enc + d_alt).
     The plate solver returns the true optics position.
 
+    Args:
+        noise_arcsec: Gaussian noise added to the solved position (arcseconds)
+            to simulate plate-solve measurement scatter.
+        seed: Random seed for reproducibility.
+
     Returns a list of (mount_ra, mount_dec, solved_ra, solved_dec, lat, lon).
     """
-    rng = np.random.RandomState(42)
+    rng = np.random.RandomState(seed)
     points = []
     for _ in range(n):
         az_enc = rng.uniform(30.0, 330.0)
@@ -123,6 +130,10 @@ def _synthetic_points(
 
         d_az = CA * sec_alt + NPAE * tan_alt + AN * sin_az * tan_alt - AW * cos_az * tan_alt
         d_alt = IE - AN * cos_az - AW * sin_az
+
+        noise_deg = noise_arcsec / 3600.0
+        d_az += rng.normal(0.0, noise_deg)
+        d_alt += rng.normal(0.0, noise_deg)
 
         mount_ra, mount_dec = altaz_to_radec(az_enc, alt_enc, lat, lon)
         solved_ra, solved_dec = altaz_to_radec(az_enc + d_az, alt_enc + d_alt, lat, lon)
@@ -271,9 +282,9 @@ class TestSkyGridGeneration:
             cable_wrap_cumulative_deg=0.0,
             lat_deg=40.0,
             lon_deg=-74.0,
-            n_points=10,
+            n_points=15,
         )
-        assert len(targets) == 10
+        assert len(targets) == 15
         for ra, dec in targets:
             assert 0.0 <= ra < 360.0
             assert -90.0 <= dec <= 90.0
@@ -285,7 +296,7 @@ class TestSkyGridGeneration:
             cable_wrap_soft_limit_deg=240.0,
             lat_deg=40.0,
             lon_deg=-74.0,
-            n_points=10,
+            n_points=15,
         )
         # Should still produce points, just narrower coverage
         assert len(targets) > 0
@@ -299,9 +310,9 @@ class TestSkyGridGeneration:
             cable_wrap_soft_limit_deg=240.0,
             lat_deg=40.0,
             lon_deg=-74.0,
-            n_points=10,
+            n_points=15,
         )
-        assert len(targets) == 10
+        assert len(targets) == 15
 
         # Convert targets back to alt-az and check azimuth spread
         azimuths = []
@@ -476,3 +487,281 @@ class TestStatus:
         for mount_ra, mount_dec, solved_ra, solved_dec, lat, lon in pts:
             model2.add_point(mount_ra, mount_dec, solved_ra, solved_dec, lat, lon)
         assert model2.status()["tilt_direction_label"] == "E"
+
+
+# ------------------------------------------------------------------
+# Sigma-clipping
+# ------------------------------------------------------------------
+
+
+class TestSigmaClipping:
+    def test_outliers_are_clipped(self):
+        """20 clean synthetic points + 2 extreme outliers — terms should
+        still recover accurately because sigma-clipping rejects outliers."""
+        AN, AW, IE = 0.5, 0.3, 0.1
+        lat, lon = 40.0, -74.0
+        pts = _synthetic_points(AN, AW, IE, n=20, lat=lat, lon=lon)
+
+        model = AltAzPointingModel()
+        for mount_ra, mount_dec, solved_ra, solved_dec, lat_, lon_ in pts:
+            model.add_point(mount_ra, mount_dec, solved_ra, solved_dec, lat_, lon_)
+
+        # Add 2 extreme outliers
+        model.add_point(100.0, 30.0, 105.0, 35.0, lat, lon)
+        model.add_point(200.0, 40.0, 195.0, 35.0, lat, lon)
+
+        status = model.status()
+        assert abs(status["terms"]["AN"] - AN) < 0.05, f"AN={status['terms']['AN']}"
+        assert abs(status["terms"]["AW"] - AW) < 0.05, f"AW={status['terms']['AW']}"
+        assert abs(status["terms"]["IE"] - IE) < 0.05, f"IE={status['terms']['IE']}"
+
+    def test_no_good_points_lost_clean_data(self):
+        """With clean data only, sigma-clipping should not reject anything."""
+        AN, AW, IE = 0.3, -0.2, 0.15
+        pts = _synthetic_points(AN, AW, IE, n=15)
+        model = AltAzPointingModel()
+        for mount_ra, mount_dec, solved_ra, solved_dec, lat_, lon_ in pts:
+            model.add_point(mount_ra, mount_dec, solved_ra, solved_dec, lat_, lon_)
+
+        assert model.point_count == 15
+        assert model.rms_arcmin < 1.0
+
+    def test_few_points_skips_clipping(self):
+        """With barely enough points for a 3-term fit (< min_for_clip),
+        sigma-clipping must not run — even if one point is a bit off."""
+        AN, AW, IE = 0.3, 0.2, 0.1
+        lat, lon = 40.0, -74.0
+        # 4 points: enough for 3-term, but < 6 (3 + 3 spare), so no clipping
+        pts = _synthetic_points(AN, AW, IE, n=4, lat=lat, lon=lon)
+        model = AltAzPointingModel()
+        for mount_ra, mount_dec, solved_ra, solved_dec, lat_, lon_ in pts:
+            model.add_point(mount_ra, mount_dec, solved_ra, solved_dec, lat_, lon_)
+
+        assert model.is_active
+        assert model.status()["n_terms"] == 3
+        # All 4 points contribute (nothing clipped)
+        assert model.point_count == 4
+
+    def test_many_outliers_clips_correctly(self):
+        """With 30% bad points, the clean majority should still win."""
+        AN, AW, IE = 0.4, -0.3, 0.2
+        lat, lon = 40.0, -74.0
+        pts = _synthetic_points(AN, AW, IE, n=20, lat=lat, lon=lon)
+        model = AltAzPointingModel()
+        for mount_ra, mount_dec, solved_ra, solved_dec, lat_, lon_ in pts:
+            model.add_point(mount_ra, mount_dec, solved_ra, solved_dec, lat_, lon_)
+
+        # 8 extreme outliers (40% of total 28)
+        rng = np.random.RandomState(77)
+        for _ in range(8):
+            az = rng.uniform(30, 330)
+            alt = rng.uniform(25, 70)
+            ra, dec = altaz_to_radec(az, alt, lat, lon)
+            # Huge offset: 3-5 degrees
+            model.add_point(ra, dec, ra + rng.uniform(3, 5), dec + rng.uniform(-5, -3), lat, lon)
+
+        status = model.status()
+        assert abs(status["terms"]["AN"] - AN) < 0.1, f"AN={status['terms']['AN']}"
+        assert abs(status["terms"]["AW"] - AW) < 0.1, f"AW={status['terms']['AW']}"
+        assert abs(status["terms"]["IE"] - IE) < 0.1, f"IE={status['terms']['IE']}"
+
+    def test_floor_prevents_cascade_on_perfect_data(self):
+        """The 1-arcmin floor must prevent sigma-clipping from cascading
+        on near-perfect synthetic data and eating valid points.
+
+        Without the floor, a tight fit shrinks sigma so small that normal
+        numerical noise triggers rejection, which tightens sigma further,
+        causing a cascade that can evict most of the dataset.
+        """
+        AN, AW, IE, CA, NPAE = 0.4, -0.2, 0.15, 0.1, -0.05
+        pts = _synthetic_points(AN, AW, IE, CA, NPAE, n=50)
+        model = AltAzPointingModel()
+        for mount_ra, mount_dec, solved_ra, solved_dec, lat_, lon_ in pts:
+            model.add_point(mount_ra, mount_dec, solved_ra, solved_dec, lat_, lon_)
+
+        # With 50 perfect points the model should be 5-term, not downgraded
+        assert model.status()["n_terms"] == 5
+        # Recovery should be excellent
+        assert abs(model.status()["terms"]["AN"] - AN) < 0.01
+        assert abs(model.status()["terms"]["CA"] - CA) < 0.02
+
+    def test_5term_downgrades_to_3term_when_clipping_reduces_count(self):
+        """If sigma-clipping drops below 8 active points, the fit should
+        gracefully downgrade to 3-term instead of blowing up."""
+        AN, AW, IE = 0.3, 0.2, 0.1
+        lat, lon = 40.0, -74.0
+        # 10 clean points → 5-term eligible
+        pts = _synthetic_points(AN, AW, IE, n=10, lat=lat, lon=lon)
+        model = AltAzPointingModel()
+        for mount_ra, mount_dec, solved_ra, solved_dec, lat_, lon_ in pts:
+            model.add_point(mount_ra, mount_dec, solved_ra, solved_dec, lat_, lon_)
+
+        # Confirm 5-term initially
+        assert model.status()["n_terms"] == 5
+
+        # Now add 5 extreme outliers to force heavy clipping on next fit
+        for i in range(5):
+            model.add_point(90.0 + i * 20, 40.0, 100.0 + i * 20, 50.0, lat, lon)
+
+        # Should still produce a valid fit (3 or 5 term)
+        status = model.status()
+        assert status["n_terms"] in (3, 5)
+        # The clean signal should still dominate
+        assert abs(status["terms"]["AN"] - AN) < 0.15
+
+    def test_noisy_data_still_recovers(self):
+        """Realistic plate-solve noise (~20 arcsec) should not prevent
+        accurate term recovery or cause excessive rejection."""
+        AN, AW, IE = 0.5, 0.3, 0.1
+        pts = _synthetic_points(AN, AW, IE, n=40, noise_arcsec=20.0, seed=99)
+        model = AltAzPointingModel()
+        for mount_ra, mount_dec, solved_ra, solved_dec, lat_, lon_ in pts:
+            model.add_point(mount_ra, mount_dec, solved_ra, solved_dec, lat_, lon_)
+
+        status = model.status()
+        # 20 arcsec noise is ~0.006°; terms are 0.1-0.5°. Should recover well.
+        assert abs(status["terms"]["AN"] - AN) < 0.1, f"AN={status['terms']['AN']}"
+        assert abs(status["terms"]["AW"] - AW) < 0.1, f"AW={status['terms']['AW']}"
+        assert abs(status["terms"]["IE"] - IE) < 0.1, f"IE={status['terms']['IE']}"
+        # RMS should reflect the noise floor, not be absurdly small
+        assert status["pointing_accuracy_arcmin"] > 0.1
+        assert status["pointing_accuracy_arcmin"] < 3.0
+
+    def test_noisy_data_with_outliers(self):
+        """Noise + outliers together: the sigma-clipping should reject the
+        outliers without being confused by the noise in the clean points."""
+        AN, AW, IE = 0.4, -0.2, 0.15
+        lat, lon = 40.0, -74.0
+        pts = _synthetic_points(AN, AW, IE, n=30, noise_arcsec=15.0, seed=55, lat=lat, lon=lon)
+        model = AltAzPointingModel()
+        for mount_ra, mount_dec, solved_ra, solved_dec, lat_, lon_ in pts:
+            model.add_point(mount_ra, mount_dec, solved_ra, solved_dec, lat_, lon_)
+
+        # Add 3 moderate outliers (1-2 degree errors, not extreme)
+        model.add_point(120.0, 35.0, 121.5, 36.5, lat, lon)
+        model.add_point(240.0, 50.0, 238.5, 48.0, lat, lon)
+        model.add_point(60.0, 40.0, 62.0, 42.0, lat, lon)
+
+        status = model.status()
+        assert abs(status["terms"]["AN"] - AN) < 0.1, f"AN={status['terms']['AN']}"
+        assert abs(status["terms"]["AW"] - AW) < 0.1, f"AW={status['terms']['AW']}"
+        assert abs(status["terms"]["IE"] - IE) < 0.1, f"IE={status['terms']['IE']}"
+
+
+# ------------------------------------------------------------------
+# Nearest-neighbor grid ordering
+# ------------------------------------------------------------------
+
+
+class TestGridNearestNeighbor:
+    def test_first_point_near_start(self):
+        """First grid point should be close to the starting position."""
+        targets = generate_calibration_grid(
+            current_az_deg=90.0,
+            cable_wrap_cumulative_deg=0.0,
+            lat_deg=40.0,
+            lon_deg=-74.0,
+            n_points=15,
+        )
+        assert len(targets) == 15
+
+        first_ra, first_dec = targets[0]
+        first_az, first_alt = radec_to_altaz(first_ra, first_dec, 40.0, -74.0)
+
+        d_az = abs(first_az - 90.0)
+        if d_az > 180.0:
+            d_az = 360.0 - d_az
+        sep = math.sqrt(d_az**2 + (first_alt - 45.0) ** 2)
+        assert sep < 100.0, f"First point (az={first_az:.0f}°, alt={first_alt:.0f}°) too far from start"
+
+    def test_consecutive_points_are_close(self):
+        """Consecutive grid points should not have extreme jumps."""
+        targets = generate_calibration_grid(
+            current_az_deg=180.0,
+            cable_wrap_cumulative_deg=0.0,
+            lat_deg=40.0,
+            lon_deg=-74.0,
+            n_points=15,
+        )
+        max_step = 0.0
+        for i in range(len(targets) - 1):
+            az1, alt1 = radec_to_altaz(targets[i][0], targets[i][1], 40.0, -74.0)
+            az2, alt2 = radec_to_altaz(targets[i + 1][0], targets[i + 1][1], 40.0, -74.0)
+            d_az = abs(az1 - az2)
+            if d_az > 180.0:
+                d_az = 360.0 - d_az
+            step = math.sqrt(d_az**2 + (alt1 - alt2) ** 2)
+            max_step = max(max_step, step)
+
+        # With nearest-neighbor, max step should be well under the full grid extent
+        assert max_step < 120.0, f"Max consecutive step {max_step:.0f}° is too large"
+
+    def test_no_75_degree_band(self):
+        """Grid should not contain points at 75° altitude."""
+        targets = generate_calibration_grid(
+            current_az_deg=180.0,
+            cable_wrap_cumulative_deg=0.0,
+            lat_deg=40.0,
+            lon_deg=-74.0,
+            n_points=15,
+        )
+        for ra, dec in targets:
+            _, alt = radec_to_altaz(ra, dec, 40.0, -74.0)
+            assert alt < 70.0, f"Grid point at alt={alt:.0f}° — 75° band should be excluded"
+
+
+# ------------------------------------------------------------------
+# No point eviction
+# ------------------------------------------------------------------
+
+
+class TestNoEviction:
+    def test_all_points_preserved(self):
+        """Adding many points should preserve all of them (no eviction)."""
+        model = AltAzPointingModel()
+        lat, lon = 40.0, -74.0
+        rng = np.random.RandomState(123)
+        for _ in range(200):
+            az = rng.uniform(30.0, 330.0)
+            alt = rng.uniform(25.0, 75.0)
+            ra, dec = altaz_to_radec(az, alt, lat, lon)
+            model.add_point(ra, dec, ra + 0.01, dec + 0.01, lat, lon)
+        assert model.point_count == 200
+
+
+# ------------------------------------------------------------------
+# Nearby-point guard
+# ------------------------------------------------------------------
+
+
+class TestNearbyPointGuard:
+    def test_nearby_returns_true(self):
+        model = AltAzPointingModel()
+        lat, lon = 40.0, -74.0
+        ra, dec = altaz_to_radec(180.0, 45.0, lat, lon)
+        model.add_point(ra, dec, ra + 0.01, dec + 0.01, lat, lon)
+
+        assert model.has_nearby_point(180.0, 45.0)
+        assert model.has_nearby_point(180.5, 45.5)
+
+    def test_distant_returns_false(self):
+        model = AltAzPointingModel()
+        lat, lon = 40.0, -74.0
+        ra, dec = altaz_to_radec(180.0, 45.0, lat, lon)
+        model.add_point(ra, dec, ra + 0.01, dec + 0.01, lat, lon)
+
+        assert not model.has_nearby_point(185.0, 45.0)
+        assert not model.has_nearby_point(180.0, 50.0)
+
+    def test_empty_model_returns_false(self):
+        model = AltAzPointingModel()
+        assert not model.has_nearby_point(180.0, 45.0)
+
+    def test_custom_threshold(self):
+        model = AltAzPointingModel()
+        lat, lon = 40.0, -74.0
+        ra, dec = altaz_to_radec(180.0, 45.0, lat, lon)
+        model.add_point(ra, dec, ra + 0.01, dec + 0.01, lat, lon)
+
+        assert model.has_nearby_point(183.0, 45.0, min_sep_deg=5.0)
+        assert not model.has_nearby_point(183.0, 45.0, min_sep_deg=2.0)

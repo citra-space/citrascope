@@ -25,6 +25,7 @@ from citrascope.hardware.devices.device_registry import (
 from citrascope.hardware.devices.filter_wheel import AbstractFilterWheel
 from citrascope.hardware.devices.focuser import AbstractFocuser
 from citrascope.hardware.devices.mount import AbstractMount
+from citrascope.hardware.devices.mount.altaz_pointing_model import radec_to_altaz
 from citrascope.hardware.devices.mount.mount_state_cache import MountStateCache
 from citrascope.hardware.filter_sync import is_trash_filter_name
 from citrascope.location.gps_fix import GPSFix
@@ -1266,15 +1267,34 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         expected_ra_deg: float | None = None,
         expected_dec_deg: float | None = None,
     ) -> None:
-        # Intentional no-op: async plate solves from the processing queue
-        # arrive after the mount has potentially moved on to the next task.
-        # Syncing stale coordinates corrupts the pointing model.
-        # Mount syncs happen only through the explicit AlignmentManager path.
-        if expected_ra_deg is not None and expected_dec_deg is not None:
-            error = self.angular_distance(solved_ra_deg, solved_dec_deg, expected_ra_deg, expected_dec_deg)
-            self.logger.info(
-                "Plate solve result: pointing error %.1f arcmin (not syncing — use alignment instead)", error * 60
-            )
+        """Feed pipeline plate-solve results into the pointing model.
+
+        When ``expected_ra_deg``/``expected_dec_deg`` (the corrected command
+        from ``point_telescope``) are provided, the solved vs commanded pair
+        is added to the pointing model — unless a nearby point already exists.
+        This grows the model continuously from every science image.
+        """
+        if expected_ra_deg is None or expected_dec_deg is None:
+            return
+
+        error_arcmin = self.angular_distance(solved_ra_deg, solved_dec_deg, expected_ra_deg, expected_dec_deg) * 60.0
+
+        if self._pointing_model and self.location_service:
+            location = self.location_service.get_current_location()
+            if location:
+                lat, lon = location["latitude"], location["longitude"]
+                cmd_az, cmd_alt = radec_to_altaz(expected_ra_deg, expected_dec_deg, lat, lon)
+                if not self._pointing_model.has_nearby_point(cmd_az, cmd_alt):
+                    self._pointing_model.add_point(
+                        expected_ra_deg, expected_dec_deg, solved_ra_deg, solved_dec_deg, lat, lon
+                    )
+                    self.logger.info("Pipeline fed pointing model (error %.1f')", error_arcmin)
+                else:
+                    self._pointing_model.record_verification_residual(error_arcmin)
+                    self.logger.debug("Pipeline skip: nearby point exists (error %.1f')", error_arcmin)
+                return
+
+        self.logger.info("Plate solve result: pointing error %.1f' (no model to feed)", error_arcmin)
 
     def perform_alignment(self, target_ra: float, target_dec: float) -> bool:
         """Plate-solve at the current position and conditionally sync the mount."""

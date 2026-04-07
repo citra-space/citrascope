@@ -366,7 +366,7 @@ class AlignmentManager:
             overhead_limit_deg=overhead_limit,
             lat_deg=site_lat,
             lon_deg=site_lon,
-            n_points=10,
+            n_points=15,
         )
 
         if not targets:
