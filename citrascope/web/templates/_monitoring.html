@@ -468,16 +468,21 @@
                                 </template>
 
                                 <div class="d-flex gap-2 mt-2">
-                                    <button class="btn btn-sm btn-outline-light"
-                                            @click="calibratePointingModel()"
-                                            :disabled="$store.citrascope.status?.pointing_calibration_running">
-                                        <template x-if="$store.citrascope.status?.pointing_calibration_running">
+                                    <template x-if="!$store.citrascope.status?.pointing_calibration_running">
+                                        <button class="btn btn-sm btn-outline-light"
+                                                @click="calibratePointingModel()">
+                                            Calibrate
+                                        </button>
+                                    </template>
+                                    <template x-if="$store.citrascope.status?.pointing_calibration_running">
+                                        <button class="btn btn-sm btn-outline-warning"
+                                                @click="cancelPointingCalibration()">
                                             <span class="spinner-border spinner-border-sm me-1" style="width:.6rem;height:.6rem;"></span>
-                                        </template>
-                                        <span x-text="$store.citrascope.status?.pointing_calibration_running ? 'Calibrating...' : 'Calibrate'"></span>
-                                    </button>
+                                            Cancel
+                                        </button>
+                                    </template>
                                     <button class="btn btn-sm btn-outline-danger"
-                                            x-show="pm.state !== 'untrained'"
+                                            x-show="pm.state !== 'untrained' && !$store.citrascope.status?.pointing_calibration_running"
                                             @click="if (confirm('Reset the pointing model? This clears all calibration data.')) resetPointingModel()">
                                         Reset
                                     </button>

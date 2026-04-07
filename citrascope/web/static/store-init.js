@@ -94,6 +94,19 @@ function compareVersions(v1, v2) {
                 return Object.entries(grouped);
             },
 
+            telescopeTooltip() {
+                const s = this.status;
+                if (!s?.telescope_connected) return 'Telescope disconnected';
+                let tip = 'Telescope connected';
+                const pm = s.pointing_model;
+                if (pm && pm.state !== 'untrained') {
+                    tip += '\nPointing: ' + pm.tilt_deg?.toFixed(1) + '\u00b0 tilt, corrected to ~' + pm.pointing_accuracy_arcmin?.toFixed(1) + '\u2032';
+                } else if (pm) {
+                    tip += '\nPointing: untrained';
+                }
+                return tip;
+            },
+
             // Store methods
             previewFlipH: false,
 

@@ -53,14 +53,36 @@ def _patch_skyfield_gast():
     ],
 )
 def test_radec_altaz_round_trip(ra: float, dec: float, lat: float, lon: float):
-    """RA/Dec → Alt/Az → RA/Dec should recover the original coordinates."""
+    """RA/Dec -> Alt/Az -> RA/Dec should recover the original coordinates."""
     az, alt = radec_to_altaz(ra, dec, lat, lon)
-    # Skip points below horizon where numerical precision is worse
     if alt < 5.0:
         pytest.skip("Below horizon — numeric instability")
     ra2, dec2 = altaz_to_radec(az, alt, lat, lon)
     assert abs(ra2 - ra) % 360 < 0.01, f"RA mismatch: {ra2} vs {ra}"
     assert abs(dec2 - dec) < 0.01, f"Dec mismatch: {dec2} vs {dec}"
+
+
+@pytest.mark.parametrize(
+    ("az", "alt", "lat", "lon"),
+    [
+        (0.0, 45.0, 40.0, -74.0),
+        (180.0, 45.0, 40.0, -74.0),
+        (180.001, 45.0, 40.0, -74.0),
+        (179.999, 45.0, 40.0, -74.0),
+        (359.99, 45.0, 40.0, -74.0),
+        (90.0, 85.0, 40.0, -74.0),
+    ],
+)
+def test_altaz_radec_round_trip_edge_cases(az: float, alt: float, lat: float, lon: float):
+    """Alt/Az -> RA/Dec -> Alt/Az round-trip at boundary azimuths."""
+    ra, dec = altaz_to_radec(az, alt, lat, lon)
+    az2, alt2 = radec_to_altaz(ra, dec, lat, lon)
+
+    az_diff = abs(az2 - az)
+    if az_diff > 180.0:
+        az_diff = 360.0 - az_diff
+    assert az_diff < 0.05, f"Az mismatch: {az2} vs {az}"
+    assert abs(alt2 - alt) < 0.05, f"Alt mismatch: {alt2} vs {alt}"
 
 
 # ------------------------------------------------------------------
@@ -150,7 +172,6 @@ class TestCorrectionAccuracy:
         for mount_ra, mount_dec, solved_ra, solved_dec, lat_, lon_ in pts:
             model.add_point(mount_ra, mount_dec, solved_ra, solved_dec, lat_, lon_)
 
-        # Test correction at new random positions
         rng = np.random.RandomState(99)
         for _ in range(5):
             target_az = rng.uniform(30, 330)
@@ -158,9 +179,42 @@ class TestCorrectionAccuracy:
             target_ra, target_dec = altaz_to_radec(target_az, target_alt, lat, lon)
 
             corrected_ra, corrected_dec = model.correct(target_ra, target_dec, lat, lon)
-            # The corrected mount command, when subject to the same error model,
-            # should land closer to the target than the uncorrected command
             assert corrected_ra != target_ra or corrected_dec != target_dec, "Correction should change the coordinates"
+
+    def test_predict_error_accounts_for_cos_alt(self):
+        """predict_error should project dAz through cos(alt) for sky-accurate magnitude.
+
+        Using a model with known AN and all other terms zero, compute
+        expected error at az=90, alt=60 and verify the cos(alt) factor
+        appears in the result.
+        """
+        lat, lon = 40.0, -74.0
+        AN = 0.5
+        pts = _synthetic_points(AN, 0.0, 0.0, n=10, lat=lat, lon=lon)
+        model = AltAzPointingModel()
+        for mount_ra, mount_dec, solved_ra, solved_dec, lat_, lon_ in pts:
+            model.add_point(mount_ra, mount_dec, solved_ra, solved_dec, lat_, lon_)
+
+        # At az=90°, alt=60°:
+        #   dAz = AN * sin(90) * tan(60) = AN * 1.732
+        #   dAlt = -AN * cos(90) = 0
+        #   With cos(alt): sqrt((dAz * cos(60))^2 + dAlt^2) = dAz * 0.5
+        #   Without cos(alt): sqrt(dAz^2 + dAlt^2) = dAz
+        alt_rad = math.radians(60.0)
+        expected_d_az = AN * math.sin(math.radians(90.0)) * math.tan(alt_rad)
+        expected_with_cos = abs(expected_d_az * math.cos(alt_rad)) * 60.0
+        expected_without_cos = abs(expected_d_az) * 60.0
+
+        ra_test, dec_test = altaz_to_radec(90.0, 60.0, lat, lon)
+        result = model.predict_error(ra_test, dec_test, lat, lon)
+
+        # Should match the cos(alt)-projected value, not the raw one
+        assert (
+            abs(result - expected_with_cos) < 1.0
+        ), f"predict_error={result:.2f}' should be close to cos(alt)-projected {expected_with_cos:.2f}'"
+        assert (
+            abs(result - expected_without_cos) > 1.0
+        ), f"predict_error={result:.2f}' should NOT match raw {expected_without_cos:.2f}'"
 
 
 # ------------------------------------------------------------------
@@ -381,10 +435,18 @@ class TestStatus:
         assert status["tilt_direction_label"] != ""
         assert status["pointing_accuracy_arcmin"] >= 0
 
-    def test_compass_labels(self):
+    def test_tilt_direction_labels_via_status(self):
+        """Verify compass labels through the public status() interface."""
+        # AN>0 AW=0 → tilt toward N (bearing ≈ 0°)
+        pts = _synthetic_points(0.5, 0.0, 0.0, n=10)
         model = AltAzPointingModel()
-        assert model._compass_label(0.0) == "N"
-        assert model._compass_label(45.0) == "NE"
-        assert model._compass_label(90.0) == "E"
-        assert model._compass_label(180.0) == "S"
-        assert model._compass_label(270.0) == "W"
+        for mount_ra, mount_dec, solved_ra, solved_dec, lat, lon in pts:
+            model.add_point(mount_ra, mount_dec, solved_ra, solved_dec, lat, lon)
+        assert model.status()["tilt_direction_label"] == "N"
+
+        # AW>0, AN=0 → tilt toward E (bearing ≈ 90°)
+        pts = _synthetic_points(0.0, 0.5, 0.0, n=10)
+        model2 = AltAzPointingModel()
+        for mount_ra, mount_dec, solved_ra, solved_dec, lat, lon in pts:
+            model2.add_point(mount_ra, mount_dec, solved_ra, solved_dec, lat, lon)
+        assert model2.status()["tilt_direction_label"] == "E"

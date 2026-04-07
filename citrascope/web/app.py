@@ -1113,6 +1113,21 @@ class CitraScopeWebApp:
                 return {"success": True, "message": "Pointing model reset"}
             return JSONResponse({"error": "Pointing model not available"}, status_code=404)
 
+        @self.app.post("/api/mount/pointing-model/calibrate/cancel")
+        async def cancel_pointing_calibration():
+            """Cancel an in-progress or pending pointing calibration."""
+            if not self.daemon:
+                return JSONResponse({"error": "Daemon not available"}, status_code=503)
+            if not self.daemon.task_manager:
+                return JSONResponse({"error": "Task manager not available"}, status_code=503)
+
+            try:
+                self.daemon.task_manager.alignment_manager.cancel_calibration()
+                return {"success": True}
+            except Exception as e:
+                CITRASCOPE_LOGGER.error(f"Error cancelling pointing calibration: {e}", exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
         # ── Calibration endpoints ─────────────────────────────────────
 
         @self.app.get("/api/calibration/status")

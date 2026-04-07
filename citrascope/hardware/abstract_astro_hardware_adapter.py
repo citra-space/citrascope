@@ -163,6 +163,109 @@ class AbstractAstroHardwareAdapter(ABC):
             return self._pointing_model.status()
         return None
 
+    def _init_pointing_model(self, adapter_name: str) -> None:
+        """Initialize the pointing model, loading persisted state if available.
+
+        State file is namespaced per adapter so different adapters don't
+        share calibration data.
+
+        Args:
+            adapter_name: Used to derive the state file name
+                (e.g. ``"DirectHardwareAdapter"``).
+        """
+        import platformdirs
+
+        from citrascope.hardware.devices.mount.altaz_pointing_model import AltAzPointingModel
+
+        data_dir = Path(platformdirs.user_data_dir("citrascope", appauthor="citrascope"))
+        state_file = data_dir / f"pointing_model_{adapter_name}.json"
+        self._pointing_model = AltAzPointingModel(state_file=state_file)
+
+        if self._pointing_model.is_active:
+            status = self._pointing_model.status()
+            self.logger.info(
+                "Pointing model loaded: %s (%d pts, tilt=%.3f° toward %s, accuracy=%.1f')",
+                status["state"],
+                status["point_count"],
+                status["tilt_deg"],
+                status["tilt_direction_label"],
+                status["pointing_accuracy_arcmin"],
+            )
+
+    def _perform_alignment_with_model(
+        self,
+        target_ra: float,
+        target_dec: float,
+    ) -> bool:
+        """Plate-solve at the current position and conditionally sync the mount.
+
+        When the pointing model is trained, skips the sync and records the
+        residual for health monitoring.  Otherwise syncs as before.
+
+        Requires ``self.mount``, ``self.telescope_record``, and
+        ``self.is_camera_connected()`` to be available.
+
+        Args:
+            target_ra: Expected RA in degrees (for logging/error reporting).
+            target_dec: Expected Dec in degrees (for logging/error reporting).
+
+        Returns:
+            True if plate solve succeeded.
+        """
+        mount = self.mount
+        if not mount:
+            self.logger.warning("No mount configured — cannot perform alignment")
+            return False
+        if not self.is_camera_connected():
+            self.logger.warning("No camera configured — cannot perform alignment")
+            return False
+        if not self.telescope_record:
+            self.logger.warning("No telescope_record available — cannot plate-solve for alignment")
+            return False
+
+        from citrascope.processors.builtin.plate_solver_processor import PlateSolverProcessor
+
+        exposure_attempts = [2.0, 4.0, 8.0]
+        for exposure_s in exposure_attempts:
+            self.logger.info("Alignment: taking %.0fs exposure for plate solve...", exposure_s)
+            try:
+                image_path = self.take_image("alignment", exposure_s)
+            except Exception as exc:
+                self.logger.error("Alignment exposure failed: %s", exc)
+                continue
+
+            result = PlateSolverProcessor.solve(
+                Path(image_path),
+                self.telescope_record,
+            )
+            if result is not None:
+                solved_ra, solved_dec = result
+                error = self.angular_distance(solved_ra, solved_dec, target_ra, target_dec)
+
+                if self._pointing_model and self._pointing_model.is_trained:
+                    residual_arcmin = error * 60.0
+                    self._pointing_model.record_verification_residual(residual_arcmin)
+                    self.logger.info(
+                        "Alignment verified (model active, no sync): solved RA=%.4f° Dec=%.4f° (residual: %.1f')",
+                        solved_ra,
+                        solved_dec,
+                        residual_arcmin,
+                    )
+                else:
+                    mount.sync_to_radec(solved_ra, solved_dec)
+                    self.logger.info(
+                        "Alignment successful: solved RA=%.4f° Dec=%.4f° (error from target: %.1f', synced)",
+                        solved_ra,
+                        solved_dec,
+                        error * 60,
+                    )
+                return True
+
+            self.logger.warning("Plate solve failed with %.0fs exposure, retrying...", exposure_s)
+
+        self.logger.error("Alignment failed: plate solve did not converge after all attempts")
+        return False
+
     def point_telescope(self, ra: float, dec: float):
         """Point the telescope to the specified RA/Dec coordinates.
 

@@ -20,7 +20,6 @@ from citrascope.hardware.abstract_astro_hardware_adapter import (
 )
 from citrascope.hardware.devices.focuser.abstract_focuser import AbstractFocuser
 from citrascope.hardware.devices.mount.abstract_mount import AbstractMount
-from citrascope.hardware.devices.mount.altaz_pointing_model import AltAzPointingModel
 from citrascope.hardware.devices.mount.mount_state_cache import MountStateCache
 
 # Default observer location — Pikes Peak, matches DummyApiClient.
@@ -596,21 +595,7 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         self._mount._state_cache = cache  # type: ignore[attr-defined]
         self._mount_cache = cache
 
-        import platformdirs
-
-        data_dir = Path(platformdirs.user_data_dir("citrascope", appauthor="citrascope"))
-        state_file = data_dir / "pointing_model_state.json"
-        self._pointing_model = AltAzPointingModel(state_file=state_file)
-        if self._pointing_model.is_active:
-            status = self._pointing_model.status()
-            self.logger.info(
-                "Pointing model loaded: %s (%d pts, tilt=%.3f° toward %s, accuracy=%.1f')",
-                status["state"],
-                status["point_count"],
-                status["tilt_deg"],
-                status["tilt_direction_label"],
-                status["pointing_accuracy_arcmin"],
-            )
+        self._init_pointing_model("DummyAdapter")
 
         self.logger.info("DummyAdapter: Connected successfully")
         return True
@@ -924,64 +909,14 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         return self._tracking_rate
 
     def perform_alignment(self, target_ra: float, target_dec: float) -> bool:
-        """Plate-solve at the current position and conditionally sync the mount.
-
-        When the pointing model is trained, skips the sync and instead runs
-        a health check comparing the observed residual against the model's
-        prediction.  When the model is not trained, syncs as before.
-        """
-        self.logger.info(f"DummyAdapter: Performing alignment to RA={target_ra}°, Dec={target_dec}°")
-
+        """Plate-solve at the current position and conditionally sync the mount."""
         if not self.telescope_record:
             self.logger.warning("No telescope_record available — falling back to simulated alignment")
             self._simulate_delay()
             self._mount.sync_to_radec(target_ra, target_dec)
             return True
 
-        from citrascope.processors.builtin.plate_solver_processor import PlateSolverProcessor
-
-        exposure_attempts = [2.0, 4.0, 8.0]
-        for exposure_s in exposure_attempts:
-            self.logger.info(f"DummyAdapter alignment: taking {exposure_s:.0f}s exposure for plate solve...")
-            try:
-                image_path = self.take_image("alignment", exposure_s)
-            except Exception as exc:
-                self.logger.error(f"Alignment exposure failed: {exc}")
-                continue
-
-            result = PlateSolverProcessor.solve(
-                Path(image_path),
-                self.telescope_record,
-            )
-            if result is not None:
-                solved_ra, solved_dec = result
-                error = self.angular_distance(solved_ra, solved_dec, target_ra, target_dec)
-
-                if self._pointing_model and self._pointing_model.is_trained:
-                    residual_arcmin = error * 60.0
-                    self._pointing_model.record_verification_residual(residual_arcmin)
-                    self.logger.info(
-                        "DummyAdapter alignment verified (model active, no sync): "
-                        "solved RA=%.4f° Dec=%.4f° (residual: %.1f')",
-                        solved_ra,
-                        solved_dec,
-                        residual_arcmin,
-                    )
-                else:
-                    self._mount.sync_to_radec(solved_ra, solved_dec)
-                    self.logger.info(
-                        "DummyAdapter alignment successful: solved RA=%.4f° Dec=%.4f° "
-                        "(error from target: %.1f', synced)",
-                        solved_ra,
-                        solved_dec,
-                        error * 60,
-                    )
-                return True
-
-            self.logger.warning(f"Plate solve failed with {exposure_s:.0f}s exposure, retrying...")
-
-        self.logger.error("DummyAdapter alignment failed: plate solve did not converge after all attempts")
-        return False
+        return self._perform_alignment_with_model(target_ra, target_dec)
 
     def supports_autofocus(self) -> bool:
         """Dummy adapter supports autofocus."""

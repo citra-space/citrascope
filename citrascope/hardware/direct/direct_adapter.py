@@ -25,7 +25,6 @@ from citrascope.hardware.devices.device_registry import (
 from citrascope.hardware.devices.filter_wheel import AbstractFilterWheel
 from citrascope.hardware.devices.focuser import AbstractFocuser
 from citrascope.hardware.devices.mount import AbstractMount
-from citrascope.hardware.devices.mount.altaz_pointing_model import AltAzPointingModel
 from citrascope.hardware.devices.mount.mount_state_cache import MountStateCache
 from citrascope.hardware.filter_sync import is_trash_filter_name
 from citrascope.location.gps_fix import GPSFix
@@ -62,7 +61,6 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         self.logger = logger
         self._mount_cache: MountStateCache | None = None
         self._preview_lock = threading.Lock()
-        self._pointing_model_state_file: Path | None = None
 
         # Track dependency issues for reporting
         self._dependency_issues: list[dict[str, str]] = []
@@ -600,28 +598,9 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             except Exception:
                 self.logger.debug("Meridian auto-flip not supported", exc_info=True)
 
-    def _init_pointing_model(self) -> None:
+    def _init_pointing_model(self) -> None:  # type: ignore[override]
         """Initialize the pointing model, loading persisted state if available."""
-        if self._pointing_model_state_file:
-            self._pointing_model = AltAzPointingModel(state_file=self._pointing_model_state_file)
-        else:
-            import platformdirs
-
-            data_dir = Path(platformdirs.user_data_dir("citrascope", appauthor="citrascope"))
-            state_file = data_dir / "pointing_model_state.json"
-            self._pointing_model = AltAzPointingModel(state_file=state_file)
-            self._pointing_model_state_file = state_file
-
-        if self._pointing_model.is_active:
-            status = self._pointing_model.status()
-            self.logger.info(
-                "Pointing model loaded: %s (%d pts, tilt=%.3f° toward %s, accuracy=%.1f')",
-                status["state"],
-                status["point_count"],
-                status["tilt_deg"],
-                status["tilt_direction_label"],
-                status["pointing_accuracy_arcmin"],
-            )
+        super()._init_pointing_model("DirectHardwareAdapter")
 
     def disconnect(self):
         """Disconnect from all hardware devices."""
@@ -1298,69 +1277,5 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             )
 
     def perform_alignment(self, target_ra: float, target_dec: float) -> bool:
-        """Plate-solve at the current position and conditionally sync the mount.
-
-        When the pointing model is trained, skips the sync (model handles
-        corrections) and instead runs a health check comparing the observed
-        residual against the model's prediction.  When the model is not
-        trained, syncs as before.
-
-        Args:
-            target_ra: Expected RA in degrees (for logging/error reporting).
-            target_dec: Expected Dec in degrees (for logging/error reporting).
-
-        Returns:
-            True if plate solve succeeded.
-        """
-        if not self._mount:
-            self.logger.warning("No mount configured — cannot perform alignment")
-            return False
-        if not self._camera:
-            self.logger.warning("No camera configured — cannot perform alignment")
-            return False
-        if not self.telescope_record:
-            self.logger.warning("No telescope_record available — cannot plate-solve for alignment")
-            return False
-
-        from citrascope.processors.builtin.plate_solver_processor import PlateSolverProcessor
-
-        exposure_attempts = [2.0, 4.0, 8.0]
-        for exposure_s in exposure_attempts:
-            self.logger.info(f"Alignment: taking {exposure_s:.0f}s exposure for plate solve...")
-            try:
-                image_path = self.take_image("alignment", exposure_s)
-            except Exception as exc:
-                self.logger.error(f"Alignment exposure failed: {exc}")
-                continue
-
-            result = PlateSolverProcessor.solve(
-                Path(image_path),
-                self.telescope_record,
-            )
-            if result is not None:
-                solved_ra, solved_dec = result
-                error = self.angular_distance(solved_ra, solved_dec, target_ra, target_dec)
-
-                if self._pointing_model and self._pointing_model.is_trained:
-                    residual_arcmin = error * 60.0
-                    self._pointing_model.record_verification_residual(residual_arcmin)
-                    self.logger.info(
-                        "Alignment verified (model active, no sync): solved RA=%.4f° Dec=%.4f° " "(residual: %.1f')",
-                        solved_ra,
-                        solved_dec,
-                        residual_arcmin,
-                    )
-                else:
-                    self._mount.sync_to_radec(solved_ra, solved_dec)
-                    self.logger.info(
-                        "Alignment successful: solved RA=%.4f° Dec=%.4f° " "(error from target: %.1f', synced)",
-                        solved_ra,
-                        solved_dec,
-                        error * 60,
-                    )
-                return True
-
-            self.logger.warning(f"Plate solve failed with {exposure_s:.0f}s exposure, retrying...")
-
-        self.logger.error("Alignment failed: plate solve did not converge after all attempts")
-        return False
+        """Plate-solve at the current position and conditionally sync the mount."""
+        return self._perform_alignment_with_model(target_ra, target_dec)
