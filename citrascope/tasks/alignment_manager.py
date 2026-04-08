@@ -463,6 +463,7 @@ class AlignmentManager:
 
     _VERIFY_COUNT = 2
     _VERIFY_FAIL_FACTOR = 2.0
+    _VERIFY_FLOOR_ARCMIN = 5.0
 
     def _verify_calibration(
         self,
@@ -537,11 +538,11 @@ class AlignmentManager:
             return
 
         median_residual = statistics.median(residuals)
-        threshold = model_rms * self._VERIFY_FAIL_FACTOR
+        threshold = max(model_rms * self._VERIFY_FAIL_FACTOR, self._VERIFY_FLOOR_ARCMIN)
 
         if median_residual > threshold:
             self.logger.error(
-                "CALIBRATION VERIFICATION FAILED: median residual %.1f' is > %.1f' "
+                "CALIBRATION VERIFICATION FAILED: median residual %.1f' is > %.1f' threshold "
                 "(%.0f× model RMS of %.1f'). Correction is making pointing WORSE — resetting model.",
                 median_residual,
                 threshold,
@@ -551,8 +552,9 @@ class AlignmentManager:
             self._pointing_model.reset()
         else:
             self.logger.info(
-                "Calibration verification passed: median residual %.1f' (model RMS %.1f')",
+                "Calibration verification passed: median residual %.1f' (threshold %.1f', model RMS %.1f')",
                 median_residual,
+                threshold,
                 model_rms,
             )
 
