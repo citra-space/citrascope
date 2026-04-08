@@ -971,9 +971,42 @@
             <div class="row g-3 mb-3">
                 <div class="col-12">
                     <div class="card bg-dark text-light border-secondary">
-                        <div class="card-header d-flex align-items-center justify-content-between">
+                        <div class="card-header d-flex align-items-center justify-content-between"
+                             x-data="{
+                                 batchLoading: false,
+                                 batchResult: null,
+                                 async requestBatch() {
+                                     this.batchLoading = true;
+                                     this.batchResult = null;
+                                     try {
+                                         const resp = await fetch('/api/self-tasking/request-now', { method: 'POST' });
+                                         const data = await resp.json();
+                                         if (resp.ok) {
+                                             this.batchResult = { ok: true, msg: (data.created ?? 0) + ' created' };
+                                         } else {
+                                             this.batchResult = { ok: false, msg: data.error || 'Request failed' };
+                                         }
+                                     } catch (e) {
+                                         this.batchResult = { ok: false, msg: 'Network error' };
+                                     }
+                                     this.batchLoading = false;
+                                     setTimeout(() => this.batchResult = null, 4000);
+                                 }
+                             }">
                             <span><i class="bi bi-calendar-week me-1"></i>Scheduled Tasks</span>
-                            <span class="small text-secondary"><span x-text="$store.citrascope.status?.tasks_pending ?? $store.citrascope.tasks?.length ?? 0">0</span> scheduled</span>
+                            <span class="d-flex align-items-center gap-2">
+                                <span class="small" x-show="batchResult" x-transition.opacity
+                                      :class="batchResult?.ok ? 'text-success' : 'text-danger'"
+                                      x-text="batchResult?.msg"></span>
+                                <button class="btn btn-sm btn-outline-primary"
+                                        :disabled="batchLoading"
+                                        @click="requestBatch()"
+                                        x-show="$store.citrascope.status?.connected !== false">
+                                    <span x-show="!batchLoading"><i class="bi bi-plus-circle me-1"></i>Request Batch</span>
+                                    <span x-show="batchLoading"><span class="spinner-border spinner-border-sm me-1"></span>Requesting…</span>
+                                </button>
+                                <span class="small text-secondary"><span x-text="$store.citrascope.status?.tasks_pending ?? $store.citrascope.tasks?.length ?? 0">0</span> scheduled</span>
+                            </span>
                         </div>
                         <div class="card-body p-0">
                             <div class="table-responsive">

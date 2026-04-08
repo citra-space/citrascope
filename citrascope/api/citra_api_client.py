@@ -391,7 +391,7 @@ class CitraApiClient(AbstractCitraApiClient):
             body["excludeTypes"] = exclude_types
         if include_orbit_regimes:
             body["includeOrbitRegimes"] = include_orbit_regimes
-        return self._request("POST", "/collection-requests/batch", json=body)
+        return self._request("POST", "/collection-requests/batch", json=body, timeout=60.0)
 
     def update_ground_station_location(self, ground_station_id, latitude, longitude, altitude):
         """Update ground station's GPS location (for mobile stations).

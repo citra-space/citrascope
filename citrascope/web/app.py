@@ -753,6 +753,62 @@ class CitraScopeWebApp:
             await self.broadcast_status()
             return {"status": "success", "enabled": enabled}
 
+        @self.app.post("/api/self-tasking/request-now")
+        async def request_batch_now():
+            """Fire a single batch collection request, bypassing session-state and timer gating."""
+            if not self.daemon:
+                return JSONResponse({"error": "Daemon not available"}, status_code=503)
+
+            gs = getattr(self.daemon, "ground_station", None)
+            tr = getattr(self.daemon, "telescope_record", None)
+            if not gs or not tr:
+                return JSONResponse({"error": "Ground station or telescope not configured"}, status_code=503)
+
+            settings = self.daemon.settings
+            ground_station_id = gs["id"]
+            sensor_id = tr["id"]
+
+            group_ids = settings.self_tasking_satellite_group_ids or None
+            exclude_types = settings.self_tasking_exclude_object_types or None
+            orbit_regimes = settings.self_tasking_include_orbit_regimes or None
+
+            from datetime import timedelta, timezone
+
+            now = datetime.now(timezone.utc)
+            window_start = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+            window_stop = (now + timedelta(minutes=20)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+            CITRASCOPE_LOGGER.info(
+                "Manual batch request: window %s → %s, gs=%s, sensor=%s",
+                window_start,
+                window_stop,
+                ground_station_id,
+                sensor_id,
+            )
+
+            try:
+                result = await asyncio.to_thread(
+                    self.daemon.api_client.create_batch_collection_requests,
+                    window_start=window_start,
+                    window_stop=window_stop,
+                    ground_station_id=ground_station_id,
+                    sensor_id=sensor_id,
+                    discover_visible=not bool(group_ids),
+                    satellite_group_ids=group_ids,
+                    exclude_types=exclude_types,
+                    include_orbit_regimes=orbit_regimes,
+                )
+            except Exception as e:
+                CITRASCOPE_LOGGER.error("Manual batch request failed", exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+            if result is None:
+                return JSONResponse({"error": "API request failed"}, status_code=502)
+
+            created = result.get("created", 0)
+            CITRASCOPE_LOGGER.info("Manual batch request succeeded (created=%s)", created)
+            return {"status": "ok", "created": created}
+
         @self.app.get("/api/adapter/filters")
         async def get_filters():
             """Get current filter configuration."""
