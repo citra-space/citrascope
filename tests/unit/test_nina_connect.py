@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
 from citrascope.hardware.nina.nina_adapter import NinaAdvancedHttpAdapter
 
@@ -84,6 +85,31 @@ class TestConnectSafetyMonitor:
 
         assert result is True
         adapter.logger.warning.assert_any_call("Failed to connect safety monitor: No device selected")
+
+    @patch("citrascope.hardware.nina.nina_adapter.NinaEventListener")
+    @patch("citrascope.hardware.nina.nina_adapter.requests.get")
+    def test_safety_monitor_exception_does_not_block_connect(self, mock_get, mock_ws, adapter):
+        """A network exception from safety monitor connect doesn't abort connect()."""
+        responses = _all_succeed_responses()
+        # Replace safety monitor response (index 4) with a side_effect exception.
+        # We need to use a callable side_effect on mock_get to raise only for the
+        # safety monitor URL while returning normal responses for everything else.
+        call_idx = {"i": 0}
+        original_responses = responses
+
+        def selective_side_effect(*args, **kwargs):
+            i = call_idx["i"]
+            call_idx["i"] += 1
+            if i == 4:
+                raise requests.ConnectionError("Connection refused")
+            return original_responses[i]
+
+        mock_get.side_effect = selective_side_effect
+
+        result = adapter.connect()
+
+        assert result is True
+        adapter.logger.warning.assert_any_call("Failed to connect safety monitor: Connection refused")
 
     @patch("citrascope.hardware.nina.nina_adapter.NinaEventListener")
     @patch("citrascope.hardware.nina.nina_adapter.requests.get")

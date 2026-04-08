@@ -355,13 +355,18 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
                 self.logger.info("Focuser Connected!")
 
             self.logger.info("Connecting safety monitor ...")
-            safety_status = requests.get(
-                self.nina_api_path + self.SAFETYMON_URL + "connect", timeout=self.CONNECT_TIMEOUT
-            ).json()
-            if not safety_status["Success"]:
-                self.logger.warning(f"Failed to connect safety monitor: {safety_status.get('Error')}")
-            else:
-                self.logger.info("Safety monitor Connected!")
+            try:
+                safety_status = requests.get(
+                    self.nina_api_path + self.SAFETYMON_URL + "connect", timeout=self.CONNECT_TIMEOUT
+                ).json()
+                if not safety_status["Success"]:
+                    self.logger.warning(f"Failed to connect safety monitor: {safety_status.get('Error')}")
+                else:
+                    self.logger.info("Safety monitor Connected!")
+            except requests.RequestException as e:
+                self.logger.warning(f"Failed to connect safety monitor: {e}")
+            except ValueError as e:
+                self.logger.warning(f"Failed to parse safety monitor response: {e}")
 
             self.logger.info("Connecting mount ...")
             mount_status = requests.get(
