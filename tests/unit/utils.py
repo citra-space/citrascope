@@ -133,6 +133,7 @@ class MockCitraApiClient(AbstractCitraApiClient):
         window_start,
         window_stop,
         ground_station_id,
+        sensor_id="",
         discover_visible=True,
         satellite_group_ids=None,
         request_type="Track",

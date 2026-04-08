@@ -366,6 +366,7 @@ class CitraApiClient(AbstractCitraApiClient):
         window_start: str,
         window_stop: str,
         ground_station_id: str,
+        sensor_id: str,
         discover_visible: bool = True,
         satellite_group_ids: list[str] | None = None,
         request_type: str = "Track",
@@ -376,7 +377,10 @@ class CitraApiClient(AbstractCitraApiClient):
         body: dict = {
             "windowStart": window_start,
             "windowStop": window_stop,
-            "groundStationId": ground_station_id,
+            "params": {
+                "ground_station_ids": [ground_station_id],
+                "sensor_selections": {ground_station_id: sensor_id},
+            },
             "discoverVisible": discover_visible,
             "type": request_type,
             "priority": priority,

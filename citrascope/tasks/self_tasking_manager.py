@@ -43,6 +43,7 @@ class SelfTaskingManager:
         settings: CitraScopeSettings,
         logger: logging.Logger,
         ground_station_id: str,
+        sensor_id: str,
         get_session_state: Callable[[], SessionState],
         get_observing_window: Callable[[], ObservingWindow | None],
     ):
@@ -50,6 +51,7 @@ class SelfTaskingManager:
         self._settings = settings
         self._logger = logger
         self._ground_station_id = ground_station_id
+        self._sensor_id = sensor_id
         self._get_session_state = get_session_state
         self._get_observing_window = get_observing_window
 
@@ -95,6 +97,7 @@ class SelfTaskingManager:
                 window_start=window.dark_start or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 window_stop=dark_end,
                 ground_station_id=self._ground_station_id,
+                sensor_id=self._sensor_id,
                 discover_visible=not bool(group_ids),
                 satellite_group_ids=group_ids,
                 exclude_types=exclude_types,

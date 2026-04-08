@@ -126,6 +126,7 @@ class AbstractCitraApiClient(ABC):
         window_start: str,
         window_stop: str,
         ground_station_id: str,
+        sensor_id: str,
         discover_visible: bool = True,
         satellite_group_ids: list[str] | None = None,
         request_type: str = "Track",
