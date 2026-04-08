@@ -1991,6 +1991,8 @@ class CitraScopeWebApp:
                 self.status.tasks_pending = task_manager.pending_task_count
 
                 busy_reasons: list[str] = []
+                if task_manager.is_processing_active():
+                    busy_reasons.append("processing")
                 if not task_manager.imaging_queue.is_idle():
                     busy_reasons.append("imaging")
                 if self.status.alignment_running:
