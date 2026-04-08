@@ -232,8 +232,15 @@ class AbstractBaseTelescopeTask(ABC):
                 correction = (self.pointing_report or {}).get("pointing_model_correction")
                 cmd_ra = correction["command_ra_deg"] if correction else None
                 cmd_dec = correction["command_dec_deg"] if correction else None
+                tgt_ra = correction["target_ra_deg"] if correction else None
+                tgt_dec = correction["target_dec_deg"] if correction else None
                 self.hardware_adapter.update_from_plate_solve(
-                    float(ra), float(dec), expected_ra_deg=cmd_ra, expected_dec_deg=cmd_dec
+                    float(ra),
+                    float(dec),
+                    expected_ra_deg=cmd_ra,
+                    expected_dec_deg=cmd_dec,
+                    target_ra_deg=tgt_ra,
+                    target_dec_deg=tgt_dec,
                 )
 
             self._update_observed_fov_from_plate_solve(result.extracted_data)
@@ -583,11 +590,15 @@ class AbstractBaseTelescopeTask(ABC):
                 f"off by {abs(slew_duration - est_slew_time):.1f} sec."
             )
 
-            # Convergence: did we arrive at our intended target?
+            # Convergence: did the mount arrive at the commanded position?
+            # Compare against the command position (with correction applied), not
+            # the original target — those differ by the pointing model correction.
+            cmd_ra_deg = last_correction["command_ra_deg"]
+            cmd_dec_deg = last_correction["command_dec_deg"]
             target_lead_ra_deg = float(lead_ra.degrees)  # type: ignore[union-attr]
             target_lead_dec_deg = float(lead_dec.degrees)  # type: ignore[union-attr]
             target_distance_deg = self.hardware_adapter.angular_distance(
-                post_slew_ra, post_slew_dec, target_lead_ra_deg, target_lead_dec_deg
+                post_slew_ra, post_slew_dec, cmd_ra_deg, cmd_dec_deg
             )
 
             # Satellite's current position (diagnostic only — may differ from

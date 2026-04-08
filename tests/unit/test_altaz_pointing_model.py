@@ -429,7 +429,7 @@ class TestHealthMonitoring:
             model.add_point(mount_ra, mount_dec, solved_ra, solved_dec, lat, lon)
 
         assert model.health == "good"
-        # Must exceed both 3x RMS and the 5'/60 floor
+        # Must exceed both 3x RMS and the 10'/60 floor
         huge_residual = max(model.rms_deg * 10.0, 0.5)
         for _ in range(5):
             model.record_verification_residual(huge_residual)

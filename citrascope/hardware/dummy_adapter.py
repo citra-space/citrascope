@@ -905,12 +905,16 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         solved_dec_deg: float,
         expected_ra_deg: float | None = None,
         expected_dec_deg: float | None = None,
+        target_ra_deg: float | None = None,
+        target_dec_deg: float | None = None,
     ) -> None:
         """Feed pipeline plate-solve results into the pointing model."""
         if expected_ra_deg is None or expected_dec_deg is None:
             return
 
-        error_deg = self.angular_distance(solved_ra_deg, solved_dec_deg, expected_ra_deg, expected_dec_deg)
+        residual_ra = target_ra_deg if target_ra_deg is not None else expected_ra_deg
+        residual_dec = target_dec_deg if target_dec_deg is not None else expected_dec_deg
+        residual_deg = self.angular_distance(solved_ra_deg, solved_dec_deg, residual_ra, residual_dec)
 
         if self._pointing_model and self.location_service:
             location = self.location_service.get_current_location()
@@ -923,10 +927,10 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
                     self._pointing_model.add_point(
                         expected_ra_deg, expected_dec_deg, solved_ra_deg, solved_dec_deg, lat, lon
                     )
-                    self.logger.info("Pipeline fed pointing model (error %.4f°)", error_deg)
+                    self.logger.info("Pipeline fed pointing model (residual %.4f°)", residual_deg)
                 else:
-                    self._pointing_model.record_verification_residual(error_deg)
-                    self.logger.debug("Pipeline skip: nearby point exists (error %.4f°)", error_deg)
+                    self._pointing_model.record_verification_residual(residual_deg)
+                    self.logger.debug("Pipeline skip: nearby point exists (residual %.4f°)", residual_deg)
 
     def supports_autofocus(self) -> bool:
         """Dummy adapter supports autofocus."""

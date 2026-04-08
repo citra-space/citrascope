@@ -458,34 +458,22 @@
                                 <template x-if="pm.state !== 'untrained'">
                                     <div class="small">
                                         <div class="row mb-1">
-                                            <div class="col-6 text-muted">Tripod Tilt</div>
-                                            <div class="col-6" x-text="pm.tilt_deg?.toFixed(2) + '\u00b0 toward ' + (pm.tilt_direction_label || '-')"></div>
-                                        </div>
-                                        <div class="row mb-1">
-                                            <div class="col-6 text-muted">Model Terms</div>
-                                            <div class="col-6 font-monospace" style="font-size:.75rem;">
-                                                <span x-text="'AN ' + pm.terms?.AN?.toFixed(4) + '°'"></span>
-                                                <span class="text-muted mx-1">|</span>
-                                                <span x-text="'AW ' + pm.terms?.AW?.toFixed(4) + '°'"></span>
-                                                <span class="text-muted mx-1">|</span>
-                                                <span x-text="'IE ' + pm.terms?.IE?.toFixed(4) + '°'"></span>
-                                                <template x-if="pm.n_terms >= 5">
-                                                    <span>
-                                                        <span class="text-muted mx-1">|</span>
-                                                        <span x-text="'CA ' + pm.terms?.CA?.toFixed(4) + '°'"></span>
-                                                        <span class="text-muted mx-1">|</span>
-                                                        <span x-text="'NPAE ' + pm.terms?.NPAE?.toFixed(4) + '°'"></span>
-                                                    </span>
-                                                </template>
+                                            <div class="col-6 text-muted">
+                                                <span data-bs-toggle="tooltip" data-bs-placement="top"
+                                                      title="Average error left over after the model corrects for tripod tilt and alignment. This is the best accuracy the model can achieve."
+                                                      style="border-bottom: 1px dotted; cursor: help;"
+                                                      x-init="new bootstrap.Tooltip($el)">Model Fit RMS</span>
                                             </div>
-                                        </div>
-                                        <div class="row mb-1">
-                                            <div class="col-6 text-muted">Model Fit RMS</div>
                                             <div class="col-6" :class="accColor(pm.pointing_accuracy_deg)" x-text="'~' + pm.pointing_accuracy_deg?.toFixed(4) + '°'"></div>
                                         </div>
                                         <template x-if="pm.live_accuracy?.count > 0">
                                             <div class="row mb-1">
-                                                <div class="col-6 text-muted">Live Accuracy</div>
+                                                <div class="col-6 text-muted">
+                                                    <span data-bs-toggle="tooltip" data-bs-placement="top"
+                                                          title="Median pointing error measured from recent plate solves. Shows how accurately the telescope is hitting targets right now."
+                                                          style="border-bottom: 1px dotted; cursor: help;"
+                                                          x-init="new bootstrap.Tooltip($el)">Live Accuracy</span>
+                                                </div>
                                                 <div class="col-6 d-flex align-items-center gap-2">
                                                     <span>
                                                         <span :class="accColor(pm.live_accuracy.median_deg)" x-text="pm.live_accuracy.median_deg?.toFixed(4) + '°'"></span>
@@ -525,14 +513,50 @@
                                         </template>
                                         <template x-if="!pm.live_accuracy?.count">
                                             <div class="row mb-1">
-                                                <div class="col-6 text-muted">Live Accuracy</div>
+                                                <div class="col-6 text-muted">
+                                                    <span data-bs-toggle="tooltip" data-bs-placement="top"
+                                                          title="Median pointing error measured from recent plate solves. Shows how accurately the telescope is hitting targets right now."
+                                                          style="border-bottom: 1px dotted; cursor: help;"
+                                                          x-init="new bootstrap.Tooltip($el)">Live Accuracy</span>
+                                                </div>
                                                 <div class="col-6 text-muted fst-italic">waiting for observations...</div>
                                             </div>
                                         </template>
-                                        <div class="row mb-1">
-                                            <div class="col-6 text-muted">Calibration Points</div>
-                                            <div class="col-6" x-text="pm.point_count + ' points (' + pm.n_terms + '-term fit)'"></div>
-                                        </div>
+
+                                        <details class="mt-2" x-data="{ open: false }" :open="open" @toggle="open = $el.open">
+                                            <summary class="text-muted" style="cursor: pointer; list-style: none; font-size: .8rem;">
+                                                <i class="bi" :class="open ? 'bi-chevron-down' : 'bi-chevron-right'" style="font-size: .65rem;"></i>
+                                                Model details
+                                            </summary>
+                                            <div class="mt-1">
+                                                <div class="row mb-1">
+                                                    <div class="col-6 text-muted">Tripod Tilt N-S</div>
+                                                    <div class="col-6" x-text="(pm.terms?.AN >= 0 ? '+' : '') + pm.terms?.AN?.toFixed(4) + '°'"></div>
+                                                </div>
+                                                <div class="row mb-1">
+                                                    <div class="col-6 text-muted">Tripod Tilt E-W</div>
+                                                    <div class="col-6" x-text="(pm.terms?.AW >= 0 ? '+' : '') + pm.terms?.AW?.toFixed(4) + '°'"></div>
+                                                </div>
+                                                <div class="row mb-1">
+                                                    <div class="col-6 text-muted">Model Terms</div>
+                                                    <div class="col-6 font-monospace" style="font-size:.75rem;">
+                                                        <span x-text="'IE ' + pm.terms?.IE?.toFixed(4) + '°'"></span>
+                                                        <template x-if="pm.n_terms >= 5">
+                                                            <span>
+                                                                <span class="text-muted mx-1">|</span>
+                                                                <span x-text="'CA ' + pm.terms?.CA?.toFixed(4) + '°'"></span>
+                                                                <span class="text-muted mx-1">|</span>
+                                                                <span x-text="'NPAE ' + pm.terms?.NPAE?.toFixed(4) + '°'"></span>
+                                                            </span>
+                                                        </template>
+                                                    </div>
+                                                </div>
+                                                <div class="row mb-1">
+                                                    <div class="col-6 text-muted">Calibration Points</div>
+                                                    <div class="col-6" x-text="pm.point_count + ' points (' + pm.n_terms + '-term fit)'"></div>
+                                                </div>
+                                            </div>
+                                        </details>
                                     </div>
                                 </template>
 

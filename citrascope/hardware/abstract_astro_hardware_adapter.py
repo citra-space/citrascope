@@ -503,6 +503,8 @@ class AbstractAstroHardwareAdapter(ABC):
         solved_dec_deg: float,
         expected_ra_deg: float | None = None,
         expected_dec_deg: float | None = None,
+        target_ra_deg: float | None = None,
+        target_dec_deg: float | None = None,
     ) -> None:
         """Update mount model from a plate solve result (pipeline → adapter).
 
@@ -514,9 +516,13 @@ class AbstractAstroHardwareAdapter(ABC):
         Args:
             solved_ra_deg: Solved right ascension in degrees.
             solved_dec_deg: Solved declination in degrees.
-            expected_ra_deg: Optional target RA (e.g. from task/mount); if set with
-                expected_dec_deg, adapter can compute offset = solved - expected.
-            expected_dec_deg: Optional target Dec in degrees.
+            expected_ra_deg: Command RA sent to the mount (with pointing model
+                correction applied).  Used as the "encoder" position for
+                ``add_point``.
+            expected_dec_deg: Command Dec sent to the mount.
+            target_ra_deg: Original intended target RA (before correction).
+                Used to compute the true pointing residual.
+            target_dec_deg: Original intended target Dec.
         """
         pass
 
