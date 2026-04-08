@@ -14,6 +14,7 @@ def test_dummy_client_batch_returns_ok():
         window_start="2025-01-01T00:00:00Z",
         window_stop="2025-01-01T06:00:00Z",
         ground_station_id="gs-001",
+        sensor_id="sensor-001",
     )
     assert result is not None
     assert result["status"] == "ok"
@@ -25,6 +26,7 @@ def test_dummy_client_batch_with_filters():
         window_start="2025-01-01T00:00:00Z",
         window_stop="2025-01-01T06:00:00Z",
         ground_station_id="gs-001",
+        sensor_id="sensor-001",
         satellite_group_ids=["group-1"],
         exclude_types=["Debris"],
         include_orbit_regimes=["LEO"],
@@ -43,6 +45,7 @@ def test_citra_client_batch_constructs_payload():
             window_start="2025-01-01T00:00:00Z",
             window_stop="2025-01-01T06:00:00Z",
             ground_station_id="gs-001",
+            sensor_id="sensor-001",
             discover_visible=True,
             exclude_types=["Debris"],
             include_orbit_regimes=["LEO"],
@@ -54,7 +57,8 @@ def test_citra_client_batch_constructs_payload():
     body = call_args[1]["json"]
     assert body["windowStart"] == "2025-01-01T00:00:00Z"
     assert body["windowStop"] == "2025-01-01T06:00:00Z"
-    assert body["groundStationId"] == "gs-001"
+    assert body["params"]["ground_station_ids"] == ["gs-001"]
+    assert body["params"]["sensor_selections"] == {"gs-001": "sensor-001"}
     assert body["discoverVisible"] is True
     assert body["excludeTypes"] == ["Debris"]
     assert body["includeOrbitRegimes"] == ["LEO"]

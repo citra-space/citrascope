@@ -366,6 +366,7 @@ class CitraApiClient(AbstractCitraApiClient):
         window_start: str,
         window_stop: str,
         ground_station_id: str,
+        sensor_id: str,
         discover_visible: bool = True,
         satellite_group_ids: list[str] | None = None,
         request_type: str = "Track",
@@ -376,7 +377,10 @@ class CitraApiClient(AbstractCitraApiClient):
         body: dict = {
             "windowStart": window_start,
             "windowStop": window_stop,
-            "groundStationId": ground_station_id,
+            "params": {
+                "ground_station_ids": [ground_station_id],
+                "sensor_selections": {ground_station_id: sensor_id},
+            },
             "discoverVisible": discover_visible,
             "type": request_type,
             "priority": priority,
@@ -387,7 +391,7 @@ class CitraApiClient(AbstractCitraApiClient):
             body["excludeTypes"] = exclude_types
         if include_orbit_regimes:
             body["includeOrbitRegimes"] = include_orbit_regimes
-        return self._request("POST", "/collection-requests/batch", json=body)
+        return self._request("POST", "/collection-requests/batch", json=body, timeout=60.0)
 
     def update_ground_station_location(self, ground_station_id, latitude, longitude, altitude):
         """Update ground station's GPS location (for mobile stations).
