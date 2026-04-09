@@ -873,7 +873,8 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         simulate seeing variation between exposures.
         """
         optimal = _DUMMY_OPTIMAL_FOCUS + self._current_filter_offset
-        pos = self._focuser.get_position() or optimal
+        current_pos = self._focuser.get_position()
+        pos = optimal if current_pos is None else current_pos
         base = _DUMMY_PSF_SIGMA_PX + _DUMMY_DEFOCUS_K * abs(pos - optimal)
         jitter = np.random.default_rng().normal(0, 0.05 * base)
         return max(0.5, base + jitter)
@@ -989,7 +990,7 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
             if cancel_event and cancel_event.is_set():
                 report("Autofocus cancelled")
                 self.logger.info("Autofocus cancelled between filters")
-                return
+                raise RuntimeError("Autofocus cancelled")
 
             fname = fdata.get("name", f"Filter {fid}")
 

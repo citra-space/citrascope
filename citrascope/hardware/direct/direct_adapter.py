@@ -1037,7 +1037,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
             if cancel_event and cancel_event.is_set():
                 report("Autofocus cancelled")
                 self.logger.info("Autofocus cancelled between filters")
-                return
+                raise RuntimeError("Autofocus cancelled")
 
             fname = fdata.get("name", f"Filter {fid}")
 

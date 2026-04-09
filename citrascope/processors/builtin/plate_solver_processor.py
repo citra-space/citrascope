@@ -432,13 +432,13 @@ class PlateSolverProcessor(AbstractImageProcessor):
                     assert isinstance(primary, fits.PrimaryHDU)
                     img = primary.data
             if img is None:
-                logging.getLogger("citrascope").info("HFR: image_data is None, skipping")
+                logging.getLogger("citrascope").debug("HFR: image_data is None, skipping")
                 return None
             hfr = compute_hfr(img, crop_ratio=0.5)
             if hfr is not None:
-                logging.getLogger("citrascope").info(f"HFR computation: {hfr:.2f}")
+                logging.getLogger("citrascope").debug(f"HFR computation: {hfr:.2f}")
             else:
-                logging.getLogger("citrascope").info("HFR: too few stars in crop")
+                logging.getLogger("citrascope").debug("HFR: too few stars in crop")
             return hfr
         except Exception as e:
             logging.getLogger("citrascope").warning(f"HFR computation failed: {e}")

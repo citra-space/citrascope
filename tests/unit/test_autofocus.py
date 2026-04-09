@@ -368,8 +368,8 @@ class TestRunAutofocus:
 
         assert isinstance(best, int)
         assert 0 <= best <= 100000
-        # Coarse: 1 overshoot + 7 sweep.  Fine: 1 overshoot + 7 sweep.
-        # Plus 1 final move + 1 verification = 18 minimum.
+        # At minimum, the coarse pass issues moves (1 overshoot + 7 sweep = 8).
+        # Fine pass, final reposition, and verification may be skipped.
         assert focuser.move_absolute.call_count >= 8
 
     def test_too_few_measurements_raises(self):
