@@ -102,12 +102,14 @@ class SystemStatus(BaseModel):
     autofocus_requested: bool = False
     autofocus_running: bool = False
     autofocus_progress: str = ""
-    autofocus_points: list[dict[str, float]] = []
+    autofocus_points: list[dict[str, int | float | str]] = []
+    autofocus_filter_results: list[dict[str, str | int | float]] = []
+    autofocus_last_result: str = ""
     autofocus_target_name: str = ""
     last_autofocus_timestamp: int | None = None
     next_autofocus_minutes: int | None = None
-    fwhm_history: list[dict[str, float]] = []
-    last_fwhm_median: float | None = None
+    hfr_history: list[dict[str, float | str]] = []
+    last_hfr_median: float | None = None
     time_health: dict[str, Any] | None = None
     gps_location: dict[str, Any] | None = None
     last_update: str = ""
@@ -1958,10 +1960,14 @@ class CitraScopeWebApp:
                 self.status.autofocus_requested = task_manager.autofocus_manager.is_requested()
                 self.status.autofocus_running = task_manager.autofocus_manager.is_running()
                 self.status.autofocus_progress = task_manager.autofocus_manager.progress
-                self.status.autofocus_points = [{"pos": p, "hfr": h} for p, h in task_manager.autofocus_manager.points]
-                fwhm_hist = task_manager.autofocus_manager.fwhm_history
-                self.status.fwhm_history = [{"fwhm": f, "ts": t} for f, t in fwhm_hist]
-                self.status.last_fwhm_median = fwhm_hist[-1][0] if fwhm_hist else None
+                self.status.autofocus_points = [
+                    {"pos": p, "hfr": h, "filter": f} for p, h, f in task_manager.autofocus_manager.points
+                ]
+                self.status.autofocus_filter_results = task_manager.autofocus_manager.filter_results
+                self.status.autofocus_last_result = task_manager.autofocus_manager.last_result
+                hfr_hist = task_manager.autofocus_manager.hfr_history
+                self.status.hfr_history = [{"hfr": h, "ts": t, "filter": f} for h, t, f in hfr_hist]
+                self.status.last_hfr_median = hfr_hist[-1][0] if hfr_hist else None
                 self.status.alignment_requested = task_manager.alignment_manager.is_requested()
                 self.status.alignment_running = task_manager.alignment_manager.is_running()
                 self.status.alignment_progress = task_manager.alignment_manager.progress

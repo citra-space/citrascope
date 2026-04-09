@@ -1,6 +1,6 @@
 """Autofocus management: scheduling, target resolution, and execution.
 
-Also tracks ongoing focus health (FWHM history from the imaging pipeline)
+Also tracks ongoing focus health (HFR history from the imaging pipeline)
 to support at-a-glance monitoring and future adaptive autofocus (#203).
 """
 
@@ -46,8 +46,11 @@ class AutofocusManager:
         self._requested = False
         self._running = False
         self._progress = ""
-        self._points: list[tuple[int, float]] = []
-        self._fwhm_history: deque[tuple[float, int]] = deque(maxlen=50)
+        self._last_result = ""
+        self._current_af_filter = ""
+        self._points: list[tuple[int, float, str]] = []
+        self._filter_results: list[dict[str, str | int | float]] = []
+        self._hfr_history: deque[tuple[float, int, str]] = deque(maxlen=50)
         self._lock = threading.Lock()
         self._cancel_event = threading.Event()
 
@@ -99,26 +102,99 @@ class AutofocusManager:
             self._progress = msg
 
     def _add_point(self, position: int, hfr: float) -> None:
-        """Record a V-curve sample (thread-safe)."""
+        """Record a V-curve sample tagged with the current filter (thread-safe)."""
         with self._lock:
-            self._points.append((position, hfr))
+            self._points.append((position, hfr, self._current_af_filter))
+
+    def _on_filter_start(self, filter_name: str) -> None:
+        """Called by adapters at the start of each per-filter AF run.
+
+        Snapshots the previous filter's result and records the new filter name
+        for point tagging.  Points are kept across filters so the chart shows
+        all V-curves together.
+        """
+        with self._lock:
+            self._snapshot_current_filter_result()
+            self._current_af_filter = filter_name
+
+    def _snapshot_current_filter_result(self) -> None:
+        """Snapshot the best point for the current filter into _filter_results.
+
+        Must be called while holding self._lock.
+        """
+        if not self._current_af_filter or not self._points:
+            return
+        filter_pts = [p for p in self._points if p[2] == self._current_af_filter]
+        if not filter_pts:
+            return
+        best = min(filter_pts, key=lambda p: p[1])
+        self._filter_results.append(
+            {
+                "filter": self._current_af_filter,
+                "position": best[0],
+                "hfr": round(best[1], 2),
+            }
+        )
+
+    def _reconcile_results_with_adapter(self) -> None:
+        """Update filter results with the actual positions from the adapter's filter map.
+
+        run_autofocus() returns a curve-fitted position that may differ from any
+        measured V-curve point.  The adapter stores the fitted value in its
+        filter_map.  This method patches each snapshot entry to use that
+        authoritative position while keeping the measured HFR.
+
+        Must be called while holding self._lock, after do_autofocus() returns.
+        """
+        if not self._filter_results:
+            return
+        filter_map = self.hardware_adapter.filter_map
+        if not filter_map:
+            return
+        name_to_pos: dict[str, int] = {}
+        for fdata in filter_map.values():
+            name = fdata.get("name", "")
+            pos = fdata.get("focus_position")
+            if name and pos is not None:
+                name_to_pos[name] = int(pos)
+        for result in self._filter_results:
+            actual_pos = name_to_pos.get(str(result["filter"]))
+            if actual_pos is not None:
+                result["position"] = actual_pos
+
+    def clear_points(self) -> None:
+        """Clear V-curve points (thread-safe)."""
+        with self._lock:
+            self._points.clear()
 
     @property
-    def points(self) -> list[tuple[int, float]]:
-        """Copy of the current autofocus V-curve points."""
+    def points(self) -> list[tuple[int, float, str]]:
+        """Copy of the current autofocus V-curve points as (pos, hfr, filter)."""
         with self._lock:
             return list(self._points)
 
-    def record_fwhm(self, value: float) -> None:
-        """Record a FWHM measurement from the imaging pipeline (thread-safe)."""
+    @property
+    def filter_results(self) -> list[dict[str, str | int | float]]:
+        """Per-filter autofocus results from the last run."""
         with self._lock:
-            self._fwhm_history.append((value, int(time.time())))
+            return list(self._filter_results)
+
+    def record_hfr(self, value: float, filter_name: str = "") -> None:
+        """Record an HFR measurement from the imaging pipeline (thread-safe)."""
+        with self._lock:
+            self._hfr_history.append((value, int(time.time()), filter_name))
 
     @property
-    def fwhm_history(self) -> list[tuple[float, int]]:
-        """Copy of the rolling FWHM history as (fwhm, unix_ts) tuples."""
+    def hfr_history(self) -> list[tuple[float, int, str]]:
+        """Copy of the rolling HFR history as (hfr, unix_ts, filter) tuples."""
         with self._lock:
-            return list(self._fwhm_history)
+            return list(self._hfr_history)
+
+    @property
+    def last_result(self) -> str:
+        """Summary of the last autofocus run (empty if none yet)."""
+        with self._lock:
+            return self._last_result
 
     def check_and_execute(self) -> bool:
         """Check if autofocus should run (manual or scheduled) and execute if so.
@@ -297,7 +373,10 @@ class AutofocusManager:
         with self._lock:
             self._running = True
             self._progress = "Starting..."
+            self._last_result = ""
             self._points.clear()
+            self._filter_results.clear()
+            self._current_af_filter = ""
         try:
             target_ra, target_dec = self._resolve_target()
             self.logger.info("Starting autofocus routine...")
@@ -307,7 +386,12 @@ class AutofocusManager:
                 on_progress=self._set_progress,
                 cancel_event=self._cancel_event,
                 on_point=self._add_point,
+                on_filter_start=self._on_filter_start,
             )
+
+            with self._lock:
+                self._snapshot_current_filter_result()
+                self._reconcile_results_with_adapter()
 
             if self.hardware_adapter.supports_filter_management():
                 try:
@@ -319,8 +403,16 @@ class AutofocusManager:
                     self.logger.warning(f"Failed to save filter configuration after autofocus: {e}")
 
             self.logger.info("Autofocus routine completed successfully")
+            with self._lock:
+                if self._filter_results:
+                    parts = [f"{r['filter']}: {r['position']} (HFR {r['hfr']})" for r in self._filter_results]
+                    self._last_result = " | ".join(parts)
+                else:
+                    self._last_result = self._progress
         except Exception as e:
             self.logger.error(f"Autofocus failed: {e!s}", exc_info=True)
+            with self._lock:
+                self._last_result = f"Failed: {e!s}"
         finally:
             with self._lock:
                 self._running = False

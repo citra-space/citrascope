@@ -232,12 +232,13 @@ class AbstractBaseTelescopeTask(ABC):
 
             self._update_observed_fov_from_plate_solve(result.extracted_data)
 
-        # Record FWHM for focus health monitoring
+        # Record HFR for focus health monitoring
         if result and result.extracted_data:
-            fwhm = result.extracted_data.get("plate_solver.fwhm_median")
-            if fwhm is not None:
+            hfr = result.extracted_data.get("plate_solver.hfr_median")
+            if hfr is not None:
                 try:
-                    self.task_manager.autofocus_manager.record_fwhm(float(fwhm))
+                    filter_name = self.task.assigned_filter_name or "" if self.task else ""
+                    self.task_manager.autofocus_manager.record_hfr(float(hfr), filter_name)
                 except Exception:
                     pass
 
