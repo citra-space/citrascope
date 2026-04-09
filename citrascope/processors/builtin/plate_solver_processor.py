@@ -400,6 +400,10 @@ class PlateSolverProcessor(AbstractImageProcessor):
         y = objects["y"][mask]
         ra, dec = wcs.all_pix2world(x, y, 0)
 
+        a = objects["a"][mask]
+        b = objects["b"][mask]
+        fwhm = 2.0 * np.sqrt(np.log(2.0)) * np.sqrt(a**2 + b**2)
+
         return pd.DataFrame(
             {
                 "ra": np.asarray(ra, dtype=np.float64),
@@ -407,6 +411,7 @@ class PlateSolverProcessor(AbstractImageProcessor):
                 "mag": np.asarray(-2.5 * np.log10(flux[mask] / image.exposure_time), dtype=np.float64),
                 "magerr": np.zeros(int(mask.sum()), dtype=np.float64),
                 "elongation": np.asarray((objects["a"] / objects["b"])[mask], dtype=np.float64),
+                "fwhm": np.asarray(fwhm, dtype=np.float64),
             }
         )
 
@@ -466,6 +471,9 @@ class PlateSolverProcessor(AbstractImageProcessor):
 
             elapsed = time.time() - start_time
 
+            fwhm_median = float(sources_df["fwhm"].median()) if num_sources > 0 else None
+            elongation_median = float(sources_df["elongation"].median()) if num_sources > 0 else None
+
             result = ProcessorResult(
                 should_upload=True,
                 extracted_data={
@@ -477,6 +485,8 @@ class PlateSolverProcessor(AbstractImageProcessor):
                     "field_height_deg": field_height_deg,
                     "wcs_image_path": str(wcs_image_path),
                     "num_sources": num_sources,
+                    "fwhm_median": fwhm_median,
+                    "elongation_median": elongation_median,
                 },
                 confidence=1.0,
                 reason=f"Plate solved in {elapsed:.1f}s, {num_sources} sources extracted",

@@ -180,6 +180,7 @@ def run_autofocus(
     on_progress: Callable[[str], None] | None = None,
     logger: logging.Logger | None = None,
     cancel_event: threading.Event | None = None,
+    on_point: Callable[[int, float], None] | None = None,
 ) -> int:
     """Run V-curve autofocus and return the best focuser position.
 
@@ -264,6 +265,8 @@ def run_autofocus(
             continue
 
         measurements.append((pos, hfr))
+        if on_point:
+            on_point(pos, hfr)
         report(f"Step {idx}/{total}: pos={pos} HFR={hfr:.3f}")
         log.info(f"Autofocus point: position={pos}, HFR={hfr:.3f}")
 

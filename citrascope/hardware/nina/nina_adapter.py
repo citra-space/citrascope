@@ -106,6 +106,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         target_dec: float | None = None,
         on_progress: Callable[[str], None] | None = None,
         cancel_event: threading.Event | None = None,
+        on_point: Callable[[int, float], None] | None = None,
     ):
         """Perform autofocus routine for all enabled filters.
 
@@ -181,6 +182,8 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
             def af_point_progress(position: int, hfr: float, _idx=idx, _total=total, _name=name):
                 report(f"Filter {_idx}/{_total}: {_name} — pos {position}, HFR {hfr:.2f}")
+                if on_point:
+                    on_point(position, hfr)
 
             focus_value = self._auto_focus_one_filter(id, name, existing_focus, on_af_point=af_point_progress)
             self.filter_map[id]["focus_position"] = focus_value

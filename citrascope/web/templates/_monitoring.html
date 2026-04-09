@@ -771,7 +771,26 @@
 
                             <!-- ─── Autofocus ─── -->
                             <div class="pt-2 mt-2 border-top border-secondary"
-                                 x-show="$store.citrascope.status?.supports_autofocus">
+                                 x-show="$store.citrascope.status?.supports_autofocus"
+                                 x-data="{
+                                     get pts() { return $store.citrascope.status?.autofocus_points || [] },
+                                     get minPos() { return this.pts.length ? Math.min(...this.pts.map(p => p.pos)) : 0 },
+                                     get maxPos() { return this.pts.length ? Math.max(...this.pts.map(p => p.pos)) : 1 },
+                                     get minHfr() { return this.pts.length ? Math.min(...this.pts.map(p => p.hfr)) : 0 },
+                                     get maxHfr() { return this.pts.length ? Math.max(...this.pts.map(p => p.hfr)) : 1 },
+                                     sx(pos) {
+                                         const range = this.maxPos - this.minPos || 1;
+                                         return 30 + (pos - this.minPos) / range * 260;
+                                     },
+                                     sy(hfr) {
+                                         const range = this.maxHfr - this.minHfr || 1;
+                                         return 130 - (hfr - this.minHfr) / range * 110;
+                                     },
+                                     get polyline() {
+                                         const sorted = [...this.pts].sort((a, b) => a.pos - b.pos);
+                                         return sorted.map(p => this.sx(p.pos) + ',' + this.sy(p.hfr)).join(' ');
+                                     }
+                                 }">
                                 <div class="d-flex align-items-center gap-2 flex-wrap">
                                     <button type="button" class="btn btn-sm"
                                             :class="$store.citrascope.status?.autofocus_running ? 'btn-outline-danger' : ($store.citrascope.status?.autofocus_requested ? 'btn-outline-warning' : 'btn-outline-primary')"
@@ -785,8 +804,24 @@
                                     </button>
                                     <small class="text-muted" x-show="!$store.citrascope.status?.autofocus_running"
                                            x-text="$store.citrascope.formatLastAutofocus($store.citrascope.status)"></small>
-                                    <span class="small" x-show="$store.citrascope.status?.autofocus_running"
-                                          x-text="$store.citrascope.status?.autofocus_progress || 'Autofocusing...'"></span>
+                                    <span class="small" x-show="$store.citrascope.status?.autofocus_running">
+                                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                        <span x-text="$store.citrascope.status?.autofocus_progress || 'Autofocusing...'"></span>
+                                    </span>
+                                </div>
+                                <div x-show="$store.citrascope.status?.autofocus_running && pts.length > 0" class="mt-2">
+                                    <svg viewBox="0 0 300 150" class="w-100" style="max-height:160px">
+                                        <line x1="30" y1="130" x2="290" y2="130" stroke="var(--bs-secondary)" stroke-width="0.5"/>
+                                        <line x1="30" y1="20" x2="30" y2="130" stroke="var(--bs-secondary)" stroke-width="0.5"/>
+                                        <text x="160" y="148" text-anchor="middle" fill="var(--bs-secondary)" font-size="9">Position</text>
+                                        <text x="8" y="75" text-anchor="middle" fill="var(--bs-secondary)" font-size="9" transform="rotate(-90, 8, 75)">HFR</text>
+                                        <polyline x-show="pts.length > 1" :points="polyline"
+                                                  fill="none" stroke="var(--bs-info)" stroke-width="1.5" opacity="0.5"/>
+                                        <template x-for="(pt, i) in pts" :key="i">
+                                            <circle :cx="sx(pt.pos)" :cy="sy(pt.hfr)" r="4"
+                                                    fill="var(--bs-info)" stroke="var(--bs-dark)" stroke-width="1"/>
+                                        </template>
+                                    </svg>
                                 </div>
                                 <div x-show="!$store.citrascope.status?.autofocus_running">
                                     <small class="text-muted" x-show="$store.citrascope.status?.autofocus_target_name"
@@ -795,6 +830,54 @@
                                 <div x-show="!$store.citrascope.status?.autofocus_running && $store.citrascope.status?.next_autofocus_minutes != null">
                                     <small class="text-muted"
                                            x-text="'Next in: ' + ($store.citrascope.status?.next_autofocus_minutes === 0 ? 'now (overdue)' : $store.citrascope.formatMinutes($store.citrascope.status?.next_autofocus_minutes || 0))"></small>
+                                </div>
+                            </div>
+
+                            <!-- ─── FWHM Focus Health ─── -->
+                            <div class="pt-2 mt-2 border-top border-secondary"
+                                 x-show="$store.citrascope.status?.last_fwhm_median != null"
+                                 x-data="{
+                                     get hist() { return $store.citrascope.status?.fwhm_history || [] },
+                                     get fwhm() { return $store.citrascope.status?.last_fwhm_median },
+                                     get fwhmColor() {
+                                         const v = this.fwhm;
+                                         if (v == null) return 'text-muted';
+                                         if (v < 4) return 'text-success';
+                                         if (v < 6) return 'text-warning';
+                                         return 'text-danger';
+                                     },
+                                     get fwhmAge() {
+                                         if (!this.hist.length) return '';
+                                         const ago = Math.round((Date.now() / 1000) - this.hist[this.hist.length - 1].ts);
+                                         if (ago < 60) return ago + 's ago';
+                                         return Math.round(ago / 60) + 'm ago';
+                                     },
+                                     get sparkMinY() { return this.hist.length ? Math.min(...this.hist.map(h => h.fwhm)) : 0 },
+                                     get sparkMaxY() { return this.hist.length ? Math.max(...this.hist.map(h => h.fwhm)) : 1 },
+                                     sparkX(i) { return 5 + (i / Math.max(this.hist.length - 1, 1)) * 190; },
+                                     sparkY(fwhm) {
+                                         const range = this.sparkMaxY - this.sparkMinY || 1;
+                                         return 35 - (fwhm - this.sparkMinY) / range * 30;
+                                     },
+                                     get sparkline() {
+                                         return this.hist.map((h, i) => this.sparkX(i) + ',' + this.sparkY(h.fwhm)).join(' ');
+                                     }
+                                 }">
+                                <div class="d-flex align-items-center gap-2">
+                                    <small class="text-muted">FWHM:</small>
+                                    <span class="fw-semibold" :class="fwhmColor"
+                                          x-text="fwhm != null ? fwhm.toFixed(1) + ' px' : '—'"></span>
+                                    <small class="text-muted" x-text="fwhmAge"></small>
+                                </div>
+                                <div x-show="hist.length > 1" class="mt-1">
+                                    <svg viewBox="0 0 200 40" class="w-100" style="max-height:40px">
+                                        <polyline :points="sparkline"
+                                                  fill="none" stroke="var(--bs-info)" stroke-width="1.5"/>
+                                        <circle x-show="hist.length > 0"
+                                                :cx="sparkX(hist.length - 1)"
+                                                :cy="sparkY(hist[hist.length - 1]?.fwhm || 0)"
+                                                r="2.5" :fill="fwhmColor === 'text-success' ? 'var(--bs-success)' : fwhmColor === 'text-warning' ? 'var(--bs-warning)' : 'var(--bs-danger)'"/>
+                                    </svg>
                                 </div>
                             </div>
 
@@ -954,19 +1037,6 @@
                 </div>
             </div>
 
-            <div class="row g-3 mb-3" x-show="$store.citrascope.status?.autofocus_running">
-                <div class="col-12">
-                    <div class="alert alert-info d-flex align-items-center mb-0 py-2" role="alert">
-                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                        <span>
-                            Autofocus in progress &mdash; task processing is paused.
-                            <span x-show="$store.citrascope.status?.autofocus_progress"
-                                  class="ms-1 fw-semibold"
-                                  x-text="$store.citrascope.status?.autofocus_progress"></span>
-                        </span>
-                    </div>
-                </div>
-            </div>
 
             <div class="row g-3 mb-3">
                 <div class="col-12">

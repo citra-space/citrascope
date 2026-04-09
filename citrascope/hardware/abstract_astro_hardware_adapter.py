@@ -431,6 +431,7 @@ class AbstractAstroHardwareAdapter(ABC):
         target_dec: float | None = None,
         on_progress: Callable[[str], None] | None = None,
         cancel_event: threading.Event | None = None,
+        on_point: Callable[[int, float], None] | None = None,
     ) -> None:
         """Perform autofocus routine for all filters.
 
@@ -443,6 +444,7 @@ class AbstractAstroHardwareAdapter(ABC):
             target_dec: Dec of the slew target in degrees (J2000), or None for adapter default
             on_progress: Optional callback(str) to report progress updates
             cancel_event: If set, the routine should abort at the next safe point.
+            on_point: Optional callback(position, hfr) fired after each V-curve sample.
 
         Raises:
             NotImplementedError: If the adapter doesn't support autofocus

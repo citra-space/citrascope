@@ -986,6 +986,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
         target_dec: float | None = None,
         on_progress: Callable[[str], None] | None = None,
         cancel_event: threading.Event | None = None,
+        on_point: Callable[[int, float], None] | None = None,
     ) -> None:
         """Run V-curve autofocus for each enabled filter.
 
@@ -1025,6 +1026,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                 on_progress=on_progress,
                 logger=self.logger,
                 cancel_event=cancel_event,
+                on_point=on_point,
             )
             self.logger.info(f"Autofocus result: position {best}")
             return
@@ -1054,6 +1056,7 @@ class DirectHardwareAdapter(AbstractAstroHardwareAdapter):
                 on_progress=on_progress,
                 logger=self.logger,
                 cancel_event=cancel_event,
+                on_point=on_point,
             )
 
             self.filter_map[fid]["focus_position"] = best

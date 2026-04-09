@@ -102,9 +102,12 @@ class SystemStatus(BaseModel):
     autofocus_requested: bool = False
     autofocus_running: bool = False
     autofocus_progress: str = ""
+    autofocus_points: list[dict[str, float]] = []
     autofocus_target_name: str = ""
     last_autofocus_timestamp: int | None = None
     next_autofocus_minutes: int | None = None
+    fwhm_history: list[dict[str, float]] = []
+    last_fwhm_median: float | None = None
     time_health: dict[str, Any] | None = None
     gps_location: dict[str, Any] | None = None
     last_update: str = ""
@@ -1955,6 +1958,10 @@ class CitraScopeWebApp:
                 self.status.autofocus_requested = task_manager.autofocus_manager.is_requested()
                 self.status.autofocus_running = task_manager.autofocus_manager.is_running()
                 self.status.autofocus_progress = task_manager.autofocus_manager.progress
+                self.status.autofocus_points = [{"pos": p, "hfr": h} for p, h in task_manager.autofocus_manager.points]
+                fwhm_hist = task_manager.autofocus_manager.fwhm_history
+                self.status.fwhm_history = [{"fwhm": f, "ts": t} for f, t in fwhm_hist]
+                self.status.last_fwhm_median = fwhm_hist[-1][0] if fwhm_hist else None
                 self.status.alignment_requested = task_manager.alignment_manager.is_requested()
                 self.status.alignment_running = task_manager.alignment_manager.is_running()
                 self.status.alignment_progress = task_manager.alignment_manager.progress

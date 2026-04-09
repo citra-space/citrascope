@@ -232,6 +232,15 @@ class AbstractBaseTelescopeTask(ABC):
 
             self._update_observed_fov_from_plate_solve(result.extracted_data)
 
+        # Record FWHM for focus health monitoring
+        if result and result.extracted_data:
+            fwhm = result.extracted_data.get("plate_solver.fwhm_median")
+            if fwhm is not None:
+                try:
+                    self.task_manager.autofocus_manager.record_fwhm(float(fwhm))
+                except Exception:
+                    pass
+
         # Surface annotated image to the web UI
         if result and result.extracted_data:
             annotated = result.extracted_data.get("annotated_image.image_path")

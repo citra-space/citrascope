@@ -1,10 +1,15 @@
-"""Autofocus management: scheduling, target resolution, and execution."""
+"""Autofocus management: scheduling, target resolution, and execution.
+
+Also tracks ongoing focus health (FWHM history from the imaging pipeline)
+to support at-a-glance monitoring and future adaptive autofocus (#203).
+"""
 
 from __future__ import annotations
 
 import logging
 import threading
 import time
+from collections import deque
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
@@ -41,6 +46,8 @@ class AutofocusManager:
         self._requested = False
         self._running = False
         self._progress = ""
+        self._points: list[tuple[int, float]] = []
+        self._fwhm_history: deque[tuple[float, int]] = deque(maxlen=50)
         self._lock = threading.Lock()
         self._cancel_event = threading.Event()
 
@@ -90,6 +97,28 @@ class AutofocusManager:
     def _set_progress(self, msg: str) -> None:
         with self._lock:
             self._progress = msg
+
+    def _add_point(self, position: int, hfr: float) -> None:
+        """Record a V-curve sample (thread-safe)."""
+        with self._lock:
+            self._points.append((position, hfr))
+
+    @property
+    def points(self) -> list[tuple[int, float]]:
+        """Copy of the current autofocus V-curve points."""
+        with self._lock:
+            return list(self._points)
+
+    def record_fwhm(self, value: float) -> None:
+        """Record a FWHM measurement from the imaging pipeline (thread-safe)."""
+        with self._lock:
+            self._fwhm_history.append((value, int(time.time())))
+
+    @property
+    def fwhm_history(self) -> list[tuple[float, int]]:
+        """Copy of the rolling FWHM history as (fwhm, unix_ts) tuples."""
+        with self._lock:
+            return list(self._fwhm_history)
 
     def check_and_execute(self) -> bool:
         """Check if autofocus should run (manual or scheduled) and execute if so.
@@ -268,6 +297,7 @@ class AutofocusManager:
         with self._lock:
             self._running = True
             self._progress = "Starting..."
+            self._points.clear()
         try:
             target_ra, target_dec = self._resolve_target()
             self.logger.info("Starting autofocus routine...")
@@ -276,6 +306,7 @@ class AutofocusManager:
                 target_dec=target_dec,
                 on_progress=self._set_progress,
                 cancel_event=self._cancel_event,
+                on_point=self._add_point,
             )
 
             if self.hardware_adapter.supports_filter_management():
