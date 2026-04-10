@@ -221,7 +221,7 @@ Aim for tests that are roughly 1:1 or shorter than the code they test. If you ne
 - **AutofocusManager** gates on `imaging_queue.is_idle()` to prevent hardware collisions with active imaging tasks.
 - **`formatLastAutofocus`** (JS) has a sanity check for timestamps before 2020-01-01 — returns "Never" for obviously wrong values.
 - **NINA WebSocket is always available** if the REST API is. There's no configuration to disable it separately. Don't add HTTP polling fallbacks — they add complexity for a case that can't happen.
-- **NINA autofocus can infinite-loop** without a timeout. Always use a timeout (currently 300s) when waiting for results from `/focuser/last-af`.
+- **NINA autofocus can run indefinitely** without a timeout. Always enforce a deadline when waiting for autofocus results.
 - **Alpine.js `x-show` vs HTML5 `required`**: `x-show` keeps hidden elements in the DOM, but `required` attributes still fire validation on them. Use `:required="visible"` or `x-if`.
 - **Alpine store load ordering**: If a `<select>` depends on API-fetched options (e.g., autofocus presets), fetch those *before* setting the config that references them, or the UI renders with stale/empty options.
 - **After renaming a parameter**, search the entire method/file for the old name. Long methods have had stale references survive "first pass" refactors, causing `NameError`s at runtime.
