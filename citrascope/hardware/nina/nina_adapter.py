@@ -207,14 +207,18 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
             filter_progress(f"done (position {focus_value})")
 
     def _is_focuser_idle(self) -> bool:
-        """Return True if the focuser reports IsMoving=false, or True on any query error (fail-open)."""
+        """Return True if the focuser reports IsMoving=false; return False when state is unknown."""
         try:
-            resp = requests.get(self.nina_api_path + self.FOCUSER_URL + "info", timeout=self.INFO_QUERY_TIMEOUT).json()
+            resp = requests.get(
+                self.nina_api_path + self.FOCUSER_URL + "info",
+                timeout=self.INFO_QUERY_TIMEOUT,
+            ).json()
             if resp.get("Success"):
                 return not resp["Response"].get("IsMoving", False)
-        except Exception:
-            pass
-        return True
+            self.logger.debug("Focuser idle check: NINA API returned Success=false")
+        except Exception as e:
+            self.logger.debug(f"Focuser idle check failed: {e}")
+        return False
 
     def _auto_focus_one_filter(
         self,
@@ -272,7 +276,7 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
 
         self._event_listener.autofocus_finished.clear()
         self._event_listener.autofocus_error.clear()
-        self._event_listener.last_af_point_time = 0.0
+        self._event_listener.last_af_point_time = time.time()
         prev_af_callback = self._event_listener.on_af_point
         self._event_listener.on_af_point = on_af_point
 

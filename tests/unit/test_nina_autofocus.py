@@ -178,7 +178,6 @@ class TestAutoFocusSilentFailure:
             if "focuser/move" in url:
                 return focuser_move
             if "focuser/auto-focus" in url:
-                adapter._event_listener.last_af_point_time = 1.0
                 return af_trigger
             if "focuser/info" in url:
                 return focuser_info_idle
@@ -192,6 +191,33 @@ class TestAutoFocusSilentFailure:
             f"Autofocus for filter Clear appears to have failed silently — "
             f"no AF points for {adapter.AF_ACTIVITY_TIMEOUT}s and focuser is idle"
         )
+
+    @patch("citrascope.hardware.nina.nina_adapter.requests.get")
+    def test_detects_silent_failure_when_no_points_ever_arrive(self, mock_get, adapter):
+        """NINA fails before sending any AF points — activity timeout still fires."""
+        adapter.AF_ACTIVITY_TIMEOUT = 0
+        fw_info = _mock_response({"Success": True, "Response": {"SelectedFilter": {"Name": "Clear", "Id": 0}}})
+        focuser_move = _mock_response({"Success": True, "Response": "Focuser move started"})
+        focuser_info_idle = _mock_response({"Success": True, "Response": {"Position": 9000, "IsMoving": False}})
+        af_trigger = _mock_response({"Success": True, "Response": "Autofocus started"})
+
+        def route_get(url, **kwargs):
+            if "filterwheel/info" in url:
+                return fw_info
+            if "focuser/move" in url:
+                return focuser_move
+            if "focuser/auto-focus" in url:
+                return af_trigger
+            if "focuser/info" in url:
+                return focuser_info_idle
+            return _mock_response({"Success": True})
+
+        mock_get.side_effect = route_get
+
+        adapter._event_listener.last_af_point_time = 0.0
+        result = adapter._auto_focus_one_filter(0, "Clear", 9000)
+        assert result == 9000
+        assert adapter._event_listener.last_af_point_time > 0.0
 
     @patch("citrascope.hardware.nina.nina_adapter.requests.get")
     def test_no_false_positive_while_focuser_moving(self, mock_get, adapter):
@@ -215,7 +241,6 @@ class TestAutoFocusSilentFailure:
             if "focuser/move" in url:
                 return focuser_move
             if "focuser/auto-focus" in url:
-                adapter._event_listener.last_af_point_time = 1.0
                 return af_trigger
             if "focuser/last-af" in url:
                 return last_af
