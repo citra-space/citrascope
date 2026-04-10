@@ -189,7 +189,7 @@ DELTA_J2000              Declination of barycenter (J2000)                      
 #NIMAFLAGS_ISO            Number of flagged pixels entering IMAFLAGS_ISO
 #NLOWWEIGHT_ISO           Nb of pixels with low weight over the iso. profile
 #NLOWDWEIGHT_ISO          Nb of pixels with low det. weight over the iso. profile
-#FWHM_IMAGE               FWHM assuming a gaussian core                             [pixel]
+FWHM_IMAGE               FWHM assuming a gaussian core                             [pixel]
 #FWHM_WORLD               FWHM assuming a gaussian core                             [deg]
 ELONGATION               A_IMAGE/B_IMAGE
 ELLIPTICITY              1 - B_IMAGE/A_IMAGE

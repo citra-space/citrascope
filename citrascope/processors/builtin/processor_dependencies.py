@@ -23,18 +23,22 @@ def normalize_fits_timestamp(timestamp: str) -> str:
     return timestamp
 
 
-def check_pixelemon() -> bool:
-    """Check if Pixelemon (Tetra3) plate solving is available.
+def check_astrometry() -> bool:
+    """Check if astrometry.net (solve-field) is available.
 
     Returns:
-        True if pixelemon can be imported and provides Telescope, TelescopeImage, TetraSolver
+        True if solve-field command is on PATH
     """
-    try:
-        from pixelemon import Telescope, TelescopeImage, TetraSolver  # noqa: F401
+    return shutil.which("solve-field") is not None
 
-        return True
-    except Exception:
-        return False
+
+def check_sextractor() -> bool:
+    """Check if SExtractor is installed.
+
+    Returns:
+        True if source-extractor or sex command is available
+    """
+    return shutil.which("source-extractor") is not None or shutil.which("sex") is not None
 
 
 def check_all_dependencies(settings) -> dict:
@@ -47,26 +51,17 @@ def check_all_dependencies(settings) -> dict:
         Dictionary with dependency check results
     """
     return {
-        "pixelemon": check_pixelemon(),
+        "astrometry": check_astrometry(),
         "sextractor": check_sextractor(),
     }
-
-
-def check_sextractor() -> bool:
-    """Check if SExtractor is installed.
-
-    Returns:
-        True if source-extractor or sex command is available
-    """
-    return shutil.which("source-extractor") is not None or shutil.which("sex") is not None
 
 
 def read_source_catalog(catalog_path: Path) -> pd.DataFrame:
     """Read an output.cat source catalog, auto-detecting the format.
 
     Supports both the new 5-column layout written by PlateSolverProcessor
-    (mag, magerr, ra, dec, elongation) and the legacy 11-column SExtractor
-    layout (columns 4,5,8,9,10 → mag, magerr, ra, dec, elongation).
+    (mag, magerr, ra, dec, elongation) and the legacy 11+ column SExtractor
+    layout (columns 4,5,8,9,10 -> mag, magerr, ra, dec, elongation).
     """
     with open(catalog_path) as f:
         for line in f:

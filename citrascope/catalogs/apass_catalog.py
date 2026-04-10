@@ -277,7 +277,7 @@ class ApassCatalog:
         result = df[mask].reset_index(drop=True)
 
         result = result.rename(columns=_COLUMN_REMAP)  # type: ignore[arg-type]
-        self.logger.info(
+        self.logger.debug(
             f"ApassCatalog: cone search at RA={ra:.3f}, Dec={dec:.3f}, radius={radius:.3f} deg -> {len(result)} stars"
         )
 

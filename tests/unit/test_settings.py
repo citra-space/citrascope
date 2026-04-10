@@ -332,69 +332,38 @@ def test_observation_mode_in_to_dict():
 
 
 # ---------------------------------------------------------------------------
-# Detection / background field validators
+# Plate solve timeout validator
 # ---------------------------------------------------------------------------
 
 
-def test_detection_sigma_clamps_out_of_range():
+def test_plate_solve_timeout_clamps_out_of_range():
     with patch("citrascope.settings.citrascope_settings.SettingsFileManager") as MockSFM:
-        MockSFM.return_value.load_config.return_value = {"detection_sigma": 999.0}
+        MockSFM.return_value.load_config.return_value = {"plate_solve_timeout": 999}
         from citrascope.settings.citrascope_settings import CitraScopeSettings
 
         s = CitraScopeSettings.load()
 
-    assert s.detection_sigma == 20.0
+    assert s.plate_solve_timeout == 300
 
 
-def test_detection_sigma_falls_back_on_invalid():
+def test_plate_solve_timeout_clamps_low():
     with patch("citrascope.settings.citrascope_settings.SettingsFileManager") as MockSFM:
-        MockSFM.return_value.load_config.return_value = {"detection_sigma": "not_a_number"}
+        MockSFM.return_value.load_config.return_value = {"plate_solve_timeout": 2}
         from citrascope.settings.citrascope_settings import CitraScopeSettings
 
         s = CitraScopeSettings.load()
 
-    assert s.detection_sigma == 5.0
+    assert s.plate_solve_timeout == 10
 
 
-def test_detection_kernel_size_rounds_to_odd():
+def test_plate_solve_timeout_falls_back_on_invalid():
     with patch("citrascope.settings.citrascope_settings.SettingsFileManager") as MockSFM:
-        MockSFM.return_value.load_config.return_value = {"detection_kernel_size": 12}
+        MockSFM.return_value.load_config.return_value = {"plate_solve_timeout": "not_a_number"}
         from citrascope.settings.citrascope_settings import CitraScopeSettings
 
         s = CitraScopeSettings.load()
 
-    assert s.detection_kernel_size == 13
-    assert s.detection_kernel_size % 2 == 1
-
-
-def test_detection_kernel_size_clamps_and_rounds():
-    with patch("citrascope.settings.citrascope_settings.SettingsFileManager") as MockSFM:
-        MockSFM.return_value.load_config.return_value = {"detection_kernel_size": 200}
-        from citrascope.settings.citrascope_settings import CitraScopeSettings
-
-        s = CitraScopeSettings.load()
-
-    assert s.detection_kernel_size == 65
-
-
-def test_background_mesh_count_clamps_low():
-    with patch("citrascope.settings.citrascope_settings.SettingsFileManager") as MockSFM:
-        MockSFM.return_value.load_config.return_value = {"background_mesh_count": 1}
-        from citrascope.settings.citrascope_settings import CitraScopeSettings
-
-        s = CitraScopeSettings.load()
-
-    assert s.background_mesh_count == 10
-
-
-def test_detection_deblend_contrast_accepts_zero():
-    with patch("citrascope.settings.citrascope_settings.SettingsFileManager") as MockSFM:
-        MockSFM.return_value.load_config.return_value = {"detection_deblend_contrast": 0.0}
-        from citrascope.settings.citrascope_settings import CitraScopeSettings
-
-        s = CitraScopeSettings.load()
-
-    assert s.detection_deblend_contrast == 0.0
+    assert s.plate_solve_timeout == 60
 
 
 # ---------------------------------------------------------------------------

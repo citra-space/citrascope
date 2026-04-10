@@ -10,8 +10,7 @@ A parabolic fit is kept as fallback when the hyperbolic fit fails to
 converge.
 
 SEP (Source Extractor for Python) handles background subtraction, source
-detection, and half-flux radius computation — it is already installed as a
-dependency of pixelemon.
+detection, and half-flux radius computation.
 """
 
 from __future__ import annotations
@@ -34,7 +33,7 @@ MIN_STARS_FOR_HFR = 5
 MAX_STARS_FOR_HFR = 20
 MAX_ELONGATION = 3.0
 SETTLE_DELAY = 0.5
-HFR_RMAX = 50.0
+HFR_RMAX = 20.0
 
 
 # ---------------------------------------------------------------------------

@@ -1,5 +1,7 @@
 """Dummy hardware adapter for testing without real hardware."""
 
+from __future__ import annotations
+
 import datetime
 import logging
 import math
@@ -7,8 +9,12 @@ import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    import pandas as pd
 from astropy.io import fits
 from astropy.wcs import WCS
 from scipy.ndimage import gaussian_filter
@@ -426,12 +432,13 @@ class _DummyFocuser(AbstractFocuser):
 # Synthetic camera constants — consistent across take_image() and the WCS header
 # so the image geometry is self-describing.
 _DUMMY_IMG_SIZE = 1024  # pixels per side
-_DUMMY_PIXEL_SCALE = 6.0  # arcsec/pixel  →  ~1.7° FOV  (wide enough for Tetra3)
-_DUMMY_SKY_BG = 10.0  # ADU sky background
+_DUMMY_PIXEL_SCALE = 6.0  # arcsec/pixel  →  ~1.7° FOV
+_DUMMY_BIAS = 100.0  # ADU pedestal — keeps read noise above zero like a real CCD
+_DUMMY_SKY_RATE = 5.0  # ADU/s sky background rate (dark site)
 _DUMMY_READ_NOISE = 1.0  # electrons RMS
 _DUMMY_GAIN = 1.5  # electrons/ADU
 _DUMMY_PSF_SIGMA_PX = 3.0 / 2.3548  # sigma from 3.0 px FWHM seeing
-_DUMMY_MAG_LIMIT = 14.0  # faintest catalog star to render (Vmag)
+_DUMMY_MAG_LIMIT = 12.0  # faintest catalog star to render (Vmag)
 _DUMMY_MAG_ZERO = 20.0  # instrument zero-point: V=10 → SNR~58, V=12 → SNR~9
 _DUMMY_OPTIMAL_FOCUS = 25000  # focuser position for sharpest PSF
 _DUMMY_DEFOCUS_K = 0.002  # PSF broadening per focuser step from optimal
@@ -443,6 +450,33 @@ _DUMMY_FILTER_FOCUS_OFFSETS: dict[str, int] = {
     "blue": 700,
     "ha": 1200,
 }
+
+
+_MAG_PREFERENCE = [
+    ("Johnson_V (V)", 0.0),
+    ("Sloan_r (SR)", 0.16),
+    ("Sloan_g (SG)", -0.31),
+    ("Sloan_i (SI)", 0.37),
+    ("Johnson_B (B)", -0.36),
+]
+
+
+def _best_mag(df: pd.DataFrame) -> np.ndarray:
+    """Pick the best available magnitude per star, converting to approx V.
+
+    Cascades through APASS bands in preference order, filling NaN gaps
+    with the next available band offset to approximate Johnson V.
+    """
+    result = np.full(len(df), np.nan)
+    unfilled = np.isnan(result)
+    for col, offset in _MAG_PREFERENCE:
+        if col not in df.columns or not unfilled.any():
+            continue
+        vals = np.asarray(df[col].values, dtype=np.float64)
+        usable = unfilled & np.isfinite(vals)
+        result[usable] = vals[usable] + offset
+        unfilled = np.isnan(result)
+    return result
 
 
 class DummyAdapter(AbstractAstroHardwareAdapter):
@@ -724,10 +758,11 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         seed: int,
         psf_sigma: float | None = None,
     ) -> tuple[np.ndarray, WCS]:
-        """Generate a synthetic starfield from the Tycho-2 catalog with a TAN WCS.
+        """Generate a synthetic starfield with a TAN WCS.
 
-        Queries the Tycho-2 catalog via Vizier for real stars in the current FOV,
-        projects them onto the pixel grid, and renders each as a Gaussian PSF.
+        Queries the local APASS catalog (or falls back to synthetic stars)
+        for the current FOV, projects them onto the pixel grid, and renders
+        each as a Gaussian PSF.
 
         Args:
             ra_center_deg: RA of the field centre in degrees.
@@ -762,14 +797,11 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
             pixel_scale = _DUMMY_PIXEL_SCALE
             size_x = size_y = _DUMMY_IMG_SIZE
 
-        fov_deg = max(size_x, size_y) * pixel_scale / 3600.0
+        fov_x_deg = size_x * pixel_scale / 3600.0
+        fov_y_deg = size_y * pixel_scale / 3600.0
+        search_radius = math.sqrt(fov_x_deg**2 + fov_y_deg**2) / 2
 
         # --- WCS: TAN projection centred on current pointing -----------------
-        # Standard TAN (gnomonic) projection.  CDELT1 is in RA-coordinate
-        # degrees per pixel; the TAN projection equations already fold in
-        # cos(dec) when mapping (RA, Dec) → intermediate world coords, so
-        # the on-sky pixel scale is isotropic at the field centre without any
-        # additional correction here.
         wcs = WCS(naxis=2)
         wcs.wcs.crpix = [(size_x + 1) / 2.0, (size_y + 1) / 2.0]
         wcs.wcs.cdelt = [-pixel_scale / 3600.0, pixel_scale / 3600.0]
@@ -777,14 +809,14 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         wcs.wcs.ctype = ["RA---TAN", "DEC--TAN"]
 
         # --- Star catalog query ----------------------------------------------
-        star_ras, star_decs, star_mags = self._fetch_catalog_stars(ra_center, dec_center, fov_deg)
+        star_ras, star_decs, star_mags = self._fetch_catalog_stars(ra_center, dec_center, search_radius)
 
         # --- Sky background + noise ------------------------------------------
-        dark_adu = 0.01 * exptime / _DUMMY_GAIN
-        image = np.full((size_y, size_x), _DUMMY_SKY_BG + dark_adu, dtype=np.float64)
-        sky_electrons = image * _DUMMY_GAIN
-        image = rng.poisson(sky_electrons).astype(np.float64) / _DUMMY_GAIN
+        sky_adu = _DUMMY_SKY_RATE * exptime + 0.01 * exptime / _DUMMY_GAIN
+        sky_electrons = sky_adu * _DUMMY_GAIN
+        image = rng.poisson(np.full((size_y, size_x), max(sky_electrons, 0.1))).astype(np.float64) / _DUMMY_GAIN
         image += rng.normal(0.0, _DUMMY_READ_NOISE / _DUMMY_GAIN, image.shape)
+        image += _DUMMY_BIAS
 
         # --- Render each catalog star as a Gaussian PSF ----------------------
         if len(star_ras) == 0:
@@ -792,11 +824,16 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
             return np.clip(image, 0, 65535).astype(np.uint16), wcs
 
         effective_psf_sigma = psf_sigma if psf_sigma is not None else _DUMMY_PSF_SIGMA_PX
-        stamp_r = max(int(5 * effective_psf_sigma), 15)
+        stamp_r = math.ceil(5 * effective_psf_sigma)
+
+        # Pre-compute a unit-flux PSF stamp once — just scale by each star's ADU
+        psf_stamp = np.zeros((2 * stamp_r + 1, 2 * stamp_r + 1))
+        psf_stamp[stamp_r, stamp_r] = 1.0
+        psf_stamp = gaussian_filter(psf_stamp, sigma=effective_psf_sigma)
+        psf_stamp /= psf_stamp.sum()
 
         pixel_coords = wcs.all_world2pix(np.column_stack([star_ras, star_decs]), 0)
 
-        # Drop any stars whose projection produced NaN (behind tangent plane, etc.)
         valid = np.all(np.isfinite(pixel_coords), axis=1)
         pixel_coords = pixel_coords[valid]
         star_mags = star_mags[valid]
@@ -808,27 +845,18 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
 
             xi, yi = round(xp), round(yp)
 
-            # Build a small stamp and blur it to the PSF shape
-            stamp = np.zeros((2 * stamp_r + 1, 2 * stamp_r + 1))
-            stamp[stamp_r, stamp_r] = total_adu
-            stamp = gaussian_filter(stamp, sigma=effective_psf_sigma)
-            if stamp.sum() > 0:
-                stamp *= total_adu / stamp.sum()
-
-            # Blit stamp onto the full image, clipping to chip boundaries.
-            # Compute the overlap between the stamp and the image array.
             x0, y0 = xi - stamp_r, yi - stamp_r
             ix0 = max(0, x0)
             iy0 = max(0, y0)
-            ix1 = min(size_x, x0 + stamp.shape[1])
-            iy1 = min(size_y, y0 + stamp.shape[0])
+            ix1 = min(size_x, x0 + psf_stamp.shape[1])
+            iy1 = min(size_y, y0 + psf_stamp.shape[0])
             sx0 = ix0 - x0
             sy0 = iy0 - y0
             sx1 = sx0 + (ix1 - ix0)
             sy1 = sy0 + (iy1 - iy0)
 
             if ix1 > ix0 and iy1 > iy0:
-                image[iy0:iy1, ix0:ix1] += stamp[sy0:sy1, sx0:sx1]
+                image[iy0:iy1, ix0:ix1] += psf_stamp[sy0:sy1, sx0:sx1] * total_adu
                 n_rendered += 1
 
         self.logger.debug(f"DummyAdapter: Rendered {n_rendered}/{len(star_mags)} catalog stars")
@@ -836,66 +864,62 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         image = np.clip(image, 0, 65535).astype(np.uint16)
         return image, wcs
 
-    _pixelemon_star_table: np.ndarray | None = None
-
-    @classmethod
-    def _load_star_table(cls) -> np.ndarray:
-        """Load the Tycho-2 star table from Pixelemon's bundled catalog (cached)."""
-        if cls._pixelemon_star_table is not None:
-            return cls._pixelemon_star_table
-        import pixelemon  # type: ignore[import-untyped]
-
-        cat_path = Path(pixelemon.__file__).parent / "tyc_db_to_40_deg.npz"
-        if not cat_path.exists():
-            raise FileNotFoundError(f"Pixelemon star catalog not found at {cat_path}")
-        table: np.ndarray = np.load(str(cat_path))["star_table"]
-        cls._pixelemon_star_table = table
-        return table
-
     def _fetch_catalog_stars(
         self,
         ra: float,
         dec: float,
         fov_deg: float,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Query Pixelemon's local Tycho-2 catalog for stars in the current FOV.
+        """Query the local APASS catalog for real stars in the current FOV.
 
-        Uses the same star database that Tetra3 uses for plate solving, so
-        synthetic images are solvable without any network access.
+        Falls back to a deterministic synthetic field if the APASS catalog
+        is not available (e.g. first run before download completes).
 
         Returns:
             Tuple of (ras_deg, decs_deg, mags) as float arrays.
         """
-        star_table = self._load_star_table()
+        try:
+            from citrascope.catalogs.apass_catalog import ApassCatalog
 
-        # star_table columns: [ra_rad, dec_rad, ux, uy, uz, mag]
-        all_ra_deg = np.degrees(star_table[:, 0])
-        all_dec_deg = np.degrees(star_table[:, 1])
-        all_mag = star_table[:, 5]
+            catalog = ApassCatalog()
+            if catalog.is_available():
+                df = catalog.cone_search(ra, dec, radius=fov_deg)
+                if len(df) > 0:
+                    ras = df["radeg"].values
+                    decs = df["decdeg"].values
+                    mags = _best_mag(df)
+                    valid = np.isfinite(mags) & (mags < _DUMMY_MAG_LIMIT)
+                    ras, decs, mags = ras[valid], decs[valid], mags[valid]
+                    self.logger.debug(
+                        f"DummyAdapter: APASS returned {len(df)} raw, "
+                        f"rendering {len(mags)} stars (V < {_DUMMY_MAG_LIMIT})"
+                    )
+                    return np.asarray(ras), np.asarray(decs), np.asarray(mags)
+        except Exception as e:
+            self.logger.debug(f"DummyAdapter: APASS catalog query failed, using synthetic stars: {e}")
 
-        # Coarse box filter (cheap) then angular distance refinement.
-        # The RA tolerance must be widened by 1/cos(dec) near the poles.
+        seed = int(abs(ra * 1000 + dec * 1000)) % (2**31)
+        rng = np.random.RandomState(seed)
+
+        area_sq_deg = fov_deg * fov_deg
+        n_stars = max(20, int(150 * area_sq_deg))
+
         cos_dec = max(math.cos(math.radians(dec)), 0.05)
-        ra_tol = fov_deg / cos_dec
-        dec_tol = fov_deg
+        ras = ra + rng.uniform(-fov_deg / 2, fov_deg / 2, n_stars) / cos_dec
+        decs = dec + rng.uniform(-fov_deg / 2, fov_deg / 2, n_stars)
+        mags = rng.uniform(5.0, _DUMMY_MAG_LIMIT, n_stars)
 
-        d_ra = np.abs((all_ra_deg - ra + 180.0) % 360.0 - 180.0)
-        d_dec = np.abs(all_dec_deg - dec)
-        box = (d_ra < ra_tol) & (d_dec < dec_tol) & (all_mag < _DUMMY_MAG_LIMIT)
-
-        ras = all_ra_deg[box]
-        decs = all_dec_deg[box]
-        mags = all_mag[box]
+        ras = ras % 360.0
+        decs = np.clip(decs, -90.0, 90.0)
 
         if len(ras) == 0:
             self.logger.warning(
-                f"DummyAdapter: No catalog stars brighter than V={_DUMMY_MAG_LIMIT} "
-                f"around RA={ra:.3f}, Dec={dec:.3f} — generating empty field"
+                f"DummyAdapter: No catalog stars found " f"around RA={ra:.3f}, Dec={dec:.3f} — generating empty field"
             )
             return np.array([]), np.array([]), np.array([])
 
         self.logger.debug(
-            f"DummyAdapter: Local Tycho-2 returned {len(ras)} stars "
+            f"DummyAdapter: Synthetic fallback — {len(ras)} stars "
             f"(Vmag < {_DUMMY_MAG_LIMIT}) around RA={ra:.3f}, Dec={dec:.3f}"
         )
         return ras, decs, mags
@@ -967,15 +991,12 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         """Compute PSF sigma based on current focuser distance from optimal.
 
         Uses `_current_filter_offset` to shift the optimal position per filter,
-        simulating wavelength-dependent focus shifts. Adds ~5% RNG jitter to
-        simulate seeing variation between exposures.
+        simulating wavelength-dependent focus shifts.
         """
         optimal = _DUMMY_OPTIMAL_FOCUS + self._current_filter_offset
         current_pos = self._focuser.get_position()
         pos = optimal if current_pos is None else current_pos
-        base = _DUMMY_PSF_SIGMA_PX + _DUMMY_DEFOCUS_K * abs(pos - optimal)
-        jitter = np.random.default_rng().normal(0, 0.02 * base)
-        return max(0.5, base + jitter)
+        return max(0.5, _DUMMY_PSF_SIGMA_PX + _DUMMY_DEFOCUS_K * abs(pos - optimal))
 
     def do_autofocus(
         self,
