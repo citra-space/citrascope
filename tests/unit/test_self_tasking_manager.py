@@ -43,6 +43,7 @@ def _make_manager(
         settings=settings,
         logger=logger,
         ground_station_id="gs-001",
+        sensor_id="sensor-001",
         get_session_state=lambda: session_state,
         get_observing_window=lambda: window,
     )

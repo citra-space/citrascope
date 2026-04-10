@@ -102,9 +102,18 @@ class SystemStatus(BaseModel):
     autofocus_requested: bool = False
     autofocus_running: bool = False
     autofocus_progress: str = ""
+    autofocus_points: list[dict[str, int | float | str]] = []
+    autofocus_filter_results: list[dict[str, str | int | float]] = []
+    autofocus_last_result: str = ""
     autofocus_target_name: str = ""
     last_autofocus_timestamp: int | None = None
     next_autofocus_minutes: int | None = None
+    hfr_history: list[dict[str, int | float | str]] = []
+    last_hfr_median: float | None = None
+    hfr_baseline: float | None = None
+    hfr_increase_percent: int = 30
+    hfr_refocus_enabled: bool = False
+    hfr_sample_window: int = 5
     time_health: dict[str, Any] | None = None
     gps_location: dict[str, Any] | None = None
     last_update: str = ""
@@ -768,6 +777,62 @@ class CitraScopeWebApp:
             CITRASCOPE_LOGGER.info(f"Self-tasking set to {'enabled' if enabled else 'disabled'}")
             await self.broadcast_status()
             return {"status": "success", "enabled": enabled}
+
+        @self.app.post("/api/self-tasking/request-now")
+        async def request_batch_now():
+            """Fire a single batch collection request, bypassing session-state and timer gating."""
+            if not self.daemon:
+                return JSONResponse({"error": "Daemon not available"}, status_code=503)
+
+            gs = getattr(self.daemon, "ground_station", None)
+            tr = getattr(self.daemon, "telescope_record", None)
+            if not gs or not tr:
+                return JSONResponse({"error": "Ground station or telescope not configured"}, status_code=503)
+
+            settings = self.daemon.settings
+            ground_station_id = gs["id"]
+            sensor_id = tr["id"]
+
+            group_ids = settings.self_tasking_satellite_group_ids or None
+            exclude_types = settings.self_tasking_exclude_object_types or None
+            orbit_regimes = settings.self_tasking_include_orbit_regimes or None
+
+            from datetime import timedelta, timezone
+
+            now = datetime.now(timezone.utc)
+            window_start = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+            window_stop = (now + timedelta(minutes=20)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+            CITRASCOPE_LOGGER.info(
+                "Manual batch request: window %s → %s, gs=%s, sensor=%s",
+                window_start,
+                window_stop,
+                ground_station_id,
+                sensor_id,
+            )
+
+            try:
+                result = await asyncio.to_thread(
+                    self.daemon.api_client.create_batch_collection_requests,
+                    window_start=window_start,
+                    window_stop=window_stop,
+                    ground_station_id=ground_station_id,
+                    sensor_id=sensor_id,
+                    discover_visible=not bool(group_ids),
+                    satellite_group_ids=group_ids,
+                    exclude_types=exclude_types,
+                    include_orbit_regimes=orbit_regimes,
+                )
+            except Exception as e:
+                CITRASCOPE_LOGGER.error("Manual batch request failed", exc_info=True)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+            if result is None:
+                return JSONResponse({"error": "API request failed"}, status_code=502)
+
+            created = result.get("created", 0)
+            CITRASCOPE_LOGGER.info("Manual batch request succeeded (created=%s)", created)
+            return {"status": "ok", "created": created}
 
         @self.app.get("/api/adapter/filters")
         async def get_filters():
@@ -1983,6 +2048,19 @@ class CitraScopeWebApp:
                 self.status.autofocus_requested = task_manager.autofocus_manager.is_requested()
                 self.status.autofocus_running = task_manager.autofocus_manager.is_running()
                 self.status.autofocus_progress = task_manager.autofocus_manager.progress
+                self.status.autofocus_points = [
+                    {"pos": p, "hfr": h, "filter": f} for p, h, f in task_manager.autofocus_manager.points
+                ]
+                self.status.autofocus_filter_results = task_manager.autofocus_manager.filter_results
+                self.status.autofocus_last_result = task_manager.autofocus_manager.last_result
+                hfr_hist = task_manager.autofocus_manager.hfr_history
+                self.status.hfr_history = [{"hfr": h, "ts": t, "filter": f} for h, t, f in hfr_hist]
+                self.status.last_hfr_median = hfr_hist[-1][0] if hfr_hist else None
+                if self.daemon.settings:
+                    self.status.hfr_baseline = self.daemon.settings.adapter_settings.get("hfr_baseline")
+                    self.status.hfr_increase_percent = self.daemon.settings.autofocus_hfr_increase_percent
+                    self.status.hfr_refocus_enabled = self.daemon.settings.autofocus_on_hfr_increase_enabled
+                    self.status.hfr_sample_window = self.daemon.settings.autofocus_hfr_sample_window
                 self.status.alignment_requested = task_manager.alignment_manager.is_requested()
                 self.status.alignment_running = task_manager.alignment_manager.is_running()
                 self.status.alignment_progress = task_manager.alignment_manager.progress

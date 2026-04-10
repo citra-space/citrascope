@@ -427,6 +427,7 @@ class CitraScopeDaemon:
                 settings=self.settings,
                 logger=CITRASCOPE_LOGGER,
                 ground_station_id=ground_station["id"],
+                sensor_id=self.telescope_record["id"],
                 get_session_state=lambda: observing_session_manager.state,
                 get_observing_window=lambda: observing_session_manager.observing_window,
             )

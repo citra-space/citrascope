@@ -199,7 +199,7 @@ class DummyApiClient(AbstractCitraApiClient):
                 "pixelSize": 5.86,
                 "focalLength": 200.0,
                 "focalRatio": 3.4,
-                "horizontalPixelCount": 1024,
+                "horizontalPixelCount": 1280,
                 "verticalPixelCount": 1024,
                 "imageCircleDiameter": None,
                 "angularNoise": 2.0,
@@ -623,6 +623,7 @@ class DummyApiClient(AbstractCitraApiClient):
         window_start: str,
         window_stop: str,
         ground_station_id: str,
+        sensor_id: str,
         discover_visible: bool = True,
         satellite_group_ids: list[str] | None = None,
         request_type: str = "Track",
@@ -635,7 +636,7 @@ class DummyApiClient(AbstractCitraApiClient):
             self.logger.info(
                 f"DummyApiClient: create_batch_collection_requests("
                 f"window={window_start} -> {window_stop}, gs={ground_station_id}, "
-                f"discover={discover_visible}, groups={satellite_group_ids})"
+                f"sensor={sensor_id}, discover={discover_visible}, groups={satellite_group_ids})"
             )
         return {"status": "ok", "created": 0}
 
