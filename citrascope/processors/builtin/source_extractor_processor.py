@@ -32,29 +32,24 @@ class SourceExtractorProcessor(AbstractImageProcessor):
     def _parse_sex_catalog(self, catalog_path: Path) -> pd.DataFrame:
         """Parse SExtractor catalog into DataFrame.
 
-        Based on generate_obs.py lines 29-37, the catalog columns are:
-        - Column 4: MAG_AUTO (magnitude)
-        - Column 5: MAGERR_AUTO (magnitude error)
-        - Column 8: ALPHA_J2000 (RA)
-        - Column 9: DELTA_J2000 (Dec)
-        - Column 10: FWHM_IMAGE (FWHM in pixels)
-
-        Args:
-            catalog_path: Path to SExtractor catalog file
+        Column layout from default.param (0-indexed):
+          0=NUMBER, 1=EXT_NUMBER, 2=FLUX_AUTO, 3=FLUXERR_AUTO,
+          4=MAG_AUTO, 5=MAGERR_AUTO, 6=X_IMAGE, 7=Y_IMAGE,
+          8=ALPHA_J2000, 9=DELTA_J2000, 10=FWHM_IMAGE,
+          11=ELONGATION, 12=ELLIPTICITY
 
         Returns:
-            DataFrame with columns: ra, dec, mag, magerr, fwhm
+            DataFrame with columns: ra, dec, mag, magerr, fwhm, elongation
         """
         sources = []
 
         with open(catalog_path) as f:
             for line in f:
-                # Skip comment lines
                 if line.startswith("#"):
                     continue
 
                 cols = line.split()
-                if len(cols) < 11:
+                if len(cols) < 12:
                     continue
 
                 try:
@@ -65,10 +60,10 @@ class SourceExtractorProcessor(AbstractImageProcessor):
                             "mag": float(cols[4]),  # MAG_AUTO
                             "magerr": float(cols[5]),  # MAGERR_AUTO
                             "fwhm": float(cols[10]),  # FWHM_IMAGE
+                            "elongation": float(cols[11]),  # ELONGATION
                         }
                     )
                 except (ValueError, IndexError):
-                    # Skip malformed lines
                     continue
 
         return pd.DataFrame(sources)
@@ -215,6 +210,7 @@ class SourceExtractorProcessor(AbstractImageProcessor):
             sources_df = self._extract_sources(
                 context.working_image_path, config_dir, context.working_dir, logger=context.logger
             )
+            context.detected_sources = sources_df
 
             elapsed = time.time() - start_time
 
@@ -230,18 +226,25 @@ class SourceExtractorProcessor(AbstractImageProcessor):
                     "count_fwhm_gte_1_5": int((fwhm >= 1.5).sum()),
                 }
 
+            elongation_stats = {}
+            if len(sources_df) and "elongation" in sources_df.columns:
+                elong = sources_df["elongation"]
+                elongation_stats = {"elongation_median": float(elong.median())}
+
             result = ProcessorResult(
                 should_upload=True,
                 extracted_data={
                     "num_sources": len(sources_df),
-                    "sources_catalog": str(context.working_dir / f"{context.working_image_path.stem}.cat"),
+                    "sources_catalog": str(context.working_dir / "output.cat"),
                 },
                 confidence=1.0,
                 reason=f"Extracted {len(sources_df)} sources in {elapsed:.1f}s",
                 processing_time_seconds=elapsed,
                 processor_name=self.name,
             )
-            dump_processor_result(context.working_dir, "source_extractor_result.json", result, extra=fwhm_stats)
+            dump_processor_result(
+                context.working_dir, "source_extractor_result.json", result, extra={**fwhm_stats, **elongation_stats}
+            )
             return result
 
         except Exception as e:

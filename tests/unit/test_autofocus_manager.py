@@ -399,35 +399,25 @@ class TestResolveAutofocusTargetName:
 # ---------------------------------------------------------------------------
 
 
-def _ensure_star_catalog() -> bool:
-    """Ensure the Pixelemon star catalog is available, downloading if needed.
-
-    Returns True if the catalog is present (or was just downloaded).
-    """
-    from pixelemon._plate_solve import TETRA_DATABASE_PATH  # type: ignore[import-untyped]
-
-    if TETRA_DATABASE_PATH.exists():
-        return True
+def _has_apass_catalog() -> bool:
+    """Return True only if the APASS catalog DB exists and is queryable."""
     try:
-        from pixelemon import TetraSolver  # type: ignore[import-untyped]
+        from citrascope.catalogs.apass_catalog import ApassCatalog
 
-        TetraSolver.high_memory()
-        return True
+        cat = ApassCatalog()
+        if not cat.is_available():
+            return False
+        df = cat.cone_search(180.0, 30.0, 1.0)
+        return len(df) > 0
     except Exception:
         return False
-
-
-_has_star_catalog = pytest.mark.skipif(
-    not _ensure_star_catalog(),
-    reason="Pixelemon star catalog not available (1.3 GB download failed or skipped)",
-)
 
 
 class TestDummyAdapterAutofocusTargeting:
     """Verify DummyAdapter handles None/real coords correctly in do_autofocus."""
 
-    @_has_star_catalog
     @pytest.mark.slow
+    @pytest.mark.skipif(not _has_apass_catalog(), reason="APASS catalog not available")
     def test_skips_slew_when_both_none(self, tmp_path: Path):
         from citrascope.hardware.dummy_adapter import DummyAdapter
 
@@ -435,8 +425,8 @@ class TestDummyAdapterAutofocusTargeting:
         adapter.connect()
         adapter.do_autofocus(target_ra=None, target_dec=None)
 
-    @_has_star_catalog
     @pytest.mark.slow
+    @pytest.mark.skipif(not _has_apass_catalog(), reason="APASS catalog not available")
     def test_uses_provided_coords(self, tmp_path: Path):
         from citrascope.hardware.dummy_adapter import DummyAdapter
 

@@ -42,15 +42,15 @@ dependencies = [
   "platformdirs>=4.0.0",
   "jinja2>=3.1.0",
   "ntplib>=0.4.0",
-  "numpy>=1.21.1,<2",  # cedar-solve (pixelemon) requires numpy<2; opencv-python wants numpy>=2 — use separate envs if you need both
+  "numpy>=1.21.1",
   "astropy>=5.0.0",
   "pandas>=2.0.0",
   "scipy>=1.11.0",
-  "pixelemon>=0.7.0",
+  "sep>=1.2.0",
   "keplemon>=3.6.3",
-  "plotly", # required by pixelemon
   "astropy-healpix>=1.0.0",
   "astroquery>=0.4.6",
+  "Pillow>=10.0.0",
 ]
 
 [project.scripts]
@@ -152,7 +152,7 @@ addopts = [
   "-m", "not slow",
 ]
 markers = [
-  "slow: expensive tests (Tetra3 plate solving, etc.) — skipped locally, run in CI",
+  "slow: expensive tests (plate solving, real FITS processing, etc.) — skipped locally, run in CI",
   "integration: requires live hardware or services",
 ]
 

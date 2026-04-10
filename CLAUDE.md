@@ -46,7 +46,7 @@ __main__.py (CLI via Click)
        │    ├─ autofocus_manager.py (dedicated autofocus scheduling/execution)
        │    ├─ base_work_queue.py → imaging_queue.py, processing_queue.py, upload_queue.py
        │    └─ scope/ (base_telescope_task.py, static/tracking variants)
-       ├─ processors/ (pluggable pipeline: plate_solver → source_extractor → photometry → satellite_matcher)
+       ├─ processors/ (pipeline: plate_solver[astrometry.net] → source_extractor[SExtractor] → photometry → satellite_matcher)
        ├─ settings/ (CitraScopeSettings — Pydantic BaseModel, persisted to JSON)
        └─ web/ (FastAPI app, Alpine.js frontend, WebSocket log streaming)
 ```
@@ -184,7 +184,7 @@ Common type-checking patterns used in this codebase:
 | Marker | Meaning | Runs locally | Runs in CI |
 |---|---|---|---|
 | *(none)* | Normal unit test | Yes | Yes |
-| `@pytest.mark.slow` | Expensive tests (Tetra3 plate solving, real FITS processing) | **No** (skipped by default) | Yes |
+| `@pytest.mark.slow` | Expensive tests (plate solving, real FITS processing) | **No** (skipped by default) | Yes |
 | `@pytest.mark.integration` | Requires live hardware or services | No | No (opt-in) |
 
 Slow tests are skipped locally via `addopts = ["-m", "not slow"]` in `pyproject.toml`. CI overrides this with `--override-ini="addopts="` to run the full suite.
@@ -221,7 +221,7 @@ Aim for tests that are roughly 1:1 or shorter than the code they test. If you ne
 - **AutofocusManager** gates on `imaging_queue.is_idle()` to prevent hardware collisions with active imaging tasks.
 - **`formatLastAutofocus`** (JS) has a sanity check for timestamps before 2020-01-01 — returns "Never" for obviously wrong values.
 - **NINA WebSocket is always available** if the REST API is. There's no configuration to disable it separately. Don't add HTTP polling fallbacks — they add complexity for a case that can't happen.
-- **NINA autofocus can infinite-loop** without a timeout. Always use a timeout (currently 300s) when waiting for results from `/focuser/last-af`.
+- **NINA autofocus can run indefinitely** without a timeout. Always enforce a deadline when waiting for autofocus results.
 - **Alpine.js `x-show` vs HTML5 `required`**: `x-show` keeps hidden elements in the DOM, but `required` attributes still fire validation on them. Use `:required="visible"` or `x-if`.
 - **Alpine store load ordering**: If a `<select>` depends on API-fetched options (e.g., autofocus presets), fetch those *before* setting the config that references them, or the UI renders with stale/empty options.
 - **After renaming a parameter**, search the entire method/file for the old name. Long methods have had stale references survive "first pass" refactors, causing `NameError`s at runtime.
@@ -238,7 +238,13 @@ Aim for tests that are roughly 1:1 or shorter than the code they test. If you ne
 - **websockets**: NINA WebSocket event listener
 - **Skyfield**: Astronomical calculations (celestial positions, satellite passes)
 - **Astropy**: FITS file I/O, WCS, coordinate transforms
+- **SEP**: Source Extraction and Photometry (used for HFR computation in autofocus)
 - **Alpine.js**: Reactive frontend (loaded via CDN, no build step)
+
+### System dependencies (not pip-installable)
+
+- **astrometry.net** (`solve-field`): Plate solving. Install: `brew install astrometry-net` (macOS) / `apt install astrometry.net` (Linux). Requires [index files](https://data.astrometry.net/) (4100-series for wide FOV).
+- **SExtractor** (`sex` / `source-extractor`): Source extraction. Install: `brew install sextractor` (macOS) / `apt install sextractor` (Linux).
 
 Dev tools: **ruff** (linter + import sorting), **Black** (formatter), **pyright** (type checking, basic mode), **pytest** + **pytest-cov** (testing). Pre-commit hooks run ruff, black, and pyright automatically. CI runs ruff and pyright as separate jobs.
 
