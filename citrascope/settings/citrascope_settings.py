@@ -313,8 +313,9 @@ class CitraScopeSettings(BaseModel):
         try:
             v = int(v)
         except (TypeError, ValueError):
-            CITRASCOPE_LOGGER.warning("Invalid plate_solve_timeout (%r). Falling back to 60.", v)
-            return 60
+            default_timeout = cls.model_fields["plate_solve_timeout"].default
+            CITRASCOPE_LOGGER.warning("Invalid plate_solve_timeout (%r). Falling back to %s.", v, default_timeout)
+            return default_timeout
         if v < 10 or v > 300:
             clamped = max(10, min(300, v))
             CITRASCOPE_LOGGER.warning("plate_solve_timeout %d out of range [10, 300]. Clamped to %d.", v, clamped)

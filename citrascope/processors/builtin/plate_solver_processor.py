@@ -123,7 +123,7 @@ class PlateSolverProcessor(AbstractImageProcessor):
         if context.settings and hasattr(context.settings, "astrometry_index_path"):
             index_path = context.settings.astrometry_index_path or ""
         if index_path:
-            cmd.extend(["--dir", index_path])
+            cmd.extend(["--index-dir", index_path])
 
         # Pointing hints from task coordinates or FITS header
         ra_hint, dec_hint = None, None

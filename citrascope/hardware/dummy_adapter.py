@@ -872,8 +872,8 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Query the local APASS catalog for real stars in the current FOV.
 
-        Falls back to a deterministic synthetic field if the APASS catalog
-        is not available (e.g. first run before download completes).
+        Returns empty arrays if the APASS catalog is not available or has
+        no stars in the queried region, resulting in a noise-only image.
 
         Returns:
             Tuple of (ras_deg, decs_deg, mags) as float arrays.

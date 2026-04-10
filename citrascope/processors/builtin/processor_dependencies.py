@@ -84,6 +84,6 @@ def read_source_catalog(catalog_path: Path) -> pd.DataFrame:
         sep=r"\s+",
         comment="#",
         header=None,
-        usecols=[4, 5, 8, 9, 10],
+        usecols=[4, 5, 8, 9, 11],
         names=["mag", "magerr", "ra", "dec", "elongation"],
     )
