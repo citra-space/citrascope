@@ -86,7 +86,10 @@ class CitraScopeDaemon:
     def _on_annotated_image(self, path: str) -> None:
         """Handle a new annotated task image: store path and push to preview bus."""
         self.latest_annotated_image_path = path
-        self.preview_bus.push_file(path, "task")
+        try:
+            self.preview_bus.push_file(path, "task")
+        except Exception as e:
+            CITRASCOPE_LOGGER.warning("Failed to publish annotated image preview for %s: %s", path, e)
 
     def _refresh_elset_cache_with_retry(self, max_attempts: int = 3) -> None:
         """Force-refresh the elset cache at startup, retrying on failure."""

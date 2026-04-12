@@ -40,22 +40,23 @@ def array_to_jpeg_data_url(
     Returns:
         ``"data:image/jpeg;base64,..."`` string ready for ``<img src=...>``.
     """
-    arr = np.asarray(data, dtype=np.float64)
+    arr = np.asarray(data)
     if flip_horizontal:
         arr = np.fliplr(arr)
 
-    if arr.ndim == 3:
-        gray = np.mean(arr, axis=2)
+    arr_float = arr.astype(np.float32, copy=False)
+    if arr_float.ndim == 3:
+        gray = np.mean(arr_float, axis=2, dtype=np.float32)
         lo = np.percentile(gray, percentile_lo)
         hi = np.percentile(gray, percentile_hi)
     else:
-        lo = np.percentile(arr, percentile_lo)
-        hi = np.percentile(arr, percentile_hi)
+        lo = np.percentile(arr_float, percentile_lo)
+        hi = np.percentile(arr_float, percentile_hi)
 
     if hi <= lo:
         hi = lo + 1.0
 
-    stretched = np.clip((arr - lo) / (hi - lo) * 255.0, 0, 255).astype(np.uint8)
+    stretched = np.clip((arr_float - lo) / (hi - lo) * 255.0, 0, 255).astype(np.uint8)
 
     if stretched.ndim == 2:
         img = Image.fromarray(stretched, mode="L")
