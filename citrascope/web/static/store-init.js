@@ -119,8 +119,8 @@ function compareVersions(v1, v2) {
             async captureImage() {
                 const duration = this.previewExposure;
                 if (Number.isNaN(duration) || duration <= 0) {
-                    const { createToast } = await import('./config.js');
-                    createToast('Invalid exposure duration', 'danger', false);
+                    const { showToast } = await import('./config.js');
+                    showToast('Invalid exposure duration', 'danger');
                     return;
                 }
 
@@ -135,16 +135,16 @@ function compareVersions(v1, v2) {
 
                     if (response.ok && data.success) {
                         this.captureResult = data;
-                        const { createToast } = await import('./config.js');
-                        createToast('Image captured successfully', 'success', true);
+                        const { showToast } = await import('./config.js');
+                        showToast('Image captured successfully', 'success');
                     } else {
-                        const { createToast } = await import('./config.js');
-                        createToast(data.error || 'Failed to capture image', 'danger', false);
+                        const { showToast } = await import('./config.js');
+                        showToast(data.error || 'Failed to capture image', 'danger');
                     }
                 } catch (error) {
                     console.error('Capture error:', error);
-                    const { createToast } = await import('./config.js');
-                    createToast('Failed to capture image: ' + error.message, 'danger', false);
+                    const { showToast } = await import('./config.js');
+                    showToast('Failed to capture image: ' + error.message, 'danger');
                 } finally {
                     this.isSaving = false;
                 }
@@ -231,16 +231,16 @@ function compareVersions(v1, v2) {
                 try {
                     const { reconnectHardware } = await import('./api.js');
                     const result = await reconnectHardware();
-                    const { createToast } = await import('./config.js');
+                    const { showToast } = await import('./config.js');
                     if (result.ok) {
-                        createToast('Hardware reconnected successfully', 'success', true);
+                        showToast('Hardware reconnected successfully', 'success');
                     } else {
-                        createToast(result.data?.error || 'Reconnect failed', 'danger', false);
+                        showToast(result.data?.error || 'Reconnect failed', 'danger');
                     }
                 } catch (error) {
                     console.error('Reconnect error:', error);
-                    const { createToast } = await import('./config.js');
-                    createToast('Reconnect failed: ' + error.message, 'danger', false);
+                    const { showToast } = await import('./config.js');
+                    showToast('Reconnect failed: ' + error.message, 'danger');
                 } finally {
                     this.isReconnecting = false;
                 }
@@ -279,8 +279,8 @@ function compareVersions(v1, v2) {
                         this.previewDataUrl = data.image_data;
                         this.loopCount++;
                     } else {
-                        const { createToast } = await import('./config.js');
-                        createToast(data.error || 'Preview failed', 'danger', false);
+                        const { showToast } = await import('./config.js');
+                        showToast(data.error || 'Preview failed', 'danger');
                         this.isLooping = false;
                         return;
                     }
@@ -320,12 +320,12 @@ function compareVersions(v1, v2) {
                         this.previewDataUrl = data.image_data;
                         this.loopCount++;
                     } else {
-                        const { createToast } = await import('./config.js');
-                        createToast(data.error || 'Preview failed', 'danger', false);
+                        const { showToast } = await import('./config.js');
+                        showToast(data.error || 'Preview failed', 'danger');
                     }
                 } catch (error) {
-                    const { createToast } = await import('./config.js');
-                    createToast('Preview failed: ' + error.message, 'danger', false);
+                    const { showToast } = await import('./config.js');
+                    showToast('Preview failed: ' + error.message, 'danger');
                 } finally {
                     this.isCapturing = false;
                 }

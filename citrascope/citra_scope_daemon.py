@@ -405,6 +405,10 @@ class CitraScopeDaemon:
                 preview_bus=self.preview_bus,
             )
 
+            # Wire backend→frontend toast notifications for autofocus
+            if self.web_server and self.task_manager.autofocus_manager:
+                self.task_manager.autofocus_manager.on_toast = self.web_server.send_toast
+
             # Wire self-tasking session managers
             from citrascope.tasks.observing_session import ObservingSessionManager
             from citrascope.tasks.self_tasking_manager import SelfTaskingManager

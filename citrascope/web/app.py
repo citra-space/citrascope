@@ -2334,3 +2334,9 @@ class CitraScopeWebApp:
     async def broadcast_log(self, log_entry: dict):
         """Broadcast log entry to all connected clients."""
         await self.connection_manager.broadcast({"type": "log", "data": log_entry})
+
+    async def broadcast_toast(self, message: str, toast_type: str = "info", toast_id: str | None = None):
+        """Broadcast a toast notification to all connected web clients."""
+        await self.connection_manager.broadcast(
+            {"type": "toast", "data": {"message": message, "toast_type": toast_type, "id": toast_id}}
+        )

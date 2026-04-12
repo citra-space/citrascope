@@ -32,6 +32,7 @@ class CitraScopeWebServer:
         self.web_app = None
         self.web_log_handler = None
         self._broadcast_task = None
+        self._loop: asyncio.AbstractEventLoop | None = None
 
         # Set up web log handler
         self._setup_log_handler()
@@ -95,11 +96,11 @@ class CitraScopeWebServer:
         try:
             self.web_app = CitraScopeWebApp(daemon=self.daemon, web_log_handler=self.web_log_handler)
 
-            # Connect the log handler to the web app for broadcasting
-            # Pass the current event loop so logs can be broadcast from other threads
+            # Store the event loop so thread-safe bridges (send_toast, log handler) can schedule work
+            self._loop = asyncio.get_event_loop()
+
             if self.web_log_handler:
-                current_loop = asyncio.get_event_loop()
-                self.web_log_handler.set_web_app(self.web_app, current_loop)
+                self.web_log_handler.set_web_app(self.web_app, self._loop)
 
             CITRASCOPE_LOGGER.info(f"Starting web server on http://{self.host}:{self.port}")
 
@@ -123,6 +124,14 @@ class CitraScopeWebServer:
                 CITRASCOPE_LOGGER.error(f"Web server OS error: {e}", exc_info=True)
         except Exception as e:
             CITRASCOPE_LOGGER.error(f"Web server error: {e}", exc_info=True)
+
+    def send_toast(self, message: str, toast_type: str = "info", toast_id: str | None = None) -> None:
+        """Thread-safe bridge: schedule a toast broadcast on the web event loop."""
+        if self.web_app and self._loop and self._loop.is_running():
+            asyncio.run_coroutine_threadsafe(
+                self.web_app.broadcast_toast(message, toast_type, toast_id),
+                self._loop,
+            )
 
     async def _status_broadcast_loop(self):
         """Periodically broadcast status and tasks to web clients."""

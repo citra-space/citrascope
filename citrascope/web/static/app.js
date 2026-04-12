@@ -1,6 +1,6 @@
 // CitraScope Dashboard - Main Application (Alpine.js)
 import { connectWebSocket } from './websocket.js';
-import { initConfig, initFilterConfig, setupAutofocusButton, createToast } from './config.js';
+import { initConfig, initFilterConfig, setupAutofocusButton, showToast } from './config.js';
 import { getTasks, getLogs } from './api.js';
 
 // Store and components are registered in store-init.js (loaded before Alpine)
@@ -62,6 +62,10 @@ function updatePreviewFromPush(dataUrl, source) {
     if (store.isLooping) return;
     store.previewDataUrl = dataUrl;
     store.previewSource = source || '';
+}
+
+function handleBackendToast(data) {
+    showToast(data.message, data.toast_type || 'info', { id: data.id });
 }
 
 function updateStoreFromConnection(connected, reconnectInfo = '') {
@@ -160,6 +164,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         onLog: appendLogToStore,
         onTasks: updateStoreFromTasks,
         onPreview: updatePreviewFromPush,
+        onToast: handleBackendToast,
         onConnectionChange: updateStoreFromConnection
     });
 

@@ -225,8 +225,18 @@
         </div>
     </div>
 
-    <!-- Toast Container for Notifications -->
-    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;" id="toastContainer"></div>
+    <!-- Toast Container for Notifications (tracks log accordion height) -->
+    <div class="toast-container position-fixed start-0 p-3" style="z-index: 9999; bottom: 48px;" id="toastContainer"></div>
+    <script>
+    (function() {
+        const logWrap = document.querySelector('#logAccordion').parentElement;
+        const toasts  = document.getElementById('toastContainer');
+        if (!logWrap || !toasts) return;
+        const sync = () => { toasts.style.bottom = logWrap.offsetHeight + 'px'; };
+        sync();
+        new ResizeObserver(sync).observe(logWrap);
+    })();
+    </script>
 
     <script type="module" src="/static/app.js?v={{ cache_bust }}"></script>
 

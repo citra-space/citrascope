@@ -12,6 +12,7 @@ let onStatusUpdate = null;
 let onLogMessage = null;
 let onTasksUpdate = null;
 let onPreviewImage = null;
+let onToastMessage = null;
 let onConnectionChange = null;
 
 /**
@@ -23,6 +24,7 @@ export function connectWebSocket(handlers = {}) {
     onLogMessage = handlers.onLog || null;
     onTasksUpdate = handlers.onTasks || null;
     onPreviewImage = handlers.onPreview || null;
+    onToastMessage = handlers.onToast || null;
     onConnectionChange = handlers.onConnectionChange || null;
 
     connect();
@@ -83,6 +85,8 @@ function connect() {
                 onTasksUpdate(message.data);
             } else if (message.type === 'preview' && onPreviewImage) {
                 onPreviewImage(message.data, message.source);
+            } else if (message.type === 'toast' && onToastMessage) {
+                onToastMessage(message.data);
             }
         };
 

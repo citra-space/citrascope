@@ -285,3 +285,15 @@ body {
 @media (prefers-reduced-motion: reduce) {
     .spin { animation: none; }
 }
+
+/* Toast countdown progress bar */
+.toast-countdown {
+    height: 3px;
+    border-radius: 0 0 var(--bs-toast-border-radius) var(--bs-toast-border-radius);
+    background: rgba(255, 255, 255, 0.45);
+    animation: toast-countdown linear forwards;
+}
+@keyframes toast-countdown {
+    from { width: 100%; }
+    to   { width: 0%; }
+}
