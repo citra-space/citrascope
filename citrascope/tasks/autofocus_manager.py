@@ -11,6 +11,7 @@ import statistics
 import threading
 import time
 from collections import deque
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
@@ -18,6 +19,8 @@ from citrascope.constants import AUTOFOCUS_TARGET_PRESETS
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
 
 if TYPE_CHECKING:
+    import numpy as np
+
     from citrascope.location.location_service import LocationService
     from citrascope.settings.citrascope_settings import CitraScopeSettings
     from citrascope.tasks.base_work_queue import BaseWorkQueue
@@ -38,12 +41,14 @@ class AutofocusManager:
         settings: CitraScopeSettings,
         imaging_queue: BaseWorkQueue | None = None,
         location_service: LocationService | None = None,
+        push_preview: Callable[[str, str], None] | None = None,
     ):
         self.logger = logger
         self.hardware_adapter = hardware_adapter
         self.settings = settings
         self.imaging_queue = imaging_queue
         self.location_service = location_service
+        self._push_preview = push_preview
         self._requested = False
         self._running = False
         self._progress = ""
@@ -424,6 +429,18 @@ class AutofocusManager:
         self.logger.info(f"Autofocus target: {preset['name']} ({preset['designation']})")
         return preset["ra"], preset["dec"]
 
+    def _on_af_image(self, image: np.ndarray) -> None:
+        """Convert an autofocus sweep frame to JPEG and push to the preview bus."""
+        if not self._push_preview:
+            return
+        try:
+            from citrascope.web.preview import array_to_jpeg_data_url
+
+            data_url = array_to_jpeg_data_url(image)
+            self._push_preview(data_url, "autofocus")
+        except Exception as e:
+            self.logger.debug(f"Failed to push AF preview frame: {e}")
+
     def _execute(self) -> None:
         """Execute autofocus routine and update timestamp on both success and failure."""
         self._cancel_event.clear()
@@ -444,6 +461,7 @@ class AutofocusManager:
                 cancel_event=self._cancel_event,
                 on_point=self._add_point,
                 on_filter_start=self._on_filter_start,
+                on_image=self._on_af_image,
             )
 
             with self._lock:

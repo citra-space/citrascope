@@ -983,6 +983,7 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         cancel_event: threading.Event | None = None,
         on_point: Callable[[int, float], None] | None = None,
         on_filter_start: Callable[[str], None] | None = None,
+        on_image: Callable[[np.ndarray], None] | None = None,
     ) -> None:
         """Run V-curve autofocus for each enabled filter.
 
@@ -1075,6 +1076,7 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
                 logger=self.logger,
                 cancel_event=cancel_event,
                 on_point=on_point,
+                on_image=on_image,
             )
             self.logger.info("DummyAdapter: Autofocus complete")
             return
@@ -1120,6 +1122,7 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
                     logger=self.logger,
                     cancel_event=cancel_event,
                     on_point=on_point,
+                    on_image=on_image,
                 )
                 self.filter_map[fid]["focus_position"] = best
                 self.logger.info(f"Filter '{fname}' focus position: {best}")

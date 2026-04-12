@@ -16,6 +16,7 @@ import logging
 import statistics
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -44,6 +45,7 @@ class AlignmentManager:
         imaging_queue: BaseWorkQueue | None = None,
         safety_monitor=None,
         location_service=None,
+        push_preview: Callable[[str, str], None] | None = None,
     ):
         self.logger = logger
         self.hardware_adapter = hardware_adapter
@@ -51,6 +53,7 @@ class AlignmentManager:
         self.imaging_queue = imaging_queue
         self.safety_monitor = safety_monitor
         self.location_service = location_service
+        self._push_preview = push_preview
 
         # Quick-align state
         self._requested = False
@@ -158,6 +161,35 @@ class AlignmentManager:
             return self.settings.alignment_exposure_seconds
         return 2.0
 
+    def _push_image_preview(self, image_path: str | Path, source: str = "alignment") -> None:
+        """Read a FITS/image file and push it to the preview bus."""
+        if not self._push_preview:
+            return
+        try:
+            p = Path(image_path)
+            suffix = p.suffix.lower()
+            if suffix in (".fits", ".fit"):
+                from astropy.io import fits as astro_fits
+
+                from citrascope.web.preview import array_to_jpeg_data_url
+
+                with astro_fits.open(p) as hdul:
+                    primary = hdul[0]
+                    assert isinstance(primary, astro_fits.PrimaryHDU)
+                    data = primary.data
+                if data is not None:
+                    data_url = array_to_jpeg_data_url(data)
+                    self._push_preview(data_url, source)
+            elif suffix in (".jpg", ".jpeg", ".png"):
+                import base64
+
+                mime = "image/jpeg" if suffix in (".jpg", ".jpeg") else "image/png"
+                raw = p.read_bytes()
+                b64 = base64.b64encode(raw).decode("ascii")
+                self._push_preview(f"data:{mime};base64,{b64}", source)
+        except Exception as e:
+            self.logger.debug(f"Failed to push {source} preview: {e}")
+
     def _execute(self) -> None:
         """Execute alignment: take image → plate solve → sync mount."""
         with self._lock:
@@ -190,6 +222,7 @@ class AlignmentManager:
                 self.logger.error(f"Alignment exposure failed: {exc}")
                 return
 
+            self._push_image_preview(image_path, "alignment")
             self._set_progress("Plate solving...")
             self.logger.info(f"Alignment: plate solving {image_path}...")
             result = PlateSolverProcessor.solve(
@@ -696,6 +729,7 @@ class AlignmentManager:
                 self.logger.warning("Calibration exposure failed (%.0fs): %s", exposure_s, exc)
                 continue
 
+            self._push_image_preview(image_path, "calibration")
             result = PlateSolverProcessor.solve(
                 Path(image_path), telescope_record, location_service=self.location_service
             )

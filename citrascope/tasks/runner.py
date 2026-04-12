@@ -3,6 +3,7 @@ from __future__ import annotations
 import heapq
 import threading
 import time
+from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -41,6 +42,7 @@ class TaskManager:
         telescope_record: dict | None = None,
         ground_station: dict | None = None,
         on_annotated_image=None,
+        push_preview: Callable[[str, str], None] | None = None,
     ):
         self.api_client = api_client
         self.logger = logger
@@ -54,6 +56,7 @@ class TaskManager:
         self.telescope_record = telescope_record
         self.ground_station = ground_station
         self._on_annotated_image = on_annotated_image
+        self._push_preview = push_preview
 
         # Initialize work queues (TaskManager now owns these)
         from citrascope.tasks.imaging_queue import ImagingQueue
@@ -100,6 +103,7 @@ class TaskManager:
             self.settings,
             imaging_queue=self.imaging_queue,
             location_service=self.location_service,
+            push_preview=self._push_preview,
         )
         self.alignment_manager = AlignmentManager(
             self.logger,
@@ -108,6 +112,7 @@ class TaskManager:
             imaging_queue=self.imaging_queue,
             safety_monitor=self.safety_monitor,
             location_service=self.location_service,
+            push_preview=self._push_preview,
         )
         self.homing_manager = HomingManager(
             self.logger,
