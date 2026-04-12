@@ -368,75 +368,87 @@ async function saveConfiguration(event) {
     }
 }
 
+const TOAST_ICONS = {
+    success: 'bi-check-circle-fill',
+    danger:  'bi-x-circle-fill',
+    warning: 'bi-exclamation-triangle-fill',
+    info:    'bi-info-circle-fill',
+};
+
+const TOAST_MAX_VISIBLE = 5;
+
 /**
- * Create and show a Bootstrap toast notification
- * @param {string} message - The message to display
- * @param {string} type - 'danger' for errors, 'success' for success messages
- * @param {boolean} autohide - Whether to auto-hide the toast
+ * Show a toast notification.
+ *
+ * @param {string}  message          - Text to display.
+ * @param {'success'|'danger'|'warning'|'info'} type - Bootstrap colour key.
+ * @param {object}  [options]
+ * @param {boolean} [options.autohide] - Override auto-hide (defaults: true for success/info, false for danger/warning).
+ * @param {number}  [options.delay=5000] - Auto-hide delay in ms.
+ * @param {string}  [options.id]       - Dedup key; skips if a toast with this id is already visible.
  */
-export function createToast(message, type = 'danger', autohide = false) {
+export function showToast(message, type = 'info', { autohide, delay = 5000, id } = {}) {
     const toastContainer = document.getElementById('toastContainer');
     if (!toastContainer) {
-        console.error('Toast container not found');
+        console.log(`Toast (${type}): ${message}`);
         return;
     }
 
-    // Create toast element
-    const toastId = `toast-${Date.now()}`;
-    const toastHTML = `
-        <div id="${toastId}" class="toast text-bg-${type}" role="alert" aria-live="assertive" aria-atomic="true">
-            <div class="toast-header text-bg-${type}">
-                <strong class="me-auto">CitraScope</strong>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+    if (id && toastContainer.querySelector(`[data-toast-id="${id}"]`)) return;
+
+    const shouldAutohide = autohide !== undefined ? autohide : (type === 'success' || type === 'info');
+    const icon = TOAST_ICONS[type] || TOAST_ICONS.info;
+    const toastElId = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const countdownBar = shouldAutohide
+        ? `<div class="toast-countdown" style="animation-duration:${delay}ms"></div>`
+        : '';
+
+    const html = `
+        <div id="${toastElId}" class="toast align-items-center text-bg-${type} border-0"
+             role="alert" aria-live="assertive" aria-atomic="true"
+             ${id ? `data-toast-id="${id}"` : ''}>
+            <div class="d-flex">
+                <div class="toast-body d-flex align-items-center gap-2">
+                    <i class="bi ${icon}"></i>
+                    <span>${message}</span>
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto"
+                        data-bs-dismiss="toast" aria-label="Close"></button>
             </div>
-            <div class="toast-body">
-                ${message}
-            </div>
+            ${countdownBar}
         </div>
     `;
 
-    // Insert toast into container
-    toastContainer.insertAdjacentHTML('beforeend', toastHTML);
+    toastContainer.insertAdjacentHTML('beforeend', html);
 
-    // Get the toast element and initialize Bootstrap toast
-    const toastElement = document.getElementById(toastId);
+    const toastElement = document.getElementById(toastElId);
     const toast = new bootstrap.Toast(toastElement, {
-        autohide: autohide,
-        delay: 5000
+        autohide: shouldAutohide,
+        delay,
     });
 
-    // Remove toast element from DOM after it's hidden
-    toastElement.addEventListener('hidden.bs.toast', () => {
-        toastElement.remove();
-    });
-
-    // Show the toast
+    toastElement.addEventListener('hidden.bs.toast', () => toastElement.remove());
     toast.show();
-}
 
-/**
- * Show configuration error message
- */
-function showConfigError(message) {
-    createToast(message, 'danger', false);
-}
-
-/**
- * Show configuration message (can be error or success)
- */
-function showConfigMessage(message, type = 'danger') {
-    if (type === 'danger') {
-        showConfigError(message);
-    } else {
-        showConfigSuccess(message);
+    // Enforce max-visible cap: dismiss oldest when over limit
+    const visible = toastContainer.querySelectorAll('.toast.show');
+    if (visible.length > TOAST_MAX_VISIBLE) {
+        const oldest = visible[0];
+        const oldToast = bootstrap.Toast.getInstance(oldest);
+        if (oldToast) oldToast.hide();
     }
 }
 
-/**
- * Show configuration success message
- */
+function showConfigError(message) {
+    showToast(message, 'danger');
+}
+
+function showConfigMessage(message, type = 'danger') {
+    showToast(message, type === 'danger' ? 'danger' : 'success');
+}
+
 function showConfigSuccess(message) {
-    createToast(message, 'success', true);
+    showToast(message, 'success');
 }
 
 /**
@@ -622,7 +634,7 @@ async function triggerAutofocus() {
             }
         } catch (error) {
             console.error('Error cancelling autofocus:', error);
-            showToast('Failed to cancel autofocus', 'error');
+            showToast('Failed to cancel autofocus', 'danger');
         }
         return;
     }
@@ -640,51 +652,17 @@ async function triggerAutofocus() {
         if (response.ok) {
             showToast('Autofocus queued', 'success');
         } else {
-            showToast(data.error || 'Autofocus request failed', 'error');
+            showToast(data.error || 'Autofocus request failed', 'danger');
         }
     } catch (error) {
         console.error('Error triggering autofocus:', error);
-        showToast('Failed to trigger autofocus', 'error');
+        showToast('Failed to trigger autofocus', 'danger');
     } finally {
         store.isAutofocusing = false;
     }
 }
 
-/**
- * Show toast notification
- */
-function showToast(message, type = 'info') {
-    // Use Bootstrap toast if available, otherwise fallback to alert
-    const toastContainer = document.getElementById('toastContainer');
-    if (!toastContainer) {
-        console.log(`Toast (${type}): ${message}`);
-        return;
-    }
-
-    const toastId = `toast-${Date.now()}`;
-    const bgClass = type === 'success' ? 'bg-success' :
-                    type === 'error' ? 'bg-danger' :
-                    type === 'warning' ? 'bg-warning' : 'bg-info';
-
-    const toastHtml = `
-        <div id="${toastId}" class="toast align-items-center text-white ${bgClass} border-0" role="alert" aria-live="assertive" aria-atomic="true">
-            <div class="d-flex">
-                <div class="toast-body">${message}</div>
-                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-            </div>
-        </div>
-    `;
-
-    toastContainer.insertAdjacentHTML('beforeend', toastHtml);
-    const toastElement = document.getElementById(toastId);
-    const toast = new bootstrap.Toast(toastElement, { delay: 3000 });
-    toast.show();
-
-    // Remove from DOM after hidden
-    toastElement.addEventListener('hidden.bs.toast', () => {
-        toastElement.remove();
-    });
-}
+// Old private showToast removed — all callers now use the exported showToast above.
 
 /**
  * Initialize filter configuration on page load
@@ -709,7 +687,7 @@ async function triggerAlignment() {
             }
         } catch (error) {
             console.error('Error cancelling alignment:', error);
-            showToast('Failed to cancel alignment', 'error');
+            showToast('Failed to cancel alignment', 'danger');
         }
         return;
     }
@@ -720,11 +698,11 @@ async function triggerAlignment() {
         if (response.ok) {
             showToast('Alignment queued', 'success');
         } else {
-            showToast(data.error || 'Alignment request failed', 'error');
+            showToast(data.error || 'Alignment request failed', 'danger');
         }
     } catch (error) {
         console.error('Error triggering alignment:', error);
-        showToast('Failed to trigger alignment', 'error');
+        showToast('Failed to trigger alignment', 'danger');
     }
 }
 
@@ -744,11 +722,11 @@ async function manualSync(ra, dec) {
         if (response.ok && data.success) {
             showToast(data.message || 'Mount synced', 'success');
         } else {
-            showToast(data.error || 'Sync failed', 'error');
+            showToast(data.error || 'Sync failed', 'danger');
         }
     } catch (error) {
         console.error('Error syncing mount:', error);
-        showToast('Failed to sync mount', 'error');
+        showToast('Failed to sync mount', 'danger');
     }
 }
 
@@ -760,13 +738,13 @@ async function homeMount() {
         const response = await fetch('/api/mount/home', { method: 'POST' });
         const data = await response.json();
         if (response.ok) {
-            createToast('Mount homing initiated', 'success');
+            showToast('Mount homing initiated', 'success');
         } else {
-            createToast(data.error || 'Failed to home mount', 'danger', false);
+            showToast(data.error || 'Failed to home mount', 'danger');
         }
     } catch (error) {
         console.error('Error homing mount:', error);
-        createToast('Failed to home mount', 'danger', false);
+        showToast('Failed to home mount', 'danger');
     }
 }
 
@@ -778,13 +756,13 @@ async function triggerCableUnwind() {
         const response = await fetch('/api/mount/unwind', { method: 'POST' });
         const data = await response.json();
         if (response.ok) {
-            createToast('Cable unwind started — monitor progress in the Telescope card', 'success');
+            showToast('Cable unwind started — monitor progress in the Telescope card', 'success');
         } else {
-            createToast(data.error || 'Cable unwind failed', 'danger', false);
+            showToast(data.error || 'Cable unwind failed', 'danger');
         }
     } catch (error) {
         console.error('Error triggering cable unwind:', error);
-        createToast('Failed to trigger cable unwind', 'danger', false);
+        showToast('Failed to trigger cable unwind', 'danger');
     }
 }
 
@@ -796,13 +774,13 @@ async function resetCableWrap() {
         const response = await fetch('/api/safety/cable-wrap/reset', { method: 'POST' });
         const data = await response.json();
         if (response.ok) {
-            createToast('Cable wrap counter reset to 0°', 'success');
+            showToast('Cable wrap counter reset to 0°', 'success');
         } else {
-            createToast(data.error || 'Reset failed', 'danger', false);
+            showToast(data.error || 'Reset failed', 'danger');
         }
     } catch (error) {
         console.error('Error resetting cable wrap:', error);
-        createToast('Failed to reset cable wrap', 'danger', false);
+        showToast('Failed to reset cable wrap', 'danger');
     }
 }
 
@@ -814,13 +792,13 @@ async function emergencyStop() {
         const response = await fetch('/api/emergency-stop', { method: 'POST' });
         const data = await response.json();
         if (response.ok) {
-            createToast(data.message || 'Emergency stop executed', 'warning', false);
+            showToast(data.message || 'Emergency stop executed', 'warning');
         } else {
-            createToast(data.error || 'Emergency stop failed', 'danger', false);
+            showToast(data.error || 'Emergency stop failed', 'danger');
         }
     } catch (error) {
         console.error('Emergency stop error:', error);
-        createToast('Failed to execute emergency stop', 'danger', false);
+        showToast('Failed to execute emergency stop', 'danger');
     }
 }
 
@@ -832,13 +810,13 @@ async function clearOperatorStop() {
         const response = await fetch('/api/safety/operator-stop/clear', { method: 'POST' });
         const data = await response.json();
         if (response.ok) {
-            createToast(data.message || 'Operator stop cleared', 'success', true);
+            showToast(data.message || 'Operator stop cleared', 'success');
         } else {
-            createToast(data.error || 'Failed to clear operator stop', 'danger', false);
+            showToast(data.error || 'Failed to clear operator stop', 'danger');
         }
     } catch (error) {
         console.error('Clear operator stop error:', error);
-        createToast('Failed to clear operator stop', 'danger', false);
+        showToast('Failed to clear operator stop', 'danger');
     }
 }
 
@@ -858,13 +836,13 @@ async function changeFilterPosition(position) {
         });
         const data = await response.json();
         if (response.ok) {
-            createToast(`Filter changed to ${data.name}`, 'success', true);
+            showToast(`Filter changed to ${data.name}`, 'success');
         } else {
-            createToast(data.error || 'Filter change failed', 'danger', false);
+            showToast(data.error || 'Filter change failed', 'danger');
         }
     } catch (error) {
         console.error('Filter change error:', error);
-        createToast('Failed to change filter', 'danger', false);
+        showToast('Failed to change filter', 'danger');
     }
 
     if (wasLooping) store.startFocusLoop();
@@ -879,11 +857,11 @@ async function moveFocuserRelative(steps) {
         });
         const data = await response.json();
         if (!response.ok) {
-            createToast(data.error || 'Focuser move failed', 'danger', false);
+            showToast(data.error || 'Focuser move failed', 'danger');
         }
     } catch (error) {
         console.error('Focuser move error:', error);
-        createToast('Failed to move focuser', 'danger', false);
+        showToast('Failed to move focuser', 'danger');
     }
 }
 
@@ -896,13 +874,13 @@ async function moveFocuserAbsolute(position) {
         });
         const data = await response.json();
         if (response.ok) {
-            createToast(`Focuser moved to ${data.position}`, 'success', true);
+            showToast(`Focuser moved to ${data.position}`, 'success');
         } else {
-            createToast(data.error || 'Focuser move failed', 'danger', false);
+            showToast(data.error || 'Focuser move failed', 'danger');
         }
     } catch (error) {
         console.error('Focuser move error:', error);
-        createToast('Failed to move focuser', 'danger', false);
+        showToast('Failed to move focuser', 'danger');
     }
 }
 
@@ -914,13 +892,13 @@ async function abortFocuser() {
         });
         const data = await response.json();
         if (response.ok) {
-            createToast('Focuser stopped', 'warning', true);
+            showToast('Focuser stopped', 'warning');
         } else {
-            createToast(data.error || 'Failed to stop focuser', 'danger', false);
+            showToast(data.error || 'Failed to stop focuser', 'danger');
         }
     } catch (error) {
         console.error('Focuser abort error:', error);
-        createToast('Failed to stop focuser', 'danger', false);
+        showToast('Failed to stop focuser', 'danger');
     }
 }
 
@@ -949,13 +927,13 @@ async function mountGoto(ra, dec) {
         });
         const data = await response.json();
         if (response.ok) {
-            createToast(`Slewing to RA=${parseFloat(ra).toFixed(2)}°, Dec=${parseFloat(dec).toFixed(2)}°`, 'info', true);
+            showToast(`Slewing to RA=${parseFloat(ra).toFixed(2)}°, Dec=${parseFloat(dec).toFixed(2)}°`, 'info');
         } else {
-            createToast(data.error || 'Goto failed', 'danger', false);
+            showToast(data.error || 'Goto failed', 'danger');
         }
     } catch (error) {
         console.error('Mount goto error:', error);
-        createToast('Failed to send goto command', 'danger', false);
+        showToast('Failed to send goto command', 'danger');
     }
 }
 
@@ -970,13 +948,13 @@ async function mountSetTracking(enabled) {
         if (response.ok) {
             const store = Alpine.store('citrascope');
             if (store.status) store.status.mount_tracking = enabled;
-            createToast(enabled ? 'Sidereal tracking started' : 'Tracking stopped', 'info', true);
+            showToast(enabled ? 'Sidereal tracking started' : 'Tracking stopped', 'info');
         } else {
-            createToast(data.error || 'Tracking command failed', 'danger', false);
+            showToast(data.error || 'Tracking command failed', 'danger');
         }
     } catch (error) {
         console.error('Mount tracking error:', error);
-        createToast('Failed to change tracking', 'danger', false);
+        showToast('Failed to change tracking', 'danger');
     }
 }
 
@@ -985,13 +963,13 @@ async function calibratePointingModel() {
         const response = await fetch('/api/mount/pointing-model/calibrate', { method: 'POST' });
         const data = await response.json();
         if (response.ok && data.success) {
-            createToast('Pointing calibration started', 'success');
+            showToast('Pointing calibration started', 'success');
         } else {
-            createToast(data.error || 'Failed to start calibration', 'danger', false);
+            showToast(data.error || 'Failed to start calibration', 'danger');
         }
     } catch (error) {
         console.error('Error starting pointing calibration:', error);
-        createToast('Failed to start pointing calibration', 'danger', false);
+        showToast('Failed to start pointing calibration', 'danger');
     }
 }
 
@@ -1000,13 +978,13 @@ async function resetPointingModel() {
         const response = await fetch('/api/mount/pointing-model/reset', { method: 'POST' });
         const data = await response.json();
         if (response.ok && data.success) {
-            createToast('Pointing model reset', 'success');
+            showToast('Pointing model reset', 'success');
         } else {
-            createToast(data.error || 'Failed to reset pointing model', 'danger', false);
+            showToast(data.error || 'Failed to reset pointing model', 'danger');
         }
     } catch (error) {
         console.error('Error resetting pointing model:', error);
-        createToast('Failed to reset pointing model', 'danger', false);
+        showToast('Failed to reset pointing model', 'danger');
     }
 }
 
@@ -1015,13 +993,13 @@ async function cancelPointingCalibration() {
         const response = await fetch('/api/mount/pointing-model/calibrate/cancel', { method: 'POST' });
         const data = await response.json();
         if (response.ok && data.success) {
-            createToast('Pointing calibration cancelled', 'success');
+            showToast('Pointing calibration cancelled', 'success');
         } else {
-            createToast(data.error || 'Failed to cancel calibration', 'danger', false);
+            showToast(data.error || 'Failed to cancel calibration', 'danger');
         }
     } catch (error) {
         console.error('Error cancelling pointing calibration:', error);
-        createToast('Failed to cancel pointing calibration', 'danger', false);
+        showToast('Failed to cancel pointing calibration', 'danger');
     }
 }
 

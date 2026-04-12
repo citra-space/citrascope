@@ -11,6 +11,7 @@ import statistics
 import threading
 import time
 from collections import deque
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
@@ -42,6 +43,7 @@ class AutofocusManager:
         imaging_queue: BaseWorkQueue | None = None,
         location_service: LocationService | None = None,
         preview_bus: PreviewBus | None = None,
+        on_toast: Callable[[str, str, str | None], None] | None = None,
     ):
         self.logger = logger
         self.hardware_adapter = hardware_adapter
@@ -49,6 +51,7 @@ class AutofocusManager:
         self.imaging_queue = imaging_queue
         self.location_service = location_service
         self._preview_bus = preview_bus
+        self.on_toast = on_toast
         self._requested = False
         self._running = False
         self._progress = ""
@@ -485,10 +488,14 @@ class AutofocusManager:
                     self._last_result = " | ".join(parts)
                 else:
                     self._last_result = self._progress
+            if self.on_toast:
+                self.on_toast("Autofocus completed successfully", "success", "autofocus-result")
         except Exception as e:
             self.logger.error(f"Autofocus failed: {e!s}", exc_info=True)
             with self._lock:
                 self._last_result = f"Failed: {e!s}"
+            if self.on_toast:
+                self.on_toast(f"Autofocus failed: {e!s}", "danger", "autofocus-result")
         finally:
             with self._lock:
                 self._running = False
