@@ -168,7 +168,7 @@
                         ZP <span x-text="sortIcon('zero_point')"></span>
                     </th>
                     <th>Upload</th>
-                    <th>Duration</th>
+                    <th>Utilization</th>
                     <th></th>
                 </tr>
             </thead>
@@ -229,10 +229,12 @@
                             <span x-show="task.upload_success == null && task.should_upload !== 0" class="text-warning">…</span>
                         </td>
                         <td>
-                            <div class="analysis-mini-bar" :title="durationTitle(task)">
-                                <div class="analysis-mini-bar-seg slew" :style="'width:' + durationPct(task, 'slew') + '%'"></div>
-                                <div class="analysis-mini-bar-seg queue" :style="'width:' + durationPct(task, 'queue') + '%'"></div>
-                                <div class="analysis-mini-bar-seg proc" :style="'width:' + durationPct(task, 'proc') + '%'"></div>
+                            <div class="analysis-mini-bar" :title="windowBarTitle(task)"
+                                 :class="windowBarOverran(task) && 'overran'">
+                                <div class="analysis-mini-bar-seg delay" :style="'width:' + windowBarPct(task, 'delay') + '%'"></div>
+                                <div class="analysis-mini-bar-seg slew" :style="'width:' + windowBarPct(task, 'slew') + '%'"></div>
+                                <div class="analysis-mini-bar-seg imaging" :style="'width:' + windowBarPct(task, 'imaging') + '%'"></div>
+                                <div class="analysis-mini-bar-seg margin" :style="'width:' + windowBarPct(task, 'margin') + '%'"></div>
                             </div>
                         </td>
                         <td>
@@ -305,8 +307,6 @@
                                                             <span x-show="detail.pointing_error_deg != null"
                                                                   :class="pointingClass(detail.pointing_error_deg)"
                                                                   x-text="'Error: ' + detail.pointing_error_deg?.toFixed(4) + '°'"></span>
-                                                            <span x-show="detail.final_target_distance_deg != null" class="text-muted"
-                                                                  x-text="'Distance to satellite: ' + detail.final_target_distance_deg?.toFixed(4) + '°'"></span>
                                                         </div>
                                                     </div>
                                                 </div>

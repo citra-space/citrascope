@@ -144,26 +144,48 @@ document.addEventListener('alpine:init', () => {
             return 'text-danger';
         },
 
-        // Mini duration bar (slew / queue / proc) — proportional widths
-        _durationTotal(task) {
-            return (task.total_slew_time_s || 0) + (task.processing_queue_wait_s || 0) + (task.total_processing_time_s || 0);
+        // Window utilization mini-bar: delay | slew | imaging | margin
+        _windowSpan(t) {
+            if (!t.window_start || !t.window_stop) return 0;
+            return (new Date(t.window_stop) - new Date(t.window_start)) / 1000;
         },
-        durationPct(task, segment) {
-            const tot = this._durationTotal(task);
-            if (tot <= 0) return 0;
-            const vals = {
-                slew: task.total_slew_time_s || 0,
-                queue: task.processing_queue_wait_s || 0,
-                proc: task.total_processing_time_s || 0,
-            };
-            return Math.round((vals[segment] / tot) * 100);
+        _windowSegments(t) {
+            const span = this._windowSpan(t);
+            if (span <= 0 || !t.window_start) return { delay: 0, slew: 0, imaging: 0, margin: 0, overran: false };
+            const ws = new Date(t.window_start).getTime();
+            const we = new Date(t.window_stop).getTime();
+            const slewStart = t.slew_started_at ? new Date(t.slew_started_at).getTime() : null;
+            const imgStart = t.imaging_started_at ? new Date(t.imaging_started_at).getTime() : null;
+            const imgEnd = t.imaging_finished_at ? new Date(t.imaging_finished_at).getTime() : null;
+
+            const delay = slewStart ? Math.max(0, slewStart - ws) / 1000 : 0;
+            const slew = (slewStart && imgStart) ? Math.max(0, imgStart - slewStart) / 1000 : (t.total_slew_time_s || 0);
+            const imaging = (imgStart && imgEnd) ? Math.max(0, imgEnd - imgStart) / 1000 : 0;
+            const usedEnd = imgEnd || (imgStart ? imgStart : (slewStart ? slewStart : ws));
+            const margin = Math.max(0, we - usedEnd) / 1000;
+            const overran = imgEnd ? imgEnd > we : false;
+
+            return { delay, slew, imaging, margin, overran };
         },
-        durationTitle(task) {
+        windowBarPct(task, segment) {
+            const span = this._windowSpan(task);
+            if (span <= 0) return 0;
+            const segs = this._windowSegments(task);
+            const val = segs[segment] || 0;
+            return Math.max(val > 0 ? 1 : 0, Math.round((val / span) * 100));
+        },
+        windowBarOverran(task) {
+            return this._windowSegments(task).overran;
+        },
+        windowBarTitle(task) {
+            const s = this._windowSegments(task);
             const parts = [];
-            if (task.total_slew_time_s) parts.push('Slew: ' + task.total_slew_time_s.toFixed(1) + 's');
-            if (task.processing_queue_wait_s) parts.push('Queue: ' + task.processing_queue_wait_s.toFixed(1) + 's');
-            if (task.total_processing_time_s) parts.push('Processing: ' + task.total_processing_time_s.toFixed(1) + 's');
-            return parts.join(' | ') || 'No timing data';
+            if (s.delay) parts.push('Delay: ' + s.delay.toFixed(1) + 's');
+            if (s.slew) parts.push('Slew: ' + s.slew.toFixed(1) + 's');
+            if (s.imaging) parts.push('Imaging: ' + s.imaging.toFixed(1) + 's');
+            if (s.margin) parts.push('Margin: ' + s.margin.toFixed(1) + 's');
+            if (s.overran) parts.push('OVERRAN WINDOW');
+            return parts.join(' | ') || 'No window data';
         },
 
         // Processor segments for the summary bar

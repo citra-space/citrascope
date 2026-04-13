@@ -336,15 +336,19 @@ body {
 
 .analysis-mini-bar {
     display: flex;
-    width: 60px;
+    width: 80px;
     height: 8px;
-    border-radius: 3px;
+    border-radius: 2px;
     overflow: hidden;
     background: #2d3748;
 }
-.analysis-mini-bar-seg.slew  { background: var(--bs-primary); }
-.analysis-mini-bar-seg.queue { background: #6c5ce7; }
-.analysis-mini-bar-seg.proc  { background: #00b894; }
+.analysis-mini-bar.overran {
+    outline: 1px solid #e74c3c;
+}
+.analysis-mini-bar-seg.delay   { background: #4a5568; }
+.analysis-mini-bar-seg.slew    { background: var(--bs-primary); }
+.analysis-mini-bar-seg.imaging { background: #00cec9; }
+.analysis-mini-bar-seg.margin  { background: #2d3748; }
 
 .analysis-timing-seg {
     display: flex;
