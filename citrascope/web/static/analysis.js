@@ -52,10 +52,14 @@ document.addEventListener('alpine:init', () => {
         },
 
         async loadAll() {
+            if (this.loading) return;
             this.loading = true;
-            await Promise.all([this.loadStats(), this.loadTasks()]);
-            this.loaded = true;
-            this.loading = false;
+            try {
+                await Promise.all([this.loadStats(), this.loadTasks()]);
+                this.loaded = true;
+            } finally {
+                this.loading = false;
+            }
         },
 
         async loadStats() {
@@ -310,7 +314,9 @@ document.addEventListener('alpine:init', () => {
 
 window.loadAnalysisData = function () {
     const el = document.querySelector('#analysisSection');
-    if (el && el.__x) {
-        el.__x.$data.loadAll();
+    if (!el || !window.Alpine) return;
+    const data = Alpine.$data(el);
+    if (data && typeof data.loadAll === 'function') {
+        data.loadAll();
     }
 };

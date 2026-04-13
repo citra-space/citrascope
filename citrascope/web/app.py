@@ -225,6 +225,25 @@ class ConnectionManager:
             self.disconnect(connection)
 
 
+class _TarStreamBuffer:
+    """Write-only file-like object that accumulates bytes for streaming tar output."""
+
+    def __init__(self) -> None:
+        self._chunks: list[bytes] = []
+
+    def write(self, data: bytes) -> int:
+        self._chunks.append(data)
+        return len(data)
+
+    def flush(self) -> None:
+        pass
+
+    def drain(self) -> bytes:
+        out = b"".join(self._chunks)
+        self._chunks.clear()
+        return out
+
+
 class CitraScopeWebApp:
     """Web application for CitraScope."""
 
@@ -1831,8 +1850,8 @@ class CitraScopeWebApp:
             if not self.daemon or not self.daemon.task_index:
                 return JSONResponse({"tasks": [], "total": 0})
             return self.daemon.task_index.query_tasks(
-                limit=min(limit, 200),
-                offset=offset,
+                limit=max(1, min(limit, 200)),
+                offset=max(0, offset),
                 sort=sort,
                 order=order,
                 target_name=target_name,
@@ -1848,10 +1867,11 @@ class CitraScopeWebApp:
             """Single task detail with all fields."""
             if not self.daemon or not self.daemon.task_index:
                 return JSONResponse({"error": "Analysis not available"}, status_code=503)
-            task = self.daemon.task_index.get_task(task_id)
+            safe_id = Path(task_id).name
+            task = self.daemon.task_index.get_task(safe_id)
             if task is None:
                 return JSONResponse({"error": "Task not found"}, status_code=404)
-            task["artifacts_available"] = (self.daemon.settings.directories.processing_dir / task_id).is_dir()
+            task["artifacts_available"] = (self.daemon.settings.directories.processing_dir / safe_id).is_dir()
             return task
 
         @self.app.get("/api/analysis/tasks/{task_id}/image")
@@ -1859,7 +1879,8 @@ class CitraScopeWebApp:
             """Serve annotated preview image for a task."""
             if not self.daemon:
                 return JSONResponse({"error": "Not available"}, status_code=503)
-            preview = self.daemon.settings.directories.analysis_previews_dir / f"{task_id}.jpg"
+            safe_id = Path(task_id).name
+            preview = self.daemon.settings.directories.analysis_previews_dir / f"{safe_id}.jpg"
             if not preview.is_file():
                 return JSONResponse({"error": "Image not available"}, status_code=404)
             return FileResponse(str(preview), media_type="image/jpeg")
@@ -1869,9 +1890,9 @@ class CitraScopeWebApp:
             """Serve an artifact file from the processing directory."""
             if not self.daemon:
                 return JSONResponse({"error": "Not available"}, status_code=503)
-            # Prevent directory traversal
+            safe_id = Path(task_id).name
             safe_name = Path(filename).name
-            artifact = self.daemon.settings.directories.processing_dir / task_id / safe_name
+            artifact = self.daemon.settings.directories.processing_dir / safe_id / safe_name
             if not artifact.is_file():
                 return JSONResponse({"error": "Artifact not found or expired"}, status_code=404)
             return FileResponse(str(artifact))
@@ -1879,7 +1900,7 @@ class CitraScopeWebApp:
         @self.app.get("/api/analysis/tasks/{task_id}/bundle")
         async def analysis_task_bundle(task_id: str):
             """Stream a tar.gz bundle of a task's processing directory."""
-            import io
+            import gzip
             import tarfile
 
             if not self.daemon:
@@ -1890,15 +1911,25 @@ class CitraScopeWebApp:
                 return JSONResponse({"error": "Task artifacts not found or expired"}, status_code=404)
 
             def _generate():
-                buf = io.BytesIO()
-                with tarfile.open(fileobj=buf, mode="w:gz") as tar:
-                    for file_path in sorted(task_dir.rglob("*")):
+                """Yield gzipped tar bytes incrementally without buffering the whole archive."""
+                buf = _TarStreamBuffer()
+                gz = gzip.GzipFile(fileobj=buf, mode="wb")
+                tar = tarfile.open(fileobj=gz, mode="w|")
+                try:
+                    for file_path in task_dir.rglob("*"):
                         if not file_path.is_file():
                             continue
                         arcname = f"{safe_id}/{file_path.relative_to(task_dir)}"
                         tar.add(str(file_path), arcname=arcname)
-                buf.seek(0)
-                yield from iter(lambda: buf.read(65536), b"")
+                        chunk = buf.drain()
+                        if chunk:
+                            yield chunk
+                finally:
+                    tar.close()
+                    gz.close()
+                    final = buf.drain()
+                    if final:
+                        yield final
 
             filename = f"{safe_id}.tar.gz"
             return StreamingResponse(

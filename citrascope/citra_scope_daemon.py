@@ -779,7 +779,8 @@ class CitraScopeDaemon:
 
         CITRASCOPE_LOGGER.info("Shutting down...")
 
-        # 0. Cancel retention timer
+        # 0. Cancel retention timer — set _stop_requested first to prevent reschedule
+        self._stop_requested = True
         if self._retention_timer:
             self._retention_timer.cancel()
 
@@ -816,9 +817,17 @@ class CitraScopeDaemon:
             except Exception as e:
                 CITRASCOPE_LOGGER.warning(f"Error disconnecting hardware: {e}")
 
+        # 5. Close analysis index
+        if self.task_index:
+            try:
+                self.task_index.close()
+            except Exception:
+                pass
+            self.task_index = None
+
         CITRASCOPE_LOGGER.info("Shutdown complete.")
 
-        # 5. Stop web server (tears down log handler — must be last)
+        # 6. Stop web server (tears down log handler — must be last)
         if self.web_server:
             if self.web_server.web_log_handler:
                 CITRASCOPE_LOGGER.removeHandler(self.web_server.web_log_handler)

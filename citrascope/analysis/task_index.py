@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -120,11 +121,17 @@ class TaskIndex:
     def __init__(self, db_path: Path) -> None:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self._db_path = db_path
+        self._lock = threading.Lock()
         self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA busy_timeout=5000")
         self._conn.executescript(_SCHEMA)
         self._conn.commit()
+
+    def close(self) -> None:
+        """Close the database connection."""
+        with self._lock:
+            self._conn.close()
 
     # ── Writes ─────────────────────────────────────────────────────────
 
@@ -163,12 +170,12 @@ class TaskIndex:
         requested_ra = (
             _float(last_iter.get("target_lead_ra_deg"))
             or _float(pmc.get("target_ra_deg"))
-            or _float(task.ra if task else None)
+            or _float(getattr(task, "ra", None) if task else None)
         )
         requested_dec = (
             _float(last_iter.get("target_lead_dec_deg"))
             or _float(pmc.get("target_dec_deg"))
-            or _float(task.dec if task else None)
+            or _float(getattr(task, "dec", None) if task else None)
         )
 
         pointing_error = None
@@ -222,100 +229,103 @@ class TaskIndex:
         annotated_path = ed.get("annotated_image.image_path")
         has_annotated = bool(annotated_path and Path(str(annotated_path)).exists())
 
-        self._conn.execute(
-            """INSERT OR REPLACE INTO completed_tasks VALUES (
+        with self._lock:
+            self._conn.execute(
+                """INSERT OR REPLACE INTO completed_tasks VALUES (
                 ?,?,?,?,?,  ?,?,?,?,?,  ?,?,?,?,?,  ?,?,  ?,?,?,?,?,  ?,?,?,
                 ?,?,?,?,?,  ?,?,  ?,?,?,?,?,?,?,  ?,?,?,?,  ?,?,?,?,  ?,?,?,?,?,
                 ?,?,  ?,?,  ?
             )""",
-            (
-                task.id if task else "unknown",
-                task.satelliteName if task else None,
-                now,
-                _str(ed.get("photometry.filter")) or (task.assigned_filter_name if task else None),
-                _bool_int(calibration_applied),
-                # Pointing
-                requested_ra,
-                requested_dec,
-                solved_ra,
-                solved_dec,
-                pointing_error,
-                pr_dict.get("attempts"),
-                _bool_int(pr_dict.get("converged")),
-                _float(pr_dict.get("convergence_threshold_deg")),
-                total_slew if total_slew else None,
-                _float(pr_dict.get("final_angular_distance_deg")),
-                _float(iterations[-1].get("observed_slew_rate_deg_per_s")) if iterations else None,
-                json.dumps(pr_dict) if pr_dict else None,
-                # Window
-                window_start,
-                window_stop,
-                slew_started_at,
-                imaging_started_at,
-                imaging_finished_at,
-                window_start_delay_s,
-                window_time_remaining_s,
-                _bool_int(missed_window),
-                # Plate solve
-                _bool_int(ed.get("plate_solver.plate_solved")),
-                _int(ed.get("source_extractor.num_sources")),
-                _float(ed.get("plate_solver.pixel_scale")),
-                _float(ed.get("plate_solver.field_width_deg")),
-                _float(ed.get("plate_solver.field_height_deg")),
-                # Photometry
-                _float(ed.get("photometry.zero_point")),
-                _int(ed.get("photometry.num_calibration_stars")),
-                # Satellite matching
-                target_sat_id,
-                task.satelliteName if task else None,
-                _bool_int(target_matched),
-                target_mag,
-                incidental,
-                _int(ed.get("satellite_matcher.num_satellites_detected")),
-                json.dumps(observations) if observations else None,
-                # Pipeline decision
-                _bool_int(result.should_upload) if result else None,
-                result.skip_reason if result else None,
-                upload_type,
-                None,  # upload_success — updated later
-                # Processing timing
-                processing_queued_at,
-                processing_started_at,
-                processing_finished_at,
-                queue_wait_s,
-                result.total_time if result else None,
-                proc_times.get("calibration"),
-                proc_times.get("plate_solver"),
-                proc_times.get("source_extractor"),
-                proc_times.get("photometry"),
-                proc_times.get("satellite_matcher"),
-                proc_times.get("annotated_image"),
-                # Artifacts
-                _bool_int(has_annotated),
-                str(annotated_path) if annotated_path else None,
-                # Overflow
-                json.dumps(ed) if ed else None,
-            ),
-        )
-        self._conn.commit()
+                (
+                    task.id if task else "unknown",
+                    task.satelliteName if task else None,
+                    now,
+                    _str(ed.get("photometry.filter")) or (task.assigned_filter_name if task else None),
+                    _bool_int(calibration_applied),
+                    # Pointing
+                    requested_ra,
+                    requested_dec,
+                    solved_ra,
+                    solved_dec,
+                    pointing_error,
+                    pr_dict.get("attempts"),
+                    _bool_int(pr_dict.get("converged")),
+                    _float(pr_dict.get("convergence_threshold_deg")),
+                    total_slew if total_slew else None,
+                    _float(pr_dict.get("final_angular_distance_deg")),
+                    _float(iterations[-1].get("observed_slew_rate_deg_per_s")) if iterations else None,
+                    json.dumps(pr_dict) if pr_dict else None,
+                    # Window
+                    window_start,
+                    window_stop,
+                    slew_started_at,
+                    imaging_started_at,
+                    imaging_finished_at,
+                    window_start_delay_s,
+                    window_time_remaining_s,
+                    _bool_int(missed_window),
+                    # Plate solve
+                    _bool_int(ed.get("plate_solver.plate_solved")),
+                    _int(ed.get("source_extractor.num_sources")),
+                    _float(ed.get("plate_solver.pixel_scale")),
+                    _float(ed.get("plate_solver.field_width_deg")),
+                    _float(ed.get("plate_solver.field_height_deg")),
+                    # Photometry
+                    _float(ed.get("photometry.zero_point")),
+                    _int(ed.get("photometry.num_calibration_stars")),
+                    # Satellite matching
+                    target_sat_id,
+                    task.satelliteName if task else None,
+                    _bool_int(target_matched),
+                    target_mag,
+                    incidental,
+                    _int(ed.get("satellite_matcher.num_satellites_detected")),
+                    json.dumps(observations) if observations else None,
+                    # Pipeline decision
+                    _bool_int(result.should_upload) if result else None,
+                    result.skip_reason if result else None,
+                    upload_type,
+                    None,  # upload_success — updated later
+                    # Processing timing
+                    processing_queued_at,
+                    processing_started_at,
+                    processing_finished_at,
+                    queue_wait_s,
+                    result.total_time if result else None,
+                    proc_times.get("calibration"),
+                    proc_times.get("plate_solver"),
+                    proc_times.get("source_extractor"),
+                    proc_times.get("photometry"),
+                    proc_times.get("satellite_matcher"),
+                    proc_times.get("annotated_image"),
+                    # Artifacts
+                    _bool_int(has_annotated),
+                    str(annotated_path) if annotated_path else None,
+                    # Overflow
+                    json.dumps(ed) if ed else None,
+                ),
+            )
+            self._conn.commit()
 
     def update_upload_result(self, task_id: str, success: bool) -> None:
         """UPDATE upload_success after upload completes (called from upload thread)."""
-        self._conn.execute(
-            "UPDATE completed_tasks SET upload_success = ? WHERE task_id = ?",
-            (_bool_int(success), task_id),
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                "UPDATE completed_tasks SET upload_success = ? WHERE task_id = ?",
+                (_bool_int(success), task_id),
+            )
+            self._conn.commit()
 
     # ── Reads ──────────────────────────────────────────────────────────
 
     def get_task(self, task_id: str) -> dict | None:
         """Return a single task row as a dict, or None."""
-        cur = self._conn.execute("SELECT * FROM completed_tasks WHERE task_id = ?", (task_id,))
-        row = cur.fetchone()
-        if row is None:
-            return None
-        return _row_to_dict(cur.description, row)
+        with self._lock:
+            cur = self._conn.execute("SELECT * FROM completed_tasks WHERE task_id = ?", (task_id,))
+            row = cur.fetchone()
+            if row is None:
+                return None
+            return _row_to_dict(cur.description, row)
 
     def query_tasks(
         self,
@@ -364,15 +374,16 @@ class TaskIndex:
 
         where_sql = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
-        count_row = self._conn.execute(f"SELECT COUNT(*) FROM completed_tasks{where_sql}", params).fetchone()
-        total = count_row[0] if count_row else 0
+        with self._lock:
+            count_row = self._conn.execute(f"SELECT COUNT(*) FROM completed_tasks{where_sql}", params).fetchone()
+            total = count_row[0] if count_row else 0
 
-        # sort/order are validated above — safe to interpolate
-        rows_cur = self._conn.execute(
-            f"SELECT * FROM completed_tasks{where_sql} ORDER BY {sort} {order} LIMIT ? OFFSET ?",
-            [*params, limit, offset],
-        )
-        tasks = [_row_to_dict(rows_cur.description, row) for row in rows_cur.fetchall()]
+            # sort/order are validated above — safe to interpolate
+            rows_cur = self._conn.execute(
+                f"SELECT * FROM completed_tasks{where_sql} ORDER BY {sort} {order} LIMIT ? OFFSET ?",
+                [*params, limit, offset],
+            )
+            tasks = [_row_to_dict(rows_cur.description, row) for row in rows_cur.fetchall()]
 
         return {"tasks": tasks, "total": total}
 
@@ -383,17 +394,16 @@ class TaskIndex:
 
         cutoff_iso = (cutoff - timedelta(hours=hours)).isoformat()
 
-        row = self._conn.execute(
-            """
-            SELECT
+        with self._lock:
+            row = self._conn.execute(
+                """
+                SELECT
                 COUNT(*)                                              AS task_count,
                 SUM(CASE WHEN plate_solved = 1 THEN 1 ELSE 0 END)    AS plate_solved_count,
                 SUM(CASE WHEN converged = 1 THEN 1 ELSE 0 END)       AS converged_count,
                 AVG(convergence_attempts)                             AS avg_convergence_attempts,
                 AVG(total_slew_time_s)                                AS avg_slew_time_s,
-                AVG(pointing_error_deg)                                AS avg_pointing_error_deg,
-                AVG(CASE WHEN pointing_error_deg IS NOT NULL THEN pointing_error_deg END)
-                                                                      AS mean_pointing_error_deg,
+                AVG(pointing_error_deg)                               AS avg_pointing_error_deg,
                 SUM(CASE WHEN target_matched = 1 THEN 1 ELSE 0 END)  AS target_matched_count,
                 SUM(COALESCE(incidental_matches, 0))                  AS total_incidental,
                 SUM(CASE WHEN upload_success = 1 THEN 1 ELSE 0 END)  AS upload_success_count,
@@ -419,17 +429,17 @@ class TaskIndex:
                 -- Target satellite
                 SUM(CASE WHEN target_satellite_id IS NOT NULL THEN 1 ELSE 0 END)
                                                                       AS satellite_task_count
-            FROM completed_tasks
-            WHERE completed_at >= ?
-            """,
-            (cutoff_iso,),
-        ).fetchone()
+                FROM completed_tasks
+                WHERE completed_at >= ?
+                """,
+                (cutoff_iso,),
+            ).fetchone()
 
         if not row or row[0] == 0:
             return _empty_stats()
 
         tc = row[0] or 1
-        sat_tc = row[24] or 0
+        sat_tc = row[23] or 0
 
         elapsed_hours = hours or 1
         return {
@@ -439,30 +449,27 @@ class TaskIndex:
             "convergence_rate": _pct(row[2], tc),
             "avg_convergence_attempts": _rnd(row[3]),
             "avg_slew_time_s": _rnd(row[4]),
-            "avg_pointing_error_deg": _rnd(row[6], 4),
-            "target_match_rate": _pct(row[7], sat_tc) if sat_tc else None,
-            "total_incidental_detections": row[8] or 0,
-            "upload_success_rate": _pct(row[9], row[10]) if row[10] else None,
-            "avg_zero_point": _rnd(row[11]),
-            "stddev_zero_point": _rnd(row[12]),
-            "window_compliance_rate": _pct(row[14], row[13] + row[14]) if (row[13] or 0) + (row[14] or 0) > 0 else None,
-            "missed_window_count": row[13] or 0,
-            "avg_window_start_delay_s": _rnd(row[15]),
-            "avg_queue_wait_s": _rnd(row[16]),
-            "avg_total_processing_s": _rnd(row[17]),
+            "avg_pointing_error_deg": _rnd(row[5], 4),
+            "target_match_rate": _pct(row[6], sat_tc) if sat_tc else None,
+            "total_incidental_detections": row[7] or 0,
+            "upload_success_rate": _pct(row[8], row[9]) if row[9] else None,
+            "avg_zero_point": _rnd(row[10]),
+            "stddev_zero_point": _rnd(row[11]),
+            "window_compliance_rate": _pct(row[13], row[12] + row[13]) if (row[12] or 0) + (row[13] or 0) > 0 else None,
+            "missed_window_count": row[12] or 0,
+            "avg_window_start_delay_s": _rnd(row[14]),
+            "avg_queue_wait_s": _rnd(row[15]),
+            "avg_total_processing_s": _rnd(row[16]),
             "per_processor_timing": {
-                "calibration_s": _rnd(row[18]),
-                "plate_solve_s": _rnd(row[19]),
-                "source_extractor_s": _rnd(row[20]),
-                "photometry_s": _rnd(row[21]),
-                "satellite_matcher_s": _rnd(row[22]),
-                "annotated_image_s": _rnd(row[23]),
+                "calibration_s": _rnd(row[17]),
+                "plate_solve_s": _rnd(row[18]),
+                "source_extractor_s": _rnd(row[19]),
+                "photometry_s": _rnd(row[20]),
+                "satellite_matcher_s": _rnd(row[21]),
+                "annotated_image_s": _rnd(row[22]),
             },
             "hours": hours,
         }
-
-    def close(self) -> None:
-        self._conn.close()
 
 
 # ── Helpers ────────────────────────────────────────────────────────────
