@@ -72,10 +72,7 @@ usb-camera = [
   "cv2-enumerate-cameras>=1.0.0",
 ]
 rpi = [
-  "picamera2>=0.3.12",
-]
-ximea = [
-  "ximea-api>=1.0.0",
+  "picamera2>=0.3.12; sys_platform == 'linux'",
 ]
 zwo-mount = [
   "pyserial>=3.5",
@@ -84,8 +81,7 @@ all-hardware = [
   "citrascope[indi,zwo-mount]",
   "opencv-python>=4.8.0",
   "cv2-enumerate-cameras>=1.0.0",
-  "picamera2>=0.3.12",
-  "ximea-api>=1.0.0",
+  "picamera2>=0.3.12; sys_platform == 'linux'",
 ]
 kstars = [
   "dbus-python",
@@ -109,6 +105,12 @@ deploy = ["twine"]
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.uv]
+# python-prctl is Linux-only and can't be built on macOS/Windows during resolution.
+dependency-metadata = [
+  { name = "python-prctl", version = "1.8.1", requires-python = ">=3.0" },
+]
 
 [tool.black]
 line-length = 120

@@ -23,17 +23,21 @@ Use [Citra.space](https://citra.space) to search for satellites, schedule observ
 
 ## Quick Start
 
-**Requires Python 3.10, 3.11, or 3.12.**
+**Requires Python 3.10, 3.11, or 3.12.** We recommend [uv](https://docs.astral.sh/uv/) for installation.
 
 ```sh
-python3 -m venv citrascope-env
-source citrascope-env/bin/activate
-pip install citrascope
+# Install uv (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install and run
+uv tool install citrascope
+citrascope
 ```
 
-Then start the daemon:
+Or with pip:
 
 ```sh
+pip install citrascope
 citrascope
 ```
 
@@ -44,13 +48,24 @@ Open `http://localhost:24872` in your browser to configure your hardware adapter
 ### Optional Extras
 
 ```sh
-pip install citrascope[indi]        # INDI protocol support
-pip install citrascope[kstars]      # KStars/Ekos via D-Bus
-pip install citrascope[usb-camera]  # USB cameras via OpenCV
-pip install citrascope[rpi]         # Raspberry Pi Camera Module
-pip install citrascope[ximea]       # Ximea industrial cameras
-pip install citrascope[all]         # INDI + KStars
+uv tool install citrascope --with citrascope[indi]        # INDI protocol support
+uv tool install citrascope --with citrascope[kstars]      # KStars/Ekos via D-Bus
+uv tool install citrascope --with citrascope[usb-camera]  # USB cameras via OpenCV
+uv tool install citrascope --with citrascope[rpi]         # Raspberry Pi Camera Module
+uv tool install citrascope --with citrascope[all]         # INDI + KStars
 ```
+
+<details>
+<summary>pip equivalents</summary>
+
+```sh
+pip install citrascope[indi]
+pip install citrascope[kstars]
+pip install citrascope[usb-camera]
+pip install citrascope[rpi]
+pip install citrascope[all]
+```
+</details>
 
 ### CLI Options
 
@@ -66,10 +81,8 @@ Full documentation is available at [docs.citra.space/citrascope](https://docs.ci
 ## Developer Setup
 
 ```sh
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e '.[dev]'
-pre-commit install
+uv sync --extra dev
+uv run pre-commit install
 ```
 
 ### Dev Container (INDI on macOS/Windows)
@@ -79,9 +92,9 @@ If you need to work with the INDI adapter on a non-Linux host, the project inclu
 ### Running Tests
 
 ```sh
-pytest                          # Unit tests (fast, skips slow tests)
-pytest -m "not integration"     # Same as above, explicit
-pytest --override-ini="addopts=" -m "not integration"  # Include slow tests locally
+uv run pytest                          # Unit tests (fast, skips slow tests)
+uv run pytest -m "not integration"     # Same as above, explicit
+uv run pytest --override-ini="addopts=" -m "not integration"  # Include slow tests locally
 ```
 
 Tests use `pytest` markers to separate fast unit tests from expensive ones:
@@ -97,7 +110,7 @@ Tests use `pytest` markers to separate fast unit tests from expensive ones:
 The project uses [pre-commit](https://pre-commit.com/) with **Ruff** (linting + import sorting), **Black** (formatting), and **Pyright** (type checking).
 
 ```sh
-pre-commit run --all-files    # Run all checks manually
+uv run pre-commit run --all-files    # Run all checks manually
 ```
 
 ### VS Code Launch Configs

@@ -9,9 +9,9 @@ CitraScope is a Python daemon that runs at a telescope. It polls a backend API f
 ## Quick start
 
 ```bash
-pip install -e ".[dev,test]"
-pytest -m "not integration"
-python -m citrascope  # starts the daemon
+uv sync --extra dev --extra test
+uv run pytest -m "not integration"
+uv run citrascope  # starts the daemon
 ```
 
 Web UI runs on port **24872** (CITRA on a phone keypad).
@@ -150,8 +150,8 @@ Lower-level modules must not import from higher-level ones. If a lower layer nee
 - Use `assert self.thing is not None` to satisfy type checkers when an attribute is guaranteed set after `connect()`.
 - **Logging**: use the project logger (`self.logger`), never `print()`.
 - **Tests**: `pytest`, files named `test_*.py` in `tests/unit/` or `tests/integration/`.
-- Run tests: `pytest` (slow tests auto-skipped locally via `addopts`; CI runs everything)
-- Run slow tests too: `pytest -m ""` or `pytest --override-ini="addopts="`
+- Run tests: `uv run pytest` (slow tests auto-skipped locally via `addopts`; CI runs everything)
+- Run slow tests too: `uv run pytest -m ""` or `uv run pytest --override-ini="addopts="`
 
 ### Static analysis — keep it green
 
@@ -246,9 +246,9 @@ Aim for tests that are roughly 1:1 or shorter than the code they test. If you ne
 - **astrometry.net** (`solve-field`): Plate solving. Install: `brew install astrometry-net` (macOS) / `apt install astrometry.net` (Linux). Requires [index files](https://data.astrometry.net/) (4100-series for wide FOV).
 - **SExtractor** (`sex` / `source-extractor`): Source extraction. Install: `brew install sextractor` (macOS) / `apt install sextractor` (Linux).
 
-Dev tools: **ruff** (linter + import sorting), **Black** (formatter), **pyright** (type checking, basic mode), **pytest** + **pytest-cov** (testing). Pre-commit hooks run ruff, black, and pyright automatically. CI runs ruff and pyright as separate jobs.
+**uv** is the project's Python toolchain — it manages the virtualenv, lockfile, and dependency resolution. Dev tools: **ruff** (linter + import sorting), **Black** (formatter), **pyright** (type checking, basic mode), **pytest** + **pytest-cov** (testing). Pre-commit hooks run ruff, black, and pyright automatically. CI runs ruff and pyright as separate jobs.
 
-Full dependency list in `pyproject.toml`.
+Full dependency list in `pyproject.toml`, pinned versions in `uv.lock`.
 
 ## External APIs
 
