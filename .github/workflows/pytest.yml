@@ -15,12 +15,12 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: '3.12'
       - name: Install ruff
-        run: pip install ruff==0.15.2
+        run: uv tool install ruff@0.15.2
       - name: Run ruff
         run: ruff check citrascope/ tests/
 
@@ -29,18 +29,16 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: '3.12'
       - name: Install project prerequisites
         run: sudo apt-get update && sudo apt-get install -y libglib2.0-dev libdbus-1-dev libjpeg-dev zlib1g-dev
       - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install .[dev]
+        run: uv sync --extra dev
       - name: Run pyright
-        run: pyright
+        run: uv run pyright
 
   test:
     runs-on: ubuntu-latest
@@ -51,19 +49,17 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install project prerequisites
         run: sudo apt-get update && sudo apt-get install -y libglib2.0-dev libdbus-1-dev libjpeg-dev zlib1g-dev
       - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install .[dev,test,indi,all]
+        run: uv sync --extra dev --extra test --extra indi --extra all
       - name: Run pytest with coverage
         run: |
-          pytest -m "not integration" --import-mode=importlib --override-ini="addopts=" --cov=citrascope --cov-report=term-missing --cov-report=xml --cov-branch
+          uv run pytest -m "not integration" --import-mode=importlib --override-ini="addopts=" --cov=citrascope --cov-report=term-missing --cov-report=xml --cov-branch
       - name: Upload coverage report
         uses: actions/upload-artifact@v7
         if: matrix.python-version == '3.12'

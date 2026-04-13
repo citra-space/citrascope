@@ -11,7 +11,7 @@ body = """
 """
 footer = """
 ---
-**Install:** `pip install citrascope`
+**Install:** `uv tool install citrascope` or `pip install citrascope`
 **PyPI:** https://pypi.org/project/citrascope/
 """
 trim = true

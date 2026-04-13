@@ -131,8 +131,7 @@ class TestDeviceDependencies:
             # If not available, should have missing packages
             if not result["available"]:
                 assert len(result["missing"]) > 0
-                # Install command should include pyproject.toml extra
-                assert "pip install citrascope[" in result["install_cmd"]
+                assert "citrascope" in result["install_cmd"]
 
     def test_camera_friendly_names(self):
         """Verify all cameras have friendly names."""
@@ -218,18 +217,17 @@ class TestDependencyCheckOutput:
     """Test dependency check output formatting."""
 
     def test_install_command_format(self):
-        """Verify install commands are properly formatted for cameras with pip deps."""
+        """Verify install commands are properly formatted for cameras with deps."""
         for camera_name in CAMERA_DEVICES.keys():
             camera_class = get_camera_class(camera_name)
             deps = camera_class.get_dependencies()
 
-            # Native-library-only drivers (no pip packages) don't have a pip install cmd
             if not deps["packages"] and not deps["install_extra"]:
                 continue
 
             result = check_dependencies(camera_class)
             cmd = result["install_cmd"]
-            assert cmd.startswith("pip install")
+            assert cmd.startswith("uv ")
             assert "citrascope" in cmd
 
     def test_missing_packages_list(self):

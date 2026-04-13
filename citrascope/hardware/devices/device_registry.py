@@ -275,7 +275,10 @@ def check_dependencies(device_class: type[Any]) -> dict[str, Any]:
             missing.append(package)
 
     available = len(missing) == 0
-    install_cmd = f"pip install citrascope[{install_extra}]" if install_extra else f"pip install {' '.join(missing)}"
+    if install_extra:
+        install_cmd = f"uv tool install citrascope --with citrascope[{install_extra}]"
+    else:
+        install_cmd = f"uv pip install {' '.join(missing)}"
 
     elapsed = time.time() - start_time
     if elapsed > 0.05:  # Log if takes more than 50ms
