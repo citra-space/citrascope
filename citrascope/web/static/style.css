@@ -297,3 +297,88 @@ body {
     from { width: 100%; }
     to   { width: 0%; }
 }
+
+/* ── Analysis tab ─────────────────────────────────────────────── */
+
+.analysis-card {
+    background: var(--bs-dark);
+    border-color: var(--bs-border-color);
+}
+.analysis-card-value {
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 1.2;
+    color: #e2e8f0;
+}
+.analysis-card-label {
+    font-size: 0.75rem;
+    color: #a0aec0;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.analysis-table {
+    font-size: 0.85rem;
+}
+.analysis-table th {
+    white-space: nowrap;
+    font-weight: 500;
+    color: #a0aec0;
+    border-bottom-color: var(--bs-border-color);
+}
+.analysis-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+}
+.analysis-table th.sortable:hover {
+    color: #e2e8f0;
+}
+
+.analysis-mini-bar {
+    display: flex;
+    width: 60px;
+    height: 8px;
+    border-radius: 3px;
+    overflow: hidden;
+    background: #2d3748;
+}
+.analysis-mini-bar-seg.slew  { background: var(--bs-primary); }
+.analysis-mini-bar-seg.queue { background: #6c5ce7; }
+.analysis-mini-bar-seg.proc  { background: #00b894; }
+
+.analysis-timing-seg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    transition: width 0.3s ease;
+}
+.analysis-timing-seg-label {
+    font-size: 0.65rem;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 0 4px;
+}
+
+.analysis-legend-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 3px;
+    vertical-align: middle;
+}
+
+.analysis-detail-card {
+    background: #1a1d23;
+    border-color: var(--bs-border-color);
+}
+.analysis-detail-card .card-body {
+    padding: 1rem;
+}
+
+.analysis-detail-timing-bar > div {
+    transition: width 0.3s ease;
+}

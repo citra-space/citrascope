@@ -1,0 +1,390 @@
+<div class="container-fluid my-4" id="analysisSection"
+     x-show="$store.citrascope.currentSection === 'analysis'" x-cloak
+     x-data="analysisTab()"
+     x-effect="if ($store.citrascope.currentSection === 'analysis' && !loaded) loadAll()">
+
+    <h4 class="mb-3">Pipeline Analysis</h4>
+
+    <!-- Summary cards -->
+    <div class="row g-3 mb-4" id="analysisCards">
+        <div class="col-6 col-md-4 col-xl-2">
+            <div class="card analysis-card h-100">
+                <div class="card-body p-2 text-center">
+                    <div class="analysis-card-value" x-text="stats.task_count ?? '—'"></div>
+                    <div class="analysis-card-label">Tasks</div>
+                    <small class="text-muted" x-text="stats.tasks_per_hour != null ? stats.tasks_per_hour + '/hr' : ''"></small>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-2">
+            <div class="card analysis-card h-100">
+                <div class="card-body p-2 text-center">
+                    <div class="analysis-card-value" x-text="stats.plate_solve_rate != null ? stats.plate_solve_rate + '%' : '—'"></div>
+                    <div class="analysis-card-label">Plate Solve Rate</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-2">
+            <div class="card analysis-card h-100">
+                <div class="card-body p-2 text-center">
+                    <div class="analysis-card-value" x-text="stats.convergence_rate != null ? stats.convergence_rate + '%' : '—'"></div>
+                    <div class="analysis-card-label">Convergence</div>
+                    <small class="text-muted" x-text="stats.avg_convergence_attempts != null ? 'avg ' + stats.avg_convergence_attempts + ' iter' : ''"></small>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-2">
+            <div class="card analysis-card h-100">
+                <div class="card-body p-2 text-center">
+                    <div class="analysis-card-value" x-text="stats.avg_pointing_error_arcsec != null ? stats.avg_pointing_error_arcsec + '″' : '—'"></div>
+                    <div class="analysis-card-label">Avg Pointing Error</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-2">
+            <div class="card analysis-card h-100">
+                <div class="card-body p-2 text-center">
+                    <div class="analysis-card-value" x-text="stats.target_match_rate != null ? stats.target_match_rate + '%' : '—'"></div>
+                    <div class="analysis-card-label">Target Match</div>
+                    <small class="text-muted" x-text="stats.total_incidental_detections ? stats.total_incidental_detections + ' incidental' : ''"></small>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-2">
+            <div class="card analysis-card h-100">
+                <div class="card-body p-2 text-center">
+                    <div class="analysis-card-value" x-text="stats.upload_success_rate != null ? stats.upload_success_rate + '%' : '—'"></div>
+                    <div class="analysis-card-label">Upload Success</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-2">
+            <div class="card analysis-card h-100">
+                <div class="card-body p-2 text-center">
+                    <div class="analysis-card-value" x-text="stats.window_compliance_rate != null ? stats.window_compliance_rate + '%' : '—'"></div>
+                    <div class="analysis-card-label">On Time</div>
+                    <small class="text-muted" x-text="stats.avg_window_start_delay_s != null ? 'avg +' + stats.avg_window_start_delay_s + 's' : ''"></small>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-2">
+            <div class="card analysis-card h-100">
+                <div class="card-body p-2 text-center">
+                    <div class="analysis-card-value" x-text="stats.avg_zero_point != null ? stats.avg_zero_point : '—'"></div>
+                    <div class="analysis-card-label">Avg ZP</div>
+                    <small class="text-muted" x-text="stats.stddev_zero_point != null ? '± ' + stats.stddev_zero_point : ''"></small>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-2">
+            <div class="card analysis-card h-100">
+                <div class="card-body p-2 text-center">
+                    <div class="analysis-card-value" x-text="stats.avg_total_processing_s != null ? stats.avg_total_processing_s + 's' : '—'"></div>
+                    <div class="analysis-card-label">Avg Processing</div>
+                    <small class="text-muted" x-text="stats.avg_queue_wait_s != null ? 'queue ' + stats.avg_queue_wait_s + 's' : ''"></small>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-2">
+            <div class="card analysis-card h-100">
+                <div class="card-body p-2 text-center">
+                    <div class="analysis-card-value" x-text="stats.avg_slew_time_s != null ? stats.avg_slew_time_s + 's' : '—'"></div>
+                    <div class="analysis-card-label">Avg Slew</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Per-processor timing bar -->
+    <template x-if="stats.per_processor_timing && stats.task_count > 0">
+        <div class="mb-4">
+            <small class="text-muted d-block mb-1">Average per-processor time (seconds)</small>
+            <div class="analysis-timing-bar d-flex" style="height: 22px; border-radius: 4px; overflow: hidden;">
+                <template x-for="seg in processorSegments" :key="seg.name">
+                    <div class="analysis-timing-seg" :style="'width:' + seg.pct + '%; background:' + seg.color"
+                         :title="seg.name + ': ' + seg.val + 's'" x-show="seg.pct > 0">
+                        <span class="analysis-timing-seg-label" x-text="seg.pct > 8 ? seg.name : ''" x-show="seg.pct > 5"></span>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </template>
+
+    <!-- Filters -->
+    <div class="row g-2 mb-3 align-items-end">
+        <div class="col-auto">
+            <input type="text" class="form-control form-control-sm" placeholder="Target name..."
+                   x-model.debounce.300ms="filterTarget" @input="loadTasks()">
+        </div>
+        <div class="col-auto">
+            <select class="form-select form-select-sm" x-model="filterSolved" @change="loadTasks()">
+                <option value="">Solve: any</option>
+                <option value="true">Solved</option>
+                <option value="false">Not solved</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <select class="form-select form-select-sm" x-model="filterMatched" @change="loadTasks()">
+                <option value="">Match: any</option>
+                <option value="true">Target matched</option>
+                <option value="false">Not matched</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <select class="form-select form-select-sm" x-model="filterWindow" @change="loadTasks()">
+                <option value="">Window: any</option>
+                <option value="true">Missed</option>
+                <option value="false">On time</option>
+            </select>
+        </div>
+        <div class="col-auto ms-auto">
+            <button class="btn btn-sm btn-outline-secondary" @click="loadAll()" :disabled="loading">
+                <i class="bi bi-arrow-clockwise" :class="loading && 'spin'"></i> Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- Task table -->
+    <div class="table-responsive">
+        <table class="table table-sm table-hover analysis-table">
+            <thead>
+                <tr>
+                    <th class="sortable" @click="toggleSort('completed_at')">
+                        Time <span x-text="sortIcon('completed_at')"></span>
+                    </th>
+                    <th class="sortable" @click="toggleSort('target_name')">
+                        Target <span x-text="sortIcon('target_name')"></span>
+                    </th>
+                    <th>Filter</th>
+                    <th>Window</th>
+                    <th>Converged</th>
+                    <th>Solved</th>
+                    <th class="sortable" @click="toggleSort('pointing_error_arcsec')">
+                        Pointing <span x-text="sortIcon('pointing_error_arcsec')"></span>
+                    </th>
+                    <th>Target Hit</th>
+                    <th>Extras</th>
+                    <th class="sortable" @click="toggleSort('zero_point')">
+                        ZP <span x-text="sortIcon('zero_point')"></span>
+                    </th>
+                    <th>Upload</th>
+                    <th>Duration</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                <template x-for="task in tasks" :key="task.task_id">
+                    <tr>
+                        <td><small x-text="formatTime(task.completed_at)"></small></td>
+                        <td x-text="task.target_name || '—'"></td>
+                        <td><small x-text="task.filter_name || '—'"></small></td>
+                        <td>
+                            <span x-show="task.missed_window === 1" class="badge bg-danger">Missed</span>
+                            <span x-show="task.missed_window === 0 && task.window_start_delay_s != null && task.window_start_delay_s > 30"
+                                  class="badge bg-warning text-dark"
+                                  x-text="'Late +' + Math.round(task.window_start_delay_s) + 's'"></span>
+                            <span x-show="task.missed_window === 0 && (task.window_start_delay_s == null || task.window_start_delay_s <= 30)"
+                                  class="badge bg-success">On time</span>
+                            <span x-show="task.missed_window == null" class="text-muted">—</span>
+                        </td>
+                        <td>
+                            <span x-show="task.converged === 1" class="text-success">✓</span>
+                            <span x-show="task.converged === 0" class="text-danger">✗</span>
+                            <span x-show="task.converged == null" class="text-muted">—</span>
+                            <small x-show="task.convergence_attempts" class="text-muted" x-text="'×' + task.convergence_attempts"></small>
+                        </td>
+                        <td>
+                            <span x-show="task.plate_solved === 1" class="text-success">✓</span>
+                            <span x-show="task.plate_solved === 0" class="text-danger">✗</span>
+                            <span x-show="task.plate_solved == null" class="text-muted">—</span>
+                        </td>
+                        <td>
+                            <span x-show="task.pointing_error_arcsec != null"
+                                  :class="pointingClass(task.pointing_error_arcsec)"
+                                  x-text="task.pointing_error_arcsec?.toFixed(1) + '″'"></span>
+                            <span x-show="task.pointing_error_arcsec == null" class="text-muted">—</span>
+                        </td>
+                        <td>
+                            <span x-show="task.target_matched === 1" class="text-success">✓</span>
+                            <span x-show="task.target_matched === 0 && task.target_satellite_id" class="text-danger">✗</span>
+                            <span x-show="task.target_satellite_id == null" class="text-muted">—</span>
+                        </td>
+                        <td>
+                            <span x-text="task.incidental_matches || '—'" :class="task.incidental_matches > 0 ? 'text-info' : 'text-muted'"></span>
+                        </td>
+                        <td>
+                            <span x-text="task.zero_point != null ? task.zero_point.toFixed(2) : '—'"
+                                  :class="task.zero_point != null ? '' : 'text-muted'"></span>
+                        </td>
+                        <td>
+                            <span x-show="task.upload_success === 1" class="text-success">✓</span>
+                            <span x-show="task.upload_success === 0" class="text-danger">✗</span>
+                            <span x-show="task.upload_success == null && task.should_upload === 0" class="text-muted">skip</span>
+                            <span x-show="task.upload_success == null && task.should_upload !== 0" class="text-warning">…</span>
+                        </td>
+                        <td>
+                            <div class="analysis-mini-bar" :title="durationTitle(task)">
+                                <div class="analysis-mini-bar-seg slew" :style="'width:' + durationPct(task, 'slew') + '%'"></div>
+                                <div class="analysis-mini-bar-seg queue" :style="'width:' + durationPct(task, 'queue') + '%'"></div>
+                                <div class="analysis-mini-bar-seg proc" :style="'width:' + durationPct(task, 'proc') + '%'"></div>
+                            </div>
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-link p-0" @click="toggleDetail(task.task_id)">
+                                <i class="bi" :class="expanded === task.task_id ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+                            </button>
+                        </td>
+                    </tr>
+                </template>
+                <template x-if="tasks.length === 0 && !loading">
+                    <tr><td colspan="13" class="text-center text-muted py-4">
+                        No completed tasks yet. Results appear here after the processing pipeline runs.
+                    </td></tr>
+                </template>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    <div class="d-flex justify-content-between align-items-center mb-3" x-show="total > pageSize">
+        <small class="text-muted" x-text="'Showing ' + (offset + 1) + '–' + Math.min(offset + pageSize, total) + ' of ' + total"></small>
+        <div>
+            <button class="btn btn-sm btn-outline-secondary" :disabled="offset === 0" @click="offset = Math.max(0, offset - pageSize); loadTasks()">Prev</button>
+            <button class="btn btn-sm btn-outline-secondary" :disabled="offset + pageSize >= total" @click="offset += pageSize; loadTasks()">Next</button>
+        </div>
+    </div>
+
+    <!-- Expanded detail panel -->
+    <template x-if="expanded && detail">
+        <div class="card analysis-detail-card mb-4">
+            <div class="card-body">
+                <div class="row">
+                    <!-- Left: image preview -->
+                    <div class="col-md-4 mb-3 mb-md-0">
+                        <img :src="'/api/analysis/tasks/' + detail.task_id + '/image'" class="img-fluid rounded"
+                             @error="$event.target.style.display='none'"
+                             style="max-height: 300px; object-fit: contain; background: #111;">
+                        <div class="text-muted small mt-1" x-show="!detail.has_annotated_image">No preview available</div>
+                    </div>
+                    <!-- Right: details -->
+                    <div class="col-md-8">
+                        <h6 x-text="detail.target_name || detail.task_id"></h6>
+
+                        <!-- Task window timeline -->
+                        <template x-if="detail.window_start && detail.window_stop">
+                            <div class="mb-3">
+                                <small class="text-muted">Task window</small>
+                                <div class="d-flex align-items-center gap-2">
+                                    <small x-text="formatTime(detail.window_start)"></small>
+                                    <div class="flex-grow-1 position-relative" style="height: 8px; background: #333; border-radius: 4px;">
+                                        <div class="position-absolute bg-success" style="height: 100%; border-radius: 4px;"
+                                             :style="'left:' + windowPct(detail, 'start') + '%; width:' + windowPct(detail, 'width') + '%'"></div>
+                                    </div>
+                                    <small x-text="formatTime(detail.window_stop)"></small>
+                                </div>
+                                <div class="d-flex gap-3 mt-1">
+                                    <small class="text-muted" x-show="detail.window_start_delay_s != null"
+                                           x-text="'Start delay: ' + detail.window_start_delay_s?.toFixed(1) + 's'"></small>
+                                    <small class="text-muted" x-show="detail.window_time_remaining_s != null"
+                                           x-text="'Remaining: ' + detail.window_time_remaining_s?.toFixed(1) + 's'"></small>
+                                </div>
+                            </div>
+                        </template>
+
+                        <!-- Convergence -->
+                        <template x-if="detail.convergence_attempts != null">
+                            <div class="mb-3">
+                                <small class="text-muted">Convergence</small>
+                                <div class="d-flex gap-3">
+                                    <span x-text="(detail.converged ? '✓ Converged' : '✗ Failed') + ' in ' + detail.convergence_attempts + ' iteration(s)'"></span>
+                                    <span x-show="detail.total_slew_time_s" x-text="'Slew: ' + detail.total_slew_time_s?.toFixed(1) + 's'"></span>
+                                    <span x-show="detail.convergence_threshold_deg" class="text-muted"
+                                          x-text="'threshold: ' + (detail.convergence_threshold_deg * 3600).toFixed(0) + '″'"></span>
+                                </div>
+                            </div>
+                        </template>
+
+                        <!-- Plate solve -->
+                        <div class="mb-3">
+                            <small class="text-muted">Plate solve</small>
+                            <div class="d-flex gap-3 flex-wrap">
+                                <span x-text="detail.plate_solved ? '✓ Solved' : '✗ Not solved'"></span>
+                                <span x-show="detail.source_count" x-text="detail.source_count + ' sources'"></span>
+                                <span x-show="detail.pixel_scale" x-text="detail.pixel_scale?.toFixed(2) + '″/px'"></span>
+                                <span x-show="detail.field_width_deg" x-text="(detail.field_width_deg * 60).toFixed(1) + '′ × ' + (detail.field_height_deg * 60).toFixed(1) + '′'"></span>
+                                <span x-show="detail.calibration_applied" class="badge bg-info">Calibrated</span>
+                            </div>
+                        </div>
+
+                        <!-- Photometry -->
+                        <div class="mb-3">
+                            <small class="text-muted">Photometry</small>
+                            <div class="d-flex gap-3">
+                                <span x-show="detail.zero_point != null" x-text="'ZP ' + detail.zero_point?.toFixed(3)"></span>
+                                <span x-show="detail.calibration_star_count" x-text="detail.calibration_star_count + ' cal stars'"></span>
+                                <span x-show="detail.filter_name" x-text="'Filter: ' + detail.filter_name"></span>
+                            </div>
+                        </div>
+
+                        <!-- Satellite matching -->
+                        <div class="mb-3">
+                            <small class="text-muted">Satellite matching</small>
+                            <div class="d-flex gap-3 flex-wrap">
+                                <span x-show="detail.target_satellite_name"
+                                      x-text="'Target: ' + detail.target_satellite_name + (detail.target_matched ? ' ✓' : ' ✗')"></span>
+                                <span x-show="detail.target_satellite_mag != null" x-text="'mag ' + detail.target_satellite_mag?.toFixed(2)"></span>
+                                <span x-text="(detail.total_satellites_detected || 0) + ' total detected'"></span>
+                                <span x-show="detail.incidental_matches" class="text-info"
+                                      x-text="detail.incidental_matches + ' incidental'"></span>
+                            </div>
+                        </div>
+
+                        <!-- Timing breakdown -->
+                        <div class="mb-3">
+                            <small class="text-muted">Timing breakdown</small>
+                            <div class="analysis-detail-timing-bar d-flex" style="height: 20px; border-radius: 4px; overflow: hidden;">
+                                <div class="bg-primary" :style="'width:' + detailTimingPct(detail, 'total_slew_time_s') + '%'"
+                                     :title="'Slew: ' + (detail.total_slew_time_s || 0).toFixed(1) + 's'"></div>
+                                <div style="background: #6c5ce7" :style="'width:' + detailTimingPct(detail, 'processing_queue_wait_s') + '%'"
+                                     :title="'Queue wait: ' + (detail.processing_queue_wait_s || 0).toFixed(1) + 's'"></div>
+                                <div style="background: #00b894" :style="'width:' + detailTimingPct(detail, 'calibration_time_s') + '%'"
+                                     :title="'Calibration: ' + (detail.calibration_time_s || 0).toFixed(2) + 's'"></div>
+                                <div style="background: #fdcb6e" :style="'width:' + detailTimingPct(detail, 'plate_solve_time_s') + '%'"
+                                     :title="'Plate solve: ' + (detail.plate_solve_time_s || 0).toFixed(2) + 's'"></div>
+                                <div style="background: #e17055" :style="'width:' + detailTimingPct(detail, 'source_extractor_time_s') + '%'"
+                                     :title="'Source extraction: ' + (detail.source_extractor_time_s || 0).toFixed(2) + 's'"></div>
+                                <div style="background: #74b9ff" :style="'width:' + detailTimingPct(detail, 'photometry_time_s') + '%'"
+                                     :title="'Photometry: ' + (detail.photometry_time_s || 0).toFixed(2) + 's'"></div>
+                                <div style="background: #a29bfe" :style="'width:' + detailTimingPct(detail, 'matcher_time_s') + '%'"
+                                     :title="'Matcher: ' + (detail.matcher_time_s || 0).toFixed(2) + 's'"></div>
+                                <div style="background: #636e72" :style="'width:' + detailTimingPct(detail, 'annotated_image_time_s') + '%'"
+                                     :title="'Annotated image: ' + (detail.annotated_image_time_s || 0).toFixed(2) + 's'"></div>
+                            </div>
+                            <div class="d-flex flex-wrap gap-2 mt-1" style="font-size: 0.75rem;">
+                                <span><span class="analysis-legend-dot bg-primary"></span> Slew</span>
+                                <span><span class="analysis-legend-dot" style="background:#6c5ce7"></span> Queue</span>
+                                <span><span class="analysis-legend-dot" style="background:#00b894"></span> Cal</span>
+                                <span><span class="analysis-legend-dot" style="background:#fdcb6e"></span> Solve</span>
+                                <span><span class="analysis-legend-dot" style="background:#e17055"></span> SExtract</span>
+                                <span><span class="analysis-legend-dot" style="background:#74b9ff"></span> Phot</span>
+                                <span><span class="analysis-legend-dot" style="background:#a29bfe"></span> Match</span>
+                                <span><span class="analysis-legend-dot" style="background:#636e72"></span> Annotate</span>
+                            </div>
+                        </div>
+
+                        <!-- Artifacts -->
+                        <div>
+                            <template x-if="detail.artifacts_available">
+                                <a :href="'/api/analysis/tasks/' + detail.task_id + '/artifacts/processing_summary.json'"
+                                   target="_blank" class="btn btn-sm btn-outline-secondary">View full report</a>
+                            </template>
+                            <template x-if="!detail.artifacts_available">
+                                <span class="badge bg-secondary">Artifacts expired</span>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template>
+</div>

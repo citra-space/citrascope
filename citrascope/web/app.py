@@ -1812,6 +1812,79 @@ class CitraScopeWebApp:
                 CITRASCOPE_LOGGER.error(f"Error during preview capture: {e}", exc_info=True)
                 return JSONResponse({"error": str(e)}, status_code=500)
 
+        # ── Analysis endpoints ──────────────────────────────────────────
+
+        @self.app.get("/api/analysis/tasks")
+        async def analysis_tasks(
+            limit: int = 50,
+            offset: int = 0,
+            sort: str = "completed_at",
+            order: str = "desc",
+            target_name: str | None = None,
+            plate_solved: bool | None = None,
+            target_matched: bool | None = None,
+            missed_window: bool | None = None,
+            date_from: str | None = None,
+            date_to: str | None = None,
+        ):
+            """Paginated, filterable list of completed tasks."""
+            if not self.daemon or not self.daemon.task_index:
+                return JSONResponse({"tasks": [], "total": 0})
+            return self.daemon.task_index.query_tasks(
+                limit=min(limit, 200),
+                offset=offset,
+                sort=sort,
+                order=order,
+                target_name=target_name,
+                plate_solved=plate_solved,
+                target_matched=target_matched,
+                missed_window=missed_window,
+                date_from=date_from,
+                date_to=date_to,
+            )
+
+        @self.app.get("/api/analysis/tasks/{task_id}")
+        async def analysis_task_detail(task_id: str):
+            """Single task detail with all fields."""
+            if not self.daemon or not self.daemon.task_index:
+                return JSONResponse({"error": "Analysis not available"}, status_code=503)
+            task = self.daemon.task_index.get_task(task_id)
+            if task is None:
+                return JSONResponse({"error": "Task not found"}, status_code=404)
+            task["artifacts_available"] = (self.daemon.settings.directories.processing_dir / task_id).is_dir()
+            return task
+
+        @self.app.get("/api/analysis/tasks/{task_id}/image")
+        async def analysis_task_image(task_id: str):
+            """Serve annotated preview image for a task."""
+            if not self.daemon:
+                return JSONResponse({"error": "Not available"}, status_code=503)
+            preview = self.daemon.settings.directories.analysis_previews_dir / f"{task_id}.jpg"
+            if not preview.is_file():
+                return JSONResponse({"error": "Image not available"}, status_code=404)
+            return FileResponse(str(preview), media_type="image/jpeg")
+
+        @self.app.get("/api/analysis/tasks/{task_id}/artifacts/{filename}")
+        async def analysis_task_artifact(task_id: str, filename: str):
+            """Serve an artifact file from the processing directory."""
+            if not self.daemon:
+                return JSONResponse({"error": "Not available"}, status_code=503)
+            # Prevent directory traversal
+            safe_name = Path(filename).name
+            artifact = self.daemon.settings.directories.processing_dir / task_id / safe_name
+            if not artifact.is_file():
+                return JSONResponse({"error": "Artifact not found or expired"}, status_code=404)
+            return FileResponse(str(artifact))
+
+        @self.app.get("/api/analysis/stats")
+        async def analysis_stats(hours: int = 24):
+            """Aggregate statistics over the given time window."""
+            if not self.daemon or not self.daemon.task_index:
+                from citrascope.analysis.task_index import _empty_stats
+
+                return _empty_stats()
+            return self.daemon.task_index.get_stats(hours=max(1, min(hours, 8760)))
+
         @self.app.websocket("/ws")
         async def websocket_endpoint(websocket: WebSocket):
             """WebSocket endpoint for real-time updates."""
