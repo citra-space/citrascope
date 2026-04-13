@@ -406,6 +406,10 @@
                                                     </div>
                                                 </div>
 
+                                                <div class="mb-1" x-show="totalElapsed(detail) > 0">
+                                                    <strong x-text="'Total: ' + totalElapsed(detail).toFixed(1) + 's'"></strong>
+                                                    <span class="text-muted" style="font-size: 0.8rem">(slew to processing complete)</span>
+                                                </div>
                                                 <div class="mb-3">
                                                     <small class="text-muted d-block mb-1">Task phases</small>
                                                     <div class="d-flex" style="height: 20px; border-radius: 4px; overflow: hidden;">

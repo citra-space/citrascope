@@ -188,6 +188,15 @@ document.addEventListener('alpine:init', () => {
             return parts.join(' | ') || 'No window data';
         },
 
+        totalElapsed(d) {
+            const start = d.slew_started_at ? new Date(d.slew_started_at).getTime() : null;
+            const end = d.processing_finished_at ? new Date(d.processing_finished_at).getTime()
+                      : d.imaging_finished_at ? new Date(d.imaging_finished_at).getTime()
+                      : null;
+            if (!start || !end) return 0;
+            return Math.max(0, (end - start) / 1000);
+        },
+
         // Processor segments for the summary bar
         get processorSegments() {
             const pp = this.stats.per_processor_timing;
