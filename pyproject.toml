@@ -74,6 +74,7 @@ usb-camera = [
 rpi = [
   "picamera2>=0.3.12; sys_platform == 'linux'",
 ]
+ximea = []
 zwo-mount = [
   "pyserial>=3.5",
 ]
