@@ -361,12 +361,14 @@ class TestEvaluateSafetyQueueStop:
         """After a failed unwind, the next idle tick should retry."""
         check = MagicMock()
         check.name = "cable_wrap"
+        check.execute_action.side_effect = [RuntimeError("stall"), None]
 
-        # Tick 1: first QUEUE_STOP with idle queue — unwind fires.
+        # Tick 1: QUEUE_STOP with idle queue — unwind fires but raises.
         self._call(task_manager, queue_idle=True, action=SafetyAction.QUEUE_STOP, triggered_check=check)
         assert check.execute_action.call_count == 1
+        task_manager.logger.error.assert_called()
 
-        # Tick 2: still QUEUE_STOP, still idle — should call again (retry).
+        # Tick 2: still QUEUE_STOP, still idle — retry succeeds.
         self._call(task_manager, queue_idle=True, action=SafetyAction.QUEUE_STOP, triggered_check=check)
         assert check.execute_action.call_count == 2
 
