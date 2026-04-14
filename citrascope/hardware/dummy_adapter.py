@@ -497,6 +497,27 @@ def _best_mag(df: pd.DataFrame) -> np.ndarray:
     return result
 
 
+def _interpolate_trail(pixel_coords: np.ndarray, max_step: float) -> np.ndarray:
+    """Linearly interpolate pixel_coords so consecutive points are <= max_step apart.
+
+    Preserves the original control points and inserts extras along each segment
+    so that PSF stamps overlap into a continuous streak for fast-moving satellites.
+    """
+    if len(pixel_coords) < 2:
+        return pixel_coords
+
+    points = [pixel_coords[0]]
+    for i in range(1, len(pixel_coords)):
+        p0 = pixel_coords[i - 1]
+        p1 = pixel_coords[i]
+        dist = np.hypot(p1[0] - p0[0], p1[1] - p0[1])
+        n_interp = max(1, int(np.ceil(dist / max_step)))
+        for j in range(1, n_interp + 1):
+            frac = j / n_interp
+            points.append(p0 + frac * (p1 - p0))
+    return np.array(points)
+
+
 class DummyAdapter(AbstractAstroHardwareAdapter):
     """
     Dummy hardware adapter that simulates hardware without requiring real devices.
@@ -884,7 +905,9 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
 
         # --- Render satellite streaks from elset cache -----------------------
         if date_obs_str and exptime > 0:
-            n_sats = self._render_satellites(image, wcs, psf_stamp, stamp_r, size_x, size_y, exptime, date_obs_str)
+            n_sats = self._render_satellites(
+                image, wcs, psf_stamp, stamp_r, size_x, size_y, exptime, effective_psf_sigma, date_obs_str
+            )
             if n_sats > 0:
                 self.logger.debug(f"DummyAdapter: Rendered {n_sats} satellite(s) in FOV")
 
@@ -1046,6 +1069,7 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         size_x: int,
         size_y: int,
         exptime: float,
+        effective_psf_sigma: float,
         date_obs_str: str,
     ) -> int:
         """Render all in-FOV satellites from the elset cache onto the image.
@@ -1173,13 +1197,15 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
 
             pixel_coords = result["pixel_coords"]
             app_mag = result["apparent_mag"]
-            n_samples = len(pixel_coords)
 
             flux_e = 10.0 ** ((_DUMMY_MAG_ZERO - app_mag) / 2.5) * exptime
             total_adu = flux_e / _DUMMY_GAIN
-            adu_per_sample = total_adu / n_samples
 
-            for xp, yp in pixel_coords:
+            max_step_px = max(1.0, effective_psf_sigma)
+            trail_points = _interpolate_trail(pixel_coords, max_step_px)
+            adu_per_point = total_adu / len(trail_points)
+
+            for xp, yp in trail_points:
                 xi, yi = round(xp), round(yp)
                 x0, y0 = xi - stamp_r, yi - stamp_r
                 ix0 = max(0, x0)
@@ -1192,7 +1218,7 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
                 sy1 = sy0 + (iy1 - iy0)
 
                 if ix1 > ix0 and iy1 > iy0:
-                    image[iy0:iy1, ix0:ix1] += psf_stamp[sy0:sy1, sx0:sx1] * adu_per_sample
+                    image[iy0:iy1, ix0:ix1] += psf_stamp[sy0:sy1, sx0:sx1] * adu_per_point
 
             n_rendered += 1
             self.logger.info(
