@@ -16,19 +16,16 @@ Use [Citra.space](https://citra.space) to search for satellites, schedule observ
 
 | Adapter | Platform | Connects to |
 |---------|----------|-------------|
+| **Direct** | Any | Composable device adapters (USB cameras, Ximea, Raspberry Pi Camera) |
 | **NINA** | Windows | [N.I.N.A.](https://nighttime-imaging.eu/) via Advanced HTTP API |
 | **KStars** | Linux, macOS | [KStars/Ekos](https://kstars.kde.org/) via D-Bus |
 | **INDI** | Linux | Any [INDI](https://indilib.org/)-compatible device |
-| **Direct** | Any | Composable device adapters (USB cameras, Ximea, Raspberry Pi Camera) |
 
 ## Quick Start
 
-**Requires Python 3.10, 3.11, or 3.12.** We recommend [uv](https://docs.astral.sh/uv/) for installation.
+**Requires Python 3.10+.** We recommend [uv](https://docs.astral.sh/uv/) for installation.
 
 ```sh
-# Install uv (if not already installed)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
 # Install and run
 uv tool install citrascope
 citrascope
