@@ -1,10 +1,14 @@
 """Unit tests for the analysis TaskIndex (SQLite)."""
 
+import sqlite3
 from unittest.mock import MagicMock
 
 import pytest
 
 from citrascope.analysis.task_index import (
+    _MIGRATIONS,
+    _SCHEMA,
+    _SCHEMA_VERSION,
     TaskIndex,
     _angular_distance_deg,
     _bool_int,
@@ -240,3 +244,77 @@ class TestHelpers:
         assert d == pytest.approx(1.0, abs=0.001)
         d2 = _angular_distance_deg(0, 0, 0, 0)
         assert d2 == pytest.approx(0.0)
+
+
+class TestSchemaMigration:
+    """Tests for the _migrate() schema migration system."""
+
+    @staticmethod
+    def _create_v0_db(db_path):
+        """Create a DB with only the v0 baseline schema and user_version=0."""
+        conn = sqlite3.connect(str(db_path))
+        conn.executescript(_SCHEMA)
+        conn.execute("PRAGMA user_version = 0")
+        conn.commit()
+        conn.close()
+
+    def test_v0_migrates_to_current(self, tmp_path):
+        """A v0 DB gets all migrations applied up to _SCHEMA_VERSION."""
+        db = tmp_path / "v0.db"
+        self._create_v0_db(db)
+
+        idx = TaskIndex(db)
+        version = idx._conn.execute("PRAGMA user_version").fetchone()[0]
+        assert version == _SCHEMA_VERSION
+
+        task = _make_task()
+        pointing = _make_pointing()
+        pointing["slew_ahead"] = {
+            "exposure_seconds": 2.5,
+            "num_exposures": 3,
+            "adaptive_exposure_active": True,
+        }
+        idx.record_task(task=task, result=_make_result(), pointing_report=pointing, timing_info=_make_timing())
+        row = idx.get_task("task-001")
+        assert row["exposure_seconds"] == pytest.approx(2.5)
+        assert row["num_exposures"] == 3
+        assert row["adaptive_exposure_active"] == 1
+        idx.close()
+
+    def test_already_current_is_noop(self, tmp_path):
+        """Opening a DB that is already at _SCHEMA_VERSION runs no migrations."""
+        db = tmp_path / "current.db"
+        idx1 = TaskIndex(db)
+        idx1.record_task(task=_make_task(), result=_make_result(), pointing_report=None, timing_info=None)
+        idx1.close()
+
+        idx2 = TaskIndex(db)
+        version = idx2._conn.execute("PRAGMA user_version").fetchone()[0]
+        assert version == _SCHEMA_VERSION
+        assert idx2.get_task("task-001") is not None
+        idx2.close()
+
+    def test_partial_migration(self, tmp_path):
+        """A DB at v1 only runs migrations from v1 onward."""
+        db = tmp_path / "partial.db"
+        self._create_v0_db(db)
+
+        conn = sqlite3.connect(str(db))
+        _desc, stmts = _MIGRATIONS[0]
+        for sql in stmts:
+            conn.execute(sql)
+        conn.execute("PRAGMA user_version = 1")
+        conn.commit()
+        conn.close()
+
+        idx = TaskIndex(db)
+        version = idx._conn.execute("PRAGMA user_version").fetchone()[0]
+        assert version == _SCHEMA_VERSION
+
+        task = _make_task()
+        pointing = _make_pointing()
+        pointing["slew_ahead"] = {"adaptive_exposure_active": False}
+        idx.record_task(task=task, result=_make_result(), pointing_report=pointing, timing_info=_make_timing())
+        row = idx.get_task("task-001")
+        assert row["adaptive_exposure_active"] == 0
+        idx.close()

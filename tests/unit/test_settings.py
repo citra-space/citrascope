@@ -579,3 +579,30 @@ def test_sextractor_filter_name_non_string_fallback():
         s = CitraScopeSettings.load()
 
     assert s.sextractor_filter_name == "default"
+
+
+def test_adaptive_exposure_min_gt_max_clamps_min():
+    """When adaptive min > max, model validator clamps min down to max."""
+    from citrascope.settings.citrascope_settings import CitraScopeSettings
+
+    s = CitraScopeSettings.model_validate({"adaptive_exposure_min_seconds": 20.0, "adaptive_exposure_max_seconds": 5.0})
+    assert s.adaptive_exposure_min_seconds == s.adaptive_exposure_max_seconds
+    assert s.adaptive_exposure_min_seconds == 5.0
+
+
+def test_adaptive_exposure_min_equal_max_accepted():
+    """When min == max, no clamping occurs."""
+    from citrascope.settings.citrascope_settings import CitraScopeSettings
+
+    s = CitraScopeSettings.model_validate({"adaptive_exposure_min_seconds": 5.0, "adaptive_exposure_max_seconds": 5.0})
+    assert s.adaptive_exposure_min_seconds == 5.0
+    assert s.adaptive_exposure_max_seconds == 5.0
+
+
+def test_adaptive_exposure_min_lt_max_accepted():
+    """Normal min < max is preserved as-is."""
+    from citrascope.settings.citrascope_settings import CitraScopeSettings
+
+    s = CitraScopeSettings.model_validate({"adaptive_exposure_min_seconds": 0.5, "adaptive_exposure_max_seconds": 30.0})
+    assert s.adaptive_exposure_min_seconds == 0.5
+    assert s.adaptive_exposure_max_seconds == 30.0

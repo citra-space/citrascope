@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 
 # Application constants for platformdirs
 # Defined before imports to avoid circular dependency
@@ -471,6 +471,19 @@ class CitraScopeSettings(BaseModel):
             CITRASCOPE_LOGGER.warning("custom dir path %r is not absolute. Ignoring.", v)
             return ""
         return str(p)
+
+    # ── Cross-field validators ────────────────────────────────────────
+
+    @model_validator(mode="after")
+    def _validate_adaptive_exposure_range(self) -> CitraScopeSettings:
+        if self.adaptive_exposure_min_seconds > self.adaptive_exposure_max_seconds:
+            CITRASCOPE_LOGGER.warning(
+                "adaptive_exposure_min_seconds (%.3f) > adaptive_exposure_max_seconds (%.3f). Clamping min to max.",
+                self.adaptive_exposure_min_seconds,
+                self.adaptive_exposure_max_seconds,
+            )
+            self.adaptive_exposure_min_seconds = self.adaptive_exposure_max_seconds
+        return self
 
     # ── Factory ───────────────────────────────────────────────────────
 

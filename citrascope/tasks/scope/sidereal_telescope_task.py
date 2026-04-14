@@ -59,10 +59,12 @@ class SiderealTelescopeTask(AbstractBaseTelescopeTask):
         num_exposures = self.settings.num_exposures
         angular_rate = self.compute_angular_rate(satellite_data, celestial=True)
 
+        adaptive_actually_applied = False
         if self.settings.adaptive_exposure:
             adaptive = self.compute_adaptive_exposure(angular_rate)
             if adaptive is not None:
                 exposure = adaptive
+                adaptive_actually_applied = True
                 self.logger.info(
                     "Adaptive exposure: %.3fs (angular rate %.6f\u00b0/s, max trail %.1f px)",
                     exposure,
@@ -123,7 +125,7 @@ class SiderealTelescopeTask(AbstractBaseTelescopeTask):
             "extra_lead_seconds": round(extra_lead, 2),
             "num_exposures": num_exposures,
             "exposure_seconds": exposure,
-            "adaptive_exposure_active": self.settings.adaptive_exposure,
+            "adaptive_exposure_active": adaptive_actually_applied,
         }
 
         # -- Real-time timing gate (fast movers only) --
