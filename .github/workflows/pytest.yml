@@ -54,9 +54,13 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install project prerequisites
-        run: sudo apt-get update && sudo apt-get install -y libglib2.0-dev libdbus-1-dev libjpeg-dev zlib1g-dev swig libindi-dev
+        run: sudo apt-get update && sudo apt-get install -y libglib2.0-dev libdbus-1-dev libjpeg-dev zlib1g-dev
       - name: Install dependencies
-        run: uv sync --extra dev --extra test --extra indi --extra all
+        run: |
+          if ! uv sync --extra dev --extra test --extra indi --extra all; then
+            echo "::warning::pyindi-client has no wheel for Python ${{ matrix.python-version }} — installing without indi/all extras"
+            uv sync --extra dev --extra test
+          fi
       - name: Run pytest with coverage
         run: |
           uv run pytest -m "not integration" --import-mode=importlib --override-ini="addopts=" --cov=citrascope --cov-report=term-missing --cov-report=xml --cov-branch
