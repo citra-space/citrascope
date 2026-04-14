@@ -300,7 +300,7 @@ def test_observation_mode_defaults_to_auto():
     assert s.observation_mode == "auto"
 
 
-@pytest.mark.parametrize("mode", ["auto", "tracking", "static"])
+@pytest.mark.parametrize("mode", ["auto", "tracking", "sidereal"])
 def test_observation_mode_accepts_valid_values(mode):
     with patch("citrascope.settings.citrascope_settings.SettingsFileManager") as MockSFM:
         MockSFM.return_value.load_config.return_value = {"observation_mode": mode}
@@ -309,6 +309,16 @@ def test_observation_mode_accepts_valid_values(mode):
         s = CitraScopeSettings.load()
 
     assert s.observation_mode == mode
+
+
+def test_observation_mode_migrates_static_to_sidereal():
+    with patch("citrascope.settings.citrascope_settings.SettingsFileManager") as MockSFM:
+        MockSFM.return_value.load_config.return_value = {"observation_mode": "static"}
+        from citrascope.settings.citrascope_settings import CitraScopeSettings
+
+        s = CitraScopeSettings.load()
+
+    assert s.observation_mode == "sidereal"
 
 
 def test_observation_mode_rejects_invalid_value():
@@ -569,3 +579,30 @@ def test_sextractor_filter_name_non_string_fallback():
         s = CitraScopeSettings.load()
 
     assert s.sextractor_filter_name == "default"
+
+
+def test_adaptive_exposure_min_gt_max_clamps_min():
+    """When adaptive min > max, model validator clamps min down to max."""
+    from citrascope.settings.citrascope_settings import CitraScopeSettings
+
+    s = CitraScopeSettings.model_validate({"adaptive_exposure_min_seconds": 20.0, "adaptive_exposure_max_seconds": 5.0})
+    assert s.adaptive_exposure_min_seconds == s.adaptive_exposure_max_seconds
+    assert s.adaptive_exposure_min_seconds == 5.0
+
+
+def test_adaptive_exposure_min_equal_max_accepted():
+    """When min == max, no clamping occurs."""
+    from citrascope.settings.citrascope_settings import CitraScopeSettings
+
+    s = CitraScopeSettings.model_validate({"adaptive_exposure_min_seconds": 5.0, "adaptive_exposure_max_seconds": 5.0})
+    assert s.adaptive_exposure_min_seconds == 5.0
+    assert s.adaptive_exposure_max_seconds == 5.0
+
+
+def test_adaptive_exposure_min_lt_max_accepted():
+    """Normal min < max is preserved as-is."""
+    from citrascope.settings.citrascope_settings import CitraScopeSettings
+
+    s = CitraScopeSettings.model_validate({"adaptive_exposure_min_seconds": 0.5, "adaptive_exposure_max_seconds": 30.0})
+    assert s.adaptive_exposure_min_seconds == 0.5
+    assert s.adaptive_exposure_max_seconds == 30.0
