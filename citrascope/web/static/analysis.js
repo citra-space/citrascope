@@ -110,6 +110,7 @@ document.addEventListener('alpine:init', () => {
         },
 
         async loadTasks() {
+            this.selectedTasks = {};
             try {
                 const params = new URLSearchParams({
                     limit: this.pageSize,
@@ -482,6 +483,11 @@ document.addEventListener('alpine:init', () => {
                     }),
                 });
                 const data = await resp.json();
+                if (!resp.ok || !data.job_id) {
+                    const { showToast } = await import('./config.js');
+                    showToast(data.error || 'Batch reprocess failed', 'danger');
+                    return;
+                }
                 this.batchJobId = data.job_id;
                 this.batchProgress = 0;
                 this.batchTotal = ids.length;

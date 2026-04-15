@@ -29,17 +29,24 @@ class JobStatus:
     error: str | None = None
     per_item_results: list[dict] = field(default_factory=list)
     cancelled: bool = False
+    _lock: threading.Lock = field(init=False, repr=False, compare=False, default_factory=threading.Lock)
+
+    def append_item_result(self, item: dict) -> None:
+        """Thread-safe append to per_item_results."""
+        with self._lock:
+            self.per_item_results.append(item)
 
     def to_dict(self) -> dict:
-        return {
-            "job_id": self.job_id,
-            "state": self.state,
-            "progress": self.progress,
-            "total": self.total,
-            "result": self.result,
-            "error": self.error,
-            "per_item_results": self.per_item_results,
-        }
+        with self._lock:
+            return {
+                "job_id": self.job_id,
+                "state": self.state,
+                "progress": self.progress,
+                "total": self.total,
+                "result": self.result,
+                "error": self.error,
+                "per_item_results": list(self.per_item_results),
+            }
 
 
 class BackgroundJobRunner:
@@ -112,7 +119,6 @@ class BackgroundJobRunner:
         if len(self._jobs) <= self.MAX_RETAINED_JOBS:
             return
         finished = [(jid, js) for jid, js in self._jobs.items() if js.state in ("completed", "failed", "cancelled")]
-        finished.sort(key=lambda pair: pair[0])
         to_remove = len(self._jobs) - self.MAX_RETAINED_JOBS
         for jid, _ in finished[:to_remove]:
             del self._jobs[jid]

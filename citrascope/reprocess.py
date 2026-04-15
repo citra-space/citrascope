@@ -112,7 +112,7 @@ def reprocess_bundle(
     if settings_overrides:
         settings = copy.deepcopy(settings)
         for key, value in settings_overrides.items():
-            if hasattr(settings, key):
+            if key in settings.model_fields:
                 setattr(settings, key, value)
             else:
                 log.warning("Unknown settings override ignored: %s", key)

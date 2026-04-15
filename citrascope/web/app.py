@@ -1936,7 +1936,6 @@ class CitraScopeWebApp:
                             for p in summary.get("processors", [])
                         ],
                         "extracted_data": summary.get("extracted_data", {}),
-                        "output_dir": str(bundle_dir / "reprocessed"),
                     }
                 except Exception:
                     pass
@@ -1980,9 +1979,10 @@ class CitraScopeWebApp:
                 return JSONResponse({"error": "Not available"}, status_code=503)
             safe_id = Path(task_id).name
             task_dir = self.daemon.settings.directories.processing_dir / safe_id
+            resolved_task_dir = task_dir.resolve()
             artifact = (task_dir / filepath).resolve()
             # Ensure resolved path is still under the task directory (no traversal)
-            if not str(artifact).startswith(str(task_dir.resolve())):
+            if not artifact.is_relative_to(resolved_task_dir):
                 return JSONResponse({"error": "Invalid path"}, status_code=400)
             if not artifact.is_file():
                 return JSONResponse({"error": "Artifact not found or expired"}, status_code=404)
@@ -2065,7 +2065,7 @@ class CitraScopeWebApp:
 
                     shutil.rmtree(output_dir)
 
-                result, out_path = await asyncio.get_event_loop().run_in_executor(
+                result, _out_path = await asyncio.get_event_loop().run_in_executor(
                     None,
                     lambda: reprocess_bundle(
                         debug_dir=debug_dir,
@@ -2088,7 +2088,6 @@ class CitraScopeWebApp:
                         for r in result.all_results
                     ],
                     "extracted_data": result.extracted_data,
-                    "output_dir": str(out_path),
                 }
                 return summary
             except (FileNotFoundError, ValueError) as exc:
@@ -2138,7 +2137,7 @@ class CitraScopeWebApp:
                             item_result["total_time"] = round(result.total_time, 3)
                     except Exception as exc:
                         item_result["error"] = str(exc)
-                    status.per_item_results.append(item_result)
+                    status.append_item_result(item_result)
                     status.progress = i + 1
 
                 ok_count = sum(1 for r in status.per_item_results if r["ok"])
@@ -2259,6 +2258,7 @@ class CitraScopeWebApp:
             def _autotune_worker(status):
                 def _progress(done: int, total: int) -> None:
                     status.progress = done
+                    status.total = total
 
                 results = autotune_extraction(
                     debug_dirs,
