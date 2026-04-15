@@ -434,9 +434,10 @@ class AbstractBaseTelescopeTask(ABC):
             shutil.copy2(annotated, dest)
 
             thumb_dest = previews_dir / f"{task_id}.thumb.jpg"
-            img = Image.open(dest)
-            img.thumbnail((400, 400))
-            img.save(thumb_dest, "JPEG", quality=70)
+            with Image.open(dest) as img:
+                thumb = img.convert("RGB")
+                thumb.thumbnail((400, 400))
+                thumb.save(thumb_dest, "JPEG", quality=70)
         except Exception as e:
             self.logger.debug(f"Could not copy annotated preview for {task_id}: {e}")
 

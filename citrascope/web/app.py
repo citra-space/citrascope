@@ -202,6 +202,14 @@ class ConnectionManager:
         self._last_heard.pop(websocket, None)
         CITRASCOPE_LOGGER.info(f"WebSocket client disconnected. Total: {len(self.active_connections)}")
 
+    async def disconnect_and_close(self, websocket: WebSocket) -> None:
+        """Remove a client from the active set and close the underlying socket."""
+        self.disconnect(websocket)
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
     def record_heard(self, websocket: WebSocket) -> None:
         """Update last-heard timestamp when a client sends a message."""
         self._last_heard[websocket] = time.time()
@@ -213,11 +221,7 @@ class ConnectionManager:
         for ws in stale:
             age = now - self._last_heard.get(ws, 0)
             CITRASCOPE_LOGGER.info("Pruning stale WebSocket client (no heartbeat for %.0fs)", age)
-            self.disconnect(ws)
-            try:
-                await ws.close()
-            except Exception:
-                pass
+            await self.disconnect_and_close(ws)
 
     async def broadcast(self, message: dict):
         """Broadcast message to all connected clients with per-client timeout."""
@@ -230,7 +234,7 @@ class ConnectionManager:
                 disconnected.append(connection)
 
         for connection in disconnected:
-            self.disconnect(connection)
+            await self.disconnect_and_close(connection)
 
 
 class _TarStreamBuffer:

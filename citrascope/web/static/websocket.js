@@ -55,6 +55,9 @@ function connect() {
 
     try {
         if (ws && ws.readyState !== WebSocket.CLOSED) {
+            ws.onclose = null;
+            ws.onerror = null;
+            ws.onmessage = null;
             ws.close();
         }
 
@@ -67,7 +70,8 @@ function connect() {
             }
         }, connectionTimeout);
 
-        ws.onopen = () => {
+        ws.onopen = (event) => {
+            if (event.target !== ws) return;
             if (connectionTimer) {
                 clearTimeout(connectionTimer);
                 connectionTimer = null;
@@ -78,6 +82,7 @@ function connect() {
         };
 
         ws.onmessage = (event) => {
+            if (event.target !== ws) return;
             let message;
             try {
                 message = JSON.parse(event.data);
@@ -104,6 +109,7 @@ function connect() {
         };
 
         ws.onclose = (event) => {
+            if (event.target !== ws) return;
             console.log('WebSocket closed', event.code, event.reason);
             if (connectionTimer) {
                 clearTimeout(connectionTimer);
