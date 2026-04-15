@@ -1912,7 +1912,35 @@ class CitraScopeWebApp:
             task = self.daemon.task_index.get_task(safe_id)
             if task is None:
                 return JSONResponse({"error": "Task not found"}, status_code=404)
-            task["artifacts_available"] = (self.daemon.settings.directories.processing_dir / safe_id).is_dir()
+            bundle_dir = self.daemon.settings.directories.processing_dir / safe_id
+            task["artifacts_available"] = bundle_dir.is_dir()
+
+            reprocessed_summary = bundle_dir / "reprocessed" / "processing_summary.json"
+            if reprocessed_summary.is_file():
+                import json as _json
+
+                try:
+                    summary = _json.loads(reprocessed_summary.read_text())
+                    task["reprocessed_result"] = {
+                        "should_upload": summary.get("should_upload"),
+                        "skip_reason": summary.get("skip_reason"),
+                        "total_time": summary.get("total_time"),
+                        "processors": [
+                            {
+                                "name": p.get("processor_name", p.get("name", "")),
+                                "confidence": p.get("confidence"),
+                                "reason": p.get("reason"),
+                                "time_s": round(p.get("processing_time_seconds", p.get("time_s", 0)), 3),
+                                "ok": p.get("should_upload", False) and (p.get("confidence", 0) or 0) > 0,
+                            }
+                            for p in summary.get("processors", [])
+                        ],
+                        "extracted_data": summary.get("extracted_data", {}),
+                        "output_dir": str(bundle_dir / "reprocessed"),
+                    }
+                except Exception:
+                    pass
+
             return task
 
         @self.app.get("/api/analysis/tasks/{task_id}/image")
@@ -2226,15 +2254,25 @@ class CitraScopeWebApp:
             combos = n_thresh * n_area * n_filt
             total_evals = combos * len(debug_dirs)
 
+            requested_count = len(debug_dirs)
+
             def _autotune_worker(status):
                 def _progress(done: int, total: int) -> None:
                     status.progress = done
 
-                results = autotune_extraction(debug_dirs, on_progress=_progress)
+                results = autotune_extraction(
+                    debug_dirs,
+                    on_progress=_progress,
+                    is_cancelled=lambda: status.cancelled,
+                )
+                if status.cancelled:
+                    status.state = "cancelled"
+                actual_used = results[0]["bundles_evaluated"] if results else 0
                 status.result = {
                     "configs": results[:20],
                     "total_evaluated": total_evals,
-                    "bundles_used": len(debug_dirs),
+                    "bundles_used": actual_used,
+                    "bundles_requested": requested_count,
                 }
 
             job = self.job_runner.submit(_autotune_worker, total=total_evals)
@@ -2247,6 +2285,14 @@ class CitraScopeWebApp:
             if status is None:
                 return JSONResponse({"error": "Job not found"}, status_code=404)
             return status.to_dict()
+
+        @self.app.post("/api/jobs/{job_id}/cancel")
+        async def cancel_job(job_id: str):
+            """Request cooperative cancellation of a background job."""
+            ok = self.job_runner.cancel(job_id)
+            if not ok:
+                return JSONResponse({"error": "Job not found or already finished"}, status_code=404)
+            return {"status": "cancelling", "job_id": job_id}
 
         @self.app.websocket("/ws")
         async def websocket_endpoint(websocket: WebSocket):

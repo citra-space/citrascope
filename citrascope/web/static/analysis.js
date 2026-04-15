@@ -61,7 +61,6 @@ document.addEventListener('alpine:init', () => {
         uploadReprocessedError: null,
 
         // Multi-select
-        selectMode: false,
         selectedTasks: {},
         batchThresh: 5.0,
         batchMinarea: 3,
@@ -202,6 +201,10 @@ document.addEventListener('alpine:init', () => {
                 this.reprocessThresh = origT ?? 5.0;
                 this.reprocessMinarea = origM ?? 3;
                 this.reprocessFilter = origF ?? 'default';
+
+                if (this.detail.reprocessed_result) {
+                    this.reprocessResult = this.detail.reprocessed_result;
+                }
 
                 this.expanded = taskId;
             } catch (e) {
@@ -534,6 +537,15 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
+        async cancelAutotune() {
+            if (!this.autotuneJobId) return;
+            try {
+                await fetch('/api/jobs/' + this.autotuneJobId + '/cancel', { method: 'POST' });
+            } catch (e) {
+                console.error('Cancel autotune failed', e);
+            }
+        },
+
         _pollAutotuneJob() {
             if (this._autotunePollTimer) clearTimeout(this._autotunePollTimer);
             this._autotunePollTimer = setTimeout(async () => {
@@ -543,10 +555,20 @@ document.addEventListener('alpine:init', () => {
                     const job = await resp.json();
                     this.autotuneProgress = job.progress || 0;
                     this.autotuneTotal = job.total || this.autotuneTotal;
-                    if (job.state === 'completed' || job.state === 'failed') {
+                    if (job.state === 'completed' || job.state === 'failed' || job.state === 'cancelled') {
                         this.autotuneResult = job.result;
                         this.autotuneJobId = null;
                         this.autotuneRunning = false;
+                        this.autotuneOpen = true;
+                        const { showToast } = await import('./config.js');
+                        if (job.state === 'completed') {
+                            const n = (job.result && job.result.configs) ? job.result.configs.length : 0;
+                            showToast(`Auto-tune complete — ${n} configurations ranked`, 'success');
+                        } else if (job.state === 'cancelled') {
+                            showToast('Auto-tune cancelled — showing partial results', 'warning');
+                        } else {
+                            showToast('Auto-tune failed: ' + (job.error || 'unknown error'), 'danger');
+                        }
                         return;
                     }
                     this._pollAutotuneJob();
@@ -558,19 +580,14 @@ document.addEventListener('alpine:init', () => {
         },
 
         async applyAutotuneSettings(config) {
-            try {
-                const store = Alpine.store('citrascope');
-                if (store && store.config) {
-                    store.config.sextractor_detect_thresh = config.detect_thresh;
-                    store.config.sextractor_detect_minarea = config.detect_minarea;
-                    store.config.sextractor_filter_name = config.filter_name;
-                    if (typeof store.saveConfiguration === 'function') {
-                        await store.saveConfiguration();
-                    }
-                }
-            } catch (e) {
-                console.error('Failed to apply auto-tune settings', e);
-            }
+            const store = Alpine.store('citrascope');
+            if (!store || !store.config) return;
+
+            store.config.sextractor_detect_thresh = config.detect_thresh;
+            store.config.sextractor_detect_minarea = config.detect_minarea;
+            store.config.sextractor_filter_name = config.filter_name;
+
+            await window.saveConfiguration({ preventDefault() {} });
         },
     }));
 });

@@ -22,12 +22,13 @@ class JobStatus:
     """Snapshot of a background job's progress."""
 
     job_id: str
-    state: str = "pending"  # pending, running, completed, failed
+    state: str = "pending"  # pending, running, completed, failed, cancelled
     progress: int = 0
     total: int = 0
     result: Any = None
     error: str | None = None
     per_item_results: list[dict] = field(default_factory=list)
+    cancelled: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -81,6 +82,23 @@ class BackgroundJobRunner:
         t.start()
         return status
 
+    def cancel(self, job_id: str) -> bool:
+        """Request cooperative cancellation of a running job.
+
+        Sets the ``cancelled`` flag on the ``JobStatus``.  The worker
+        function must check ``status.cancelled`` periodically and exit
+        early when it becomes ``True``.
+
+        Returns ``True`` if the job was found and flagged, ``False`` if
+        the job ID was unknown or already finished.
+        """
+        with self._lock:
+            status = self._jobs.get(job_id)
+        if status is None or status.state not in ("pending", "running"):
+            return False
+        status.cancelled = True
+        return True
+
     def get_status(self, job_id: str) -> JobStatus | None:
         with self._lock:
             return self._jobs.get(job_id)
@@ -93,7 +111,7 @@ class BackgroundJobRunner:
         """Drop oldest completed/failed jobs when we exceed the retention cap."""
         if len(self._jobs) <= self.MAX_RETAINED_JOBS:
             return
-        finished = [(jid, js) for jid, js in self._jobs.items() if js.state in ("completed", "failed")]
+        finished = [(jid, js) for jid, js in self._jobs.items() if js.state in ("completed", "failed", "cancelled")]
         finished.sort(key=lambda pair: pair[0])
         to_remove = len(self._jobs) - self.MAX_RETAINED_JOBS
         for jid, _ in finished[:to_remove]:
