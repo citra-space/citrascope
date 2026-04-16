@@ -96,6 +96,12 @@
                                 <li>
                                     <strong x-text="dep.device_name"></strong>: Missing <span x-text="dep.missing_packages"></span><br>
                                     <code class="small" x-text="dep.install_cmd"></code>
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-secondary py-0 px-1 ms-1 align-baseline"
+                                            @click="$store.citrascope.copyPath(dep.install_cmd, $event)"
+                                            title="Copy install command">
+                                        <i class="bi bi-clipboard" style="font-size: 0.75rem;"></i>
+                                    </button>
                                 </li>
                             </template>
                         </ul>
