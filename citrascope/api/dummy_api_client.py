@@ -469,13 +469,20 @@ class DummyApiClient(AbstractCitraApiClient):
                 future_passes.append((rise_dt, sat_id, rise_dt, set_dt))
                 break
 
-        # Build immediate tasks staggered 15s apart for steady throughput
+        # Build immediate tasks back-to-back with non-overlapping windows.
+        # The real Citra scheduler doesn't hand out overlapping windows — if
+        # the dummy did (e.g. 60s windows on a 15s stagger), every task after
+        # the first would inherit ~45s of "lateness" because its window opened
+        # while the prior task was still imaging, producing false-positive
+        # late/origin attribution in the Analysis dashboard.  Keep stagger
+        # >= window length to model real-world behavior.
         immediate_tasks: list[dict] = []
         _FIRST_TASK_DELAY_S = 10
-        _TASK_STAGGER_S = 15
+        _TASK_WINDOW_S = 30
+        _TASK_STAGGER_S = _TASK_WINDOW_S
         for idx, (sat_id, alt_deg) in enumerate(immediate_sats):
             task_start = now + timedelta(seconds=_FIRST_TASK_DELAY_S + _TASK_STAGGER_S * idx)
-            task_stop = task_start + timedelta(seconds=60)
+            task_stop = task_start + timedelta(seconds=_TASK_WINDOW_S)
             immediate_tasks.append(self._make_task(sat_id, task_start, task_stop, telescope, ground_station))
             cat = self._satellite_catalog.get(sat_id, {})
             if self.logger:

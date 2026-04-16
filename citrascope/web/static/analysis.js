@@ -315,6 +315,29 @@ document.addEventListener('alpine:init', () => {
             return parts.join(' | ') || 'No window data';
         },
 
+        // Lateness attribution tooltip — explains why a task was late by
+        // surfacing the inherited/self split that the backend computed in
+        // _enrich_with_attribution (see task_index.py).  Used both as the
+        // `title` on the row's "Late +Xs" badge and as the source of truth
+        // for the detail-view summary line, so the two stay in sync.
+        latenessTooltip(task) {
+            const delay = task?.window_start_delay_s;
+            if (delay == null || delay <= 0) return '';
+            const inherited = task.inherited_delay_s || 0;
+            const self = task.self_delay_s || 0;
+            const parts = ['Late by ' + Math.round(delay) + 's'];
+            if (inherited >= 1) {
+                const who = task.prev_target_name
+                    ? 'from ' + task.prev_target_name
+                    : 'from previous task';
+                parts.push('inherited ' + Math.round(inherited) + 's ' + who);
+            }
+            if (self >= 1) {
+                parts.push('self-added ' + Math.round(self) + 's');
+            }
+            return parts.join(' — ');
+        },
+
         totalElapsed(d) {
             const start = d.slew_started_at ? new Date(d.slew_started_at).getTime() : null;
             const end = d.processing_finished_at ? new Date(d.processing_finished_at).getTime()

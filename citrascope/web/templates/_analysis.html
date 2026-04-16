@@ -391,13 +391,32 @@
                             <span x-show="!task.filter_name" class="text-muted">—</span>
                         </td>
                         <td>
-                            <span x-show="task.missed_window === 1" class="badge bg-danger">Missed</span>
-                            <span x-show="task.missed_window === 0 && task.window_start_delay_s != null && task.window_start_delay_s > 30"
-                                  class="badge bg-warning text-dark"
-                                  x-text="'Late +' + Math.round(task.window_start_delay_s) + 's'"></span>
-                            <span x-show="task.missed_window === 0 && (task.window_start_delay_s == null || task.window_start_delay_s <= 30)"
-                                  class="badge bg-success">On time</span>
-                            <span x-show="task.missed_window == null" class="text-muted">—</span>
+                            {# Single-pill window status.  Using <template x-if> instead of
+                               x-show so the four states (missed / late / on-time / unknown)
+                               are structurally exclusive — only one node is ever in the DOM,
+                               which sidesteps any reactive edge case where a stale truthy
+                               x-show could leave a second pill visible.
+
+                               Lateness signal is baked into the badge text:
+                                 ⚑  Late +Xs   → this task added the delay (slip origin)
+                                 ↙  Late +Xs   → mostly inherited from the prior task
+                                    Late +Xs   → late but neither side dominates
+                               Full breakdown ("Late by 48s — inherited 45s from <prev> —
+                               self-added 3s") lives in the tooltip and the detail panel. #}
+                            <template x-if="task.missed_window === 1">
+                                <span class="badge bg-danger" :title="latenessTooltip(task)">Missed</span>
+                            </template>
+                            <template x-if="task.missed_window === 0 && task.window_start_delay_s != null && task.window_start_delay_s > 30">
+                                <span class="badge bg-warning text-dark"
+                                      :title="latenessTooltip(task)"
+                                      x-text="(task.is_slip_origin ? '⚑ ' : task.inherited_delay_s > 2 ? '↙ ' : '') + 'Late +' + Math.round(task.window_start_delay_s) + 's'"></span>
+                            </template>
+                            <template x-if="task.missed_window === 0 && (task.window_start_delay_s == null || task.window_start_delay_s <= 30)">
+                                <span class="badge bg-success">On time</span>
+                            </template>
+                            <template x-if="task.missed_window == null">
+                                <span class="text-muted">—</span>
+                            </template>
                         </td>
                         <td>
                             <span x-show="task.converged === 1" class="text-success">✓</span>
@@ -629,6 +648,58 @@
                                                                    x-text="'Start delay: ' + detail.window_start_delay_s?.toFixed(1) + 's'"></small>
                                                             <small class="text-muted" x-show="detail.window_time_remaining_s != null"
                                                                    x-text="'Remaining: ' + detail.window_time_remaining_s?.toFixed(1) + 's'"></small>
+                                                        </div>
+
+                                                        {# ── Lateness attribution (Tier 1 + 2) ────────────────────
+                                                           When the start was late, surface the inherited-vs-self
+                                                           split computed in _enrich_with_attribution and, if the
+                                                           task is itself a slip origin, the slew estimate-vs-actual
+                                                           overrun from _enrich_with_pointing_diag.  Bullets are
+                                                           descriptive, not speculative — Tier 3 (named causes like
+                                                           cable unwrap) is intentionally out of scope here. #}
+                                                        <div x-show="detail.window_start_delay_s > 0 && (detail.inherited_delay_s > 0 || detail.self_delay_s > 0)"
+                                                             class="mt-2 p-2 rounded"
+                                                             style="background: rgba(255,255,255,0.03); border-left: 3px solid #6c757d;"
+                                                             :style="detail.is_slip_origin ? 'background: rgba(255,193,7,0.08); border-left: 3px solid #ffc107;' : ''">
+                                                            <div style="font-size: 0.85rem;">
+                                                                <span x-text="'Late by ' + Math.round(detail.window_start_delay_s) + 's'"></span>
+                                                                <template x-if="detail.inherited_delay_s >= 1">
+                                                                    <span>
+                                                                        · inherited <span x-text="Math.round(detail.inherited_delay_s)"></span>s
+                                                                        <template x-if="detail.prev_task_id">
+                                                                            <span>
+                                                                                from
+                                                                                <a href="#"
+                                                                                   class="link-light text-decoration-underline"
+                                                                                   @click.prevent="toggleDetail(detail.prev_task_id)"
+                                                                                   x-text="detail.prev_target_name || detail.prev_task_id"></a>
+                                                                            </span>
+                                                                        </template>
+                                                                    </span>
+                                                                </template>
+                                                                <template x-if="detail.self_delay_s >= 1">
+                                                                    <span> · self-added <span x-text="Math.round(detail.self_delay_s)"></span>s</span>
+                                                                </template>
+                                                            </div>
+
+                                                            <template x-if="detail.is_slip_origin">
+                                                                <div class="mt-2" style="font-size: 0.8rem;">
+                                                                    <div class="text-warning mb-1">
+                                                                        <strong>Slip origin</strong> — this task added <span x-text="Math.round(detail.self_delay_s)"></span>s of delay.
+                                                                    </div>
+                                                                    <ul class="mb-0 ps-3" style="list-style-type: disc;">
+                                                                        <li x-show="detail.slew_overrun_s != null && detail.slew_overrun_s > 2">
+                                                                            Slew took
+                                                                            <span x-text="detail.total_slew_time_s?.toFixed(1)"></span>s actual
+                                                                            vs <span x-text="detail.slew_estimate_total_s?.toFixed(1)"></span>s estimated
+                                                                            (<span x-text="(detail.slew_overrun_s >= 0 ? '+' : '') + detail.slew_overrun_s?.toFixed(1)"></span>s).
+                                                                        </li>
+                                                                        <li x-show="detail.convergence_attempts != null && detail.convergence_attempts > 1">
+                                                                            <span x-text="detail.convergence_attempts"></span> convergence iterations.
+                                                                        </li>
+                                                                    </ul>
+                                                                </div>
+                                                            </template>
                                                         </div>
                                                     </div>
                                                 </template>
