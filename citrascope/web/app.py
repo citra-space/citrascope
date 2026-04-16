@@ -702,6 +702,23 @@ class CitraScopeWebApp:
                 return {"logs": logs}
             return {"logs": []}
 
+        @self.app.get("/api/logs/download")
+        async def download_log():
+            """Download the current log file."""
+            if not self.daemon:
+                return JSONResponse({"error": "Daemon not available"}, status_code=503)
+            settings = self.daemon.settings
+            if not settings.file_logging_enabled:
+                return JSONResponse({"error": "File logging is disabled"}, status_code=404)
+            log_path = settings.directories.current_log_path()
+            if not log_path.exists():
+                return JSONResponse({"error": "Log file not found"}, status_code=404)
+            return FileResponse(
+                str(log_path),
+                filename=log_path.name,
+                media_type="text/plain",
+            )
+
         @self.app.post("/api/tasks/pause")
         async def pause_tasks():
             """Pause task processing."""
