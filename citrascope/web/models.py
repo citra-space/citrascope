@@ -61,6 +61,10 @@ class SystemStatus(BaseModel):
     mount_homing: bool = False
     mount_horizon_limit: int | None = None
     mount_overhead_limit: int | None = None
+    # Telescope record's `minElevation` (degrees), distinct from the mount's
+    # hardware altitude limit -- this is the user-defined minimum at which
+    # the scope is willing to observe (trees, neighbor's lights, etc).
+    telescope_min_elevation: float | None = None
     alignment_requested: bool = False
     alignment_running: bool = False
     alignment_progress: str = ""

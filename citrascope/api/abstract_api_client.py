@@ -33,6 +33,15 @@ class AbstractCitraApiClient(ABC):
         pass
 
     @abstractmethod
+    def cancel_task(self, task_id) -> bool:
+        """PUT /tasks/{task_id} with status=Canceled.
+
+        Returns True on success, False otherwise. Tasks already in a terminal
+        state (Canceled/Failed/Succeeded) cannot be updated and will return False.
+        """
+        pass
+
+    @abstractmethod
     def put_telescope_status(self, body):
         """
         PUT to /telescopes to report online status.

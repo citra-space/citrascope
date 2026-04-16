@@ -34,8 +34,13 @@ _TLE_SOURCES: list[dict[str, str | int]] = [
     {"url": f"{_CELESTRAK_BASE}?NAME=DIRECTV&FORMAT=tle", "label": "DirecTV", "limit": 0},
 ]
 
-MIN_ELEVATION_DEG = 15.0
+MIN_ELEVATION_DEG = 0.0  # dummy is a UI testing stub; horizon-only filter is enough
 PASS_SEARCH_HOURS = 12
+# Don't anchor the queue on a future pass that's more than this far out.  The
+# real Citra scheduler doesn't give you tasks 5 hours away when nothing is
+# happening sooner, and a far-future anchor cascades the whole back-to-back
+# stack out with it.
+MAX_FUTURE_RISE_MINUTES = 10.0
 
 _DEFAULT_STATION_LAT = 38.8409
 _DEFAULT_STATION_LON = -105.0423
@@ -364,6 +369,30 @@ class DummyApiClient(AbstractCitraApiClient):
                 self.logger.debug(f"DummyApiClient: get_telescope_tasks({telescope_id}) -> {len(active_tasks)} tasks")
             return active_tasks
 
+    def cancel_task(self, task_id) -> bool:
+        """Cancel a task in the dummy store by setting status=Canceled.
+
+        Returns True if the task was found and cancellable (i.e. not already
+        in a terminal state), False otherwise. Mirrors the real Citra API's
+        rejection of terminal-state mutations.
+        """
+        with self._data_lock:
+            for task in self.data.get("tasks", []):
+                if task.get("id") == task_id:
+                    if task.get("status") in ("Canceled", "Failed", "Succeeded"):
+                        if self.logger:
+                            self.logger.warning(
+                                f"DummyApiClient: cancel_task({task_id}) refused — already {task['status']}"
+                            )
+                        return False
+                    task["status"] = "Canceled"
+                    if self.logger:
+                        self.logger.info(f"DummyApiClient: cancel_task({task_id}) -> Canceled")
+                    return True
+        if self.logger:
+            self.logger.warning(f"DummyApiClient: cancel_task({task_id}) — task not found")
+        return False
+
     def _make_task(
         self,
         sat_id: str,
@@ -420,6 +449,20 @@ class DummyApiClient(AbstractCitraApiClient):
         t_end = self._ts.from_datetime(now + timedelta(hours=PASS_SEARCH_HOURS))
 
         scheduled_sat_ids = {t.get("satelliteId") for t in existing_tasks}
+
+        # Seed the scheduling cursor from the tail of whatever's already queued
+        # so refills can't lay new tasks on top of existing ones.  Without this,
+        # every refill would re-anchor the immediate batch at "now + 10" and
+        # collide with the back end of the queue from the previous call.
+        latest_existing_stop: datetime | None = None
+        for t in existing_tasks:
+            try:
+                stop = datetime.fromisoformat(str(t.get("taskStop", "")).replace("Z", "+00:00"))
+                if latest_existing_stop is None or stop > latest_existing_stop:
+                    latest_existing_stop = stop
+            except Exception:
+                continue
+
         immediate_sats: list[tuple[str, float]] = []
         future_passes: list[tuple[datetime, str, datetime, datetime]] = []
 
@@ -469,39 +512,73 @@ class DummyApiClient(AbstractCitraApiClient):
                 future_passes.append((rise_dt, sat_id, rise_dt, set_dt))
                 break
 
-        # Build immediate tasks staggered 15s apart for steady throughput
-        immediate_tasks: list[dict] = []
+        # All new tasks (immediate + future passes) are stacked against a single
+        # scheduling cursor so nothing in the dummy queue ever overlaps.  The
+        # real Citra scheduler doesn't hand out overlapping windows; emulating
+        # that here keeps the lateness-attribution logic in the Analysis
+        # dashboard from generating false-positive "inherited" delays.
+        #
+        # Three sources used to overlap before this was unified:
+        #   1. Refills re-anchored "immediate" tasks at now+10 regardless of the
+        #      tail of the existing queue.
+        #   2. Two simultaneously-visible satellites both became immediate tasks
+        #      with hand-stacked offsets, but ignored each other across calls.
+        #   3. Future-pass rise/set windows from Skyfield were appended raw,
+        #      with no overlap check against immediates or each other.
         _FIRST_TASK_DELAY_S = 10
-        _TASK_STAGGER_S = 15
-        for idx, (sat_id, alt_deg) in enumerate(immediate_sats):
-            task_start = now + timedelta(seconds=_FIRST_TASK_DELAY_S + _TASK_STAGGER_S * idx)
-            task_stop = task_start + timedelta(seconds=60)
-            immediate_tasks.append(self._make_task(sat_id, task_start, task_stop, telescope, ground_station))
+        _TASK_WINDOW_S = 30
+        _INTER_TASK_GAP_S = 0  # back-to-back, like the real scheduler
+        earliest_start = now + timedelta(seconds=_FIRST_TASK_DELAY_S)
+        if latest_existing_stop is not None and latest_existing_stop > earliest_start:
+            cursor = latest_existing_stop + timedelta(seconds=_INTER_TASK_GAP_S)
+        else:
+            cursor = earliest_start
+
+        new_tasks: list[dict] = []
+
+        for sat_id, alt_deg in immediate_sats:
+            if len(new_tasks) >= max_tasks:
+                break
+            task_start = cursor
+            task_stop = task_start + timedelta(seconds=_TASK_WINDOW_S)
+            new_tasks.append(self._make_task(sat_id, task_start, task_stop, telescope, ground_station))
+            cursor = task_stop + timedelta(seconds=_INTER_TASK_GAP_S)
             cat = self._satellite_catalog.get(sat_id, {})
             if self.logger:
                 self.logger.debug(
-                    "DummyApiClient: %s visible now at %.1f° — task in %ds",
+                    "DummyApiClient: %s visible now at %.1f° — task at %s",
                     cat.get("name", sat_id),
                     alt_deg,
-                    _FIRST_TASK_DELAY_S + _TASK_STAGGER_S * idx,
+                    task_start.strftime("%H:%M:%S UTC"),
                 )
 
-        # Immediate tasks first, then future passes sorted by start time
+        # Only honor future passes whose natural rise time both (a) doesn't
+        # overlap with what we've already placed and (b) is reasonably soon.
+        # Relocating a pass to the cursor was the source of the "queue anchored
+        # 5 hours out" bug — once any far-future pass became the cursor, every
+        # subsequent satellite got stacked behind it back-to-back.  A future
+        # pass means "this satellite is visible at this real time"; if we can't
+        # honor that, we drop it rather than lie about visibility.
+        max_future_start = now + timedelta(minutes=MAX_FUTURE_RISE_MINUTES)
         future_passes.sort(key=lambda x: x[0])
-        new_tasks = immediate_tasks[:max_tasks]
-        remaining = max_tasks - len(new_tasks)
-
-        for _, sat_id, rise_dt, set_dt in future_passes[:remaining]:
+        for _, sat_id, rise_dt, set_dt in future_passes:
+            if len(new_tasks) >= max_tasks:
+                break
+            if rise_dt < cursor or rise_dt > max_future_start:
+                continue
+            natural_duration = (set_dt - rise_dt).total_seconds()
+            duration_s = max(_TASK_WINDOW_S, min(natural_duration, _TASK_WINDOW_S * 4))
+            task_start = rise_dt
+            task_stop = task_start + timedelta(seconds=duration_s)
+            new_tasks.append(self._make_task(sat_id, task_start, task_stop, telescope, ground_station))
+            cursor = task_stop + timedelta(seconds=_INTER_TASK_GAP_S)
             cat = self._satellite_catalog.get(sat_id, {})
-            new_tasks.append(self._make_task(sat_id, rise_dt, set_dt, telescope, ground_station))
             if self.logger:
-                duration = (set_dt - rise_dt).total_seconds()
                 self.logger.info(
-                    "DummyApiClient: Scheduled %s pass at %s (%.0fs, above %d°)",
+                    "DummyApiClient: Scheduled %s pass at %s (%.0fs)",
                     cat.get("name", sat_id),
-                    rise_dt.strftime("%H:%M:%S UTC"),
-                    duration,
-                    MIN_ELEVATION_DEG,
+                    task_start.strftime("%H:%M:%S UTC"),
+                    duration_s,
                 )
 
         return new_tasks

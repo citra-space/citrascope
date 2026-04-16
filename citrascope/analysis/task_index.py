@@ -33,6 +33,22 @@ _SORTABLE_COLUMNS = frozenset(
     }
 )
 
+# ── Lateness attribution (Tier 1) ──────────────────────────────────────
+#
+# A task is flagged as a "slip origin" when ``self_delay_s`` — the lateness
+# it added itself, after subtracting any portion inherited from the prior
+# task running long into its window — crosses this threshold.  Tuned for
+# operational relevance: tens of seconds of self-added delay matters, sub-15s
+# jitter is noise.  Adjust here, not at call sites.
+SLIP_ORIGIN_THRESHOLD_S = 15.0
+
+# When the gap between the previous task's imaging-finish and this task's
+# window-start exceeds this, we treat the previous task as belonging to a
+# different observing session and do NOT attribute lateness across the gap
+# (we also drop the prev-task linkage so the UI doesn't surface a stale
+# "inherited from <hours-old task>" hint).
+CROSS_SESSION_GAP_S = 600.0
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS completed_tasks (
     -- Identity & metadata
@@ -133,6 +149,15 @@ _MIGRATIONS: list[tuple[str, list[str]]] = [
         "add adaptive_exposure_active flag",
         [
             "ALTER TABLE completed_tasks ADD COLUMN adaptive_exposure_active INTEGER",
+        ],
+    ),
+    # v3: index supporting LAG()-over-imaging_started_at for lateness attribution.
+    # Without this, CTE/window-function ordering on a column with no index turns
+    # into a full sort on every query_tasks() / get_task() call.
+    (
+        "add idx_imaging_started_at for lateness-attribution LAG() ordering",
+        [
+            "CREATE INDEX IF NOT EXISTS idx_imaging_started_at " "ON completed_tasks(imaging_started_at)",
         ],
     ),
 ]
@@ -367,13 +392,24 @@ class TaskIndex:
     # ── Reads ──────────────────────────────────────────────────────────
 
     def get_task(self, task_id: str) -> dict | None:
-        """Return a single task row as a dict, or None."""
+        """Return a single task row as a dict, or None.
+
+        The row is augmented with lateness-attribution fields
+        (``inherited_delay_s`` / ``self_delay_s`` / ``is_slip_origin``,
+        plus ``prev_task_id`` / ``prev_target_name`` for UI linking) and
+        slew estimate diagnostics from ``pointing_report_json``
+        (``slew_estimate_total_s`` / ``slew_overrun_s``).  All derived,
+        no schema columns required.
+        """
         with self._lock:
-            cur = self._conn.execute("SELECT * FROM completed_tasks WHERE task_id = ?", (task_id,))
+            cur = self._conn.execute(_TASK_QUERY_WITH_LAG + " WHERE task_id = ?", (task_id,))
             row = cur.fetchone()
             if row is None:
                 return None
-            return _row_to_dict(cur.description, row)
+            d = _row_to_dict(cur.description, row)
+        _enrich_with_attribution(d)
+        _enrich_with_pointing_diag(d)
+        return d
 
     def query_tasks(
         self,
@@ -466,13 +502,20 @@ class TaskIndex:
             count_row = self._conn.execute(f"SELECT COUNT(*) FROM completed_tasks{where_sql}", params).fetchone()
             total = count_row[0] if count_row else 0
 
-            # sort/order are validated above — safe to interpolate
+            # sort/order are validated above — safe to interpolate.
+            # The CTE adds prev_imaging_finished_at / prev_task_id /
+            # prev_target_name via LAG(); _SORTABLE_COLUMNS only references
+            # base columns that pass through SELECT *, so the existing sort
+            # contract is unchanged.
             rows_cur = self._conn.execute(
-                f"SELECT * FROM completed_tasks{where_sql} ORDER BY {sort} {order} LIMIT ? OFFSET ?",
+                _TASK_QUERY_WITH_LAG + f"{where_sql} ORDER BY {sort} {order} LIMIT ? OFFSET ?",
                 [*params, limit, offset],
             )
             tasks = [_row_to_dict(rows_cur.description, row) for row in rows_cur.fetchall()]
 
+        for t in tasks:
+            _enrich_with_attribution(t)
+            _enrich_with_pointing_diag(t)
         return {"tasks": tasks, "total": total}
 
     def get_distinct_filter_names(self) -> list[str]:
@@ -608,11 +651,142 @@ def empty_stats() -> dict:
     }
 
 
+# Shared CTE that joins each completed-task row with the previous task's
+# imaging-finish timestamp (and identity), used by both ``get_task`` and
+# ``query_tasks`` so the lateness-attribution math has the same input
+# regardless of which path produced the row.  Ordering is by
+# ``imaging_started_at`` (NOT ``completed_at``) because completion order
+# is shuffled by parallel processing — only imaging order represents the
+# actual on-sky sequence the operator cares about.  Rows with NULL
+# ``imaging_started_at`` get arbitrary LAG values; the enrichment helper
+# guards on null timestamps so this is harmless.
+_TASK_QUERY_WITH_LAG = """
+    WITH ordered AS (
+        SELECT
+            *,
+            LAG(imaging_finished_at) OVER (ORDER BY imaging_started_at) AS prev_imaging_finished_at,
+            LAG(task_id)             OVER (ORDER BY imaging_started_at) AS prev_task_id,
+            LAG(target_name)         OVER (ORDER BY imaging_started_at) AS prev_target_name
+        FROM completed_tasks
+    )
+    SELECT * FROM ordered
+"""
+
+
 def _row_to_dict(description: Any, row: Any) -> dict:
     """Convert a sqlite3.Row (or plain tuple with cursor description) to a dict."""
     if isinstance(row, sqlite3.Row):
         return dict(row)
     return {col[0]: val for col, val in zip(description, row, strict=False)}
+
+
+def _enrich_with_attribution(row: dict) -> dict:
+    """Attribute lateness to inherited (from prior task) vs self (added here).
+
+    Mutates and returns ``row``.  Adds three derived fields:
+
+      ``inherited_delay_s``  Seconds of this task's window already burned
+                             when the window opened, because the prior task
+                             ran long.  Always ``>= 0`` and ``<= window_start_delay_s``.
+      ``self_delay_s``       Remainder of ``window_start_delay_s`` not
+                             explained by the prior task.  Always ``>= 0``.
+      ``is_slip_origin``     True when ``self_delay_s >= SLIP_ORIGIN_THRESHOLD_S``.
+                             These are the rows worth investigating first
+                             when an operator asks "why are we late?".
+
+    Inputs (set by the caller / the CTE):
+      - ``window_start_delay_s`` (column on the row)
+      - ``window_start`` (column on the row)
+      - ``prev_imaging_finished_at`` (LAG output from ``_TASK_QUERY_WITH_LAG``)
+
+    Cross-session guard: when the previous task finished more than
+    ``CROSS_SESSION_GAP_S`` before this task's window opened, we drop the
+    prev-task linkage entirely so the UI doesn't surface an irrelevant
+    "inherited from <hours-old task>" hint.
+    """
+    delay = row.get("window_start_delay_s")
+    window_start = row.get("window_start")
+    prev_finish = row.get("prev_imaging_finished_at")
+
+    # Early start, missing start delay, or missing window — nothing to attribute.
+    if delay is None or delay <= 0 or not window_start:
+        row["inherited_delay_s"] = 0.0
+        row["self_delay_s"] = max(0.0, delay or 0.0)
+        row["is_slip_origin"] = row["self_delay_s"] >= SLIP_ORIGIN_THRESHOLD_S
+        return row
+
+    inherited = 0.0
+    if prev_finish:
+        # Positive ``bleed`` means the prior task ran into our window.
+        # Negative means the prior task ended in time and there was a gap.
+        bleed = _iso_diff_seconds(window_start, prev_finish) or 0.0
+        if bleed >= 0:
+            inherited = min(delay, bleed)
+        elif -bleed > CROSS_SESSION_GAP_S:
+            # Different observing session — drop the linkage so the UI
+            # doesn't show a misleading "inherited from <stale task>" hint.
+            row["prev_task_id"] = None
+            row["prev_target_name"] = None
+
+    row["inherited_delay_s"] = round(inherited, 3)
+    row["self_delay_s"] = round(max(0.0, delay - inherited), 3)
+    row["is_slip_origin"] = row["self_delay_s"] >= SLIP_ORIGIN_THRESHOLD_S
+    return row
+
+
+def _enrich_with_pointing_diag(row: dict) -> dict:
+    """Surface slew estimate-vs-actual signals from ``pointing_report_json``.
+
+    Tier-2 diagnosis: when a task is flagged as a slip origin, the operator's
+    next question is "why was the slew slow?".  The pointing report records
+    ``estimated_slew_time_s`` and ``actual_slew_time_s`` per convergence
+    iteration; we surface the totals so the UI can show "slew took N seconds
+    longer than estimated" without re-parsing the JSON blob client-side.
+
+    Mutates and returns ``row``.  Adds:
+      ``slew_estimate_total_s``  Sum of per-iteration ``estimated_slew_time_s``.
+                                 ``None`` when the JSON is missing/malformed
+                                 or no iteration recorded an estimate.
+      ``slew_overrun_s``         ``total_slew_time_s - slew_estimate_total_s``.
+                                 Positive ⇒ slew took longer than estimated.
+
+    The convergence-attempts count is already a top-level column, so we
+    deliberately don't duplicate it here.
+    """
+    raw = row.get("pointing_report_json")
+    if not raw:
+        row["slew_estimate_total_s"] = None
+        row["slew_overrun_s"] = None
+        return row
+
+    try:
+        report = json.loads(raw)
+    except (TypeError, ValueError):
+        row["slew_estimate_total_s"] = None
+        row["slew_overrun_s"] = None
+        return row
+
+    estimate_total = 0.0
+    have_any_estimate = False
+    for it in report.get("iterations") or []:
+        est = it.get("estimated_slew_time_s")
+        if est is None:
+            continue
+        try:
+            estimate_total += float(est)
+            have_any_estimate = True
+        except (TypeError, ValueError):
+            continue
+
+    if not have_any_estimate:
+        row["slew_estimate_total_s"] = None
+        row["slew_overrun_s"] = None
+        return row
+
+    row["slew_estimate_total_s"] = round(estimate_total, 3)
+    actual = row.get("total_slew_time_s")
+    row["slew_overrun_s"] = round(actual - estimate_total, 3) if actual is not None else None
+    return row
 
 
 def _float(v: Any) -> float | None:

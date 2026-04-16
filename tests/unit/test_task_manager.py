@@ -220,6 +220,38 @@ def test_poll_tasks_removes_cancelled_tasks(task_manager, mock_api_client):
     assert task_manager.task_heap[0][2] == "task-001"
 
 
+def test_drop_scheduled_task_purges_heap_and_snapshot(task_manager):
+    """drop_scheduled_task() must evict from heap, task_ids, and task_dict so the
+    very next get_tasks_snapshot() no longer shows the cancelled task -- without
+    waiting for the API poll loop to rebuild the heap."""
+    task1 = create_test_task("task-001", "Pending")
+    task2 = create_test_task("task-002", "Pending", start_offset_seconds=120)
+
+    start1 = int(dtparser.isoparse(task1.taskStart).timestamp())
+    stop1 = int(dtparser.isoparse(task1.taskStop).timestamp())
+    start2 = int(dtparser.isoparse(task2.taskStart).timestamp())
+    stop2 = int(dtparser.isoparse(task2.taskStop).timestamp())
+
+    with task_manager.heap_lock:
+        heapq.heappush(task_manager.task_heap, (start1, stop1, "task-001", task1))
+        heapq.heappush(task_manager.task_heap, (start2, stop2, "task-002", task2))
+        task_manager.task_ids.update({"task-001", "task-002"})
+        task_manager.task_dict.update({"task-001": task1, "task-002": task2})
+
+    assert {t.id for t in task_manager.get_tasks_snapshot()} == {"task-001", "task-002"}
+
+    assert task_manager.drop_scheduled_task("task-002") is True
+
+    assert "task-002" not in task_manager.task_ids
+    assert "task-002" not in task_manager.task_dict
+    assert all(entry[2] != "task-002" for entry in task_manager.task_heap)
+    assert [t.id for t in task_manager.get_tasks_snapshot()] == ["task-001"]
+
+
+def test_drop_scheduled_task_unknown_returns_false(task_manager):
+    assert task_manager.drop_scheduled_task("never-existed") is False
+
+
 def test_poll_tasks_removes_tasks_with_changed_status(task_manager, mock_api_client):
     """Test that poll_tasks removes tasks whose status changed from Pending to Cancelled."""
     # Create and add a task

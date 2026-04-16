@@ -193,6 +193,33 @@ class TaskManager:
         with self.heap_lock:
             self.task_dict.pop(task_id, None)
 
+    def drop_scheduled_task(self, task_id: str) -> bool:
+        """Fully evict a scheduled (not-yet-running) task.
+
+        Unlike :meth:`remove_task_from_all_stages` (which assumes the task
+        has already been ``heappop``-ed off the heap when imaging started),
+        this method also rebuilds the schedule heap so a UI-driven cancel
+        is reflected immediately in the next ``get_tasks_snapshot`` call
+        without waiting for the next API poll.
+
+        Returns True when something was actually removed.
+        """
+        with self._stage_lock:
+            self.imaging_tasks.pop(task_id, None)
+            self.processing_tasks.pop(task_id, None)
+            self.uploading_tasks.pop(task_id, None)
+
+        with self.heap_lock:
+            removed = task_id in self.task_ids
+            if removed:
+                self.task_ids.discard(task_id)
+                self.task_dict.pop(task_id, None)
+                # Rebuild the heap without the cancelled entry. O(n) is fine
+                # here: the queue is small and cancels are rare.
+                self.task_heap = [entry for entry in self.task_heap if entry[2] != task_id]
+                heapq.heapify(self.task_heap)
+        return removed
+
     def record_task_started(self) -> None:
         with self._task_stats_lock:
             self.total_tasks_started += 1

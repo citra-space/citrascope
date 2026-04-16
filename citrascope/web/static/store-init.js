@@ -43,6 +43,11 @@ function compareVersions(v1, v2) {
             isTaskActive: false,
             nextTaskStartTime: null,
             countdown: '',
+            // Wall-clock heartbeat bumped once per second by the ticker in
+            // app.js.  Alpine getters that depend on "now" (e.g. taskRow's
+            // countdownText) read this so they re-render reactively without
+            // each component running its own setInterval.
+            now: Date.now(),
             config: {},
             apiEndpoint: 'production',
             hardwareAdapters: [], // [{value, label}]

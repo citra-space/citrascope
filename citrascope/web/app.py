@@ -15,10 +15,10 @@ from citrascope.web.helpers import (
     FILTER_NAME_OPTIONS,
     _gps_fix_to_dict,
     _resolve_autofocus_target_name,
-    _task_to_dict,
 )
 from citrascope.web.models import HardwareConfig, SystemStatus
 from citrascope.web.routes import build_all_routers
+from citrascope.web.sky_enrichment import get_web_tasks
 from citrascope.web.status_collector import StatusCollector
 
 __all__ = [
@@ -29,7 +29,6 @@ __all__ = [
     "SystemStatus",
     "_gps_fix_to_dict",
     "_resolve_autofocus_target_name",
-    "_task_to_dict",
 ]
 
 
@@ -122,12 +121,17 @@ class CitraScopeWebApp:
         await self.connection_manager.broadcast({"type": "status", "data": self.status.model_dump()})
 
     async def broadcast_tasks(self):
-        """Broadcast current task queue to all connected clients."""
-        if not self.daemon or not hasattr(self.daemon, "task_manager") or self.daemon.task_manager is None:
-            return
+        """Broadcast current task queue to all connected clients.
 
-        task_manager = self.daemon.task_manager
-        tasks = [_task_to_dict(t) for t in task_manager.get_tasks_snapshot()]
+        Goes through :func:`get_web_tasks` so the wire format matches
+        ``GET /api/tasks`` exactly -- previously the two emitters built
+        their own dicts and one of them shipped without the sky fields.
+        Always broadcasts when the daemon is ready (even an empty list) so
+        the client can clear its table when the queue drains.
+        """
+        if not self.daemon or not getattr(self.daemon, "task_manager", None):
+            return
+        tasks = get_web_tasks(self.daemon, self.status)
         await self.connection_manager.broadcast({"type": "tasks", "data": tasks})
 
     async def broadcast_preview(self):

@@ -1,0 +1,31 @@
+{#
+    Shared 4-segment task-window bar.
+
+    Renders the delay / slew / imaging / margin breakdown defined by the
+    ``windowBarPct`` / ``windowBarOverran`` / ``windowBarTitle`` helpers in
+    ``analysis.js``.  Both the row mini-bar and the expanded detail-view bar
+    use this macro so the two visualizations cannot drift apart.
+
+    Args:
+      bar_var (str)    Alpine variable name in scope at the call site
+                       (e.g. ``"task"`` for the table row, ``"detail"`` for
+                       the expanded card).  Baked into the rendered Alpine
+                       expressions at server-render time.
+      bar_class (str)  Extra CSS classes appended to the bar container —
+                       e.g. ``"flex-grow-1"`` for the stretchy detail bar.
+      bar_style (str)  Extra inline style overrides — e.g. a taller height
+                       and larger border-radius for the detail bar.  When
+                       omitted, the defaults from ``.analysis-mini-bar``
+                       (80px × 8px, 2px radius) apply.
+#}
+{% macro window_bar(bar_var, bar_class='', bar_style='') -%}
+<div class="analysis-mini-bar{% if bar_class %} {{ bar_class }}{% endif %}"
+     {% if bar_style %}style="{{ bar_style }}"{% endif %}
+     :title="windowBarTitle({{ bar_var }})"
+     :class="windowBarOverran({{ bar_var }}) && 'overran'">
+    <div class="analysis-mini-bar-seg delay"   :style="'width:' + windowBarPct({{ bar_var }}, 'delay')   + '%'"></div>
+    <div class="analysis-mini-bar-seg slew"    :style="'width:' + windowBarPct({{ bar_var }}, 'slew')    + '%'"></div>
+    <div class="analysis-mini-bar-seg imaging" :style="'width:' + windowBarPct({{ bar_var }}, 'imaging') + '%'"></div>
+    <div class="analysis-mini-bar-seg margin"  :style="'width:' + windowBarPct({{ bar_var }}, 'margin')  + '%'"></div>
+</div>
+{%- endmacro %}

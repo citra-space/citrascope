@@ -78,19 +78,26 @@ function updateStoreFromConnection(connected, reconnectAt = 0) {
     }
 }
 
-// --- Countdown tick (updates store.countdown) ---
+// --- 1Hz heartbeat: bumps store.now and refreshes store.countdown ---
+//
+// Reactive Alpine getters that depend on wall-clock time read
+// `$store.citrascope.now` so they re-render once per second without each
+// component running its own setInterval.  The Scheduled Tasks countdown,
+// for instance, is just a getter on `taskRow` that reads `now` and the
+// task's start/stop times.
 let countdownInterval = null;
 
 function startCountdownUpdater() {
     if (countdownInterval) return;
     countdownInterval = setInterval(() => {
         const store = Alpine.store('citrascope');
+        store.now = Date.now();
+
         if (!store.nextTaskStartTime || store.isTaskActive) {
             store.countdown = '';
             return;
         }
-        const now = new Date();
-        const timeUntil = new Date(store.nextTaskStartTime) - now;
+        const timeUntil = new Date(store.nextTaskStartTime) - store.now;
         store.countdown = timeUntil > 0 ? store.formatCountdown(timeUntil) : 'Starting soon...';
     }, 1000);
 }
