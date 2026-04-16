@@ -1306,16 +1306,35 @@
                                         <tr>
                                             <th>Target</th>
                                             <th>Filter</th>
-                                            <th>Start Time</th>
-                                            <th>End Time</th>
+                                            <th>Window</th>
+                                            <th>Countdown</th>
                                             <th>Status</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <template x-for="task in $store.citrascope.tasks" :key="task.id">
+                                        {# Need `index` in scope so the overlap check can compare this
+                                           row's start time against the previous row's stop time. #}
+                                        <template x-for="(task, index) in $store.citrascope.tasks" :key="task.id">
                                             <tr x-data="taskRow(task)"
                                                 class="task-row" :class="rowClass">
-                                                <td class="fw-semibold" x-text="task.target"></td>
+                                                <td class="fw-semibold">
+                                                    {# Deep-link to the Citra app's satellite page when we
+                                                       have both an app_url (from /api/config) and a
+                                                       satelliteId (added to _task_to_dict).  Fall back
+                                                       to plain text when either is missing. #}
+                                                    <template x-if="task.satelliteId && $store.citrascope.config?.app_url">
+                                                        <a :href="$store.citrascope.config.app_url + '/satellites/' + task.satelliteId"
+                                                           target="_blank" rel="noopener noreferrer"
+                                                           class="text-decoration-none link-light"
+                                                           :title="'Open ' + task.target + ' on Citra'">
+                                                            <span x-text="task.target"></span>
+                                                            <i class="bi bi-box-arrow-up-right small text-muted ms-1"></i>
+                                                        </a>
+                                                    </template>
+                                                    <template x-if="!(task.satelliteId && $store.citrascope.config?.app_url)">
+                                                        <span x-text="task.target"></span>
+                                                    </template>
+                                                </td>
                                                 <td class="small">
                                                     <span x-show="task.filter"
                                                           class="badge"
@@ -1323,8 +1342,30 @@
                                                           x-text="task.filter"></span>
                                                     <span x-show="!task.filter" class="text-secondary">-</span>
                                                 </td>
-                                                <td class="text-secondary small" x-text="$store.citrascope.formatLocalTime(task.start_time)"></td>
-                                                <td class="text-secondary small" x-text="task.stop_time ? $store.citrascope.formatLocalTime(task.stop_time) : '-'"></td>
+                                                <td class="text-secondary small"
+                                                    :title="task.stop_time
+                                                            ? $store.citrascope.formatLocalTime(task.start_time) + ' → ' + $store.citrascope.formatLocalTime(task.stop_time)
+                                                            : $store.citrascope.formatLocalTime(task.start_time)">
+                                                    {# Show only the start time (date implied for today's
+                                                       queue) plus the window duration.  Full start→stop
+                                                       range is in the row's title for hover. #}
+                                                    <span x-text="$store.citrascope.formatLocalTimeShort(task.start_time)"></span>
+                                                    <span x-show="task.stop_time"
+                                                          class="text-muted ms-1"
+                                                          x-text="'(' + Math.round((new Date(task.stop_time) - new Date(task.start_time)) / 1000) + 's)'"></span>
+                                                    {# Overlap warning: the real Citra scheduler shouldn't
+                                                       hand out windows that start before the previous one
+                                                       ends.  When it happens (dummy adapter, real bug),
+                                                       flag it loudly so it isn't mistaken for plain
+                                                       lateness. #}
+                                                    <span x-show="index > 0
+                                                                  && task.start_time
+                                                                  && $store.citrascope.tasks[index - 1].stop_time
+                                                                  && new Date(task.start_time) < new Date($store.citrascope.tasks[index - 1].stop_time)"
+                                                          class="badge bg-warning-subtle text-warning-emphasis ms-1"
+                                                          title="This window opens before the previous task's window closes.">overlap</span>
+                                                </td>
+                                                <td class="small" :class="phaseClass" x-text="countdownText"></td>
                                                 <td>
                                                     <span class="badge rounded-pill" :class="statusBadgeClass" x-text="statusText"></span>
                                                 </td>

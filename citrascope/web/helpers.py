@@ -34,9 +34,16 @@ def _gps_fix_to_dict(fix: GPSFix) -> dict[str, Any]:
 
 
 def _task_to_dict(task: Any) -> dict:
-    """Format a Task object into the dict shape the web layer expects."""
+    """Format a Task object into the dict shape the web layer expects.
+
+    ``satelliteId`` is included so the Scheduled Tasks card on the monitoring
+    page can deep-link the target name to the Citra app's satellite page
+    (``{app_url}/satellites/{satelliteId}``).  ``app_url`` is exposed
+    separately via ``GET /api/config``.
+    """
     return {
         "id": task.id,
+        "satelliteId": task.satelliteId,
         "start_time": task.taskStart,
         "stop_time": task.taskStop or None,
         "status": task.status,

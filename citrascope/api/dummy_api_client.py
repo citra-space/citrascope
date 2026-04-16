@@ -420,6 +420,20 @@ class DummyApiClient(AbstractCitraApiClient):
         t_end = self._ts.from_datetime(now + timedelta(hours=PASS_SEARCH_HOURS))
 
         scheduled_sat_ids = {t.get("satelliteId") for t in existing_tasks}
+
+        # Seed the scheduling cursor from the tail of whatever's already queued
+        # so refills can't lay new tasks on top of existing ones.  Without this,
+        # every refill would re-anchor the immediate batch at "now + 10" and
+        # collide with the back end of the queue from the previous call.
+        latest_existing_stop: datetime | None = None
+        for t in existing_tasks:
+            try:
+                stop = datetime.fromisoformat(str(t.get("taskStop", "")).replace("Z", "+00:00"))
+                if latest_existing_stop is None or stop > latest_existing_stop:
+                    latest_existing_stop = stop
+            except Exception:
+                continue
+
         immediate_sats: list[tuple[str, float]] = []
         future_passes: list[tuple[datetime, str, datetime, datetime]] = []
 
@@ -469,45 +483,67 @@ class DummyApiClient(AbstractCitraApiClient):
                 future_passes.append((rise_dt, sat_id, rise_dt, set_dt))
                 break
 
-        # Build immediate tasks back-to-back with non-overlapping windows.
-        # The real Citra scheduler doesn't hand out overlapping windows — if
-        # the dummy did (e.g. 60s windows on a 15s stagger), every task after
-        # the first would inherit ~45s of "lateness" because its window opened
-        # while the prior task was still imaging, producing false-positive
-        # late/origin attribution in the Analysis dashboard.  Keep stagger
-        # >= window length to model real-world behavior.
-        immediate_tasks: list[dict] = []
+        # All new tasks (immediate + future passes) are stacked against a single
+        # scheduling cursor so nothing in the dummy queue ever overlaps.  The
+        # real Citra scheduler doesn't hand out overlapping windows; emulating
+        # that here keeps the lateness-attribution logic in the Analysis
+        # dashboard from generating false-positive "inherited" delays.
+        #
+        # Three sources used to overlap before this was unified:
+        #   1. Refills re-anchored "immediate" tasks at now+10 regardless of the
+        #      tail of the existing queue.
+        #   2. Two simultaneously-visible satellites both became immediate tasks
+        #      with hand-stacked offsets, but ignored each other across calls.
+        #   3. Future-pass rise/set windows from Skyfield were appended raw,
+        #      with no overlap check against immediates or each other.
         _FIRST_TASK_DELAY_S = 10
         _TASK_WINDOW_S = 30
-        _TASK_STAGGER_S = _TASK_WINDOW_S
-        for idx, (sat_id, alt_deg) in enumerate(immediate_sats):
-            task_start = now + timedelta(seconds=_FIRST_TASK_DELAY_S + _TASK_STAGGER_S * idx)
+        _INTER_TASK_GAP_S = 0  # back-to-back, like the real scheduler
+        earliest_start = now + timedelta(seconds=_FIRST_TASK_DELAY_S)
+        if latest_existing_stop is not None and latest_existing_stop > earliest_start:
+            cursor = latest_existing_stop + timedelta(seconds=_INTER_TASK_GAP_S)
+        else:
+            cursor = earliest_start
+
+        new_tasks: list[dict] = []
+
+        for sat_id, alt_deg in immediate_sats:
+            if len(new_tasks) >= max_tasks:
+                break
+            task_start = cursor
             task_stop = task_start + timedelta(seconds=_TASK_WINDOW_S)
-            immediate_tasks.append(self._make_task(sat_id, task_start, task_stop, telescope, ground_station))
+            new_tasks.append(self._make_task(sat_id, task_start, task_stop, telescope, ground_station))
+            cursor = task_stop + timedelta(seconds=_INTER_TASK_GAP_S)
             cat = self._satellite_catalog.get(sat_id, {})
             if self.logger:
                 self.logger.debug(
-                    "DummyApiClient: %s visible now at %.1f° — task in %ds",
+                    "DummyApiClient: %s visible now at %.1f° — task at %s",
                     cat.get("name", sat_id),
                     alt_deg,
-                    _FIRST_TASK_DELAY_S + _TASK_STAGGER_S * idx,
+                    task_start.strftime("%H:%M:%S UTC"),
                 )
 
-        # Immediate tasks first, then future passes sorted by start time
         future_passes.sort(key=lambda x: x[0])
-        new_tasks = immediate_tasks[:max_tasks]
-        remaining = max_tasks - len(new_tasks)
-
-        for _, sat_id, rise_dt, set_dt in future_passes[:remaining]:
+        for _, sat_id, rise_dt, set_dt in future_passes:
+            if len(new_tasks) >= max_tasks:
+                break
+            # If the natural rise time is already past the cursor, use it as-is.
+            # Otherwise push the window forward to the cursor — the dummy isn't
+            # actually pointing at the satellite, so fidelity to the real pass
+            # time matters less than not handing out overlapping windows.
+            task_start = rise_dt if rise_dt >= cursor else cursor
+            natural_duration = (set_dt - rise_dt).total_seconds()
+            duration_s = max(_TASK_WINDOW_S, min(natural_duration, _TASK_WINDOW_S * 4))
+            task_stop = task_start + timedelta(seconds=duration_s)
+            new_tasks.append(self._make_task(sat_id, task_start, task_stop, telescope, ground_station))
+            cursor = task_stop + timedelta(seconds=_INTER_TASK_GAP_S)
             cat = self._satellite_catalog.get(sat_id, {})
-            new_tasks.append(self._make_task(sat_id, rise_dt, set_dt, telescope, ground_station))
             if self.logger:
-                duration = (set_dt - rise_dt).total_seconds()
                 self.logger.info(
                     "DummyApiClient: Scheduled %s pass at %s (%.0fs, above %d°)",
                     cat.get("name", sat_id),
-                    rise_dt.strftime("%H:%M:%S UTC"),
-                    duration,
+                    task_start.strftime("%H:%M:%S UTC"),
+                    duration_s,
                     MIN_ELEVATION_DEG,
                 )
 

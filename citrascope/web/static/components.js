@@ -95,6 +95,67 @@ export function taskRow(task) {
 
         get rowClass() {
             return this.isActive ? 'table-active' : '';
+        },
+
+        // ── Live phase / countdown ────────────────────────────────────────
+        //
+        // All three getters below read `$store.citrascope.now`, which is
+        // bumped once per second by the heartbeat in app.js — that's what
+        // makes them tick without each row owning its own setInterval.
+        //
+        // `phase` collapses the {start, stop, now} state machine into a
+        // single label that drives both the countdown text and the cell
+        // color so the two can never disagree.
+
+        get _phaseTimes() {
+            const t = this.task || {};
+            const now = this.$store?.citrascope?.now ?? Date.now();
+            const start = t.start_time ? new Date(t.start_time).getTime() : null;
+            const stop  = t.stop_time  ? new Date(t.stop_time).getTime()  : null;
+            return { now, start, stop };
+        },
+
+        get phase() {
+            const { now, start, stop } = this._phaseTimes;
+            if (start == null) return 'unknown';
+            // 30s grace after window close so a task that overran but is still
+            // wrapping up doesn't immediately flip to "done" while the daemon
+            // is still finalizing it.
+            if (stop != null && now > stop + 30_000) return 'done';
+            if (stop != null && now > stop)          return 'overdue';
+            if (now >= start)                        return 'running';
+            if (start - now <= 10_000)               return 'imminent';
+            return 'upcoming';
+        },
+
+        get countdownText() {
+            const { now, start, stop } = this._phaseTimes;
+            if (start == null) return '—';
+            switch (this.phase) {
+                case 'done':     return 'done';
+                case 'overdue':  return Math.round((now - stop) / 1000) + 's overdue';
+                case 'running':  return stop != null
+                    ? Math.max(0, Math.round((stop - now) / 1000)) + 's left'
+                    : 'now';
+                case 'imminent': return 'in ' + Math.max(0, Math.round((start - now) / 1000)) + 's';
+                case 'upcoming': {
+                    const secs = Math.round((start - now) / 1000);
+                    if (secs < 60)    return 'in ' + secs + 's';
+                    if (secs < 3600)  return 'in ' + Math.round(secs / 60) + 'm';
+                    return 'in ' + Math.round(secs / 3600) + 'h';
+                }
+                default: return '—';
+            }
+        },
+
+        get phaseClass() {
+            switch (this.phase) {
+                case 'running':  return 'text-success fw-semibold';
+                case 'imminent': return 'text-warning fw-semibold';
+                case 'overdue':  return 'text-danger fw-semibold';
+                case 'done':     return 'text-muted';
+                default:         return 'text-secondary';
+            }
         }
     };
 }

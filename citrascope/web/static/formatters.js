@@ -33,6 +33,32 @@ export function formatLocalTime(isoString) {
 }
 
 /**
+ * Compact local-time formatter for table cells.
+ *
+ * Shows just the time of day (`12:39:16 PM`) when the timestamp falls on
+ * today's date — the date prefix is redundant in dense lists where every row
+ * is "now-ish".  When the date differs from today, prepends `Apr 17 ` so the
+ * day rollover is still legible.  Use `formatLocalTime` for cases where the
+ * full date should always be visible.
+ *
+ * @param {string} isoString - ISO 8601 date string
+ * @returns {string} e.g. "12:39:16 PM" or "Apr 17 12:39:16 AM"
+ */
+export function formatLocalTimeShort(isoString) {
+    const date = new Date(isoString);
+    const time = date.toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+    });
+    const now = new Date();
+    if (date.toDateString() === now.toDateString()) return time;
+    const day = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    return `${day} ${time}`;
+}
+
+/**
  * Format milliseconds as countdown string
  * @param {number} milliseconds - Time in milliseconds
  * @returns {string} Formatted countdown string (e.g., "2h 30m 15s")
