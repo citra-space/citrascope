@@ -943,6 +943,22 @@ class KStarsDBusAdapter(AbstractAstroHardwareAdapter):
         except (dbus.DBusException, Exception):
             return False
 
+    def get_current_binning(self) -> tuple[int, int]:
+        """Return configured imaging binning ``(binning_x, binning_y)``.
+
+        These values are templated into the capture XML sent to KStars at
+        every imaging site (see ``binning_x`` / ``binning_y`` in the sequence
+        template), so they describe what the adapter actually asks for.
+        Without this override, ``assess_config_health`` would assume ``(1, 1)``
+        and false-flag a pixel-scale mismatch for any binned KStars imaging.
+        """
+        try:
+            bx = max(1, int(self.binning_x))
+            by = max(1, int(self.binning_y))
+        except (TypeError, ValueError):
+            return (1, 1)
+        return (bx, by)
+
     def list_devices(self) -> list[str]:
         raise NotImplementedError
 

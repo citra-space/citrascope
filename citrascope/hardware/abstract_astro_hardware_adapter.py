@@ -97,6 +97,10 @@ class SlewRateTracker:
     def __init__(self, window: int = 50, lo: float = 0.1, hi: float = 50.0) -> None:
         if window < 1:
             raise ValueError(f"SlewRateTracker window must be >= 1, got {window}")
+        if not (math.isfinite(lo) and math.isfinite(hi)):
+            raise ValueError(f"SlewRateTracker lo/hi must be finite, got lo={lo}, hi={hi}")
+        if lo > hi:
+            raise ValueError(f"SlewRateTracker requires lo <= hi, got lo={lo}, hi={hi}")
         self._samples: deque[float] = deque(maxlen=window)
         self._lo = lo
         self._hi = hi

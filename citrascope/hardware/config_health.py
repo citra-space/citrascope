@@ -39,6 +39,7 @@ Usage from the status loop::
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 MISMATCH_THRESHOLD_PCT = 10.0
@@ -158,7 +159,13 @@ def assess_config_health(
 
     cfg_pixel_scale = ps_um / fl_mm * 206.265 if ps_um and fl_mm else None
     # Pixel scale per *saved* pixel after binning — what plate solver returns.
-    cfg_pixel_scale_binned = cfg_pixel_scale * bx if cfg_pixel_scale else None
+    # For symmetric binning (bx == by) this collapses cleanly to ``bx``.  For
+    # asymmetric binning (e.g. 2×1) we use the geometric mean ``sqrt(bx*by)``
+    # because plate solvers report a single scalar pixel scale for non-square
+    # pixels, which is the geometric mean of the per-axis scales.  Using only
+    # ``bx`` would silently drop the y-axis binning from the comparison.
+    bin_factor = math.sqrt(bx * by)
+    cfg_pixel_scale_binned = cfg_pixel_scale * bin_factor if cfg_pixel_scale else None
 
     # ── Focal length & ratio (config only, no hardware source) ──
     if fl_mm:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from citrascope.hardware.abstract_astro_hardware_adapter import SlewRateTracker
@@ -50,6 +52,31 @@ class TestWindow:
     def test_window_must_be_positive(self):
         with pytest.raises(ValueError, match="window must be >= 1"):
             SlewRateTracker(window=0)
+
+
+class TestBoundsValidation:
+    def test_lo_must_be_finite(self):
+        with pytest.raises(ValueError, match="lo/hi must be finite"):
+            SlewRateTracker(lo=-math.inf, hi=50.0)
+
+    def test_hi_must_be_finite(self):
+        with pytest.raises(ValueError, match="lo/hi must be finite"):
+            SlewRateTracker(lo=0.1, hi=math.inf)
+
+    def test_nan_bounds_rejected(self):
+        with pytest.raises(ValueError, match="lo/hi must be finite"):
+            SlewRateTracker(lo=math.nan, hi=50.0)
+
+    def test_lo_greater_than_hi_rejected(self):
+        with pytest.raises(ValueError, match="lo <= hi"):
+            SlewRateTracker(lo=10.0, hi=1.0)
+
+    def test_lo_equal_hi_is_allowed(self):
+        # Degenerate but well-defined: every sample pins to the same value.
+        t = SlewRateTracker(lo=3.0, hi=3.0)
+        t.record(0.0)
+        t.record(100.0)
+        assert t.mean == pytest.approx(3.0)
 
 
 class TestClamping:

@@ -1,5 +1,7 @@
 """Tests for telescope configuration health assessment."""
 
+import math
+
 import pytest
 
 from citrascope.hardware.config_health import (
@@ -200,6 +202,45 @@ class TestPixelScale:
         assert chk is not None
         assert chk.status == "ok"
         assert "@" not in chk.configured_fmt
+
+    def test_asymmetric_binning_uses_geometric_mean(self):
+        """Asymmetric binning (2x1): plate solvers report the geometric mean
+        of the per-axis pixel scales for non-square pixels, so the configured
+        scale must be multiplied by ``sqrt(bx * by)`` — not just ``bx`` — to
+        match the observed scale cleanly."""
+        cfg_scale_unbinned = 3.76 / 600 * 206.265
+        factor = math.sqrt(2 * 1)  # geometric mean for 2x1 binning
+        cfg_scale_binned = cfg_scale_unbinned * factor
+        health = assess_config_health(
+            telescope_record={"pixelSize": 3.76, "focalLength": 600},
+            binning=(2, 1),
+            observed_pixel_scale=cfg_scale_binned,
+        )
+        chk = _find_check(health, "pixel_scale")
+        assert chk is not None
+        assert chk.status == "ok"
+        assert chk.pct_diff == 0.0
+        # Display should still carry the asymmetric suffix so operators can tell.
+        assert "@ 2\u00d71" in chk.configured_fmt
+        assert chk.configured == pytest.approx(cfg_scale_binned, abs=0.01)
+
+    def test_asymmetric_binning_flags_plain_bx_factor_as_mismatch(self):
+        """Regression guard: if we only multiplied by ``bx`` (the old math),
+        a 2x1 plate solve at the correct geometric-mean scale would false-flag.
+        Here we feed in the *wrong* plain-bx scale and confirm we now warn,
+        proving the assessment is reading sqrt(bx*by), not bx."""
+        cfg_scale_unbinned = 3.76 / 600 * 206.265
+        observed_wrong_bx_only = cfg_scale_unbinned * 2  # what old math expected
+        health = assess_config_health(
+            telescope_record={"pixelSize": 3.76, "focalLength": 600},
+            binning=(2, 1),
+            observed_pixel_scale=observed_wrong_bx_only,
+        )
+        chk = _find_check(health, "pixel_scale")
+        assert chk is not None
+        # sqrt(2) ~ 1.414 vs observed 2.0 -> ~41% off, firmly a warning.
+        assert chk.status == "warning"
+        assert chk.pct_diff > 10.0
 
 
 # ---------------------------------------------------------------------------

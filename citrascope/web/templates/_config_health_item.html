@@ -6,10 +6,13 @@
     (optional) ``source_samples``.
 
     Rendering rules:
-      - No observed value yet (config-only metric or no hardware data):
-          show just the configured string, muted.
-      - Status ok: collapse on match — show one value (observed wins since it
-          may include a binning suffix from the config side) in soft green.
+      - No observed value yet (config-only metric or pending): render the
+          configured string inheriting the parent's color (no explicit style).
+      - Status ok: collapse on match — show ``configured_fmt`` in soft green.
+          We deliberately render ``configured_fmt`` (not observed) because the
+          binning suffix (e.g. ``@ 2×2``) lives on the configured side in
+          ``config_health.py``, so displaying it gives the operator full
+          context even though the underlying numeric values agree.
       - Status warning: show both sides on one line with arrow + pct, yellow.
       - Sample count (slew rate rolling mean): render ``(n=N)`` when present.
 #}
