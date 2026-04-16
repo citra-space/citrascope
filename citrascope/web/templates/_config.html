@@ -1150,9 +1150,6 @@
                                         </label>
                                     </div>
                                     <small class="text-muted d-block mt-2">By default, images are deleted after upload unless this is enabled</small>
-                                    <small class="text-muted d-block">
-                                        Images directory: <span class="text-secondary" x-text="$store.citrascope.config.images_dir_path || 'Loading...'">Loading...</span>
-                                    </small>
                                 </div>
                             </div>
 
@@ -1168,6 +1165,104 @@
                                     </label>
                                 </div>
                                 <small class="text-muted ms-4">Use a mock API server for testing, overrides api settings above</small>
+                            </div>
+
+                            <!-- Paths & Files -->
+                            <div class="col-12">
+                                <hr class="border-secondary">
+                                <h6 class="text-muted mb-3"><i class="bi bi-folder2-open me-2"></i>Paths & Files</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-dark mb-0">
+                                        <tbody>
+                                            <tr>
+                                                <td class="text-muted" style="width: 160px;">Config file</td>
+                                                <td>
+                                                    <div class="d-flex align-items-center gap-2">
+                                                        <code class="text-break" x-text="$store.citrascope.config.config_file_path || '—'"></code>
+                                                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 flex-shrink-0"
+                                                                x-show="$store.citrascope.config.config_file_path"
+                                                                @click="$store.citrascope.copyPath($store.citrascope.config.config_file_path, $event)"
+                                                                title="Copy path">
+                                                            <i class="bi bi-clipboard" style="font-size: 0.75rem;"></i>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td class="text-muted">Log file</td>
+                                                <td>
+                                                    <div class="d-flex align-items-center gap-2">
+                                                        <template x-if="$store.citrascope.config.log_file_path">
+                                                            <code class="text-break" x-text="$store.citrascope.config.log_file_path"></code>
+                                                        </template>
+                                                        <template x-if="!$store.citrascope.config.log_file_path">
+                                                            <span class="text-secondary fst-italic">File logging disabled</span>
+                                                        </template>
+                                                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 flex-shrink-0"
+                                                                x-show="$store.citrascope.config.log_file_path"
+                                                                @click="$store.citrascope.copyPath($store.citrascope.config.log_file_path, $event)"
+                                                                title="Copy path">
+                                                            <i class="bi bi-clipboard" style="font-size: 0.75rem;"></i>
+                                                        </button>
+                                                        <a class="btn btn-sm btn-outline-secondary py-0 px-1 flex-shrink-0"
+                                                           x-show="$store.citrascope.config.log_file_path"
+                                                           href="/api/logs/download"
+                                                           title="Download log file">
+                                                            <i class="bi bi-download" style="font-size: 0.75rem;"></i>
+                                                        </a>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td class="text-muted">Images directory</td>
+                                                <td>
+                                                    <div class="d-flex align-items-center gap-2">
+                                                        <code class="text-break" x-text="$store.citrascope.config.images_dir_path || '—'"></code>
+                                                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 flex-shrink-0"
+                                                                x-show="$store.citrascope.config.images_dir_path"
+                                                                @click="$store.citrascope.copyPath($store.citrascope.config.images_dir_path, $event)"
+                                                                title="Copy path">
+                                                            <i class="bi bi-clipboard" style="font-size: 0.75rem;"></i>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td class="text-muted">Processing directory</td>
+                                                <td>
+                                                    <div class="d-flex align-items-center gap-2">
+                                                        <code class="text-break" x-text="$store.citrascope.config.processing_dir_path || '—'"></code>
+                                                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 flex-shrink-0"
+                                                                x-show="$store.citrascope.config.processing_dir_path"
+                                                                @click="$store.citrascope.copyPath($store.citrascope.config.processing_dir_path, $event)"
+                                                                title="Copy path">
+                                                            <i class="bi bi-clipboard" style="font-size: 0.75rem;"></i>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td class="text-muted">Astrometry indexes</td>
+                                                <td>
+                                                    <div class="d-flex align-items-center gap-2">
+                                                        <template x-if="$store.citrascope.config.astrometry_index_path">
+                                                            <code class="text-break" x-text="$store.citrascope.config.astrometry_index_path"></code>
+                                                        </template>
+                                                        <template x-if="!$store.citrascope.config.astrometry_index_path">
+                                                            <span class="text-secondary fst-italic">Not configured</span>
+                                                        </template>
+                                                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 flex-shrink-0"
+                                                                x-show="$store.citrascope.config.astrometry_index_path"
+                                                                @click="$store.citrascope.copyPath($store.citrascope.config.astrometry_index_path, $event)"
+                                                                title="Copy path">
+                                                            <i class="bi bi-clipboard" style="font-size: 0.75rem;"></i>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     </div>
