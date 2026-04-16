@@ -78,10 +78,49 @@ export function adapterField(field) {
 export function taskRow(task) {
     return {
         task: task,
+        cancelling: false,
 
         get isActive() {
             if (!this.task || !this.task.id) return false;
             return this.task.id === this.$store.citrascope.currentTaskId;
+        },
+
+        get canCancel() {
+            // The /api/tasks/{id}/cancel route refuses to cancel the currently
+            // executing task; mirror that here so the button isn't even shown.
+            return !!(this.task && this.task.id) && !this.isActive;
+        },
+
+        async cancel() {
+            if (!this.canCancel || this.cancelling) return;
+            const label = this.task?.target || 'this task';
+            if (!window.confirm('Cancel ' + label + '?\n\nThis tells the Citra server to mark the task Canceled. It cannot be undone.')) {
+                return;
+            }
+            this.cancelling = true;
+            try {
+                const resp = await fetch('/api/tasks/' + encodeURIComponent(this.task.id) + '/cancel', {
+                    method: 'POST',
+                });
+                const { showToast } = await import('./config.js');
+                if (resp.ok) {
+                    showToast('Cancelled ' + label, 'success');
+                    // No need to mutate local state — the server will broadcast
+                    // an updated task list over the WebSocket.
+                } else {
+                    let msg = 'Cancel failed (' + resp.status + ')';
+                    try {
+                        const body = await resp.json();
+                        if (body && body.error) msg = body.error;
+                    } catch (_) { /* keep generic message */ }
+                    showToast(msg, 'danger');
+                }
+            } catch (e) {
+                const { showToast } = await import('./config.js');
+                showToast('Cancel failed: ' + (e?.message || 'network error'), 'danger');
+            } finally {
+                this.cancelling = false;
+            }
         },
 
         get statusBadgeClass() {

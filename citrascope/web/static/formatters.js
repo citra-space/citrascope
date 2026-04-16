@@ -59,6 +59,101 @@ export function formatLocalTimeShort(isoString) {
 }
 
 /**
+ * Bootstrap text-color class for an altitude readout.
+ *
+ * Color bands are keyed off the *mount's actual horizon limit* (e.g. the ZWO
+ * AM5 altitude-lower-limit setting) when that's available, so red genuinely
+ * means "below the mount's safe band" rather than an arbitrary number.  When
+ * the limit is unknown, falls back to a conservative default so the bands
+ * are still meaningful.
+ *
+ *   * red     -- below horizon_limit (mount won't / shouldn't go there)
+ *   * yellow  -- within 10° of the limit (low pass, marginal)
+ *   * green   -- comfortably above
+ *
+ * @param {number|null|undefined} altDeg
+ * @param {number|null|undefined} horizonLimitDeg - From status.mount_horizon_limit.
+ * @returns {string} Bootstrap text-color utility class.
+ */
+export function skyAltClass(altDeg, horizonLimitDeg = null) {
+    if (altDeg == null) return 'text-muted';
+    // 15° matches the alignment_manager default when the mount doesn't expose one.
+    const limit = horizonLimitDeg != null ? horizonLimitDeg : 15;
+    if (altDeg < limit) return 'text-danger';
+    if (altDeg < limit + 10) return 'text-warning';
+    return 'text-success';
+}
+
+/**
+ * Convert a horizon-limit elevation into a dashed-ring radius on the polar
+ * compass plot.  Returns `null` when the limit is unknown or would coincide
+ * with the outer rim, so the template can `x-if` the ring away.
+ *
+ * @param {number|null|undefined} horizonLimitDeg
+ * @param {number} [size=40] - SVG side in px (matches skyCompassDot default).
+ * @returns {number|null} Ring radius in px, or null.
+ */
+export function skyHorizonRingRadius(horizonLimitDeg, size = 40) {
+    if (horizonLimitDeg == null || horizonLimitDeg <= 0 || horizonLimitDeg >= 90) return null;
+    const center = size / 2;
+    const radius = center - 3;  // matches skyCompassDot's outer radius
+    return radius * (1 - horizonLimitDeg / 90);
+}
+
+/**
+ * Convert a task's `(sky_az_deg, sky_alt_deg)` into the `(cx, cy)` for a dot
+ * on a square polar-compass SVG.
+ *
+ * The plot uses standard astronomer convention: zenith at the center, horizon
+ * at the outer ring, North at the top, East at the right (azimuth measured
+ * clockwise from N).  Distance from center scales linearly with `1 - alt/90`,
+ * which keeps high-elevation targets cleanly clustered near the middle.
+ *
+ * Returns `null` when the task has no sky position attached so the template
+ * can `x-if` the dot away.
+ *
+ * @param {Object} task - Task dict with sky_alt_deg / sky_az_deg.
+ * @param {number} [size=40] - SVG width/height in px.
+ * @returns {{cx: number, cy: number}|null}
+ */
+export function skyCompassDot(task, size = 40) {
+    if (!task || task.sky_alt_deg == null || task.sky_az_deg == null) return null;
+    const center = size / 2;
+    const radius = center - 3;  // leave 3px breathing room inside the rim
+    const altClamped = Math.max(0, Math.min(90, task.sky_alt_deg));
+    const r = radius * (1 - altClamped / 90);
+    const azRad = (task.sky_az_deg * Math.PI) / 180;
+    return {
+        cx: center + r * Math.sin(azRad),
+        cy: center - r * Math.cos(azRad),
+    };
+}
+
+/**
+ * Tooltip text for the Sky cell -- everything we computed but didn't render
+ * visually.  Returns an empty string when no sky data is attached so the
+ * `:title` binding stays inert.
+ *
+ * @param {Object} task - Task dict with optional sky_* fields.
+ * @returns {string} Human-readable summary like "45° SSW · Rising · Peaks at 52° · 28° slew".
+ */
+export function formatSkyTitle(task) {
+    if (!task || task.sky_alt_deg == null) return '';
+    const parts = [];
+    parts.push(`${Math.round(task.sky_alt_deg)}° ${task.sky_compass || ''}`.trim());
+    if (task.sky_trend && task.sky_trend !== 'flat') {
+        parts.push(task.sky_trend === 'rising' ? 'Rising' : 'Setting');
+    }
+    if (task.sky_max_alt_deg != null && Math.abs(task.sky_max_alt_deg - task.sky_alt_deg) > 1) {
+        parts.push(`Peaks at ${Math.round(task.sky_max_alt_deg)}°`);
+    }
+    if (task.slew_from_current_deg != null) {
+        parts.push(`${Math.round(task.slew_from_current_deg)}° slew from current`);
+    }
+    return parts.join(' · ');
+}
+
+/**
  * Format milliseconds as countdown string
  * @param {number} milliseconds - Time in milliseconds
  * @returns {string} Formatted countdown string (e.g., "2h 30m 15s")

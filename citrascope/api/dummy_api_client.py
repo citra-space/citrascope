@@ -369,6 +369,30 @@ class DummyApiClient(AbstractCitraApiClient):
                 self.logger.debug(f"DummyApiClient: get_telescope_tasks({telescope_id}) -> {len(active_tasks)} tasks")
             return active_tasks
 
+    def cancel_task(self, task_id) -> bool:
+        """Cancel a task in the dummy store by setting status=Canceled.
+
+        Returns True if the task was found and cancellable (i.e. not already
+        in a terminal state), False otherwise. Mirrors the real Citra API's
+        rejection of terminal-state mutations.
+        """
+        with self._data_lock:
+            for task in self.data.get("tasks", []):
+                if task.get("id") == task_id:
+                    if task.get("status") in ("Canceled", "Failed", "Succeeded"):
+                        if self.logger:
+                            self.logger.warning(
+                                f"DummyApiClient: cancel_task({task_id}) refused — already {task['status']}"
+                            )
+                        return False
+                    task["status"] = "Canceled"
+                    if self.logger:
+                        self.logger.info(f"DummyApiClient: cancel_task({task_id}) -> Canceled")
+                    return True
+        if self.logger:
+            self.logger.warning(f"DummyApiClient: cancel_task({task_id}) — task not found")
+        return False
+
     def _make_task(
         self,
         sat_id: str,

@@ -10,7 +10,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from citrascope.logging import CITRASCOPE_LOGGER
-from citrascope.web.helpers import _task_to_dict
+from citrascope.web.sky_enrichment import get_web_tasks
 
 if TYPE_CHECKING:
     from citrascope.web.app import CitraScopeWebApp
@@ -22,12 +22,14 @@ def build_tasks_router(ctx: CitraScopeWebApp) -> APIRouter:
 
     @router.get("/tasks")
     async def get_tasks():
-        """Get scheduled task queue (not yet started or waiting to retry)."""
-        if not ctx.daemon or not hasattr(ctx.daemon, "task_manager") or ctx.daemon.task_manager is None:
-            return []
+        """Get scheduled task queue (not yet started or waiting to retry).
 
-        task_manager = ctx.daemon.task_manager
-        return [_task_to_dict(t) for t in task_manager.get_tasks_snapshot(exclude_active=True)]
+        Delegates to :func:`get_web_tasks` so this route and the WebSocket
+        broadcaster in :mod:`citrascope.web.app` produce identical wire
+        formats.  Sky enrichment (alt/az/compass/trend/peak + slew distance)
+        and any future derived fields live there.
+        """
+        return get_web_tasks(ctx.daemon, ctx.status, exclude_active=True)
 
     @router.get("/tasks/active")
     async def get_active_tasks():
@@ -53,6 +55,44 @@ def build_tasks_router(ctx: CitraScopeWebApp) -> APIRouter:
                 )
 
         return active
+
+    @router.post("/tasks/{task_id}/cancel")
+    async def cancel_task(task_id: str):
+        """Cancel a queued task.
+
+        PUTs status=Canceled to the Citra API and removes the task from the
+        local queue so the UI updates immediately. Refuses to cancel the
+        currently-executing task (cancelling mid-imaging is not supported).
+        """
+        if not ctx.daemon or not ctx.daemon.api_client:
+            return JSONResponse({"error": "API client not available"}, status_code=503)
+
+        tm = getattr(ctx.daemon, "task_manager", None)
+        if tm is None:
+            return JSONResponse({"error": "Task manager not available"}, status_code=503)
+
+        if getattr(tm, "current_task_id", None) == task_id:
+            return JSONResponse(
+                {"error": "Cannot cancel the currently executing task"},
+                status_code=409,
+            )
+
+        try:
+            success = await asyncio.to_thread(ctx.daemon.api_client.cancel_task, task_id)
+        except Exception as e:
+            CITRASCOPE_LOGGER.error(f"Error cancelling task {task_id}: {e}", exc_info=True)
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+        if not success:
+            return JSONResponse(
+                {"error": "Server refused cancel (task not found or already terminal)"},
+                status_code=409,
+            )
+
+        tm.drop_scheduled_task(task_id)
+        CITRASCOPE_LOGGER.info(f"Cancelled task {task_id} via web UI")
+        await ctx.broadcast_tasks()
+        return {"status": "ok", "task_id": task_id}
 
     @router.post("/tasks/pause")
     async def pause_tasks():

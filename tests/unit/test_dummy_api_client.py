@@ -89,3 +89,33 @@ class TestDummyPassScheduling:
         elsets = client.get_elsets_latest()
         returned_ids = {e["satelliteId"] for e in elsets}
         assert returned_ids == set(client._satellite_catalog.keys())
+
+
+class TestDummyCancelTask:
+    def test_cancel_task_marks_pending_canceled(self, client: DummyApiClient):
+        tasks = client.get_telescope_tasks("dummy-telescope-001")
+        if not tasks:
+            pytest.skip("No tasks generated to cancel")
+
+        target = tasks[0]
+        assert target["status"] in ("Pending", "Scheduled")
+
+        assert client.cancel_task(target["id"]) is True
+
+        # The task is still in the underlying store, but flipped to Canceled.
+        stored = next(t for t in client.data["tasks"] if t["id"] == target["id"])
+        assert stored["status"] == "Canceled"
+
+        # Subsequent fetches (Pending/Scheduled only) shouldn't return it.
+        remaining = client.get_telescope_tasks("dummy-telescope-001")
+        assert all(t["id"] != target["id"] for t in remaining)
+
+    def test_cancel_unknown_task_returns_false(self, client: DummyApiClient):
+        assert client.cancel_task("does-not-exist") is False
+
+    def test_cancel_terminal_task_returns_false(self, client: DummyApiClient):
+        # Seed a task in a terminal state directly into the store.
+        client.data.setdefault("tasks", []).append({"id": "done-1", "status": "Succeeded"})
+        assert client.cancel_task("done-1") is False
+        stored = next(t for t in client.data["tasks"] if t["id"] == "done-1")
+        assert stored["status"] == "Succeeded"

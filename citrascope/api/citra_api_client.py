@@ -321,6 +321,23 @@ class CitraApiClient(AbstractCitraApiClient):
                 self.logger.error(f"Failed to mark task {task_id} as failed: {e}")
             return None
 
+    def cancel_task(self, task_id) -> bool:
+        """Cancel a task by PUTing status=Canceled to /tasks/{task_id}.
+
+        Returns True on success. The Citra server rejects updates to tasks
+        already in a terminal state, so a 4xx response yields False here.
+        """
+        try:
+            body = {"status": "Canceled"}
+            response = self._request("PUT", f"/tasks/{task_id}", json=body)
+            if self.logger:
+                self.logger.info(f"Cancelled task {task_id}: {response}")
+            return response is not None
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Failed to cancel task {task_id}: {e}")
+            return False
+
     def expand_filters(self, filter_names):
         """Expand filter names to full spectral specifications.
 

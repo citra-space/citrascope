@@ -407,6 +407,40 @@ def test_pause_no_daemon():
     assert c.post("/api/tasks/pause").status_code == 503
 
 
+def test_cancel_task_success(client, mock_daemon):
+    mock_daemon.api_client.cancel_task.return_value = True
+    resp = client.post("/api/tasks/abc-123/cancel")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "ok"
+    assert body["task_id"] == "abc-123"
+    mock_daemon.api_client.cancel_task.assert_called_once_with("abc-123")
+    mock_daemon.task_manager.drop_scheduled_task.assert_called_once_with("abc-123")
+
+
+def test_cancel_task_server_refused(client, mock_daemon):
+    mock_daemon.api_client.cancel_task.return_value = False
+    resp = client.post("/api/tasks/abc-123/cancel")
+    assert resp.status_code == 409
+    mock_daemon.task_manager.drop_scheduled_task.assert_not_called()
+
+
+def test_cancel_task_active_refused(client, mock_daemon):
+    mock_daemon.task_manager.current_task_id = "abc-123"
+    resp = client.post("/api/tasks/abc-123/cancel")
+    assert resp.status_code == 409
+    mock_daemon.api_client.cancel_task.assert_not_called()
+    mock_daemon.task_manager.drop_scheduled_task.assert_not_called()
+
+
+def test_cancel_task_no_api_client(mock_daemon):
+    mock_daemon.api_client = None
+    with patch("citrascope.web.app.StaticFiles"):
+        app = CitraScopeWebApp(daemon=mock_daemon)
+    c = TestClient(app.app)
+    assert c.post("/api/tasks/abc/cancel").status_code == 503
+
+
 # ---------------------------------------------------------------------------
 # Emergency stop
 # ---------------------------------------------------------------------------

@@ -381,6 +381,15 @@ class StatusCollector:
             status.pointing_model = adapter.get_pointing_model_status() if adapter else None
             status.fov_short_deg = adapter.observed_fov_short_deg if adapter else None
 
+            # User-defined "won't observe below this" elevation from the
+            # telescope record on the Citra backend.  Different from the mount's
+            # hardware altitude limit; both can be set independently.  Used by
+            # the Sky compass on the monitoring page to color targets that fall
+            # under the operator's preferred floor.
+            if self.daemon.telescope_record:
+                min_el = self.daemon.telescope_record.get("minElevation")
+                status.telescope_min_elevation = float(min_el) if min_el is not None else None
+
             # Config health: compare server telescope record vs hardware + plate solve
             if self.daemon.telescope_record and adapter:
                 from citrascope.hardware.config_health import assess_config_health
