@@ -61,43 +61,43 @@ export function formatLocalTimeShort(isoString) {
 /**
  * Bootstrap text-color class for an altitude readout.
  *
- * Color bands are keyed off the *mount's actual horizon limit* (e.g. the ZWO
- * AM5 altitude-lower-limit setting) when that's available, so red genuinely
- * means "below the mount's safe band" rather than an arbitrary number.  When
- * the limit is unknown, falls back to a conservative default so the bands
- * are still meaningful.
+ * Color bands are keyed off the configured minimum observing elevation when
+ * that's available, so red means "below the current observing floor" rather
+ * than an arbitrary number.  When the threshold is unknown, falls back to a
+ * conservative default so the bands are still meaningful.
  *
- *   * red     -- below horizon_limit (mount won't / shouldn't go there)
- *   * yellow  -- within 10° of the limit (low pass, marginal)
+ *   * red     -- below the minimum elevation
+ *   * yellow  -- within 10° of the threshold (low pass, marginal)
  *   * green   -- comfortably above
  *
  * @param {number|null|undefined} altDeg
- * @param {number|null|undefined} horizonLimitDeg - From status.mount_horizon_limit.
+ * @param {number|null|undefined} minElevationDeg - From status.telescope_min_elevation.
  * @returns {string} Bootstrap text-color utility class.
  */
-export function skyAltClass(altDeg, horizonLimitDeg = null) {
+export function skyAltClass(altDeg, minElevationDeg = null) {
     if (altDeg == null) return 'text-muted';
-    // 15° matches the alignment_manager default when the mount doesn't expose one.
-    const limit = horizonLimitDeg != null ? horizonLimitDeg : 15;
+    // 15° matches the alignment_manager default when no minimum elevation is available.
+    const limit = minElevationDeg != null ? minElevationDeg : 15;
     if (altDeg < limit) return 'text-danger';
     if (altDeg < limit + 10) return 'text-warning';
     return 'text-success';
 }
 
 /**
- * Convert a horizon-limit elevation into a dashed-ring radius on the polar
- * compass plot.  Returns `null` when the limit is unknown or would coincide
- * with the outer rim, so the template can `x-if` the ring away.
+ * Convert the configured minimum-elevation floor into a dashed-ring radius on
+ * the polar compass plot, so operators can see the "safe band" at a glance.
+ * Returns `null` when the threshold is unknown or would coincide with the
+ * outer rim, so the template can `x-if` the ring away.
  *
- * @param {number|null|undefined} horizonLimitDeg
+ * @param {number|null|undefined} minElevationDeg - From status.telescope_min_elevation.
  * @param {number} [size=40] - SVG side in px (matches skyCompassDot default).
  * @returns {number|null} Ring radius in px, or null.
  */
-export function skyHorizonRingRadius(horizonLimitDeg, size = 40) {
-    if (horizonLimitDeg == null || horizonLimitDeg <= 0 || horizonLimitDeg >= 90) return null;
+export function skyHorizonRingRadius(minElevationDeg, size = 40) {
+    if (minElevationDeg == null || minElevationDeg <= 0 || minElevationDeg >= 90) return null;
     const center = size / 2;
     const radius = center - 3;  // matches skyCompassDot's outer radius
-    return radius * (1 - horizonLimitDeg / 90);
+    return radius * (1 - minElevationDeg / 90);
 }
 
 /**

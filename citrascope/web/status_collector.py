@@ -386,9 +386,19 @@ class StatusCollector:
             # hardware altitude limit; both can be set independently.  Used by
             # the Sky compass on the monitoring page to color targets that fall
             # under the operator's preferred floor.
+            #
+            # Always overwrite so a disappearing telescope_record clears the
+            # previous value rather than leaving the UI to color against a
+            # stale floor.  Parse defensively: the outer try/except would
+            # otherwise abort the whole collect() cycle on a single bad field.
+            status.telescope_min_elevation = None
             if self.daemon.telescope_record:
                 min_el = self.daemon.telescope_record.get("minElevation")
-                status.telescope_min_elevation = float(min_el) if min_el is not None else None
+                if min_el is not None:
+                    try:
+                        status.telescope_min_elevation = float(min_el)
+                    except (TypeError, ValueError):
+                        pass
 
             # Config health: compare server telescope record vs hardware + plate solve
             if self.daemon.telescope_record and adapter:
