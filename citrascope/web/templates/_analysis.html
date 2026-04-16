@@ -1,3 +1,4 @@
+{% import '_window_bar.html' as wb %}
 <div class="container my-4" id="analysisSection"
      x-show="$store.citrascope.currentSection === 'analysis'" x-cloak
      x-data="analysisTab()"
@@ -114,18 +115,18 @@
     <div class="row g-2 mb-3 align-items-end">
         <div class="col-auto">
             <input type="text" class="form-control form-control-sm" placeholder="Target name..."
-                   x-model.debounce.300ms="filterTarget" @input="loadTasks()">
+                   x-model.debounce.300ms="filterTarget" @input="applyFilter()">
         </div>
         <div class="col-auto">
-            <input type="date" class="form-control form-control-sm" x-model="filterDateFrom" @change="loadTasks()"
+            <input type="date" class="form-control form-control-sm" x-model="filterDateFrom" @change="applyFilter()"
                    title="From date" style="max-width: 140px;">
         </div>
         <div class="col-auto">
-            <input type="date" class="form-control form-control-sm" x-model="filterDateTo" @change="loadTasks()"
+            <input type="date" class="form-control form-control-sm" x-model="filterDateTo" @change="applyFilter()"
                    title="To date" style="max-width: 140px;">
         </div>
         <div class="col-auto">
-            <select class="form-select form-select-sm" x-model="filterFilterName" @change="loadTasks()">
+            <select class="form-select form-select-sm" x-model="filterFilterName" @change="applyFilter()">
                 <option value="">Filter: any</option>
                 <template x-for="fn in (stats.filter_names || [])" :key="fn">
                     <option :value="fn" x-text="fn"></option>
@@ -133,14 +134,14 @@
             </select>
         </div>
         <div class="col-auto">
-            <select class="form-select form-select-sm" x-model="filterSolved" @change="loadTasks()">
+            <select class="form-select form-select-sm" x-model="filterSolved" @change="applyFilter()">
                 <option value="">Solve: any</option>
                 <option value="true">Solved</option>
                 <option value="false">Not solved</option>
             </select>
         </div>
         <div class="col-auto">
-            <select class="form-select form-select-sm" x-model="filterMatchDetail" @change="loadTasks()">
+            <select class="form-select form-select-sm" x-model="filterMatchDetail" @change="applyFilter()">
                 <option value="">Match: any</option>
                 <option value="matched">Target matched</option>
                 <option value="not_matched">Target not matched</option>
@@ -149,14 +150,14 @@
             </select>
         </div>
         <div class="col-auto">
-            <select class="form-select form-select-sm" x-model="filterWindow" @change="loadTasks()">
+            <select class="form-select form-select-sm" x-model="filterWindow" @change="applyFilter()">
                 <option value="">Window: any</option>
                 <option value="true">Missed</option>
                 <option value="false">On time</option>
             </select>
         </div>
         <div class="col-auto">
-            <select class="form-select form-select-sm" x-model="filterUploadStatus" @change="loadTasks()">
+            <select class="form-select form-select-sm" x-model="filterUploadStatus" @change="applyFilter()">
                 <option value="">Upload: any</option>
                 <option value="uploaded">Uploaded</option>
                 <option value="failed">Failed</option>
@@ -261,7 +262,8 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <template x-for="(cfg, idx) in autotuneResult.configs.slice(0, 10)" :key="idx">
+                                    <template x-for="(cfg, idx) in autotuneResult.configs.slice(0, 10)"
+                                              :key="cfg.detect_thresh + '|' + cfg.detect_minarea + '|' + cfg.filter_name">
                                         <tr :class="idx === 0 && 'table-success'">
                                             <td class="py-1" x-text="idx + 1"></td>
                                             <td class="py-1 fw-bold" x-text="cfg.avg_score.toFixed(4)"></td>
@@ -295,7 +297,10 @@
          class="card mb-3 border-warning" style="background: rgba(255,193,7,0.08);">
         <div class="card-body p-2">
             <div class="d-flex flex-wrap gap-2 align-items-end">
-                <strong class="me-2" x-text="selectedCount + ' selected'"></strong>
+                <strong class="me-1" x-text="selectedCount + ' selected'"></strong>
+                <button type="button" class="btn btn-link btn-sm p-0 me-2 text-body-secondary"
+                        style="font-size: 0.75rem; text-decoration: underline;"
+                        @click="clearSelection()" title="Clear all selections">clear</button>
                 <div>
                     <label class="form-label mb-0" style="font-size: 0.7rem;">Detect Thresh</label>
                     <input type="number" class="form-control form-control-sm" style="width: 80px;"
@@ -338,8 +343,11 @@
             <thead>
                 <tr>
                     <th style="width: 30px;">
-                        <input type="checkbox" class="form-check-input" @change="toggleSelectAll($event.target.checked)"
-                               :checked="tasks.length > 0 && tasks.every(t => selectedTasks[t.task_id])">
+                        <input type="checkbox" class="form-check-input"
+                               @change="toggleSelectAll($event.target.checked)"
+                               :checked="tasks.length > 0 && tasks.every(t => selectedTasks[t.task_id])"
+                               x-effect="$el.indeterminate = tasks.some(t => selectedTasks[t.task_id])
+                                                          && !tasks.every(t => selectedTasks[t.task_id])">
                     </th>
                     <th class="sortable" @click="toggleSort('completed_at')">
                         Time <span x-text="sortIcon('completed_at')"></span>
@@ -364,14 +372,15 @@
                     <th></th>
                 </tr>
             </thead>
-            <template x-for="task in tasks" :key="task.task_id">
+            <template x-for="(task, idx) in tasks" :key="task.task_id">
                 <tbody>
                     <tr class="analysis-summary-row" :class="expanded === task.task_id && 'analysis-row-expanded'"
                         @click="toggleDetail(task.task_id)" style="cursor: pointer;">
                         <td @click.stop>
                             <input type="checkbox" class="form-check-input"
-                                   :checked="selectedTasks[task.task_id]"
-                                   @change="toggleSelect(task.task_id, $event.target.checked)">
+                                   :checked="!!selectedTasks[task.task_id]"
+                                   @click.stop="handleRowCheckboxClick($event, idx)"
+                                   title="Shift+click to select a range">
                         </td>
                         <td><small x-text="formatTime(task.completed_at)"></small></td>
                         <td x-text="task.target_name || '—'"></td>
@@ -426,13 +435,7 @@
                             <span x-show="task.upload_success == null && task.should_upload !== 0" class="text-warning">…</span>
                         </td>
                         <td>
-                            <div class="analysis-mini-bar" :title="windowBarTitle(task)"
-                                 :class="windowBarOverran(task) && 'overran'">
-                                <div class="analysis-mini-bar-seg delay" :style="'width:' + windowBarPct(task, 'delay') + '%'"></div>
-                                <div class="analysis-mini-bar-seg slew" :style="'width:' + windowBarPct(task, 'slew') + '%'"></div>
-                                <div class="analysis-mini-bar-seg imaging" :style="'width:' + windowBarPct(task, 'imaging') + '%'"></div>
-                                <div class="analysis-mini-bar-seg margin" :style="'width:' + windowBarPct(task, 'margin') + '%'"></div>
-                            </div>
+                            {{ wb.window_bar('task') }}
                         </td>
                         <td>
                             <i class="bi" :class="expanded === task.task_id ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
@@ -442,12 +445,155 @@
                         <td colspan="14" class="p-0 border-0">
                             <div class="analysis-detail-card mx-2 my-2">
                                 <div class="row g-0">
-                                    <div class="col-md-6 p-3">
+                                    <div class="col-md-6 p-3 d-flex flex-column">
                                         <img :src="expanded === task.task_id && detail ? '/api/analysis/tasks/' + task.task_id + '/image?thumb=1' : null" class="img-fluid rounded"
                                              @error="$event.target.style.display='none'"
                                              @click.stop="lightboxSrc = '/api/analysis/tasks/' + task.task_id + '/image'"
                                              style="object-fit: contain; background: #111; cursor: zoom-in; width: 100%;">
                                         <div class="text-muted small mt-1" x-show="detail && !detail.has_annotated_image">No preview available</div>
+
+                                        <!-- Actions + reprocess panel live under the image so the right column
+                                             (which is dense with metadata) doesn't push them past the fold and
+                                             the empty space beneath the image gets put to work. -->
+                                        <template x-if="detail">
+                                            <div class="mt-3">
+                                                <div class="d-flex gap-2 align-items-center mb-3 flex-wrap">
+                                                    <template x-if="detail.artifacts_available">
+                                                        <a :href="'/api/analysis/tasks/' + detail.task_id + '/artifacts/report.html'"
+                                                           target="_blank" class="btn btn-sm btn-outline-secondary">View full report</a>
+                                                    </template>
+                                                    <template x-if="detail.artifacts_available">
+                                                        <a :href="'/api/analysis/tasks/' + detail.task_id + '/bundle'"
+                                                           class="btn btn-sm btn-outline-secondary">
+                                                            <i class="bi bi-download"></i> Download bundle
+                                                        </a>
+                                                    </template>
+                                                    <template x-if="!detail.artifacts_available">
+                                                        <span class="badge bg-secondary">Artifacts expired</span>
+                                                    </template>
+                                                </div>
+
+                                                <!-- Reprocess panel -->
+                                                <template x-if="detail.artifacts_available">
+                                                    <div class="border-top pt-3">
+                                                        <small class="text-muted d-block mb-2">Reprocess with different settings</small>
+                                                        <div class="d-flex gap-2 flex-wrap align-items-end mb-2">
+                                                            <div>
+                                                                <label class="form-label mb-0" style="font-size: 0.75rem;">
+                                                                    Detect Thresh
+                                                                    <span class="text-muted" x-show="origThresh != null"
+                                                                          x-text="'(was ' + origThresh + ')'"></span>
+                                                                </label>
+                                                                <input type="number" class="form-control form-control-sm" style="width: 100px;"
+                                                                       x-model.number="reprocessThresh" min="1" max="20" step="0.5"
+                                                                       :class="origThresh != null && reprocessThresh != origThresh && 'border-warning'">
+                                                            </div>
+                                                            <div>
+                                                                <label class="form-label mb-0" style="font-size: 0.75rem;">
+                                                                    Min Area
+                                                                    <span class="text-muted" x-show="origMinarea != null"
+                                                                          x-text="'(was ' + origMinarea + ')'"></span>
+                                                                </label>
+                                                                <input type="number" class="form-control form-control-sm" style="width: 90px;"
+                                                                       x-model.number="reprocessMinarea" min="1" max="50" step="1"
+                                                                       :class="origMinarea != null && reprocessMinarea != origMinarea && 'border-warning'">
+                                                            </div>
+                                                            <div>
+                                                                <label class="form-label mb-0" style="font-size: 0.75rem;">
+                                                                    Filter Kernel
+                                                                    <span class="text-muted" x-show="origFilter != null"
+                                                                          x-text="'(was ' + origFilter + ')'"></span>
+                                                                </label>
+                                                                <select class="form-select form-select-sm" style="width: 160px;"
+                                                                        x-model="reprocessFilter"
+                                                                        :class="origFilter != null && reprocessFilter !== origFilter && 'border-warning'">
+                                                                    <option value="default">default</option>
+                                                                    <option value="gauss_2.5_5x5">gauss_2.5_5x5</option>
+                                                                    <option value="gauss_3.0_7x7">gauss_3.0_7x7</option>
+                                                                    <option value="gauss_4.0_7x7">gauss_4.0_7x7</option>
+                                                                    <option value="tophat_3.0_3x3">tophat_3.0_3x3</option>
+                                                                </select>
+                                                            </div>
+                                                            <button class="btn btn-sm btn-primary" @click.stop="doReprocess(detail.task_id)"
+                                                                    :disabled="reprocessing">
+                                                                <span x-show="!reprocessing"><i class="bi bi-arrow-repeat"></i> Reprocess</span>
+                                                                <span x-show="reprocessing"><span class="spinner-border spinner-border-sm"></span> Running...</span>
+                                                            </button>
+                                                        </div>
+                                                        <template x-if="reprocessResult">
+                                                            <div class="mt-2">
+                                                                <!-- Settings diff -->
+                                                                <small class="text-muted d-block mb-1">Settings changes</small>
+                                                                <div class="d-flex gap-3 flex-wrap mb-2" style="font-size: 0.8rem;">
+                                                                    <span :class="reprocessResult._usedThresh != origThresh ? 'text-warning' : 'text-muted'">
+                                                                        Thresh: <span x-text="origThresh ?? '—'"></span>
+                                                                        → <strong x-text="reprocessResult._usedThresh ?? '—'"></strong>
+                                                                    </span>
+                                                                    <span :class="reprocessResult._usedMinarea != origMinarea ? 'text-warning' : 'text-muted'">
+                                                                        MinArea: <span x-text="origMinarea ?? '—'"></span>
+                                                                        → <strong x-text="reprocessResult._usedMinarea ?? '—'"></strong>
+                                                                    </span>
+                                                                    <span :class="reprocessResult._usedFilter !== origFilter ? 'text-warning' : 'text-muted'">
+                                                                        Filter: <span x-text="origFilter ?? '—'"></span>
+                                                                        → <strong x-text="reprocessResult._usedFilter ?? '—'"></strong>
+                                                                    </span>
+                                                                </div>
+
+                                                                <!-- Results diff -->
+                                                                <small class="text-muted d-block mb-1">Results comparison</small>
+                                                                <div class="d-flex gap-3 flex-wrap" style="font-size: 0.85rem;">
+                                                                    <span>Sources:
+                                                                        <span class="text-muted" x-text="detail.source_count ?? '—'"></span> →
+                                                                        <strong x-text="reprocessResult.extracted_data?.['source_extractor.num_sources'] ?? '—'"></strong>
+                                                                    </span>
+                                                                    <span>ZP:
+                                                                        <span class="text-muted" x-text="detail.zero_point?.toFixed(3) ?? '—'"></span> →
+                                                                        <strong x-text="reprocessResult.extracted_data?.['photometry.zero_point']?.toFixed(3) ?? '—'"></strong>
+                                                                    </span>
+                                                                    <span>Sats:
+                                                                        <span class="text-muted" x-text="detail.total_satellites_detected ?? '0'"></span> →
+                                                                        <strong x-text="reprocessResult.extracted_data?.['satellite_matcher.num_satellites_detected'] ?? '0'"></strong>
+                                                                    </span>
+                                                                    <span>Time:
+                                                                        <strong x-text="reprocessResult.total_time?.toFixed(2) + 's'"></strong>
+                                                                    </span>
+                                                                </div>
+                                                                <div class="d-flex gap-1 flex-wrap mt-1" style="font-size: 0.8rem;">
+                                                                    <template x-for="p in reprocessResult.processors" :key="p.name">
+                                                                        <span class="badge" :class="p.ok ? 'bg-success' : 'bg-danger'"
+                                                                              x-text="p.name + ' ' + p.time_s + 's'"></span>
+                                                                    </template>
+                                                                </div>
+                                                                <div class="mt-2 d-flex gap-2 align-items-center flex-wrap">
+                                                                    <a :href="'/api/analysis/tasks/' + detail.task_id + '/artifacts/reprocessed/report.html'"
+                                                                       target="_blank" class="btn btn-sm btn-outline-secondary">
+                                                                        View reprocessed report
+                                                                    </a>
+                                                                    <template x-if="reprocessResult.should_upload && (reprocessResult.extracted_data?.['satellite_matcher.num_satellites_detected'] || 0) > 0">
+                                                                        <button class="btn btn-sm btn-success"
+                                                                                @click.stop="doUploadReprocessed(detail.task_id)"
+                                                                                :disabled="uploadingReprocessed">
+                                                                            <span x-show="!uploadingReprocessed">
+                                                                                <i class="bi bi-cloud-upload"></i> Upload Observation
+                                                                            </span>
+                                                                            <span x-show="uploadingReprocessed">
+                                                                                <span class="spinner-border spinner-border-sm"></span> Uploading...
+                                                                            </span>
+                                                                        </button>
+                                                                    </template>
+                                                                    <span x-show="uploadReprocessedOk" class="text-success small">
+                                                                        <i class="bi bi-check-circle"></i> Uploaded
+                                                                    </span>
+                                                                    <span x-show="uploadReprocessedError" class="text-danger small"
+                                                                          x-text="uploadReprocessedError"></span>
+                                                                </div>
+                                                            </div>
+                                                        </template>
+                                                        <div x-show="reprocessError" class="text-danger mt-2 small" x-text="reprocessError"></div>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </template>
                                     </div>
                                     <div class="col-md-6 p-3">
                                         <template x-if="detail">
@@ -460,13 +606,23 @@
                                                 <template x-if="detail.window_start && detail.window_stop">
                                                     <div class="mb-3">
                                                         <small class="text-muted d-block mb-1">Task window</small>
+                                                        <!-- Expanded version of the row mini-bar so the detail view
+                                                             tells the same story (delay / slew / imaging / margin)
+                                                             instead of a near-invisible imaging-only sliver.  Helpers
+                                                             are shared with the table row, so the two stay in sync. -->
                                                         <div class="d-flex align-items-center gap-2">
                                                             <small x-text="formatTime(detail.window_start)"></small>
-                                                            <div class="flex-grow-1 position-relative" style="height: 8px; background: #333; border-radius: 4px;">
-                                                                <div class="position-absolute bg-success" style="height: 100%; border-radius: 4px;"
-                                                                     :style="'left:' + windowPct(detail, 'start') + '%; width:' + windowPct(detail, 'width') + '%'"></div>
-                                                            </div>
+                                                            {{ wb.window_bar('detail',
+                                                                              bar_class='flex-grow-1',
+                                                                              bar_style='width:auto; height:14px; border-radius:4px;') }}
                                                             <small x-text="formatTime(detail.window_stop)"></small>
+                                                        </div>
+                                                        <div class="d-flex flex-wrap gap-3 mt-1" style="font-size: 0.75rem;">
+                                                            <span><span class="analysis-legend-dot" style="background:#4a5568"></span> Delay <span class="text-muted" x-text="windowBarSecs(detail, 'delay').toFixed(1) + 's'"></span></span>
+                                                            <span><span class="analysis-legend-dot bg-primary"></span> Slew <span class="text-muted" x-text="windowBarSecs(detail, 'slew').toFixed(1) + 's'"></span></span>
+                                                            <span><span class="analysis-legend-dot" style="background:#00cec9"></span> Imaging <span class="text-muted" x-text="windowBarSecs(detail, 'imaging').toFixed(1) + 's'"></span></span>
+                                                            <span><span class="analysis-legend-dot" style="background:#2d3748"></span> Margin <span class="text-muted" x-text="windowBarSecs(detail, 'margin').toFixed(1) + 's'"></span></span>
+                                                            <span x-show="windowBarOverran(detail)" class="text-danger">⚠ overran</span>
                                                         </div>
                                                         <div class="d-flex gap-3 mt-1">
                                                             <small class="text-muted" x-show="detail.window_start_delay_s != null"
@@ -477,17 +633,9 @@
                                                     </div>
                                                 </template>
 
-                                                <template x-if="detail.exposure_seconds != null">
-                                                    <div class="mb-3">
-                                                        <small class="text-muted d-block mb-1">Imaging</small>
-                                                        <div class="d-flex gap-3 flex-wrap align-items-center">
-                                                            <span x-text="detail.exposure_seconds.toFixed(3) + 's exposure'"></span>
-                                                            <span x-show="detail.num_exposures" x-text="'× ' + detail.num_exposures + ' frames'"></span>
-                                                            <span x-show="detail.adaptive_exposure_active" class="badge bg-info">Adaptive</span>
-                                                        </div>
-                                                    </div>
-                                                </template>
-
+                                                <!-- Sections below follow operation order:
+                                                     slew/convergence loop → final pointing → exposure → plate solve
+                                                     → photometry → satellite matching → upload. -->
                                                 <template x-if="detail.convergence_attempts != null">
                                                     <div class="mb-3">
                                                         <small class="text-muted d-block mb-1">Convergence</small>
@@ -518,6 +666,17 @@
                                                         </div>
                                                     </div>
                                                 </div>
+
+                                                <template x-if="detail.exposure_seconds != null">
+                                                    <div class="mb-3">
+                                                        <small class="text-muted d-block mb-1">Imaging</small>
+                                                        <div class="d-flex gap-3 flex-wrap align-items-center">
+                                                            <span x-text="detail.exposure_seconds.toFixed(3) + 's exposure'"></span>
+                                                            <span x-show="detail.num_exposures" x-text="'× ' + detail.num_exposures + ' frames'"></span>
+                                                            <span x-show="detail.adaptive_exposure_active" class="badge bg-info">Adaptive</span>
+                                                        </div>
+                                                    </div>
+                                                </template>
 
                                                 <div class="mb-3">
                                                     <small class="text-muted d-block mb-1">Plate solve</small>
@@ -658,141 +817,6 @@
                                                     </div>
                                                 </div>
 
-                                                <div class="d-flex gap-2 align-items-center mb-3">
-                                                    <template x-if="detail.artifacts_available">
-                                                        <a :href="'/api/analysis/tasks/' + detail.task_id + '/artifacts/report.html'"
-                                                           target="_blank" class="btn btn-sm btn-outline-secondary">View full report</a>
-                                                    </template>
-                                                    <template x-if="detail.artifacts_available">
-                                                        <a :href="'/api/analysis/tasks/' + detail.task_id + '/bundle'"
-                                                           class="btn btn-sm btn-outline-secondary">
-                                                            <i class="bi bi-download"></i> Download bundle
-                                                        </a>
-                                                    </template>
-                                                    <template x-if="!detail.artifacts_available">
-                                                        <span class="badge bg-secondary">Artifacts expired</span>
-                                                    </template>
-                                                </div>
-
-                                                <!-- Reprocess panel -->
-                                                <template x-if="detail.artifacts_available">
-                                                    <div class="border-top pt-3">
-                                                        <small class="text-muted d-block mb-2">Reprocess with different settings</small>
-                                                        <div class="d-flex gap-2 flex-wrap align-items-end mb-2">
-                                                            <div>
-                                                                <label class="form-label mb-0" style="font-size: 0.75rem;">
-                                                                    Detect Thresh
-                                                                    <span class="text-muted" x-show="origThresh != null"
-                                                                          x-text="'(was ' + origThresh + ')'"></span>
-                                                                </label>
-                                                                <input type="number" class="form-control form-control-sm" style="width: 100px;"
-                                                                       x-model.number="reprocessThresh" min="1" max="20" step="0.5"
-                                                                       :class="origThresh != null && reprocessThresh != origThresh && 'border-warning'">
-                                                            </div>
-                                                            <div>
-                                                                <label class="form-label mb-0" style="font-size: 0.75rem;">
-                                                                    Min Area
-                                                                    <span class="text-muted" x-show="origMinarea != null"
-                                                                          x-text="'(was ' + origMinarea + ')'"></span>
-                                                                </label>
-                                                                <input type="number" class="form-control form-control-sm" style="width: 90px;"
-                                                                       x-model.number="reprocessMinarea" min="1" max="50" step="1"
-                                                                       :class="origMinarea != null && reprocessMinarea != origMinarea && 'border-warning'">
-                                                            </div>
-                                                            <div>
-                                                                <label class="form-label mb-0" style="font-size: 0.75rem;">
-                                                                    Filter Kernel
-                                                                    <span class="text-muted" x-show="origFilter != null"
-                                                                          x-text="'(was ' + origFilter + ')'"></span>
-                                                                </label>
-                                                                <select class="form-select form-select-sm" style="width: 160px;"
-                                                                        x-model="reprocessFilter"
-                                                                        :class="origFilter != null && reprocessFilter !== origFilter && 'border-warning'">
-                                                                    <option value="default">default</option>
-                                                                    <option value="gauss_2.5_5x5">gauss_2.5_5x5</option>
-                                                                    <option value="gauss_3.0_7x7">gauss_3.0_7x7</option>
-                                                                    <option value="gauss_4.0_7x7">gauss_4.0_7x7</option>
-                                                                    <option value="tophat_3.0_3x3">tophat_3.0_3x3</option>
-                                                                </select>
-                                                            </div>
-                                                            <button class="btn btn-sm btn-primary" @click.stop="doReprocess(detail.task_id)"
-                                                                    :disabled="reprocessing">
-                                                                <span x-show="!reprocessing"><i class="bi bi-arrow-repeat"></i> Reprocess</span>
-                                                                <span x-show="reprocessing"><span class="spinner-border spinner-border-sm"></span> Running...</span>
-                                                            </button>
-                                                        </div>
-                                                        <template x-if="reprocessResult">
-                                                            <div class="mt-2">
-                                                                <!-- Settings diff -->
-                                                                <small class="text-muted d-block mb-1">Settings changes</small>
-                                                                <div class="d-flex gap-3 flex-wrap mb-2" style="font-size: 0.8rem;">
-                                                                    <span :class="reprocessResult._usedThresh != origThresh ? 'text-warning' : 'text-muted'">
-                                                                        Thresh: <span x-text="origThresh ?? '—'"></span>
-                                                                        → <strong x-text="reprocessResult._usedThresh ?? '—'"></strong>
-                                                                    </span>
-                                                                    <span :class="reprocessResult._usedMinarea != origMinarea ? 'text-warning' : 'text-muted'">
-                                                                        MinArea: <span x-text="origMinarea ?? '—'"></span>
-                                                                        → <strong x-text="reprocessResult._usedMinarea ?? '—'"></strong>
-                                                                    </span>
-                                                                    <span :class="reprocessResult._usedFilter !== origFilter ? 'text-warning' : 'text-muted'">
-                                                                        Filter: <span x-text="origFilter ?? '—'"></span>
-                                                                        → <strong x-text="reprocessResult._usedFilter ?? '—'"></strong>
-                                                                    </span>
-                                                                </div>
-
-                                                                <!-- Results diff -->
-                                                                <small class="text-muted d-block mb-1">Results comparison</small>
-                                                                <div class="d-flex gap-3 flex-wrap" style="font-size: 0.85rem;">
-                                                                    <span>Sources:
-                                                                        <span class="text-muted" x-text="detail.source_count ?? '—'"></span> →
-                                                                        <strong x-text="reprocessResult.extracted_data?.['source_extractor.num_sources'] ?? '—'"></strong>
-                                                                    </span>
-                                                                    <span>ZP:
-                                                                        <span class="text-muted" x-text="detail.zero_point?.toFixed(3) ?? '—'"></span> →
-                                                                        <strong x-text="reprocessResult.extracted_data?.['photometry.zero_point']?.toFixed(3) ?? '—'"></strong>
-                                                                    </span>
-                                                                    <span>Sats:
-                                                                        <span class="text-muted" x-text="detail.total_satellites_detected ?? '0'"></span> →
-                                                                        <strong x-text="reprocessResult.extracted_data?.['satellite_matcher.num_satellites_detected'] ?? '0'"></strong>
-                                                                    </span>
-                                                                    <span>Time:
-                                                                        <strong x-text="reprocessResult.total_time?.toFixed(2) + 's'"></strong>
-                                                                    </span>
-                                                                </div>
-                                                                <div class="d-flex gap-1 flex-wrap mt-1" style="font-size: 0.8rem;">
-                                                                    <template x-for="p in reprocessResult.processors" :key="p.name">
-                                                                        <span class="badge" :class="p.ok ? 'bg-success' : 'bg-danger'"
-                                                                              x-text="p.name + ' ' + p.time_s + 's'"></span>
-                                                                    </template>
-                                                                </div>
-                                                                <div class="mt-2 d-flex gap-2 align-items-center">
-                                                                    <a :href="'/api/analysis/tasks/' + detail.task_id + '/artifacts/reprocessed/report.html'"
-                                                                       target="_blank" class="btn btn-sm btn-outline-secondary">
-                                                                        View reprocessed report
-                                                                    </a>
-                                                                    <template x-if="reprocessResult.should_upload && (reprocessResult.extracted_data?.['satellite_matcher.num_satellites_detected'] || 0) > 0">
-                                                                        <button class="btn btn-sm btn-success"
-                                                                                @click.stop="doUploadReprocessed(detail.task_id)"
-                                                                                :disabled="uploadingReprocessed">
-                                                                            <span x-show="!uploadingReprocessed">
-                                                                                <i class="bi bi-cloud-upload"></i> Upload Observation
-                                                                            </span>
-                                                                            <span x-show="uploadingReprocessed">
-                                                                                <span class="spinner-border spinner-border-sm"></span> Uploading...
-                                                                            </span>
-                                                                        </button>
-                                                                    </template>
-                                                                    <span x-show="uploadReprocessedOk" class="text-success small">
-                                                                        <i class="bi bi-check-circle"></i> Uploaded
-                                                                    </span>
-                                                                    <span x-show="uploadReprocessedError" class="text-danger small"
-                                                                          x-text="uploadReprocessedError"></span>
-                                                                </div>
-                                                            </div>
-                                                        </template>
-                                                        <div x-show="reprocessError" class="text-danger mt-2 small" x-text="reprocessError"></div>
-                                                    </div>
-                                                </template>
                                             </div>
                                         </template>
                                     </div>

@@ -62,6 +62,10 @@ document.addEventListener('alpine:init', () => {
 
         // Multi-select
         selectedTasks: {},
+        // Index of the last row whose checkbox was clicked (for shift-range selection).
+        // Reset on every loadTasks() because the index is tied to the current result set,
+        // not the task identity.
+        _lastSelectedIdx: null,
         batchThresh: 5.0,
         batchMinarea: 3,
         batchFilter: 'default',
@@ -70,6 +74,10 @@ document.addEventListener('alpine:init', () => {
         batchTotal: 0,
         batchResult: null,
         _batchPollTimer: null,
+        // Set true between user-click and the POST returning a job_id, so a fast
+        // second click during the in-flight fetch can't fire a duplicate job
+        // (the :disabled binding on batchJobId only kicks in after the response).
+        _batchStarting: false,
 
         // Auto-tune
         autotuneOpen: false,
@@ -79,6 +87,11 @@ document.addEventListener('alpine:init', () => {
         autotuneResult: null,
         autotuneRunning: false,
         _autotunePollTimer: null,
+        _autotuneStarting: false,
+
+        // Monotonic counter for toggleDetail() so a slower fetch can't overwrite
+        // a faster, more-recent one when the user clicks rows in quick succession.
+        _detailFetchToken: 0,
 
         init() {
             this._refreshTimer = setInterval(() => {
@@ -87,6 +100,15 @@ document.addEventListener('alpine:init', () => {
                     this.loadAll();
                 }
             }, 15_000);
+        },
+
+        destroy() {
+            if (this._refreshTimer) clearInterval(this._refreshTimer);
+            if (this._batchPollTimer) clearTimeout(this._batchPollTimer);
+            if (this._autotunePollTimer) clearTimeout(this._autotunePollTimer);
+            this._refreshTimer = null;
+            this._batchPollTimer = null;
+            this._autotunePollTimer = null;
         },
 
         async loadAll() {
@@ -110,7 +132,11 @@ document.addEventListener('alpine:init', () => {
         },
 
         async loadTasks() {
-            this.selectedTasks = {};
+            // Selections are deliberately preserved across refresh, sort, and pagination —
+            // they are keyed by stable task_id, so they remain valid even when the visible
+            // page changes.  The 15s background poll used to wipe them silently (#291).
+            // Row-index for shift-select is tied to the current result set though, so reset.
+            this._lastSelectedIdx = null;
             try {
                 const params = new URLSearchParams({
                     limit: this.pageSize,
@@ -143,6 +169,9 @@ document.addEventListener('alpine:init', () => {
                 this.sortCol = col;
                 this.sortOrder = 'desc';
             }
+            // Sort re-orders the same set of rows — selections are still meaningful
+            // (the underlying task_ids are unchanged), so we deliberately do NOT
+            // call applyFilter() here.
             this.offset = 0;
             this.loadTasks();
         },
@@ -182,9 +211,16 @@ document.addEventListener('alpine:init', () => {
             this.detail = null;
             this._resetReprocessState();
 
+            // Token guards against an older fetch resolving after a newer one
+            // when the user clicks rows in quick succession.
+            const token = ++this._detailFetchToken;
+
             try {
                 const resp = await fetch('/api/analysis/tasks/' + taskId);
-                this.detail = await resp.json();
+                const data = await resp.json();
+                if (token !== this._detailFetchToken) return;
+
+                this.detail = data;
                 try {
                     this._extractedData = JSON.parse(this.detail.extracted_data_json || '{}');
                 } catch { this._extractedData = {}; }
@@ -261,6 +297,10 @@ document.addEventListener('alpine:init', () => {
             const val = segs[segment] || 0;
             return Math.max(val > 0 ? 1 : 0, Math.round((val / span) * 100));
         },
+        // Raw seconds for the same segments — used by the detail-view legend.
+        windowBarSecs(task, segment) {
+            return this._windowSegments(task)[segment] || 0;
+        },
         windowBarOverran(task) {
             return this._windowSegments(task).overran;
         },
@@ -330,22 +370,6 @@ document.addEventListener('alpine:init', () => {
             if (total <= 0) return 0;
             const val = d[field] || 0;
             return Math.max(val > 0 ? 1 : 0, Math.round((val / total) * 100));
-        },
-
-        // Window timeline proportional positioning
-        windowPct(detail, part) {
-            if (!detail.window_start || !detail.window_stop || !detail.imaging_started_at) return 0;
-            try {
-                const ws = new Date(detail.window_start).getTime();
-                const we = new Date(detail.window_stop).getTime();
-                const is = new Date(detail.imaging_started_at).getTime();
-                const ie = detail.imaging_finished_at ? new Date(detail.imaging_finished_at).getTime() : is;
-                const span = we - ws;
-                if (span <= 0) return 0;
-                if (part === 'start') return Math.max(0, Math.min(100, ((is - ws) / span) * 100));
-                if (part === 'width') return Math.max(1, Math.min(100, ((ie - is) / span) * 100));
-            } catch { return 0; }
-            return 0;
         },
 
         ed(key) { return this._extractedData[key]; },
@@ -455,8 +479,22 @@ document.addEventListener('alpine:init', () => {
             return Object.values(this.selectedTasks).filter(Boolean).length;
         },
 
-        toggleSelect(taskId, checked) {
-            this.selectedTasks[taskId] = checked;
+        // Per-row checkbox click. Shift+click extends from the last clicked row
+        // to the current one (inclusive) and applies the new checked state to
+        // every row in the range. The native checkbox flips itself before this
+        // fires, so event.target.checked is the post-flip value.
+        handleRowCheckboxClick(event, idx) {
+            const checked = event.target.checked;
+            if (event.shiftKey && this._lastSelectedIdx !== null && this._lastSelectedIdx !== idx) {
+                const start = Math.min(this._lastSelectedIdx, idx);
+                const end = Math.max(this._lastSelectedIdx, idx);
+                for (let i = start; i <= end; i++) {
+                    this.selectedTasks[this.tasks[i].task_id] = checked;
+                }
+            } else {
+                this.selectedTasks[this.tasks[idx].task_id] = checked;
+            }
+            this._lastSelectedIdx = idx;
         },
 
         toggleSelectAll(checked) {
@@ -465,9 +503,32 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
+        clearSelection() {
+            this.selectedTasks = {};
+            this._lastSelectedIdx = null;
+        },
+
+        // Filter inputs share this helper so changing a filter always:
+        //   1. Lands the user on page 1 of the new result set (no stranding on
+        //      an empty page mid-pagination).
+        //   2. Drops any prior selection so we never silently apply a bulk
+        //      action to checked rows the new filter is hiding from view.
+        // Pagination, sort, and background polling deliberately do NOT call this
+        // — those don't change which tasks are in scope, just which page/order.
+        applyFilter() {
+            this.clearSelection();
+            this.offset = 0;
+            this.loadTasks();
+        },
+
         async doBatchReprocess() {
+            // The :disabled binding on the button only kicks in once batchJobId
+            // is set, which happens *after* the POST returns. _batchStarting
+            // closes that gap so a fast double-click can't fire two jobs.
+            if (this.batchJobId || this._batchStarting) return;
             const ids = Object.entries(this.selectedTasks).filter(([, v]) => v).map(([k]) => k);
             if (!ids.length) return;
+            this._batchStarting = true;
             this.batchResult = null;
             try {
                 const resp = await fetch('/api/analysis/reprocess-batch', {
@@ -494,6 +555,8 @@ document.addEventListener('alpine:init', () => {
                 this._pollBatchJob();
             } catch (e) {
                 console.error('Batch reprocess failed', e);
+            } finally {
+                this._batchStarting = false;
             }
         },
 
@@ -523,7 +586,11 @@ document.addEventListener('alpine:init', () => {
         // ── Auto-tune ───────────────────────────────────────────────
 
         async doAutotune() {
+            // Same in-flight guard as doBatchReprocess — autotuneRunning is also
+            // user-visible via :disabled, so set it synchronously here too.
+            if (this.autotuneRunning || this._autotuneStarting) return;
             const ids = Object.entries(this.selectedTasks).filter(([, v]) => v).map(([k]) => k);
+            this._autotuneStarting = true;
             this.autotuneResult = null;
             this.autotuneRunning = true;
             try {
@@ -545,6 +612,8 @@ document.addEventListener('alpine:init', () => {
             } catch (e) {
                 console.error('Auto-tune failed', e);
                 this.autotuneRunning = false;
+            } finally {
+                this._autotuneStarting = false;
             }
         },
 
