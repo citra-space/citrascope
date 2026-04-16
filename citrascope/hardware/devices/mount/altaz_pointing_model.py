@@ -581,8 +581,10 @@ class AltAzPointingModel:
 
             self._rms_deg = rms_deg
             self._fit_timestamp = time.time()
-            self._health = "good"
-            self._recent_residuals.clear()
+            # Health state is owned by record_verification_residual — don't
+            # reset it here.  fit() now runs on every solve (add *or* replace),
+            # so clearing _recent_residuals would defang the health monitor
+            # by preventing the rolling window from ever filling.  See PR #295.
 
             tilt_mag = math.sqrt(self._AN**2 + self._AW**2)
             tilt_dir = math.degrees(math.atan2(self._AW, self._AN)) % 360.0
@@ -662,10 +664,15 @@ class AltAzPointingModel:
         wrong plate solution) and should not overwrite an established
         calibration point.
 
-        Threshold mirrors the ``record_verification_residual`` health-degraded
-        gate: ``max(predict_error * 3.0, 10 arcmin)``.  Returns ``False`` when
-        the model is not yet active (no prediction available) so seed
-        calibration data is never rejected.
+        Threshold is based on the local predicted error at this sky
+        position: ``max(predict_error(...) * _HEALTH_DEGRADED_FACTOR,
+        10 arcmin)``.  Reuses the same 3x factor and 10-arcmin floor as the
+        health-degraded gate in ``record_verification_residual`` — the two
+        checks share a language but measure different things (this is
+        point-local via ``predict_error``; the health gate is global via
+        ``rms_deg``).  Returns ``False`` when the model is not yet active
+        (no prediction available) so seed calibration data is never
+        rejected.
 
         This is advisory — callers (operational feeders) decide whether to
         skip replacement when it returns ``True``.  ``add_point`` is

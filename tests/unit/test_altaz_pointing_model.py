@@ -491,7 +491,10 @@ class TestHealthMonitoring:
         for mount_ra, mount_dec, solved_ra, solved_dec, lat, lon in pts:
             model.add_point(mount_ra, mount_dec, solved_ra, solved_dec, lat, lon)
 
-        assert model.health == "good"
+        # Health starts "unknown" after a fresh fit — we haven't yet seen
+        # any verification residuals to prove it good or bad.  See PR #295.
+        assert model.health == "unknown"
+
         # Must exceed both 3x RMS and the 10'/60 floor
         huge_residual = max(model.rms_deg * 10.0, 0.5)
         for _ in range(5):
@@ -508,7 +511,32 @@ class TestHealthMonitoring:
         for _ in range(5):
             model.record_verification_residual(model.rms_deg * 0.5)
 
+        # Residuals within threshold flip "unknown" to "good" (see PR #295
+        # for why fit() no longer pre-declares health).
         assert model.health == "good"
+
+    def test_fit_does_not_clear_health_window(self):
+        """Regression for PR #295: fit() must not wipe _recent_residuals, or
+        the health monitor never accumulates a full window now that every
+        operational solve triggers a refit via replace_point()."""
+        pts = _synthetic_points(0.3, 0.2, 0.1, n=10)
+        model = AltAzPointingModel()
+        for mount_ra, mount_dec, solved_ra, solved_dec, lat, lon in pts:
+            model.add_point(mount_ra, mount_dec, solved_ra, solved_dec, lat, lon)
+
+        # Record some bad residuals, then force another fit.  The residuals
+        # should survive the fit so the health monitor can still see them.
+        huge_residual = max(model.rms_deg * 10.0, 0.5)
+        for _ in range(3):
+            model.record_verification_residual(huge_residual)
+        model.fit()
+
+        assert len(model._recent_residuals) == 3
+
+        # Two more bad residuals fill the window and should flip health.
+        for _ in range(2):
+            model.record_verification_residual(huge_residual)
+        assert model.health == "degraded"
 
 
 # ------------------------------------------------------------------
