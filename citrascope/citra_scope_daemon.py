@@ -26,6 +26,7 @@ from citrascope.logging._citrascope_logger import setup_file_logging
 from citrascope.preview_bus import PreviewBus
 from citrascope.processors.processor_registry import ProcessorRegistry
 from citrascope.settings.citrascope_settings import CitraScopeSettings
+from citrascope.startup_checks import check_processor_runtime_deps
 from citrascope.tasks.runner import TaskManager
 from citrascope.time.time_monitor import TimeMonitor
 from citrascope.web.server import CitraScopeWebServer
@@ -70,6 +71,10 @@ class CitraScopeDaemon:
         self.calibration_library: CalibrationLibrary | None = None
         self._stop_requested = False
         self._shutdown_done = False
+
+        # Cached list of banner-shape dicts for processor-layer missing
+        # deps; populated once per startup in _initialize_components.
+        self._processor_dep_issues: list[dict] = []
 
         # Initialize processor registry
         self.processor_registry = ProcessorRegistry(settings=self.settings, logger=CITRASCOPE_LOGGER)
@@ -249,6 +254,15 @@ class CitraScopeDaemon:
                         f"{dep['device_type']} '{dep['device_name']}' missing dependencies: "
                         f"{dep['missing_packages']}. Install with: {dep['install_cmd']}"
                     )
+
+            # Check processor-layer runtime deps (astropy_healpix, solve-field, sex).
+            # Cached on self so the status collector reads it without re-probing.
+            self._processor_dep_issues = check_processor_runtime_deps(self.settings)
+            for dep in self._processor_dep_issues:
+                CITRASCOPE_LOGGER.warning(
+                    f"processor '{dep['device_name']}' missing dependencies: "
+                    f"{dep['missing_packages']}. Install with: {dep['install_cmd']}"
+                )
 
             # Initialize location service (manages GPS internally)
             self.location_service = LocationService(

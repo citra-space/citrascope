@@ -309,14 +309,16 @@ class StatusCollector:
 
             _mark("session")
 
-            # Check for missing dependencies from adapter
+            # Merge hardware + processor missing-dep issues into one list.
+            # Hardware is declarative per-device; processors are a small fixed
+            # cast checked imperatively at daemon startup (see startup_checks.py).
             status.missing_dependencies = []
-            if hasattr(self.daemon, "hardware_adapter") and self.daemon.hardware_adapter:
-                if hasattr(self.daemon.hardware_adapter, "get_missing_dependencies"):
-                    try:
-                        status.missing_dependencies = self.daemon.hardware_adapter.get_missing_dependencies()
-                    except Exception as e:
-                        CITRASCOPE_LOGGER.debug(f"Could not check missing dependencies: {e}")
+            if getattr(self.daemon, "hardware_adapter", None):
+                try:
+                    status.missing_dependencies.extend(self.daemon.hardware_adapter.get_missing_dependencies())
+                except Exception as e:
+                    CITRASCOPE_LOGGER.debug(f"Could not read hardware missing dependencies: {e}")
+            status.missing_dependencies.extend(getattr(self.daemon, "_processor_dep_issues", []) or [])
 
             # Get list of active processors
             if hasattr(self.daemon, "processor_registry") and self.daemon.processor_registry:
