@@ -491,7 +491,10 @@ class TestHealthMonitoring:
         for mount_ra, mount_dec, solved_ra, solved_dec, lat, lon in pts:
             model.add_point(mount_ra, mount_dec, solved_ra, solved_dec, lat, lon)
 
-        assert model.health == "good"
+        # Health starts "unknown" after a fresh fit — we haven't yet seen
+        # any verification residuals to prove it good or bad.  See PR #295.
+        assert model.health == "unknown"
+
         # Must exceed both 3x RMS and the 10'/60 floor
         huge_residual = max(model.rms_deg * 10.0, 0.5)
         for _ in range(5):
@@ -508,7 +511,32 @@ class TestHealthMonitoring:
         for _ in range(5):
             model.record_verification_residual(model.rms_deg * 0.5)
 
+        # Residuals within threshold flip "unknown" to "good" (see PR #295
+        # for why fit() no longer pre-declares health).
         assert model.health == "good"
+
+    def test_fit_does_not_clear_health_window(self):
+        """Regression for PR #295: fit() must not wipe _recent_residuals, or
+        the health monitor never accumulates a full window now that every
+        operational solve triggers a refit via replace_point()."""
+        pts = _synthetic_points(0.3, 0.2, 0.1, n=10)
+        model = AltAzPointingModel()
+        for mount_ra, mount_dec, solved_ra, solved_dec, lat, lon in pts:
+            model.add_point(mount_ra, mount_dec, solved_ra, solved_dec, lat, lon)
+
+        # Record some bad residuals, then force another fit.  The residuals
+        # should survive the fit so the health monitor can still see them.
+        huge_residual = max(model.rms_deg * 10.0, 0.5)
+        for _ in range(3):
+            model.record_verification_residual(huge_residual)
+        model.fit()
+
+        assert len(model._recent_residuals) == 3
+
+        # Two more bad residuals fill the window and should flip health.
+        for _ in range(2):
+            model.record_verification_residual(huge_residual)
+        assert model.health == "degraded"
 
 
 # ------------------------------------------------------------------
@@ -850,3 +878,155 @@ class TestNearbyPointGuard:
 
         assert model.has_nearby_point(183.0, 45.0, min_sep_deg=5.0)
         assert not model.has_nearby_point(183.0, 45.0, min_sep_deg=2.0)
+
+
+# ------------------------------------------------------------------
+# Nearby-point index lookup (for replace-vs-add decision)
+# ------------------------------------------------------------------
+
+
+class TestFindNearbyPointIndex:
+    def test_returns_nearest_when_multiple_within_radius(self):
+        """Given several points in range, the closest one's index wins."""
+        model = AltAzPointingModel()
+        lat, lon = 40.0, -74.0
+
+        for az, alt in [(180.0, 45.0), (180.8, 45.0), (180.2, 45.0)]:
+            ra, dec = altaz_to_radec(az, alt, lat, lon)
+            model.add_point(ra, dec, ra + 0.01, dec + 0.01, lat, lon)
+
+        # Query at 180.15° — index 2 (180.2°) is nearest at 0.05°,
+        # index 0 (180.0°) is 0.15° away, index 1 (180.8°) is 0.65° away.
+        assert model.find_nearby_point_index(180.15, 45.0) == 2
+
+    def test_returns_none_when_outside_radius(self):
+        model = AltAzPointingModel()
+        lat, lon = 40.0, -74.0
+        ra, dec = altaz_to_radec(180.0, 45.0, lat, lon)
+        model.add_point(ra, dec, ra + 0.01, dec + 0.01, lat, lon)
+
+        assert model.find_nearby_point_index(185.0, 45.0) is None
+        assert model.find_nearby_point_index(180.0, 50.0) is None
+
+    def test_returns_none_for_empty_model(self):
+        model = AltAzPointingModel()
+        assert model.find_nearby_point_index(180.0, 45.0) is None
+
+    def test_default_guard_radius_is_one_degree(self):
+        """Regression: the operational feeding guard must stay at 1° unless
+        deliberately changed.  See issue #270."""
+        from citrascope.hardware.devices.mount import altaz_pointing_model
+
+        assert altaz_pointing_model._NEARBY_POINT_MIN_SEP == 1.0
+
+
+# ------------------------------------------------------------------
+# Replace-stale-point behaviour
+# ------------------------------------------------------------------
+
+
+class TestReplacePoint:
+    def test_replace_overwrites_and_refits(self):
+        """replace_point swaps one point in-place, keeps the count, refits."""
+        model = AltAzPointingModel()
+        lat, lon = 40.0, -74.0
+
+        for az, alt in [(90.0, 40.0), (180.0, 45.0), (270.0, 50.0)]:
+            ra, dec = altaz_to_radec(az, alt, lat, lon)
+            model.add_point(ra, dec, ra + 0.01, dec + 0.01, lat, lon)
+
+        assert model.point_count == 3
+        original_fit_ts = model._fit_timestamp
+        assert original_fit_ts is not None
+
+        snapshot = list(model._points)
+
+        # Replace point index 1 with a fresh measurement at the same az/alt
+        # but with a different solved offset (simulating drift).
+        mount_ra, mount_dec = altaz_to_radec(180.0, 45.0, lat, lon)
+        model.replace_point(1, mount_ra, mount_dec, mount_ra + 0.05, mount_dec + 0.05, lat, lon)
+
+        assert model.point_count == 3  # no growth
+        assert model._points[1] != snapshot[1]  # targeted index changed
+        assert model._points[0] == snapshot[0]  # neighbours untouched
+        assert model._points[2] == snapshot[2]
+
+        # Fit should have run again with the fresher data.
+        assert model._fit_timestamp is not None
+        assert model._fit_timestamp >= original_fit_ts
+
+    def test_replace_handles_az_wraparound(self):
+        """Measurement straddling the 0/360 boundary must wrap d_az correctly."""
+        model = AltAzPointingModel()
+        lat, lon = 40.0, -74.0
+
+        # Seed with something near az=359° so we have an index to replace.
+        mount_ra_init, mount_dec_init = altaz_to_radec(359.0, 45.0, lat, lon)
+        model.add_point(mount_ra_init, mount_dec_init, mount_ra_init + 0.01, mount_dec_init + 0.01, lat, lon)
+
+        # Replace with a solved position just across the wrap (~1°),
+        # which is a 2° raw d_az that must fold to -358° → +2° or similar.
+        mount_ra = mount_ra_init
+        mount_dec = mount_dec_init
+        solved_ra, solved_dec = altaz_to_radec(1.0, 45.0, lat, lon)
+        model.replace_point(0, mount_ra, mount_dec, solved_ra, solved_dec, lat, lon)
+
+        _az, _alt, d_az, _d_alt = model._points[0]
+        # The raw az difference would be about -358° without wrap handling;
+        # after wrap it should be a small positive number (≈+2°).
+        assert -180.0 <= d_az <= 180.0
+        assert abs(d_az) < 5.0
+
+    def test_replace_point_out_of_range_is_noop(self):
+        """A bad index is logged and ignored rather than raising."""
+        model = AltAzPointingModel()
+        lat, lon = 40.0, -74.0
+        ra, dec = altaz_to_radec(180.0, 45.0, lat, lon)
+        model.add_point(ra, dec, ra + 0.01, dec + 0.01, lat, lon)
+
+        before = list(model._points)
+        model.replace_point(5, ra, dec, ra + 0.02, dec + 0.02, lat, lon)
+        assert model._points == before
+
+
+# ------------------------------------------------------------------
+# Flyer protection for replacement
+# ------------------------------------------------------------------
+
+
+class TestIsReplacementFlyer:
+    def test_inactive_model_never_flags_flyer(self):
+        """With no fitted model, we have no prediction; never reject."""
+        model = AltAzPointingModel()
+        assert not model.is_active
+        # Absurdly large residual — still accepted because we have nothing
+        # to compare against.
+        assert not model.is_replacement_flyer(10.0, 180.0, 0.0, 40.0, -74.0)
+
+    def test_small_residual_below_arcmin_floor_accepted(self):
+        """Under the 10-arcmin floor, a solve is always welcome."""
+        model = _model_with_three_points()
+        assert model.is_active
+        # 5 arcmin — well under the 10-arcmin floor.
+        ra, dec = altaz_to_radec(180.0, 45.0, 40.0, -74.0)
+        assert not model.is_replacement_flyer(5.0 / 60.0, ra, dec, 40.0, -74.0)
+
+    def test_large_residual_flags_flyer(self):
+        """A residual well above 3x predict (and above the 10-arcmin floor)
+        must be rejected."""
+        model = _model_with_three_points()
+        ra, dec = altaz_to_radec(180.0, 45.0, 40.0, -74.0)
+        # 2° — orders of magnitude above anything the model would predict
+        # for a clean session.  Clearly a flyer.
+        assert model.is_replacement_flyer(2.0, ra, dec, 40.0, -74.0)
+
+
+def _model_with_three_points() -> AltAzPointingModel:
+    """Build an active model with three clean calibration points."""
+    model = AltAzPointingModel()
+    lat, lon = 40.0, -74.0
+    for az, alt in [(90.0, 40.0), (180.0, 45.0), (270.0, 50.0)]:
+        ra, dec = altaz_to_radec(az, alt, lat, lon)
+        model.add_point(ra, dec, ra + 0.001, dec + 0.001, lat, lon)
+    assert model.is_active
+    return model
