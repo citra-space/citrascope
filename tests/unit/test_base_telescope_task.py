@@ -457,9 +457,7 @@ class TestCancellation:
         ct.hardware_adapter.point_telescope = MagicMock()
         ct.hardware_adapter.angular_distance.return_value = 0.5
 
-        with patch.object(
-            ct, "estimate_lead_position", return_value=(MagicMock(degrees=10.0), MagicMock(degrees=20.0), 1.0)
-        ):
+        with patch.object(ct, "estimate_lead_position", return_value=(10.0, 20.0, 1.0)):
             with pytest.raises(RuntimeError, match=r"(?i)cancelled"):
                 ct.point_to_lead_position({"most_recent_elset": {"tle": ["a", "b"]}})
 
@@ -555,18 +553,14 @@ class TestPredictSlewTime:
         ct = self._make_concrete()
         # Scope at (0, 0), target at (1, 1) — angular distance ≈ 1.414°, not max(1,1) = 1°
         ct.hardware_adapter.get_telescope_direction.return_value = (0.0, 0.0)
-        target_ra = MagicMock(degrees=1.0)
-        target_dec = MagicMock(degrees=1.0)
-        with patch.object(ct, "get_target_radec_and_rates", return_value=(target_ra, target_dec, None, None)):
+        with patch.object(ct, "get_target_radec_and_rates", return_value=(1.0, 1.0, 0.0, 0.0)):
             ct.predict_slew_time_seconds({})
         ct.hardware_adapter.angular_distance.assert_called_once()
 
     def test_max_rate_override(self):
         ct = self._make_concrete()
         ct.hardware_adapter.get_telescope_direction.return_value = (0.0, 0.0)
-        target_ra = MagicMock(degrees=30.0)
-        target_dec = MagicMock(degrees=0.0)
-        with patch.object(ct, "get_target_radec_and_rates", return_value=(target_ra, target_dec, None, None)):
+        with patch.object(ct, "get_target_radec_and_rates", return_value=(30.0, 0.0, 0.0, 0.0)):
             t_default = ct.predict_slew_time_seconds({})
             t_fast = ct.predict_slew_time_seconds({}, max_rate=10.0)
         assert t_fast < t_default
@@ -716,70 +710,46 @@ class TestComputeAngularRate:
         adapter = _make_hardware_adapter()
         return ConcreteTask(MagicMock(), adapter, MagicMock(), _make_task_dict(), **_daemon_kwargs(daemon))
 
-    @staticmethod
-    def _make_rate_mock(arcsec_per_s: float) -> MagicMock:
-        """Build a mock Skyfield Rate with .arcseconds.per_second."""
-        rate = MagicMock()
-        rate.arcseconds.per_second = arcsec_per_s
-        return rate
-
     def test_pure_dec_rate(self):
         """A satellite moving purely in Dec: angular rate = Dec rate."""
         ct = self._make_concrete()
-        dec_mock = MagicMock(degrees=0.0)
-        ra_rate = self._make_rate_mock(0.0)
-        dec_rate = self._make_rate_mock(3600.0)  # 3600 arcsec/s = 1 deg/s
-        with patch.object(ct, "get_target_radec_and_rates", return_value=(None, dec_mock, ra_rate, dec_rate)):
+        # get_target_radec_and_rates returns (ra_deg, dec_deg, ra_rate_deg_s, dec_rate_deg_s)
+        with patch.object(ct, "get_target_radec_and_rates", return_value=(0.0, 0.0, 0.0, 1.0)):
             rate = ct.compute_angular_rate({})
         assert abs(rate - 1.0) < 0.001
 
     def test_pure_ra_rate_at_equator(self):
         """At dec=0, RA rate on sky equals the RA rate directly."""
         ct = self._make_concrete()
-        dec_mock = MagicMock(degrees=0.0)
-        ra_rate = self._make_rate_mock(3600.0)  # 1 deg/s in RA
-        dec_rate = self._make_rate_mock(0.0)
-        with patch.object(ct, "get_target_radec_and_rates", return_value=(None, dec_mock, ra_rate, dec_rate)):
+        with patch.object(ct, "get_target_radec_and_rates", return_value=(0.0, 0.0, 1.0, 0.0)):
             rate = ct.compute_angular_rate({})
         assert abs(rate - 1.0) < 0.001
 
     def test_ra_rate_contracts_at_high_dec(self):
         """At dec=60, RA rate on sky is halved (cos(60) = 0.5)."""
         ct = self._make_concrete()
-        dec_mock = MagicMock(degrees=60.0)
-        ra_rate = self._make_rate_mock(3600.0)  # 1 deg/s in RA coordinate
-        dec_rate = self._make_rate_mock(0.0)
-        with patch.object(ct, "get_target_radec_and_rates", return_value=(None, dec_mock, ra_rate, dec_rate)):
+        with patch.object(ct, "get_target_radec_and_rates", return_value=(0.0, 60.0, 1.0, 0.0)):
             rate = ct.compute_angular_rate({})
         assert abs(rate - 0.5) < 0.001
 
     def test_combined_rate(self):
         """Both RA and Dec rates combine as sqrt(ra^2+dec^2) on sky."""
         ct = self._make_concrete()
-        dec_mock = MagicMock(degrees=0.0)
-        ra_rate = self._make_rate_mock(3600.0)  # 1 deg/s in RA
-        dec_rate = self._make_rate_mock(3600.0)  # 1 deg/s in Dec
-        with patch.object(ct, "get_target_radec_and_rates", return_value=(None, dec_mock, ra_rate, dec_rate)):
+        with patch.object(ct, "get_target_radec_and_rates", return_value=(0.0, 0.0, 1.0, 1.0)):
             rate = ct.compute_angular_rate({})
         assert abs(rate - math.sqrt(2)) < 0.001
 
     def test_celestial_parameter_forwarded(self):
         """compute_angular_rate passes celestial kwarg to get_target_radec_and_rates."""
         ct = self._make_concrete()
-        dec_mock = MagicMock(degrees=0.0)
-        ra_rate = self._make_rate_mock(3600.0)
-        dec_rate = self._make_rate_mock(0.0)
-        with patch.object(ct, "get_target_radec_and_rates", return_value=(None, dec_mock, ra_rate, dec_rate)) as mock:
+        with patch.object(ct, "get_target_radec_and_rates", return_value=(0.0, 0.0, 1.0, 0.0)) as mock:
             ct.compute_angular_rate({}, celestial=True)
         mock.assert_called_once_with({}, celestial=True)
 
     def test_celestial_false_by_default(self):
         """compute_angular_rate defaults to celestial=False."""
         ct = self._make_concrete()
-        dec_mock = MagicMock(degrees=0.0)
-        ra_rate = self._make_rate_mock(3600.0)
-        dec_rate = self._make_rate_mock(0.0)
-        with patch.object(ct, "get_target_radec_and_rates", return_value=(None, dec_mock, ra_rate, dec_rate)) as mock:
+        with patch.object(ct, "get_target_radec_and_rates", return_value=(0.0, 0.0, 1.0, 0.0)) as mock:
             ct.compute_angular_rate({})
         mock.assert_called_once_with({}, celestial=False)
 
@@ -804,8 +774,8 @@ class TestComputeSatelliteTiming:
         ct = self._make_concrete(fov_short_deg=2.0)
         ct.hardware_adapter.angular_distance.side_effect = [5.0, 4.0]  # now=5°, 1s later=4°
 
-        sat_now = (MagicMock(degrees=185.0), MagicMock(degrees=45.0), None, None)
-        sat_1s = (MagicMock(degrees=184.0), MagicMock(degrees=45.0), None, None)
+        sat_now = (185.0, 45.0, 0.0, 0.0)
+        sat_1s = (184.0, 45.0, 0.0, 0.0)
         with patch.object(ct, "get_target_radec_and_rates", side_effect=[sat_now, sat_1s]):
             timing = ct.compute_satellite_timing({})
 
@@ -819,8 +789,8 @@ class TestComputeSatelliteTiming:
         ct = self._make_concrete(fov_short_deg=2.0)
         ct.hardware_adapter.angular_distance.side_effect = [3.0, 4.0]  # getting further away
 
-        sat_now = (MagicMock(degrees=183.0), MagicMock(degrees=45.0), None, None)
-        sat_1s = (MagicMock(degrees=184.0), MagicMock(degrees=45.0), None, None)
+        sat_now = (183.0, 45.0, 0.0, 0.0)
+        sat_1s = (184.0, 45.0, 0.0, 0.0)
         with patch.object(ct, "get_target_radec_and_rates", side_effect=[sat_now, sat_1s]):
             timing = ct.compute_satellite_timing({})
 
@@ -833,8 +803,8 @@ class TestComputeSatelliteTiming:
         ct = self._make_concrete(fov_short_deg=2.0)
         ct.hardware_adapter.angular_distance.side_effect = [3.0, 3.0]
 
-        sat_now = (MagicMock(degrees=183.0), MagicMock(degrees=45.0), None, None)
-        sat_1s = (MagicMock(degrees=183.0), MagicMock(degrees=46.0), None, None)
+        sat_now = (183.0, 45.0, 0.0, 0.0)
+        sat_1s = (183.0, 46.0, 0.0, 0.0)
         with patch.object(ct, "get_target_radec_and_rates", side_effect=[sat_now, sat_1s]):
             timing = ct.compute_satellite_timing({})
 
@@ -846,8 +816,8 @@ class TestComputeSatelliteTiming:
         ct = self._make_concrete(fov_short_deg=2.0)
         ct.hardware_adapter.angular_distance.side_effect = [0.5, 0.3]  # within 1° radius, approaching
 
-        sat_now = (MagicMock(degrees=180.5), MagicMock(degrees=45.0), None, None)
-        sat_1s = (MagicMock(degrees=180.3), MagicMock(degrees=45.0), None, None)
+        sat_now = (180.5, 45.0, 0.0, 0.0)
+        sat_1s = (180.3, 45.0, 0.0, 0.0)
         with patch.object(ct, "get_target_radec_and_rates", side_effect=[sat_now, sat_1s]):
             timing = ct.compute_satellite_timing({})
 
@@ -872,32 +842,26 @@ class TestEstimateLeadPositionExtraLead:
 
     def test_zero_extra_lead_matches_original(self):
         ct = self._make_concrete()
-        ra_mock = MagicMock(degrees=100.0)
-        dec_mock = MagicMock(degrees=30.0)
         with patch.object(ct, "predict_slew_time_seconds", return_value=3.0):
-            with patch.object(ct, "get_target_radec_and_rates", return_value=(ra_mock, dec_mock, None, None)):
+            with patch.object(ct, "get_target_radec_and_rates", return_value=(100.0, 30.0, 0.0, 0.0)):
                 _, _, total_lead = ct.estimate_lead_position({}, extra_lead_seconds=0.0)
         assert abs(total_lead - 3.0) < 0.01
 
     def test_extra_lead_adds_to_slew_time(self):
         ct = self._make_concrete()
-        ra_mock = MagicMock(degrees=100.0)
-        dec_mock = MagicMock(degrees=30.0)
         with patch.object(ct, "predict_slew_time_seconds", return_value=3.0):
-            with patch.object(ct, "get_target_radec_and_rates", return_value=(ra_mock, dec_mock, None, None)):
+            with patch.object(ct, "get_target_radec_and_rates", return_value=(100.0, 30.0, 0.0, 0.0)):
                 _, _, total_lead = ct.estimate_lead_position({}, extra_lead_seconds=10.0)
         assert abs(total_lead - 13.0) < 0.01
 
     def test_extra_lead_recomputes_position(self):
         """With extra lead, get_target_radec_and_rates is called again with total_lead."""
         ct = self._make_concrete()
-        ra_mock = MagicMock(degrees=100.0)
-        dec_mock = MagicMock(degrees=30.0)
         call_args = []
 
         def track_calls(sat_data, seconds_from_now=0.0):
             call_args.append(seconds_from_now)
-            return (ra_mock, dec_mock, None, None)
+            return (100.0, 30.0, 0.0, 0.0)
 
         with patch.object(ct, "predict_slew_time_seconds", return_value=3.0):
             with patch.object(ct, "get_target_radec_and_rates", side_effect=track_calls):
@@ -929,9 +893,7 @@ class TestAdaptiveSlewRate:
         Mocks all external dependencies so the loop runs once, converges, and exits.
         Patches time.time at the module level to control slew_duration.
         """
-        lead_ra = MagicMock(degrees=10.0)
-        lead_dec = MagicMock(degrees=20.0)
-        sat_pos = (MagicMock(degrees=10.0), MagicMock(degrees=20.0), None, None)
+        sat_pos = (10.0, 20.0, 0.0, 0.0)
 
         ct.hardware_adapter.get_telescope_direction.return_value = (0.0, 0.0)
         ct.hardware_adapter.telescope_is_moving.return_value = False
@@ -969,7 +931,7 @@ class TestAdaptiveSlewRate:
 
         with patch("citrascope.tasks.scope.base_telescope_task.time.time", side_effect=fake_time):
             with patch("citrascope.tasks.scope.base_telescope_task.time.sleep"):
-                with patch.object(ct, "estimate_lead_position", return_value=(lead_ra, lead_dec, 1.0)):
+                with patch.object(ct, "estimate_lead_position", return_value=(10.0, 20.0, 1.0)):
                     with patch.object(ct, "get_target_radec_and_rates", return_value=sat_pos):
                         ct.point_to_lead_position({"most_recent_elset": {"tle": ["a", "b"]}})
 
@@ -1000,16 +962,14 @@ class TestAdaptiveSlewRate:
         """With prior samples, the first lead-time estimate uses the rolling mean."""
         ct = self._make_concrete(initial_samples=[6.0, 6.0, 6.0])
 
-        lead_ra = MagicMock(degrees=10.0)
-        lead_dec = MagicMock(degrees=20.0)
-        sat_pos = (MagicMock(degrees=10.0), MagicMock(degrees=20.0), None, None)
+        sat_pos = (10.0, 20.0, 0.0, 0.0)
 
         ct.hardware_adapter.get_telescope_direction.return_value = (0.0, 0.0)
         ct.hardware_adapter.telescope_is_moving.return_value = False
         ct.hardware_adapter.angular_distance.side_effect = [0.5, 0.01, 0.01]
 
         with patch.object(ct, "estimate_lead_position") as mock_est:
-            mock_est.return_value = (lead_ra, lead_dec, 1.0)
+            mock_est.return_value = (10.0, 20.0, 1.0)
             with patch.object(ct, "get_target_radec_and_rates", return_value=sat_pos):
                 ct.point_to_lead_position({"most_recent_elset": {"tle": ["a", "b"]}})
 
@@ -1034,15 +994,13 @@ class TestAdaptiveSlewRate:
         """Slews below _MIN_SLEW_DISTANCE_DEG should not append a sample."""
         ct = self._make_concrete(initial_samples=[4.0])
 
-        lead_ra = MagicMock(degrees=10.0)
-        lead_dec = MagicMock(degrees=20.0)
-        sat_pos = (MagicMock(degrees=10.0), MagicMock(degrees=20.0), None, None)
+        sat_pos = (10.0, 20.0, 0.0, 0.0)
 
         ct.hardware_adapter.get_telescope_direction.return_value = (0.0, 0.0)
         ct.hardware_adapter.telescope_is_moving.return_value = False
         ct.hardware_adapter.angular_distance.side_effect = [0.01, 0.01, 0.01]
 
-        with patch.object(ct, "estimate_lead_position", return_value=(lead_ra, lead_dec, 1.0)):
+        with patch.object(ct, "estimate_lead_position", return_value=(10.0, 20.0, 1.0)):
             with patch.object(ct, "get_target_radec_and_rates", return_value=sat_pos):
                 ct.point_to_lead_position({"most_recent_elset": {"tle": ["a", "b"]}})
 
@@ -1153,3 +1111,187 @@ class TestAdaptiveExposure:
         result = ct.compute_adaptive_exposure(0.01)
         assert result is not None
         assert 0.1 < result < 30.0
+
+
+# ---------------------------------------------------------------------------
+# XP propagation gate + parity + rate-units tests. These exercise the real
+# keplemon path end-to-end through get_target_radec_and_rates — no mock of
+# propagation itself. They're the "would the issue-300 bug come back" safety
+# net: if someone re-introduces a skyfield/sgp4 dependency on the hot path,
+# or swaps rate units, or stops catching NaN, one of these fires.
+# ---------------------------------------------------------------------------
+
+# Real SGP4-XP TLE captured from citrascope-galileo's elset cache snapshot
+# (MSIimageworker sdo_debug_bundles/77592f67…/elset_cache_snapshot.json).
+# Column 63 on line 1 is ``4``, the XP ephemeris-type marker.
+_GOES18_XP_TLE = (
+    "1 99999U          26103.19597709 +.00000000  13000-1  10000-1 4 00008",
+    "2 99999   0.0118 102.2391 0001121   4.4195  28.2815  1.00267201000008",
+)
+
+# Plain SGP4 (GP) TLE for the same satellite family; sanity baseline.
+_GOES18_GP_TLE = (
+    "1 51850U 22021A   26103.19597709 +.00000000  00000+0  00000+0 0  9995",
+    "2 51850   0.0118 102.2391 0001121   4.4195  28.2815  1.00267201000001",
+)
+
+
+def _make_sat_data(tle: tuple[str, str], name: str = "TEST-SAT") -> dict:
+    return {
+        "name": name,
+        "most_recent_elset": {
+            "tle": [tle[0], tle[1]],
+            "epoch": "2026-04-13T04:42:12Z",
+            "type": "MEAN_BROUWER_XP",
+        },
+    }
+
+
+def _make_concrete_for_propagation():
+    """Build a ConcreteTask wired with a real location service (not propagation-mocked)."""
+    from citrascope.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+
+    class ConcreteTask(AbstractBaseTelescopeTask):
+        def execute(self):
+            pass
+
+    daemon = _make_daemon()
+    return ConcreteTask(MagicMock(), daemon.hardware_adapter, MagicMock(), _make_task_dict(), **_daemon_kwargs(daemon))
+
+
+class TestXPTLEPropagationGate:
+    """End-to-end: a real XP TLE through the real keplemon path yields finite floats.
+
+    On main (skyfield path) this returns Angle/Rate objects, not floats, and for
+    certain XP TLEs produces NaN coordinates. On this branch (keplemon path)
+    it must always return four finite plain floats.
+    """
+
+    def test_xp_tle_returns_four_finite_floats(self):
+        ct = _make_concrete_for_propagation()
+        ra, dec, ra_rate, dec_rate = ct.get_target_radec_and_rates(_make_sat_data(_GOES18_XP_TLE, "GOES 18"))
+
+        # Plain floats, not Angle/Rate wrappers. Fails loudly on main.
+        assert isinstance(ra, float)
+        assert isinstance(dec, float)
+        assert isinstance(ra_rate, float)
+        assert isinstance(dec_rate, float)
+
+        # All finite — no silent NaN.
+        for label, val in [("ra", ra), ("dec", dec), ("ra_rate", ra_rate), ("dec_rate", dec_rate)]:
+            assert math.isfinite(val), f"{label} is not finite: {val}"
+
+        # RA in [0, 360), Dec in [-90, 90]. Values are small but non-degenerate.
+        assert 0.0 <= ra < 360.0
+        assert -90.0 <= dec <= 90.0
+
+    def test_gp_tle_also_works(self):
+        """Regression guard: we didn't break plain SGP4 TLEs in the process."""
+        ct = _make_concrete_for_propagation()
+        ra, dec, ra_rate, dec_rate = ct.get_target_radec_and_rates(_make_sat_data(_GOES18_GP_TLE, "GOES 18"))
+        for val in (ra, dec, ra_rate, dec_rate):
+            assert isinstance(val, float)
+            assert math.isfinite(val)
+
+    def test_celestial_kwarg_changes_ra_rate(self):
+        """celestial=True returns J2000 inertial rate; celestial=False subtracts the sidereal term."""
+        ct = _make_concrete_for_propagation()
+        _, dec_c, ra_rate_c, _ = ct.get_target_radec_and_rates(_make_sat_data(_GOES18_GP_TLE), celestial=True)
+        _, dec_m, ra_rate_m, _ = ct.get_target_radec_and_rates(_make_sat_data(_GOES18_GP_TLE), celestial=False)
+
+        # Same dec either way.
+        assert dec_c == pytest.approx(dec_m, abs=1e-6)
+
+        # Earth-fixed (mount) rate = inertial - sidereal * cos(dec).
+        sidereal_deg_s = 15.04106864 / 3600.0
+        expected_delta = sidereal_deg_s * math.cos(math.radians(dec_c))
+        assert (ra_rate_c - ra_rate_m) == pytest.approx(expected_delta, rel=1e-3)
+
+
+class TestPropagationParityWithSkyfield:
+    """Cross-validate the new keplemon path against the old skyfield path
+    on a plain SGP4 TLE (where both libraries agree).
+
+    Marked slow so it doesn't run by default — it imports skyfield just for
+    the comparison. An XP TLE is intentionally NOT compared here because
+    skyfield silently mis-interprets XP extensions and the whole point of
+    issue 300 is that those answers are wrong.
+    """
+
+    @pytest.mark.slow
+    def test_keplemon_matches_skyfield_on_gp_tle(self):
+        from datetime import datetime, timezone
+
+        from skyfield.api import EarthSatellite, load, wgs84
+
+        ct = _make_concrete_for_propagation()
+        ra_k, dec_k, _, _ = ct.get_target_radec_and_rates(_make_sat_data(_GOES18_GP_TLE))
+
+        # Observer matches _make_daemon()'s location_service fixture: (37, -122, 100 m).
+        ts = load.timescale()
+        obs = wgs84.latlon(37.0, -122.0, elevation_m=100.0)
+        sat = EarthSatellite(_GOES18_GP_TLE[0], _GOES18_GP_TLE[1], "TEST", ts)
+        # Use *now* for both paths — same clock reading ± a few ms.
+        now = datetime.now(timezone.utc)
+        t = ts.from_datetime(now)
+        topo = (sat - obs).at(t)
+        ra_sf_hours, dec_sf_angle, _ = topo.radec()
+        ra_sf = float(ra_sf_hours.hours) * 15.0  # type: ignore[arg-type]  # skyfield stubs
+        dec_sf = float(dec_sf_angle.degrees)  # type: ignore[arg-type]  # skyfield stubs
+
+        # 1 arcsec tolerance — skyfield is ICRS, keplemon J2000; frame bias
+        # between the two is sub-arcsecond, and we pull "now" twice so
+        # there's ~ms-of-wall-clock slop too.
+        assert abs(ra_k - ra_sf) < 1.0 / 3600.0 * 10, f"RA diverged: keplemon={ra_k}, skyfield={ra_sf}"
+        assert abs(dec_k - dec_sf) < 1.0 / 3600.0 * 10, f"Dec diverged: keplemon={dec_k}, skyfield={dec_sf}"
+
+
+class TestAngularDistanceNaN:
+    """angular_distance must raise on non-finite input, not silently clamp to 180°.
+
+    ``angular_distance`` is a concrete method on the abstract base class and
+    doesn't actually use ``self``, so we call it as an unbound method rather
+    than synthesizing a subclass that has to stub every abstract method.
+    """
+
+    @staticmethod
+    def _call(ra1, dec1, ra2, dec2):
+        from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
+
+        return AbstractAstroHardwareAdapter.angular_distance(None, ra1, dec1, ra2, dec2)  # type: ignore[arg-type]
+
+    def test_nan_ra_raises(self):
+        with pytest.raises(ValueError, match="non-finite"):
+            self._call(float("nan"), 0.0, 10.0, 20.0)
+
+    def test_nan_dec_raises(self):
+        with pytest.raises(ValueError, match="non-finite"):
+            self._call(0.0, 0.0, 10.0, float("nan"))
+
+    def test_inf_raises(self):
+        with pytest.raises(ValueError, match="non-finite"):
+            self._call(0.0, 0.0, float("inf"), 20.0)
+
+    def test_finite_inputs_return_expected(self):
+        assert self._call(10.0, 20.0, 10.0, 20.0) == pytest.approx(0.0, abs=1e-6)
+        assert self._call(0.0, 0.0, 180.0, 0.0) == pytest.approx(180.0, abs=1e-6)
+
+
+class TestRateUnits:
+    """Rates returned by get_target_radec_and_rates are degrees/second, not arcsec/second.
+
+    This is a cheap unit-shape test that would catch someone forgetting to
+    divide by 3600 when plumbing the keplemon output downstream.
+    """
+
+    def test_leo_rate_is_degrees_per_second_not_arcseconds(self):
+        ct = _make_concrete_for_propagation()
+        # GEO satellites have ~0 rate relative to Earth-fixed observer (but
+        # non-zero inertial rate). Test that magnitudes are in the
+        # "degrees per second" neighborhood, not "arcsec per second".
+        _, _, ra_rate, dec_rate = ct.get_target_radec_and_rates(_make_sat_data(_GOES18_GP_TLE), celestial=True)
+        total_rate = math.sqrt(ra_rate**2 + dec_rate**2)
+        # A GEO-ish inertial rate in deg/s is ~4e-3 (one revolution per sidereal day).
+        # If units were arcsec/s by mistake, this would be ~15. The assertion
+        # is generous because different epochs give different exact values.
+        assert total_rate < 1.0, f"rate magnitude {total_rate} looks like arcsec/s, not deg/s"

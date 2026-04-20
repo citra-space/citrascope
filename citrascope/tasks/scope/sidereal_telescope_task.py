@@ -29,8 +29,8 @@ class SiderealTelescopeTask(AbstractBaseTelescopeTask):
 
             elif strategy == ObservationStrategy.SEQUENCE_TO_CONTROLLER:
                 target_ra, target_dec, _, _ = self.get_target_radec_and_rates(satellite_data)
-                satellite_data["ra"] = target_ra.degrees
-                satellite_data["dec"] = target_dec.degrees
+                satellite_data["ra"] = target_ra
+                satellite_data["dec"] = target_dec
 
                 self.timing_info.stamp_now("slew_started_at")
                 self.timing_info.stamp_now("imaging_started_at")

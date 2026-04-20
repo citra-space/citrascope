@@ -29,10 +29,10 @@ def _fixed_lst_deg(lon_deg: float) -> float:
 
 
 @pytest.fixture(autouse=True)
-def _patch_skyfield_gast():
-    """Patch _skyfield_gast to return a fixed value so tests are deterministic."""
+def _patch_gast_degrees():
+    """Patch _gast_degrees to return a fixed value so tests are deterministic."""
     with patch(
-        "citrascope.hardware.devices.mount.altaz_pointing_model._skyfield_gast",
+        "citrascope.hardware.devices.mount.altaz_pointing_model._gast_degrees",
         return_value=90.0,
     ):
         yield

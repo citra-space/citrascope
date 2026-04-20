@@ -431,9 +431,24 @@ class AbstractAstroHardwareAdapter(ABC):
     def angular_distance(
         self, ra1_degrees: float, dec1_degrees: float, ra2_degrees: float, dec2_degrees: float
     ) -> float:  # TODO: move this out of the hardware adapter... this isn't hardware stuff
-        """Compute angular distance between two (RA deg, Dec deg) points in degrees."""
+        """Compute angular distance between two (RA deg, Dec deg) points in degrees.
 
-        # Convert to radians
+        Raises:
+            ValueError: If any input is non-finite (NaN or infinity). Raising
+                at the first frame that can see the bad value gives a
+                traceback that names the exact caller and the offending
+                input — previously these silently clamped to 180° and
+                produced plausible-looking phantom slew estimates
+                downstream.
+        """
+        inputs = (ra1_degrees, dec1_degrees, ra2_degrees, dec2_degrees)
+        if not all(math.isfinite(v) for v in inputs):
+            raise ValueError(
+                "angular_distance called with non-finite input(s): "
+                f"ra1={ra1_degrees}, dec1={dec1_degrees}, "
+                f"ra2={ra2_degrees}, dec2={dec2_degrees}"
+            )
+
         ra1_rad = math.radians(ra1_degrees)
         ra2_rad = math.radians(ra2_degrees)
         dec1_rad = math.radians(dec1_degrees)
@@ -442,8 +457,9 @@ class AbstractAstroHardwareAdapter(ABC):
         cos_angle = math.sin(dec1_rad) * math.sin(dec2_rad) + math.cos(dec1_rad) * math.cos(dec2_rad) * math.cos(
             ra1_rad - ra2_rad
         )
-        # Clamp for safety
-        cos_angle = min(1.0, max(-1.0, cos_angle))
+        # Narrow clamp for floating-point rounding (~1e-16) only. Real NaN
+        # inputs are caught above — this clamp no longer masks them.
+        cos_angle = max(-1.0, min(1.0, cos_angle))
         angle_rad = math.acos(cos_angle)
         return math.degrees(angle_rad)
 

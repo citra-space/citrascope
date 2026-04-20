@@ -2,7 +2,7 @@
 
 On first init, fetches fresh TLEs from CelesTrak for a mix of LEO (Starlink, ISS)
 and GEO (DirecTV) satellites. Results are cached to disk so subsequent runs work
-offline. The task scheduler uses Skyfield pass prediction to only generate tasks
+offline. The task scheduler uses keplemon pass prediction to only generate tasks
 when satellites are actually visible from the ground station.
 """
 
@@ -17,7 +17,13 @@ from pathlib import Path
 
 import platformdirs
 import requests
-from skyfield.api import EarthSatellite, load, wgs84
+from keplemon import time as ktime
+from keplemon.bodies import Observatory, Satellite
+from keplemon.elements import TLE
+from keplemon.enums import ReferenceFrame
+from keplemon.time import TimeSpan
+
+from citrascope.hardware.devices.mount.altaz_pointing_model import radec_to_altaz
 
 from .abstract_api_client import AbstractCitraApiClient
 
@@ -35,6 +41,10 @@ _TLE_SOURCES: list[dict[str, str | int]] = [
 ]
 
 MIN_ELEVATION_DEG = 0.0  # dummy is a UI testing stub; horizon-only filter is enough
+# keplemon's access report hangs when min_duration is literally zero (every
+# instant satisfies the predicate). One second is effectively "any pass" for
+# a horizon-only filter while still being a defined minimum.
+_MIN_PASS_DURATION_SECONDS = 1.0
 PASS_SEARCH_HOURS = 12
 # Don't anchor the queue on a future pass that's more than this far out.  The
 # real Citra scheduler doesn't give you tasks 5 hours away when nothing is
@@ -231,10 +241,18 @@ class DummyApiClient(AbstractCitraApiClient):
             "satellites": satellites,
         }
 
-        self._ts = load.timescale()
-        self._skyfield_sats: dict[str, EarthSatellite] = {}
+        self._keplemon_sats: dict[str, Satellite] = {}
         for sat_id, cat in self._satellite_catalog.items():
-            self._skyfield_sats[sat_id] = EarthSatellite(cat["tle_line1"], cat["tle_line2"], cat["name"], self._ts)
+            try:
+                self._keplemon_sats[sat_id] = Satellite.from_tle(TLE.from_lines(cat["tle_line1"], cat["tle_line2"]))
+            except Exception as exc:
+                if self.logger:
+                    self.logger.warning(
+                        "DummyApiClient: skipping %s (%s) — TLE parse failed: %s",
+                        cat.get("name", sat_id),
+                        sat_id,
+                        exc,
+                    )
 
     # Abstract methods implementation
 
@@ -438,15 +456,15 @@ class DummyApiClient(AbstractCitraApiClient):
         existing_tasks: list[dict],
     ) -> list[dict]:
         """Find satellites visible now and upcoming passes, prioritizing immediate targets."""
-        observer = wgs84.latlon(
-            ground_station.get("latitude", _DEFAULT_STATION_LAT),
-            ground_station.get("longitude", _DEFAULT_STATION_LON),
-            elevation_m=ground_station.get("altitude", _DEFAULT_STATION_ALT),
-        )
+        lat_deg = float(ground_station.get("latitude", _DEFAULT_STATION_LAT))
+        lon_deg = float(ground_station.get("longitude", _DEFAULT_STATION_LON))
+        alt_m = float(ground_station.get("altitude", _DEFAULT_STATION_ALT))
+        observer = Observatory(lat_deg, lon_deg, alt_m / 1000.0)  # keplemon wants km
 
         now = datetime.now(timezone.utc)
-        t_now = self._ts.from_datetime(now)
-        t_end = self._ts.from_datetime(now + timedelta(hours=PASS_SEARCH_HOURS))
+        now_epoch = ktime.Epoch.from_datetime(now)
+        end_epoch = ktime.Epoch.from_datetime(now + timedelta(hours=PASS_SEARCH_HOURS))
+        min_span = TimeSpan.from_seconds(_MIN_PASS_DURATION_SECONDS)
 
         scheduled_sat_ids = {t.get("satelliteId") for t in existing_tasks}
 
@@ -466,16 +484,22 @@ class DummyApiClient(AbstractCitraApiClient):
         immediate_sats: list[tuple[str, float]] = []
         future_passes: list[tuple[datetime, str, datetime, datetime]] = []
 
-        for sat_id, sat in self._skyfield_sats.items():
+        for sat_id, sat in self._keplemon_sats.items():
             if sat_id in scheduled_sat_ids:
                 continue
 
-            cat = self._satellite_catalog.get(sat_id, {})
-
-            # Check if satellite is visible RIGHT NOW (handles GEO + mid-pass LEO)
+            # Check if satellite is visible RIGHT NOW (handles GEO + mid-pass LEO).
+            # keplemon's access report needs min_duration > 0 or it hangs, so
+            # for the point-in-time "visible now" check we convert J2000
+            # topocentric RA/Dec to alt/az via the shared helper.
             try:
-                topo = (sat - observer).at(t_now)
-                alt_deg = float(topo.altaz()[0].degrees)  # type: ignore[arg-type]
+                topo = observer.get_topocentric_to_satellite(now_epoch, sat, ReferenceFrame.J2000)
+                _, alt_deg = radec_to_altaz(
+                    float(topo.right_ascension),
+                    float(topo.declination),
+                    lat_deg,
+                    lon_deg,
+                )
             except Exception:
                 alt_deg = -1.0
 
@@ -484,31 +508,25 @@ class DummyApiClient(AbstractCitraApiClient):
                 scheduled_sat_ids.add(sat_id)
                 continue
 
-            # Not visible now — find next pass
+            # Not visible now — find the next pass via keplemon's access report.
             try:
-                t_events, events = sat.find_events(observer, t_now, t_end, altitude_degrees=MIN_ELEVATION_DEG)
+                report = sat.get_observatory_access_report(
+                    [observer], now_epoch, end_epoch, MIN_ELEVATION_DEG, min_span
+                )
             except Exception:
                 continue
+            if report is None:
+                continue
 
-            for i, event_type in enumerate(events):
-                if event_type != 1:
+            for access in report.accesses:
+                try:
+                    rise_dt = access.start.epoch.to_datetime().replace(tzinfo=timezone.utc)
+                    set_dt = access.end.epoch.to_datetime().replace(tzinfo=timezone.utc)
+                except Exception:
                     continue
-
-                culm_dt = t_events[i].utc_datetime()
-                if culm_dt < now + timedelta(seconds=10):
+                if set_dt < now + timedelta(seconds=10):
                     continue
-
-                rise_dt = culm_dt - timedelta(seconds=30)
-                set_dt = culm_dt + timedelta(seconds=30)
-                for j in range(i - 1, -1, -1):
-                    if events[j] == 0:
-                        rise_dt = t_events[j].utc_datetime()
-                        break
-                for j in range(i + 1, len(events)):
-                    if events[j] == 2:
-                        set_dt = t_events[j].utc_datetime()
-                        break
-
+                # First pass that starts after "right now" is the one we want.
                 future_passes.append((rise_dt, sat_id, rise_dt, set_dt))
                 break
 
@@ -523,7 +541,7 @@ class DummyApiClient(AbstractCitraApiClient):
         #      tail of the existing queue.
         #   2. Two simultaneously-visible satellites both became immediate tasks
         #      with hand-stacked offsets, but ignored each other across calls.
-        #   3. Future-pass rise/set windows from Skyfield were appended raw,
+        #   3. Future-pass rise/set windows from the pass-finder were appended raw,
         #      with no overlap check against immediates or each other.
         _FIRST_TASK_DELAY_S = 10
         _TASK_WINDOW_S = 30

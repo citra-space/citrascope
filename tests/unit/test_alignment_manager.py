@@ -14,9 +14,9 @@ from citrascope.tasks.alignment_manager import AlignmentManager
 
 
 @pytest.fixture(autouse=True)
-def _patch_skyfield_gast():
+def _patch_gast_degrees():
     with patch(
-        "citrascope.hardware.devices.mount.altaz_pointing_model._skyfield_gast",
+        "citrascope.hardware.devices.mount.altaz_pointing_model._gast_degrees",
         return_value=90.0,
     ):
         yield
