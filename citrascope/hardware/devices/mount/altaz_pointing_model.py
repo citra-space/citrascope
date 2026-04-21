@@ -57,19 +57,9 @@ from typing import Any
 
 import numpy as np
 
+from citrascope.astro.sidereal import gast_degrees
+
 _logger = logging.getLogger("citrascope.AltAzPointingModel")
-
-_TS: Any = None
-
-
-def _get_timescale() -> Any:
-    """Return cached Skyfield timescale (lazy-loaded on first call)."""
-    global _TS
-    if _TS is None:
-        from skyfield.api import load
-
-        _TS = load.timescale()
-    return _TS
 
 
 _MIN_POINTS_3TERM = 3
@@ -89,11 +79,6 @@ _NEARBY_POINT_MIN_SEP = 1.0  # degrees — operational feeding guard
 # ---------------------------------------------------------------------------
 
 
-def _skyfield_gast() -> float:
-    """Greenwich Apparent Sidereal Time in degrees via Skyfield."""
-    return float(_get_timescale().now().gast) * 15.0  # type: ignore[arg-type]
-
-
 def lst_deg(longitude_deg: float, *, _gast_override: float | None = None) -> float:
     """Local Sidereal Time in degrees for the given longitude.
 
@@ -101,10 +86,10 @@ def lst_deg(longitude_deg: float, *, _gast_override: float | None = None) -> flo
         longitude_deg: Observer longitude in degrees.
         _gast_override: If provided, use this GAST (degrees) instead of
             computing a fresh one.  Callers that need two conversions at
-            the same instant should capture ``_skyfield_gast()`` once and
+            the same instant should capture ``gast_degrees()`` once and
             pass it to both calls.
     """
-    gast = _gast_override if _gast_override is not None else _skyfield_gast()
+    gast = _gast_override if _gast_override is not None else gast_degrees()
     return (gast + longitude_deg) % 360.0
 
 
@@ -118,7 +103,9 @@ def radec_to_altaz(
 ) -> tuple[float, float]:
     """Convert RA/Dec to (azimuth, altitude) in degrees.
 
-    Uses standard spherical trigonometry with LST from Skyfield.
+    Uses standard spherical trigonometry with LST derived from
+    :func:`~citrascope.astro.sidereal.gast_degrees` (true apparent sidereal
+    time via astropy/ERFA, IAU 2006/2000A).
 
     Args:
         ra_deg: Right Ascension in degrees.
@@ -404,7 +391,7 @@ class AltAzPointingModel:
             site_lat: Observer latitude in degrees.
             site_lon: Observer longitude in degrees.
         """
-        gast = _skyfield_gast()
+        gast = gast_degrees()
         mount_az, mount_alt = radec_to_altaz(mount_ra, mount_dec, site_lat, site_lon, _gast_override=gast)
         solved_az, solved_alt = radec_to_altaz(solved_ra, solved_dec, site_lat, site_lon, _gast_override=gast)
 
@@ -636,7 +623,7 @@ class AltAzPointingModel:
         if not self.is_active:
             return ra_deg, dec_deg
 
-        gast = _skyfield_gast()
+        gast = gast_degrees()
         az, alt = radec_to_altaz(ra_deg, dec_deg, site_lat, site_lon, _gast_override=gast)
 
         with self._lock:
@@ -850,7 +837,7 @@ class AltAzPointingModel:
         ``d_az`` wraparound, then triggers a refit so the new terms (and the
         persisted state written inside ``fit()``) apply immediately.
         """
-        gast = _skyfield_gast()
+        gast = gast_degrees()
         mount_az, mount_alt = radec_to_altaz(mount_ra, mount_dec, site_lat, site_lon, _gast_override=gast)
         solved_az, solved_alt = radec_to_altaz(solved_ra, solved_dec, site_lat, site_lon, _gast_override=gast)
 

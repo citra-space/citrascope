@@ -29,10 +29,16 @@ def _fixed_lst_deg(lon_deg: float) -> float:
 
 
 @pytest.fixture(autouse=True)
-def _patch_skyfield_gast():
-    """Patch _skyfield_gast to return a fixed value so tests are deterministic."""
+def _patch_gast_degrees():
+    """Patch ``gast_degrees`` to return a fixed value so tests are deterministic.
+
+    Targets the name as imported into ``altaz_pointing_model`` (not the
+    definition in ``citrascope.astro.sidereal``) because the module did
+    ``from citrascope.astro.sidereal import gast_degrees`` at import time;
+    that binding is what gets looked up on each call.
+    """
     with patch(
-        "citrascope.hardware.devices.mount.altaz_pointing_model._skyfield_gast",
+        "citrascope.hardware.devices.mount.altaz_pointing_model.gast_degrees",
         return_value=90.0,
     ):
         yield

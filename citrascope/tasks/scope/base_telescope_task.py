@@ -4,13 +4,16 @@ import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from dateutil import parser as dtparser
-from skyfield.api import EarthSatellite, load, wgs84
-from skyfield.framelib import ICRS as _ICRS_FRAME
+from keplemon import time as ktime
+from keplemon.bodies import Observatory, Satellite
+from keplemon.elements import TLE
+from keplemon.enums import ReferenceFrame
 
+from citrascope.astro.sidereal import SIDEREAL_RATE_DEG_PER_S, make_observatory
 from citrascope.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
 from citrascope.tasks.fits_enrichment import enrich_fits_metadata
 
@@ -134,7 +137,8 @@ class AbstractBaseTelescopeTask(ABC):
             self.logger.error(f"Could not fetch satellite data for {self.task.satelliteId}")
             return None
 
-        best_elset = self.api_client.get_best_elset(self.task.satelliteId)
+        types = self.hardware_adapter.select_elset_types()
+        best_elset = self.api_client.get_best_elset(self.task.satelliteId, types=types)
         if best_elset:
             satellite_data["most_recent_elset"] = best_elset
         else:
@@ -142,7 +146,7 @@ class AbstractBaseTelescopeTask(ABC):
                 f"get_best_elset returned nothing for {self.task.satelliteId}, "
                 f"falling back to client-side selection"
             )
-            satellite_data["most_recent_elset"] = self._get_most_recent_elset(satellite_data)
+            satellite_data["most_recent_elset"] = self._get_most_recent_elset(satellite_data, types=types)
 
         if not satellite_data.get("most_recent_elset"):
             self.logger.error(f"No elsets found for satellite {self.task.satelliteId}")
@@ -150,12 +154,24 @@ class AbstractBaseTelescopeTask(ABC):
 
         return satellite_data
 
-    def _get_most_recent_elset(self, satellite_data) -> dict | None:
-        """Client-side fallback: pick the elset with the latest element epoch."""
+    def _get_most_recent_elset(
+        self,
+        satellite_data,
+        types: tuple[str, ...] | None = None,
+    ) -> dict | None:
+        """Client-side fallback: pick the elset with the latest element epoch.
+
+        When ``types`` is supplied, elsets whose ``type`` is not in that tuple
+        are discarded before selection — this keeps the NINA path from silently
+        falling back to an XP or osculating TLE the downstream classic-SGP4
+        propagator can't handle.
+        """
         if "most_recent_elset" in satellite_data:
             return satellite_data["most_recent_elset"]
 
         elsets = satellite_data.get("elsets", [])
+        if types:
+            elsets = [e for e in elsets if e.get("type") in types]
         if not elsets:
             return None
         most_recent_elset = max(
@@ -513,18 +529,17 @@ class AbstractBaseTelescopeTask(ABC):
     def execute(self):
         pass
 
-    def _get_skyfield_ground_station_and_satellite(self, satellite_data):
-        """
-        Returns (ground_station, satellite, ts) Skyfield objects for the given satellite and elset.
+    def _get_keplemon_observatory_and_satellite(self, satellite_data: dict) -> tuple[Observatory, Satellite]:
+        """Build keplemon Observatory + Satellite from satellite_data and location service.
+
         Uses GPS-enhanced location if available, otherwise falls back to ground station record.
+        Returns native keplemon objects; callers build their own Epoch for the target time.
         """
-        ts = load.timescale()
         most_recent_elset = self._get_most_recent_elset(satellite_data)
         if most_recent_elset is None:
             raise ValueError("No valid elset available for satellite.")
 
-        # Get current location from location service (GPS preferred, ground station fallback)
-        # Defensive check against race condition during component reinitialization
+        # Defensive check against race condition during component reinitialization.
         if not self.location_service:
             raise ValueError("Location service not available (system may be reinitializing)")
 
@@ -532,35 +547,119 @@ class AbstractBaseTelescopeTask(ABC):
         if not location:
             raise ValueError("No location available from location service")
 
-        ground_station = wgs84.latlon(
-            location["latitude"],
-            location["longitude"],
-            elevation_m=location["altitude"],
+        obs = make_observatory(
+            float(location["latitude"]),
+            float(location["longitude"]),
+            float(location.get("altitude") or 0.0),
         )
-        satellite = EarthSatellite(most_recent_elset["tle"][0], most_recent_elset["tle"][1], satellite_data["name"], ts)
-        return ground_station, satellite, ts
+        tle = most_recent_elset["tle"]
+        satellite = Satellite.from_tle(TLE.from_lines(tle[0], tle[1]))
+        return obs, satellite
 
-    def get_target_radec_and_rates(self, satellite_data, seconds_from_now: float = 0.0, *, celestial: bool = False):
-        """Return (RA, Dec, RA_rate, Dec_rate) for the target satellite.
+    def _assert_finite_propagation(
+        self,
+        satellite_data: dict,
+        ra_deg: float,
+        dec_deg: float,
+        ra_rate_deg_s: float,
+        dec_rate_deg_s: float,
+    ) -> None:
+        """Smoke-test that keplemon propagation produced finite numbers.
+
+        Raises a descriptive ValueError naming the satellite, elset type, and
+        elset epoch so operators don't have to reverse-engineer a downstream
+        ``int(NaN)`` traceback. Keplemon handles SGP4-XP correctly today, so
+        this is belt-and-suspenders against a future bad TLE, corrupted
+        element set, or propagator edge case — not the XP bug itself.
+        """
+        if all(math.isfinite(v) for v in (ra_deg, dec_deg, ra_rate_deg_s, dec_rate_deg_s)):
+            return
+        elset = satellite_data.get("most_recent_elset") or {}
+        tle = elset.get("tle") or ("", "")
+        raise ValueError(
+            f"Propagation produced non-finite values for satellite "
+            f"{satellite_data.get('name')!r} (elset type {elset.get('type')!r}, "
+            f"epoch {elset.get('epoch')!r}). "
+            f"Got ra={ra_deg}, dec={dec_deg}, ra_rate={ra_rate_deg_s}, "
+            f"dec_rate={dec_rate_deg_s}. TLE: {tle[0]!r} / {tle[1]!r}"
+        )
+
+    def get_target_radec_and_rates(
+        self,
+        satellite_data: dict,
+        seconds_from_now: float = 0.0,
+        *,
+        inertial: bool = False,
+        target_dt: datetime | None = None,
+    ) -> tuple[float, float, float, float]:
+        """Return ``(ra_deg, dec_deg, ra_rate_deg_s, dec_rate_deg_s)`` for the target.
+
+        All four values are plain floats in degrees / degrees per second.
 
         Args:
-            celestial: When ``True``, rates are in the ICRS frame (motion
-                relative to the star field — for sidereal-tracking trail
-                calculations).  When ``False`` (default), rates are in the
-                observer's Earth-fixed frame (for mount tracking commands).
+            satellite_data: Satellite record including the ``most_recent_elset`` TLE.
+            seconds_from_now: Offset applied to the current wall clock when
+                ``target_dt`` is not supplied. Ignored when ``target_dt`` is set.
+            inertial: When ``True``, rates are in the J2000 inertial frame —
+                motion relative to the star field, used for sidereal-tracking
+                trail calculations. When ``False`` (default), rates are in the
+                observer's Earth-fixed frame (inertial minus the sidereal
+                tracking term the mount applies internally), used for mount
+                rate commanding.
+            target_dt: Explicit UTC datetime to evaluate at. If supplied,
+                overrides ``seconds_from_now``. Intended for deterministic tests
+                and for scheduled-future propagation where wall-clock drift
+                would corrupt the result.
         """
-        ground_station, satellite, ts = self._get_skyfield_ground_station_and_satellite(satellite_data)
-        difference = satellite - ground_station
-        days_to_add = seconds_from_now / (24 * 60 * 60)  # Skyfield uses days
-        topocentric = difference.at(ts.now() + days_to_add)
-        target_ra, target_dec, _ = topocentric.radec()
+        obs, satellite = self._get_keplemon_observatory_and_satellite(satellite_data)
+        if target_dt is None:
+            target_dt = datetime.now(timezone.utc) + timedelta(seconds=seconds_from_now)
+        epoch = ktime.Epoch.from_datetime(target_dt)
+        topo = obs.get_topocentric_to_satellite(epoch, satellite, ReferenceFrame.J2000)
 
-        frame = _ICRS_FRAME if celestial else ground_station
-        rates = topocentric.frame_latlon_and_rates(frame)
-        target_dec_rate = rates[4]
-        target_ra_rate = rates[3]
+        # keplemon's topocentric state types RA/Dec rates as ``float | None``:
+        # None would mean "no velocity available for this state", which should
+        # never happen for a TLE-backed satellite. Make that assumption
+        # explicit so we fail loud instead of crashing with a confusing
+        # "cannot float() None" deeper down.
+        ra_rate_raw = topo.right_ascension_rate
+        dec_rate_raw = topo.declination_rate
+        if ra_rate_raw is None or dec_rate_raw is None:
+            raise ValueError(
+                f"keplemon returned no rate data for satellite "
+                f"{satellite_data.get('name')!r} — this should never happen "
+                f"for a TLE-backed satellite"
+            )
 
-        return target_ra, target_dec, target_ra_rate, target_dec_rate
+        ra = float(topo.right_ascension)
+        dec = float(topo.declination)
+        ra_rate_inertial = float(ra_rate_raw)
+        dec_rate_inertial = float(dec_rate_raw)
+
+        if inertial:
+            ra_rate = ra_rate_inertial
+            dec_rate = dec_rate_inertial
+        else:
+            # Subtract the sidereal-tracking term the mount applies internally,
+            # so the returned rate is the *extra* motion the mount needs to
+            # command on top of its sidereal drive.
+            #
+            # ``ra_rate`` is dRA/dt in RA-coordinate space (deg/s), NOT the
+            # on-sky great-circle rate. Mount tracking-offset APIs (ZWO AM5
+            # ``:RA±NNN#``, INDI ``TELESCOPE_TRACK_RATE``, etc.) consume
+            # coordinate rates — the mount's RA axis drives at
+            # ``sidereal + offset`` where sidereal is a constant ~15.041 "/s
+            # regardless of declination. No cos(dec) projection here.
+            #
+            # cos(dec) IS applied exactly once, downstream, in
+            # ``compute_angular_rate()`` where we need the projected sky rate
+            # for trail length / exposure math. Keep the projection in one
+            # place so refactors can't accidentally double- or zero-count it.
+            ra_rate = ra_rate_inertial - SIDEREAL_RATE_DEG_PER_S
+            dec_rate = dec_rate_inertial
+
+        self._assert_finite_propagation(satellite_data, ra, dec, ra_rate, dec_rate)
+        return ra, dec, ra_rate, dec_rate
 
     def predict_slew_time_seconds(
         self, satellite_data, seconds_from_now: float = 0.0, max_rate: float | None = None
@@ -571,8 +670,8 @@ class AbstractBaseTelescopeTask(ABC):
         distance_deg = self.hardware_adapter.angular_distance(
             current_scope_ra,
             current_scope_dec,
-            current_target_ra.degrees,  # type: ignore
-            current_target_dec.degrees,  # type: ignore
+            current_target_ra,
+            current_target_dec,
         )
 
         rate = max_rate if max_rate is not None else self.hardware_adapter.scope_slew_rate_degrees_per_second
@@ -618,12 +717,12 @@ class AbstractBaseTelescopeTask(ABC):
                 satellite_data, max_rate=effective_rate, extra_lead_seconds=extra_lead_seconds
             )
             self.logger.info(
-                f"Pointing ahead to RA: {lead_ra.degrees:.4f}°, DEC: {lead_dec.degrees:.4f}°, "
+                f"Pointing ahead to RA: {lead_ra:.4f}°, DEC: {lead_dec:.4f}°, "
                 f"estimated slew time: {est_slew_time:.1f}s"
             )
 
             slew_start_time = time.time()
-            last_correction = self.hardware_adapter.point_telescope(lead_ra.degrees, lead_dec.degrees)  # type: ignore
+            last_correction = self.hardware_adapter.point_telescope(lead_ra, lead_dec)
             while self.hardware_adapter.telescope_is_moving():
                 if self.is_cancelled:
                     raise RuntimeError("Task cancelled")
@@ -682,8 +781,8 @@ class AbstractBaseTelescopeTask(ABC):
             # the original target — those differ by the pointing model correction.
             cmd_ra_deg = last_correction["command_ra_deg"]
             cmd_dec_deg = last_correction["command_dec_deg"]
-            target_lead_ra_deg = float(lead_ra.degrees)  # type: ignore[union-attr]
-            target_lead_dec_deg = float(lead_dec.degrees)  # type: ignore[union-attr]
+            target_lead_ra_deg = float(lead_ra)
+            target_lead_dec_deg = float(lead_dec)
             target_distance_deg = self.hardware_adapter.angular_distance(
                 post_slew_ra, post_slew_dec, cmd_ra_deg, cmd_dec_deg
             )
@@ -691,8 +790,8 @@ class AbstractBaseTelescopeTask(ABC):
             # Satellite's current position (diagnostic only — may differ from
             # target when extra_lead_seconds > 0 because we're ahead of it)
             current_satellite_position = self.get_target_radec_and_rates(satellite_data)
-            sat_ra_deg = float(current_satellite_position[0].degrees)  # type: ignore[union-attr]
-            sat_dec_deg = float(current_satellite_position[1].degrees)  # type: ignore[union-attr]
+            sat_ra_deg = float(current_satellite_position[0])
+            sat_dec_deg = float(current_satellite_position[1])
             current_angular_distance_deg = self.hardware_adapter.angular_distance(
                 post_slew_ra, post_slew_dec, sat_ra_deg, sat_dec_deg
             )
@@ -829,23 +928,21 @@ class AbstractBaseTelescopeTask(ABC):
 
         return 0.5
 
-    def compute_angular_rate(self, satellite_data: dict, *, celestial: bool = False) -> float:
+    def compute_angular_rate(self, satellite_data: dict, *, inertial: bool = False) -> float:
         """Total angular rate of the satellite on the sky (deg/s).
 
         Combines RA and Dec rates with cos(dec) correction for RA projection.
-        Uses ``.arcseconds.per_second`` (the same accessor the tracking task uses)
-        to avoid ambiguity about what ``.degrees`` returns for Rate objects.
 
         Args:
-            celestial: When ``True``, compute rate relative to the star field
-                (ICRS frame).  When ``False``, compute rate in the observer's
-                Earth-fixed frame.
+            inertial: When ``True``, compute rate in the J2000 inertial frame
+                — motion relative to the star field (used for sidereal-tracking
+                trail calculations). When ``False`` (default), compute rate in
+                the observer's Earth-fixed frame — the mount-commanding
+                convention.
         """
-        _, dec, ra_rate, dec_rate = self.get_target_radec_and_rates(satellite_data, celestial=celestial)
-        ra_arcsec_s: float = ra_rate.arcseconds.per_second  # type: ignore[union-attr]
-        dec_arcsec_s: float = dec_rate.arcseconds.per_second  # type: ignore[union-attr]
-        ra_deg_s = (ra_arcsec_s / 3600) * math.cos(math.radians(dec.degrees))  # type: ignore[union-attr]
-        dec_deg_s = dec_arcsec_s / 3600
+        _, dec, ra_rate, dec_rate = self.get_target_radec_and_rates(satellite_data, inertial=inertial)
+        ra_deg_s = ra_rate * math.cos(math.radians(dec))
+        dec_deg_s = dec_rate
         return math.sqrt(ra_deg_s**2 + dec_deg_s**2)
 
     def compute_adaptive_exposure(self, angular_rate_deg_s: float) -> float | None:
@@ -876,21 +973,17 @@ class AbstractBaseTelescopeTask(ABC):
     def compute_satellite_timing(self, satellite_data: dict) -> dict:
         """Compute real-time timing for satellite FOV crossing.
 
-        Uses current confirmed telescope pointing and live Skyfield ephemeris.
+        Uses current confirmed telescope pointing and live keplemon propagation.
         The closure rate is computed numerically from positions 1s apart, which
         naturally handles arbitrary trajectories without needing rate decomposition.
         """
         scope_ra, scope_dec = self.hardware_adapter.get_telescope_direction()
 
         sat_now = self.get_target_radec_and_rates(satellite_data, 0.0)
-        dist_now = self.hardware_adapter.angular_distance(
-            scope_ra, scope_dec, sat_now[0].degrees, sat_now[1].degrees  # type: ignore[union-attr]
-        )
+        dist_now = self.hardware_adapter.angular_distance(scope_ra, scope_dec, sat_now[0], sat_now[1])
 
         sat_1s = self.get_target_radec_and_rates(satellite_data, 1.0)
-        dist_1s = self.hardware_adapter.angular_distance(
-            scope_ra, scope_dec, sat_1s[0].degrees, sat_1s[1].degrees  # type: ignore[union-attr]
-        )
+        dist_1s = self.hardware_adapter.angular_distance(scope_ra, scope_dec, sat_1s[0], sat_1s[1])
         closure_rate = dist_now - dist_1s  # positive = approaching
 
         fov_radius = self._get_fov_radius_deg()

@@ -36,8 +36,8 @@ class TrackingTelescopeTask(AbstractBaseTelescopeTask):
         try:
             self.task.set_status_msg("Setting tracking rates...")
             tracking_set = self.hardware_adapter.set_custom_tracking_rate(
-                target_ra_rate.arcseconds.per_second,  # type: ignore[attr-defined]
-                target_dec_rate.arcseconds.per_second,  # type: ignore[attr-defined]
+                target_ra_rate * 3600.0,
+                target_dec_rate * 3600.0,
             )
             if not tracking_set:
                 self.logger.error("Failed to set tracking rates on telescope.")

@@ -20,7 +20,11 @@ module ending up the way it has:
    the task's signature changes (re-scheduled) or the observer moves.  Only
    :data:`slew_from_current_deg` is genuinely time-varying (the scope moves)
    and is cheap enough to recompute on every emission as a great-circle on
-   cached topocentric coordinates -- no Skyfield call required.
+   cached topocentric coordinates -- no propagator call required.
+
+Propagation uses keplemon (SGP4 + SGP4-XP).  Alt/az comes from converting
+the J2000 topocentric RA/Dec via :func:`radec_to_altaz`, which is a pure
+math helper shared with the mount pointing model.
 
 Best-effort throughout.  Missing TLE, observer, or scope pointing simply
 omits the relevant fields rather than raising.
@@ -34,14 +38,16 @@ from datetime import datetime, timedelta
 from math import asin, cos, degrees, radians, sin
 from typing import Any
 
-from skyfield.api import EarthSatellite, load, wgs84
+from keplemon import time as ktime
+from keplemon.bodies import Observatory, Satellite
+from keplemon.elements import TLE
+from keplemon.enums import ReferenceFrame
 
+from citrascope.astro.sidereal import gast_degrees, make_observatory
+from citrascope.hardware.devices.mount.altaz_pointing_model import radec_to_altaz
 from citrascope.web.helpers import _task_to_dict
 
 _logger = logging.getLogger("citrascope.SkyEnrichment")
-
-# Skyfield's timescale carries a small one-time setup cost; cache it.
-_TS = load.timescale()
 
 # Number of altitude samples drawn across [task_start, task_stop] when
 # computing peak altitude and the rising/setting trend.  Twelve is dense
@@ -92,7 +98,7 @@ class _StaticSky:
     stop time changed) so we recompute instead of serving stale numbers.
     ``target_ra_deg`` / ``target_dec_deg`` are the topocentric RA/Dec of the
     satellite at ``task.start_time``; we keep them so slew distance can be
-    recomputed via a pure great-circle without re-entering Skyfield.
+    recomputed via a pure great-circle without re-entering the propagator.
     """
 
     signature: tuple[str, str, str | None]
@@ -182,39 +188,52 @@ def _build_tle_lookup(elset_cache: Any, wanted_ids: set[str]) -> dict[str, list[
 
 
 def _propagate_static(
-    satellite: EarthSatellite,
-    observer: Any,
+    satellite: Satellite,
+    observer: Observatory,
+    obs_lat_deg: float,
+    obs_lon_deg: float,
     start_dt: datetime,
     stop_dt: datetime | None,
 ) -> tuple[dict[str, Any], float, float] | None:
-    """Run Skyfield once for a task and return ``(static_fields, ra_deg, dec_deg)``.
+    """Propagate once for a task and return ``(static_fields, ra_deg, dec_deg)``.
 
-    Returns ``None`` on any propagation failure -- callers treat that as
-    "skip this task" rather than letting it raise into the route handler.
+    RA/Dec comes from keplemon in J2000; alt/az is derived via the shared
+    :func:`radec_to_altaz` helper.  Returns ``None`` on any propagation
+    failure -- callers treat that as "skip this task" rather than letting it
+    raise into the route handler.
     """
-    diff = satellite - observer
     end_dt = stop_dt if (stop_dt is not None and stop_dt > start_dt) else start_dt
     span_s = max(0.0, (end_dt - start_dt).total_seconds())
 
     try:
         alts: list[float] = []
         azs: list[float] = []
+        target_ra_deg: float | None = None
+        target_dec_deg: float | None = None
         n = _TRACK_SAMPLES if span_s > 0 else 1
         for i in range(n):
             frac = i / (n - 1) if n > 1 else 0.0
-            t = _TS.from_datetime(start_dt + timedelta(seconds=span_s * frac))
-            topo = diff.at(t)
-            alt, az, _ = topo.altaz()
-            alts.append(float(alt.degrees))  # type: ignore[arg-type]
-            azs.append(float(az.degrees))  # type: ignore[arg-type]
-
-        ra, dec, _ = diff.at(_TS.from_datetime(start_dt)).radec()
-        # Skyfield's RA Angle is in hours; CitraScope is degrees-internal
-        # everywhere (see CLAUDE.md), so convert at this boundary.
-        target_ra_deg = float(ra.hours) * 15.0  # type: ignore[attr-defined]
-        target_dec_deg = float(dec.degrees)  # type: ignore[attr-defined]
+            sample_dt = start_dt + timedelta(seconds=span_s * frac)
+            epoch = ktime.Epoch.from_datetime(sample_dt)
+            topo = observer.get_topocentric_to_satellite(epoch, satellite, ReferenceFrame.J2000)
+            ra = float(topo.right_ascension)
+            dec = float(topo.declination)
+            if i == 0:
+                target_ra_deg = ra
+                target_dec_deg = dec
+            # GAST must match the propagation epoch, not wall-clock now —
+            # scheduled tasks can be hours in the future, and without this
+            # the alt/az would be rotated by ~15°/hr (i.e. a task 4 hours
+            # out looks horizontal-mirrored if we silently use "now"-GAST).
+            gast_deg = gast_degrees(sample_dt)
+            az, alt = radec_to_altaz(ra, dec, obs_lat_deg, obs_lon_deg, _gast_override=gast_deg)
+            alts.append(alt)
+            azs.append(az)
     except Exception as exc:
         _logger.debug("Sky propagation failed: %s", exc)
+        return None
+
+    if target_ra_deg is None or target_dec_deg is None:
         return None
 
     if not alts:
@@ -295,10 +314,10 @@ def _enrich_tasks(tasks: list[dict], *, daemon: Any, status: Any) -> None:
     Three phases:
       1. Drop memo entries for tasks no longer in the snapshot.
       2. For each task, paste cached static fields if the memo is fresh,
-         otherwise propagate via Skyfield and seed the memo.
+         otherwise propagate via keplemon and seed the memo.
       3. For each task with cached topocentric coords AND a known scope
          pointing, compute ``slew_from_current_deg`` via a great-circle
-         (no Skyfield needed -- microseconds).
+         (no propagation needed -- microseconds).
     """
     global _OBSERVER_SIG
 
@@ -325,20 +344,26 @@ def _enrich_tasks(tasks: list[dict], *, daemon: Any, status: Any) -> None:
     for stale_id in [tid for tid in _SKY_MEMO if tid not in live_ids]:
         del _SKY_MEMO[stale_id]
 
-    # Phase 2 -- paste from memo where possible, otherwise Skyfield.
+    # Phase 2 -- paste from memo where possible, otherwise propagate via keplemon.
     needs_compute = [t for t in tasks if not _try_paste_from_memo(t)]
 
     if needs_compute:
         elset_cache = getattr(daemon, "elset_cache", None)
         if elset_cache is not None:
             try:
-                observer = wgs84.latlon(obs_sig[0], obs_sig[1], elevation_m=obs_sig[2])
+                observer = make_observatory(obs_sig[0], obs_sig[1], obs_sig[2])
             except (TypeError, ValueError) as exc:
-                _logger.debug("wgs84.latlon failed for %s: %s", obs_sig, exc)
+                _logger.debug("Observatory construction failed for %s: %s", obs_sig, exc)
                 observer = None
 
             if observer is not None:
-                _populate_via_propagation(needs_compute, observer=observer, elset_cache=elset_cache)
+                _populate_via_propagation(
+                    needs_compute,
+                    observer=observer,
+                    obs_lat_deg=obs_sig[0],
+                    obs_lon_deg=obs_sig[1],
+                    elset_cache=elset_cache,
+                )
 
     # Phase 3 -- recompute slew distance from cached target coords.
     scope_ra = getattr(status, "telescope_ra", None)
@@ -386,7 +411,9 @@ def _task_signature(task: dict) -> tuple[str, str, str | None]:
 def _populate_via_propagation(
     tasks: list[dict],
     *,
-    observer: Any,
+    observer: Observatory,
+    obs_lat_deg: float,
+    obs_lon_deg: float,
     elset_cache: Any,
 ) -> None:
     """Fill static fields for tasks that missed the memo, seeding the memo."""
@@ -395,7 +422,7 @@ def _populate_via_propagation(
     if not tle_by_id:
         return
 
-    sat_cache: dict[str, EarthSatellite] = {}
+    sat_cache: dict[str, Satellite] = {}
     for task in tasks:
         sat_id = task.get("satelliteId")
         if not sat_id or sat_id not in tle_by_id:
@@ -410,13 +437,13 @@ def _populate_via_propagation(
             sat = sat_cache.get(sat_id)
             if sat is None:
                 tle = tle_by_id[sat_id]
-                sat = EarthSatellite(tle[0], tle[1], task.get("target", sat_id), _TS)
+                sat = Satellite.from_tle(TLE.from_lines(tle[0], tle[1]))
                 sat_cache[sat_id] = sat
         except Exception as exc:
-            _logger.debug("EarthSatellite construction failed for %s: %s", sat_id, exc)
+            _logger.debug("Satellite construction failed for %s: %s", sat_id, exc)
             continue
 
-        result = _propagate_static(sat, observer, start_dt, stop_dt)
+        result = _propagate_static(sat, observer, obs_lat_deg, obs_lon_deg, start_dt, stop_dt)
         if result is None:
             continue
         fields, target_ra, target_dec = result
