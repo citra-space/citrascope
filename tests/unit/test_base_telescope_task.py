@@ -42,6 +42,7 @@ def _make_hardware_adapter(initial_slew_samples=None, **overrides):
     adapter.observed_fov_short_deg = None
     adapter.telescope_record = None
     adapter.scope_slew_rate_degrees_per_second = 5.0
+    adapter.select_elset_types.return_value = None
 
     tracker = SlewRateTracker()
     for sample in initial_slew_samples or []:
@@ -111,7 +112,7 @@ class TestFetchSatellite:
         assert result is not None
         assert result["most_recent_elset"]["tle"] == ["best1", "best2"]
         assert result["most_recent_elset"]["type"] == "MEAN_BROUWER_XP"
-        api.get_best_elset.assert_called_once_with("sat-iss")
+        api.get_best_elset.assert_called_once_with("sat-iss", types=None)
 
     def test_falls_back_to_client_side_selection(self):
         from citrascope.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
@@ -164,6 +165,67 @@ class TestFetchSatellite:
         daemon = _make_daemon()
         ct = ConcreteTask(api, daemon.hardware_adapter, MagicMock(), _make_task_dict(), **_daemon_kwargs(daemon))
         assert ct.fetch_satellite() is None
+
+    def test_threads_adapter_elset_types_into_best_elset(self):
+        """NINA-style adapters narrow the server-side ranking to classic SGP4."""
+        from citrascope.astro.elset_types import CLASSIC_SGP4_ELSET_TYPES
+        from citrascope.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+
+        api = MagicMock()
+        api.get_satellite.return_value = {"name": "ISS", "elsets": []}
+        api.get_best_elset.return_value = {
+            "tle": ["a", "b"],
+            "epoch": "2025-06-01T00:00:00Z",
+            "type": "SGP4 with Brouwer mean motion",
+        }
+
+        class ConcreteTask(AbstractBaseTelescopeTask):
+            def execute(self):
+                pass
+
+        daemon = _make_daemon()
+        daemon.hardware_adapter.select_elset_types.return_value = CLASSIC_SGP4_ELSET_TYPES
+        ct = ConcreteTask(api, daemon.hardware_adapter, MagicMock(), _make_task_dict(), **_daemon_kwargs(daemon))
+        assert ct.fetch_satellite() is not None
+        api.get_best_elset.assert_called_once_with("sat-iss", types=CLASSIC_SGP4_ELSET_TYPES)
+
+    def test_fallback_respects_adapter_elset_types(self):
+        """When get_best_elset returns nothing, the client-side fallback must
+        honour the NINA adapter's type filter — silently picking an XP TLE here
+        would mis-propagate downstream.
+        """
+        from citrascope.astro.elset_types import CLASSIC_SGP4_ELSET_TYPES
+        from citrascope.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+
+        api = MagicMock()
+        api.get_satellite.return_value = {
+            "name": "ISS",
+            "elsets": [
+                {
+                    "tle": ["xp1", "xp2"],
+                    "epoch": "2025-06-02T00:00:00Z",
+                    "type": "SGP4-XP with Brouwer mean motion",
+                },
+                {
+                    "tle": ["cls1", "cls2"],
+                    "epoch": "2025-06-01T00:00:00Z",
+                    "type": "SGP4 with Brouwer mean motion",
+                },
+            ],
+        }
+        api.get_best_elset.return_value = None
+
+        class ConcreteTask(AbstractBaseTelescopeTask):
+            def execute(self):
+                pass
+
+        daemon = _make_daemon()
+        daemon.hardware_adapter.select_elset_types.return_value = CLASSIC_SGP4_ELSET_TYPES
+        ct = ConcreteTask(api, daemon.hardware_adapter, MagicMock(), _make_task_dict(), **_daemon_kwargs(daemon))
+        result = ct.fetch_satellite()
+        assert result is not None
+        # The XP elset is newer but must be filtered out — classic SGP4 wins.
+        assert result["most_recent_elset"]["tle"] == ["cls1", "cls2"]
 
 
 class TestGetMostRecentElset:
@@ -221,6 +283,62 @@ class TestGetMostRecentElset:
         }
         result = ct._get_most_recent_elset(sat_data)
         assert result["tle"] == ["c", "d"]
+
+    def test_types_filter_excludes_non_matching(self):
+        from citrascope.astro.elset_types import CLASSIC_SGP4_ELSET_TYPES
+        from citrascope.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+
+        class ConcreteTask(AbstractBaseTelescopeTask):
+            def execute(self):
+                pass
+
+        ct = ConcreteTask(MagicMock(), MagicMock(), MagicMock(), _make_task_dict(), **_daemon_kwargs(_make_daemon()))
+        sat_data = {
+            "elsets": [
+                {"tle": ["xp1", "xp2"], "epoch": "2025-06-02T00:00:00Z", "type": "SGP4-XP with Brouwer mean motion"},
+                {"tle": ["c1", "c2"], "epoch": "2025-06-01T00:00:00Z", "type": "SGP4 with Kozai mean motion"},
+                {"tle": ["osc1", "osc2"], "epoch": "2025-06-03T00:00:00Z", "type": "Osculating"},
+            ]
+        }
+        result = ct._get_most_recent_elset(sat_data, types=CLASSIC_SGP4_ELSET_TYPES)
+        assert result is not None
+        assert result["tle"] == ["c1", "c2"]
+
+    def test_types_filter_returns_none_when_nothing_matches(self):
+        from citrascope.astro.elset_types import CLASSIC_SGP4_ELSET_TYPES
+        from citrascope.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+
+        class ConcreteTask(AbstractBaseTelescopeTask):
+            def execute(self):
+                pass
+
+        ct = ConcreteTask(MagicMock(), MagicMock(), MagicMock(), _make_task_dict(), **_daemon_kwargs(_make_daemon()))
+        sat_data = {
+            "elsets": [
+                {"tle": ["xp1", "xp2"], "epoch": "2025-06-02T00:00:00Z", "type": "SGP4-XP with Brouwer mean motion"},
+                {"tle": ["osc1", "osc2"], "epoch": "2025-06-03T00:00:00Z", "type": "Osculating"},
+            ]
+        }
+        assert ct._get_most_recent_elset(sat_data, types=CLASSIC_SGP4_ELSET_TYPES) is None
+
+    def test_types_none_matches_all(self):
+        """Passing ``types=None`` bypasses the filter entirely (direct-adapter path)."""
+        from citrascope.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+
+        class ConcreteTask(AbstractBaseTelescopeTask):
+            def execute(self):
+                pass
+
+        ct = ConcreteTask(MagicMock(), MagicMock(), MagicMock(), _make_task_dict(), **_daemon_kwargs(_make_daemon()))
+        sat_data = {
+            "elsets": [
+                {"tle": ["xp1", "xp2"], "epoch": "2025-06-02T00:00:00Z", "type": "SGP4-XP with Brouwer mean motion"},
+                {"tle": ["c1", "c2"], "epoch": "2025-06-01T00:00:00Z", "type": "SGP4 with Kozai mean motion"},
+            ]
+        }
+        result = ct._get_most_recent_elset(sat_data, types=None)
+        assert result is not None
+        assert result["tle"] == ["xp1", "xp2"]
 
 
 class TestUploadImageAndMarkComplete:

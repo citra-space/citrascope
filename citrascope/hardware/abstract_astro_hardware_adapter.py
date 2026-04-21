@@ -233,6 +233,20 @@ class AbstractAstroHardwareAdapter(ABC):
         """
         return (1, 1)
 
+    def select_elset_types(self) -> tuple[str, ...] | None:
+        """Elset types this adapter can safely propagate, or ``None`` for no filter.
+
+        Adapters that propagate in-process via keplemon (direct, INDI, KStars,
+        dummy) return ``None`` — any theory the server ranks best is fine.
+        Adapters that hand the raw TLE off to external software stuck on classic
+        SGP4 (NINA / Orbitals / PlaneWave) should return
+        ``CLASSIC_SGP4_ELSET_TYPES`` so ``fetch_satellite()`` narrows the
+        server-side ranking to TLEs the downstream propagator can actually
+        handle. Silently feeding XP or osculating elements to a classic-SGP4
+        propagator mis-points the mount or fails outright.
+        """
+        return None
+
     @property
     def observed_slew_rate_deg_per_s(self) -> float | None:
         """Current rolling-mean observed slew rate (deg/s), or ``None``.

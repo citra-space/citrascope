@@ -1,4 +1,5 @@
 import os
+from collections.abc import Sequence
 from datetime import datetime, timezone
 
 import httpx
@@ -100,9 +101,12 @@ class CitraApiClient(AbstractCitraApiClient):
         """Fetch satellite details from /satellites/{satellite_id}"""
         return self._request("GET", f"/satellites/{satellite_id}")
 
-    def get_best_elset(self, satellite_id) -> dict | None:
+    def get_best_elset(self, satellite_id, types: Sequence[str] | None = None) -> dict | None:
         """Fetch the server-canonical best elset for a satellite."""
-        result = self._request("GET", f"/satellites/{satellite_id}/elsets?limit=1")
+        params: list[tuple[str, str]] = [("limit", "1")]
+        if types:
+            params.extend(("types", t) for t in types)
+        result = self._request("GET", f"/satellites/{satellite_id}/elsets", params=params)
         if not result or not isinstance(result, list) or len(result) == 0:
             return None
         return result[0]

@@ -15,6 +15,7 @@ import requests
 if TYPE_CHECKING:
     from citrascope.hardware.devices.focuser import AbstractFocuser
 
+from citrascope.astro.elset_types import CLASSIC_SGP4_ELSET_TYPES
 from citrascope.hardware.abstract_astro_hardware_adapter import (
     AbstractAstroHardwareAdapter,
     ObservationStrategy,
@@ -115,6 +116,14 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
                 "group": "Imaging",
             },
         ]
+
+    def select_elset_types(self) -> tuple[str, ...] | None:
+        """NINA's satellite-tracking plugins (Joko Orbitals, DaleGhent PlaneWave
+        Tools) use classic SGP4 internally — XP TLEs mis-propagate silently and
+        osculating elements fail outright. Constrain the server-side ranking to
+        TLEs NINA can actually handle.
+        """
+        return CLASSIC_SGP4_ELSET_TYPES
 
     def do_autofocus(
         self,

@@ -137,7 +137,8 @@ class AbstractBaseTelescopeTask(ABC):
             self.logger.error(f"Could not fetch satellite data for {self.task.satelliteId}")
             return None
 
-        best_elset = self.api_client.get_best_elset(self.task.satelliteId)
+        types = self.hardware_adapter.select_elset_types()
+        best_elset = self.api_client.get_best_elset(self.task.satelliteId, types=types)
         if best_elset:
             satellite_data["most_recent_elset"] = best_elset
         else:
@@ -145,7 +146,7 @@ class AbstractBaseTelescopeTask(ABC):
                 f"get_best_elset returned nothing for {self.task.satelliteId}, "
                 f"falling back to client-side selection"
             )
-            satellite_data["most_recent_elset"] = self._get_most_recent_elset(satellite_data)
+            satellite_data["most_recent_elset"] = self._get_most_recent_elset(satellite_data, types=types)
 
         if not satellite_data.get("most_recent_elset"):
             self.logger.error(f"No elsets found for satellite {self.task.satelliteId}")
@@ -153,12 +154,24 @@ class AbstractBaseTelescopeTask(ABC):
 
         return satellite_data
 
-    def _get_most_recent_elset(self, satellite_data) -> dict | None:
-        """Client-side fallback: pick the elset with the latest element epoch."""
+    def _get_most_recent_elset(
+        self,
+        satellite_data,
+        types: tuple[str, ...] | None = None,
+    ) -> dict | None:
+        """Client-side fallback: pick the elset with the latest element epoch.
+
+        When ``types`` is supplied, elsets whose ``type`` is not in that tuple
+        are discarded before selection — this keeps the NINA path from silently
+        falling back to an XP or osculating TLE the downstream classic-SGP4
+        propagator can't handle.
+        """
         if "most_recent_elset" in satellite_data:
             return satellite_data["most_recent_elset"]
 
         elsets = satellite_data.get("elsets", [])
+        if types:
+            elsets = [e for e in elsets if e.get("type") in types]
         if not elsets:
             return None
         most_recent_elset = max(

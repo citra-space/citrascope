@@ -12,6 +12,7 @@ import random
 import threading
 import time
 import uuid
+from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -322,8 +323,14 @@ class DummyApiClient(AbstractCitraApiClient):
                 self.logger.debug(f"DummyApiClient: get_satellite({satellite_id})")
             return satellite
 
-    def get_best_elset(self, satellite_id) -> dict | None:
-        """Return the single elset for a dummy satellite (mimics server's best-elset logic)."""
+    def get_best_elset(self, satellite_id, types: Sequence[str] | None = None) -> dict | None:
+        """Return the single elset for a dummy satellite (mimics server's best-elset logic).
+
+        The ``types`` argument is accepted for parity with the real client. The
+        dummy cache only carries classic-SGP4 TLEs, so the filter is a no-op
+        here — every cached entry already matches ``CLASSIC_SGP4_ELSET_TYPES``.
+        """
+        del types  # dummy data is always classic SGP4
         with self._data_lock:
             satellites = self.data.get("satellites", {})
             satellite = satellites.get(satellite_id)

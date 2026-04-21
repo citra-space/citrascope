@@ -207,6 +207,47 @@ def test_get_elsets_latest(client, mock_response):
 
 
 # ---------------------------------------------------------------------------
+# get_best_elset
+# ---------------------------------------------------------------------------
+
+
+def test_get_best_elset_no_types_filter(client, mock_response):
+    """Without types, only limit=1 is sent."""
+    mock_response.json.return_value = [{"tle": ["a", "b"], "epoch": "2025-06-01T00:00:00Z"}]
+    with patch.object(client.client, "request", return_value=mock_response) as mock_req:
+        result = client.get_best_elset("sat-1")
+    assert result is not None
+    assert result["tle"] == ["a", "b"]
+    kwargs = mock_req.call_args.kwargs
+    assert kwargs["params"] == [("limit", "1")]
+
+
+def test_get_best_elset_with_types_serializes_each_type(client, mock_response):
+    """Each type value is emitted as its own ``types=`` pair so repeats survive the wire."""
+    mock_response.json.return_value = [{"tle": ["a", "b"], "epoch": "2025-06-01T00:00:00Z"}]
+    types = ("SGP4 with Kozai mean motion", "SGP4 with Brouwer mean motion")
+    with patch.object(client.client, "request", return_value=mock_response) as mock_req:
+        client.get_best_elset("sat-1", types=types)
+    kwargs = mock_req.call_args.kwargs
+    assert kwargs["params"] == [
+        ("limit", "1"),
+        ("types", "SGP4 with Kozai mean motion"),
+        ("types", "SGP4 with Brouwer mean motion"),
+    ]
+
+
+def test_get_best_elset_empty_list_returns_none(client, mock_response):
+    mock_response.json.return_value = []
+    with patch.object(client.client, "request", return_value=mock_response):
+        assert client.get_best_elset("sat-1") is None
+
+
+def test_get_best_elset_request_error_returns_none(client):
+    with patch.object(client.client, "request", side_effect=Exception("boom")):
+        assert client.get_best_elset("sat-1") is None
+
+
+# ---------------------------------------------------------------------------
 # upload_optical_observations
 # ---------------------------------------------------------------------------
 

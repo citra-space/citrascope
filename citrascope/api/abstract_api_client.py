@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 
 
 class AbstractCitraApiClient(ABC):
@@ -70,11 +71,13 @@ class AbstractCitraApiClient(ABC):
         pass
 
     @abstractmethod
-    def get_best_elset(self, satellite_id) -> dict | None:
+    def get_best_elset(self, satellite_id, types: Sequence[str] | None = None) -> dict | None:
         """GET /satellites/{satellite_id}/elsets?limit=1 — server-canonical best elset.
 
         Uses XP priority logic: prefers MEAN_BROUWER_XP elsets within 24h of the
-        latest, falls back to the absolute latest by epoch.
+        latest, falls back to the absolute latest by epoch. When ``types`` is
+        supplied (e.g. ``CLASSIC_SGP4_ELSET_TYPES`` for the NINA path), the server
+        restricts its ranking to the given type values.
 
         Returns a single elset dict (with tle, epoch, creationEpoch, type, etc.)
         or None on failure.
