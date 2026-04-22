@@ -1,6 +1,6 @@
 [project]
 name = "citrasense"
-version = "1.0.0"
+version = "1.0.1"
 description = "Remotely control a telescope while it polls for tasks, collects and edge processes data, and delivers results and data for further processing."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -182,7 +182,7 @@ omit = [
 allow-direct-references = true
 
 [tool.bumpversion]
-current_version = "1.0.0"
+current_version = "1.0.1"
 commit = true
 tag = true
 
