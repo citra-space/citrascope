@@ -518,14 +518,18 @@ class TaskManager:
                 self.hardware_adapter.abort_slew()
             except Exception:
                 pass
-            if triggered_check:
-                is_new = self._last_safety_action != SafetyAction.EMERGENCY
-                if is_new:
-                    self.logger.critical("Executing safety action from %r", triggered_check.name)
-                    try:
-                        triggered_check.execute_action()
-                    except Exception:
-                        self.logger.error("Safety corrective action failed", exc_info=True)
+            is_new = self._last_safety_action != SafetyAction.EMERGENCY
+            if is_new:
+                self.imaging_queue.clear()
+                self.logger.critical(
+                    "EMERGENCY — cancelled in-flight imaging (trigger: %s)",
+                    triggered_check.name if triggered_check else "unknown",
+                )
+            if triggered_check and is_new:
+                try:
+                    triggered_check.execute_action()
+                except Exception:
+                    self.logger.error("Safety corrective action failed", exc_info=True)
             self._last_safety_action = action
             return True
 
