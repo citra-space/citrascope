@@ -1,7 +1,7 @@
 import time
 
 from citrasense.hardware.abstract_astro_hardware_adapter import ObservationStrategy
-from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
 
 class SiderealTelescopeTask(AbstractBaseTelescopeTask):

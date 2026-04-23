@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, PropertyMock
 import pytest
 
 from citrasense.sensors.sensor_runtime import SensorRuntime
-from citrasense.tasks.scope.sidereal_telescope_task import SiderealTelescopeTask
-from citrasense.tasks.scope.tracking_telescope_task import TrackingTelescopeTask
+from citrasense.sensors.telescope.tasks.sidereal_telescope_task import SiderealTelescopeTask
+from citrasense.sensors.telescope.tasks.tracking_telescope_task import TrackingTelescopeTask
 
 
 def _make_runtime(observation_mode: str, supports_custom_tracking: bool) -> SensorRuntime:

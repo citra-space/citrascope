@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
 # ---------------------------------------------------------------------------
 # Minimal concrete subclass — AbstractBaseTelescopeTask is abstract

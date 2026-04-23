@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from citrasense.hardware.devices.mount.altaz_pointing_model import AltAzPointingModel, altaz_to_radec
-from citrasense.tasks.alignment_manager import AlignmentManager
+from citrasense.sensors.telescope.managers.alignment_manager import AlignmentManager
 
 
 @pytest.fixture(autouse=True)

@@ -108,9 +108,9 @@ class SensorRuntime:
         self.calibration_manager: Any = None
 
         if sensor.sensor_type == "telescope" and hardware_adapter is not None:
-            from citrasense.tasks.alignment_manager import AlignmentManager
-            from citrasense.tasks.autofocus_manager import AutofocusManager
-            from citrasense.tasks.homing_manager import HomingManager
+            from citrasense.sensors.telescope.managers.alignment_manager import AlignmentManager
+            from citrasense.sensors.telescope.managers.autofocus_manager import AutofocusManager
+            from citrasense.sensors.telescope.managers.homing_manager import HomingManager
 
             self.autofocus_manager = AutofocusManager(
                 self.logger,
@@ -193,8 +193,8 @@ class SensorRuntime:
         - "tracking": always TrackingTelescopeTask.
         - "sidereal": always SiderealTelescopeTask.
         """
-        from citrasense.tasks.scope.sidereal_telescope_task import SiderealTelescopeTask
-        from citrasense.tasks.scope.tracking_telescope_task import TrackingTelescopeTask
+        from citrasense.sensors.telescope.tasks.sidereal_telescope_task import SiderealTelescopeTask
+        from citrasense.sensors.telescope.tasks.tracking_telescope_task import TrackingTelescopeTask
 
         mode = self.settings.observation_mode
 

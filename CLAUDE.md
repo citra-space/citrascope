@@ -45,7 +45,13 @@ __main__.py (CLI via Click)
        │    ├─ abstract_sensor.py (AbstractSensor, SensorCapabilities, acquisition modes)
        │    ├─ sensor_manager.py (manages multiple AbstractSensor instances)
        │    ├─ sensor_runtime.py (SensorRuntime — per-sensor execution silo: owns queues + managers)
-       │    └─ telescope_sensor.py (adapter bridge to AbstractAstroHardwareAdapter)
+       │    └─ telescope/
+       │         ├─ telescope_sensor.py (adapter bridge to AbstractAstroHardwareAdapter)
+       │         ├─ fits_enrichment.py (FITS header enrichment for telescope observations)
+       │         ├─ observing_session.py (ObservingSessionManager — night lifecycle state machine)
+       │         ├─ self_tasking_manager.py (SelfTaskingManager — autonomous task requests)
+       │         ├─ managers/ (AutofocusManager, AlignmentManager, HomingManager, CalibrationManager)
+       │         └─ tasks/ (AbstractBaseTelescopeTask, SiderealTelescopeTask, TrackingTelescopeTask)
        ├─ acquisition/
        │    ├─ base_work_queue.py (BaseWorkQueue — retry, backoff, threading)
        │    ├─ acquisition_queue.py (AcquisitionQueue — imaging/capture stage)
@@ -53,8 +59,6 @@ __main__.py (CLI via Click)
        │    └─ upload_queue.py (UploadQueue — result upload stage)
        ├─ tasks/
        │    ├─ task_dispatcher.py (TaskDispatcher — site-level: API polling, heap, routing, safety, web facade)
-       │    ├─ autofocus_manager.py (dedicated autofocus scheduling/execution)
-       │    ├─ scope/ (base_telescope_task.py, sidereal/tracking variants)
        │    └─ views/ (TelescopeTaskView, RfTaskView, RadarTaskView — per-modality typed accessors)
        ├─ pipelines/
        │    ├─ common/ (abstract_processor, pipeline_registry, processing_context, processor_result, artifact_writer)

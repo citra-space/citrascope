@@ -7,7 +7,11 @@ import time
 from unittest.mock import MagicMock, patch
 
 from citrasense.location.twilight import ObservingWindow
-from citrasense.tasks.observing_session import _SHUTDOWN_TIMEOUT_SECONDS, ObservingSessionManager, SessionState
+from citrasense.sensors.telescope.observing_session import (
+    _SHUTDOWN_TIMEOUT_SECONDS,
+    ObservingSessionManager,
+    SessionState,
+)
 
 
 def _make_settings(**overrides):

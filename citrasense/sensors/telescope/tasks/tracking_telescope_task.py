@@ -1,4 +1,4 @@
-from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
 
 class TrackingTelescopeTask(AbstractBaseTelescopeTask):

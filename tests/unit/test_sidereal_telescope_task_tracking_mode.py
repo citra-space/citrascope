@@ -3,8 +3,8 @@
 from unittest.mock import MagicMock
 
 from citrasense.hardware.abstract_astro_hardware_adapter import ObservationStrategy
-from citrasense.tasks.scope.sidereal_telescope_task import SiderealTelescopeTask
-from citrasense.tasks.scope.tracking_telescope_task import TrackingTelescopeTask
+from citrasense.sensors.telescope.tasks.sidereal_telescope_task import SiderealTelescopeTask
+from citrasense.sensors.telescope.tasks.tracking_telescope_task import TrackingTelescopeTask
 from citrasense.tasks.task import Task
 
 
