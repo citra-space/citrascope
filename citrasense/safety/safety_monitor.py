@@ -100,6 +100,7 @@ class SafetyMonitor:
         self._checks: list[SafetyCheck] = [self.operator_stop, *checks]
 
         self._sensor_checks: dict[str, list[SafetyCheck]] = {}
+        self._checks_lock = threading.Lock()
 
         self._watchdog_thread: threading.Thread | None = None
         self._watchdog_stop = threading.Event()
@@ -113,25 +114,46 @@ class SafetyMonitor:
     # ------------------------------------------------------------------
 
     def register_sensor_check(self, sensor_id: str, check: SafetyCheck) -> None:
-        """Register a safety check owned by a specific sensor."""
-        self._sensor_checks.setdefault(sensor_id, []).append(check)
-        self._checks.append(check)
+        """Register a safety check owned by a specific sensor.
+
+        Duplicate registrations (same *sensor_id* + *check.name*) are
+        silently ignored so callers don't need to track prior state.
+        """
+        with self._checks_lock:
+            sensor_list = self._sensor_checks.setdefault(sensor_id, [])
+            if any(existing.name == check.name for existing in sensor_list):
+                self._logger.warning(
+                    "Skipped duplicate sensor check %r for sensor %s",
+                    check.name,
+                    sensor_id,
+                )
+                return
+            sensor_list.append(check)
+            self._checks.append(check)
         self._logger.info("Registered sensor check %r for sensor %s", check.name, sensor_id)
 
     def unregister_sensor_check(self, sensor_id: str, check_name: str) -> SafetyCheck | None:
-        """Remove a sensor check by name. Returns the check or None."""
-        sensor_list = self._sensor_checks.get(sensor_id, [])
-        for chk in sensor_list:
-            if chk.name == check_name:
-                sensor_list.remove(chk)
-                self._checks.remove(chk)
-                self._logger.info("Unregistered sensor check %r for sensor %s", check_name, sensor_id)
-                return chk
+        """Remove a sensor check by name. Returns the check or ``None``.
+
+        Idempotent — safe to call even if the check was already removed.
+        """
+        with self._checks_lock:
+            sensor_list = self._sensor_checks.get(sensor_id, [])
+            for chk in sensor_list:
+                if chk.name == check_name:
+                    sensor_list.remove(chk)
+                    try:
+                        self._checks.remove(chk)
+                    except ValueError:
+                        pass
+                    self._logger.info("Unregistered sensor check %r for sensor %s", check_name, sensor_id)
+                    return chk
         return None
 
     def get_sensor_checks(self, sensor_id: str) -> list[SafetyCheck]:
         """Return a copy of checks registered for a given sensor."""
-        return list(self._sensor_checks.get(sensor_id, []))
+        with self._checks_lock:
+            return list(self._sensor_checks.get(sensor_id, []))
 
     # ------------------------------------------------------------------
     # Operator stop  (convenience pass-throughs)
@@ -167,7 +189,9 @@ class SafetyMonitor:
         worst_action = SafetyAction.SAFE
         worst_check: SafetyCheck | None = None
 
-        for chk in self._checks:
+        with self._checks_lock:
+            checks_snapshot = list(self._checks)
+        for chk in checks_snapshot:
             try:
                 action = chk.check()
             except Exception:
@@ -186,7 +210,9 @@ class SafetyMonitor:
 
         Fail-closed: if a registered check raises, the action is blocked.
         """
-        for chk in self._checks:
+        with self._checks_lock:
+            checks_snapshot = list(self._checks)
+        for chk in checks_snapshot:
             try:
                 if not chk.check_proposed_action(action_type, **kwargs):
                     self._logger.warning("Safety check %r blocked action %r", chk.name, action_type)
@@ -279,7 +305,9 @@ class SafetyMonitor:
 
     def get_check(self, name: str) -> SafetyCheck | None:
         """Find a registered check by name."""
-        for chk in self._checks:
+        with self._checks_lock:
+            checks_snapshot = list(self._checks)
+        for chk in checks_snapshot:
             if chk.name == name:
                 return chk
         return None
@@ -295,8 +323,10 @@ class SafetyMonitor:
         call instead of calling ``check()`` again, because some checks (e.g.
         CableWrapCheck) have side effects in ``check()``.
         """
+        with self._checks_lock:
+            checks_snapshot = list(self._checks)
         check_statuses: list[dict] = []
-        for chk in self._checks:
+        for chk in checks_snapshot:
             try:
                 status = chk.get_status()
                 status["action"] = chk._last_action.value

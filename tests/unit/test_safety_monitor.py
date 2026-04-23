@@ -316,6 +316,23 @@ class TestSensorCheckRegistration:
         assert monitor.unregister_sensor_check("other-sensor", "cable_wrap") is None
         assert check in monitor._checks
 
+    def test_register_duplicate_is_ignored(self):
+        monitor = SafetyMonitor(MagicMock(), [])
+        c1 = _StubCheck("cable_wrap")
+        c2 = _StubCheck("cable_wrap")
+        monitor.register_sensor_check("telescope-0", c1)
+        monitor.register_sensor_check("telescope-0", c2)
+
+        assert monitor.get_sensor_checks("telescope-0") == [c1]
+        assert sum(1 for c in monitor._checks if c.name == "cable_wrap") == 1
+
+    def test_unregister_is_idempotent(self):
+        monitor = SafetyMonitor(MagicMock(), [])
+        check = _StubCheck("cable_wrap")
+        monitor.register_sensor_check("telescope-0", check)
+        monitor.unregister_sensor_check("telescope-0", "cable_wrap")
+        assert monitor.unregister_sensor_check("telescope-0", "cable_wrap") is None
+
     def test_get_sensor_checks_returns_copy(self):
         monitor = SafetyMonitor(MagicMock(), [])
         check = _StubCheck("cable_wrap")

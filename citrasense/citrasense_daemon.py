@@ -489,8 +489,17 @@ class CitraSenseDaemon:
             # Migrate legacy un-keyed state file → sensor-keyed filename
             legacy_state = data_dir / "cable_wrap_state.json"
             if legacy_state.exists() and not state_file.exists():
-                legacy_state.rename(state_file)
-                CITRASENSE_LOGGER.info("Migrated cable wrap state file → %s", state_file.name)
+                try:
+                    legacy_state.rename(state_file)
+                except OSError as exc:
+                    CITRASENSE_LOGGER.warning(
+                        "Failed to migrate cable wrap state file %s → %s: %s",
+                        legacy_state,
+                        state_file,
+                        exc,
+                    )
+                else:
+                    CITRASENSE_LOGGER.info("Migrated cable wrap state file → %s", state_file.name)
 
             assert self.safety_monitor is not None
             self._telescope_sensor.register_safety_checks(
