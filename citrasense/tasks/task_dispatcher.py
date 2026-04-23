@@ -26,8 +26,8 @@ from citrasense.tasks.task import Task
 
 if TYPE_CHECKING:
     from citrasense.sensors.sensor_runtime import SensorRuntime
-    from citrasense.tasks.observing_session import ObservingSessionManager
-    from citrasense.tasks.self_tasking_manager import SelfTaskingManager
+    from citrasense.sensors.telescope.observing_session import ObservingSessionManager
+    from citrasense.sensors.telescope.self_tasking_manager import SelfTaskingManager
 
 TASK_POLL_INTERVAL_SECONDS = 15
 

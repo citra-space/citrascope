@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from citrasense.location.twilight import ObservingWindow
-from citrasense.tasks.observing_session import SessionState
+from citrasense.sensors.telescope.observing_session import SessionState
 
 if TYPE_CHECKING:
     from citrasense.api.abstract_api_client import AbstractCitraApiClient

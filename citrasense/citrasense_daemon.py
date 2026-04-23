@@ -517,8 +517,8 @@ class CitraSenseDaemon:
                     self.task_manager.autofocus_manager.on_toast = self.web_server.send_toast
 
             # Wire self-tasking session managers
-            from citrasense.tasks.observing_session import ObservingSessionManager
-            from citrasense.tasks.self_tasking_manager import SelfTaskingManager
+            from citrasense.sensors.telescope.observing_session import ObservingSessionManager
+            from citrasense.sensors.telescope.self_tasking_manager import SelfTaskingManager
 
             def _get_location_tuple() -> tuple[float, float] | None:
                 if not self.location_service:
@@ -582,7 +582,7 @@ class CitraSenseDaemon:
             if self.hardware_adapter.supports_direct_camera_control():
                 from citrasense.calibration.calibration_library import CalibrationLibrary
                 from citrasense.pipelines.optical.calibration_processor import CalibrationProcessor
-                from citrasense.tasks.calibration_manager import CalibrationManager
+                from citrasense.sensors.telescope.managers.calibration_manager import CalibrationManager
 
                 self.calibration_library = CalibrationLibrary()
                 self.task_manager.calibration_manager = CalibrationManager(

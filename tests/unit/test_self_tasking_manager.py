@@ -7,8 +7,8 @@ import time
 from unittest.mock import MagicMock
 
 from citrasense.location.twilight import ObservingWindow
-from citrasense.tasks.observing_session import SessionState
-from citrasense.tasks.self_tasking_manager import _REQUEST_INTERVAL_SECONDS, SelfTaskingManager
+from citrasense.sensors.telescope.observing_session import SessionState
+from citrasense.sensors.telescope.self_tasking_manager import _REQUEST_INTERVAL_SECONDS, SelfTaskingManager
 
 
 def _make_manager(

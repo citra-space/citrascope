@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from citrasense.tasks.scope.tracking_telescope_task import TrackingTelescopeTask
+from citrasense.sensors.telescope.tasks.tracking_telescope_task import TrackingTelescopeTask
 from citrasense.tasks.task import Task
 
 

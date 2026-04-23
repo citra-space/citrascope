@@ -8,7 +8,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from citrasense.constants import AUTOFOCUS_TARGET_PRESETS
-from citrasense.tasks.autofocus_manager import AutofocusManager
+from citrasense.sensors.telescope.managers.autofocus_manager import AutofocusManager
+
+_PATCH_SUNSET_TRIGGER = (
+    "citrasense.sensors.telescope.managers.autofocus_manager" ".AutofocusManager._compute_sunset_trigger_time"
+)
 
 
 @pytest.fixture
@@ -481,13 +485,13 @@ class TestAfterSunsetScheduling:
 
     def test_fires_when_past_trigger_and_never_run(self, sunset_manager):
         sunset_two_hours_ago = datetime.now(timezone.utc) - timedelta(hours=2)
-        with patch("citrasense.tasks.autofocus_manager.AutofocusManager._compute_sunset_trigger_time") as mock_trigger:
+        with patch(_PATCH_SUNSET_TRIGGER) as mock_trigger:
             mock_trigger.return_value = sunset_two_hours_ago + timedelta(minutes=60)
             assert sunset_manager._should_run_after_sunset() is True
 
     def test_skips_when_before_trigger_time(self, sunset_manager):
         future_sunset = datetime.now(timezone.utc) + timedelta(hours=2)
-        with patch("citrasense.tasks.autofocus_manager.AutofocusManager._compute_sunset_trigger_time") as mock_trigger:
+        with patch(_PATCH_SUNSET_TRIGGER) as mock_trigger:
             mock_trigger.return_value = future_sunset + timedelta(minutes=60)
             assert sunset_manager._should_run_after_sunset() is False
 
@@ -495,7 +499,7 @@ class TestAfterSunsetScheduling:
         trigger_time = datetime.now(timezone.utc) - timedelta(hours=1)
         ran_after_trigger = trigger_time + timedelta(minutes=10)
         mock_settings.last_autofocus_timestamp = int(ran_after_trigger.timestamp())
-        with patch("citrasense.tasks.autofocus_manager.AutofocusManager._compute_sunset_trigger_time") as mock_trigger:
+        with patch(_PATCH_SUNSET_TRIGGER) as mock_trigger:
             mock_trigger.return_value = trigger_time
             assert sunset_manager._should_run_after_sunset() is False
 
@@ -503,7 +507,7 @@ class TestAfterSunsetScheduling:
         trigger_time = datetime.now(timezone.utc) - timedelta(minutes=30)
         ran_before_trigger = trigger_time - timedelta(hours=12)
         mock_settings.last_autofocus_timestamp = int(ran_before_trigger.timestamp())
-        with patch("citrasense.tasks.autofocus_manager.AutofocusManager._compute_sunset_trigger_time") as mock_trigger:
+        with patch(_PATCH_SUNSET_TRIGGER) as mock_trigger:
             mock_trigger.return_value = trigger_time
             assert sunset_manager._should_run_after_sunset() is True
 
@@ -520,13 +524,13 @@ class TestAfterSunsetScheduling:
         assert mgr._should_run_after_sunset() is False
 
     def test_skips_when_sunset_computation_fails(self, sunset_manager):
-        with patch("citrasense.tasks.autofocus_manager.AutofocusManager._compute_sunset_trigger_time") as mock_trigger:
+        with patch(_PATCH_SUNSET_TRIGGER) as mock_trigger:
             mock_trigger.return_value = None
             assert sunset_manager._should_run_after_sunset() is False
 
     def test_check_and_execute_uses_sunset_mode(self, sunset_manager, mock_hardware_adapter):
         trigger_time = datetime.now(timezone.utc) - timedelta(hours=1)
-        with patch("citrasense.tasks.autofocus_manager.AutofocusManager._compute_sunset_trigger_time") as mock_trigger:
+        with patch(_PATCH_SUNSET_TRIGGER) as mock_trigger:
             mock_trigger.return_value = trigger_time
             result = sunset_manager.check_and_execute()
             assert result is True
@@ -564,7 +568,7 @@ class TestGetNextAutofocusMinutes:
 
     def test_sunset_mode_future_trigger(self, sunset_manager):
         future_trigger = datetime.now(timezone.utc) + timedelta(minutes=90)
-        with patch("citrasense.tasks.autofocus_manager.AutofocusManager._compute_sunset_trigger_time") as mock_trigger:
+        with patch(_PATCH_SUNSET_TRIGGER) as mock_trigger:
             mock_trigger.return_value = future_trigger
             result = sunset_manager.get_next_autofocus_minutes()
             assert result is not None
@@ -572,7 +576,7 @@ class TestGetNextAutofocusMinutes:
 
     def test_sunset_mode_overdue(self, sunset_manager):
         past_trigger = datetime.now(timezone.utc) - timedelta(minutes=30)
-        with patch("citrasense.tasks.autofocus_manager.AutofocusManager._compute_sunset_trigger_time") as mock_trigger:
+        with patch(_PATCH_SUNSET_TRIGGER) as mock_trigger:
             mock_trigger.return_value = past_trigger
             assert sunset_manager.get_next_autofocus_minutes() == 0
 
@@ -580,6 +584,6 @@ class TestGetNextAutofocusMinutes:
         trigger_time = datetime.now(timezone.utc) - timedelta(hours=1)
         ran_after = trigger_time + timedelta(minutes=5)
         mock_settings.last_autofocus_timestamp = int(ran_after.timestamp())
-        with patch("citrasense.tasks.autofocus_manager.AutofocusManager._compute_sunset_trigger_time") as mock_trigger:
+        with patch(_PATCH_SUNSET_TRIGGER) as mock_trigger:
             mock_trigger.return_value = trigger_time
             assert sunset_manager.get_next_autofocus_minutes() is None

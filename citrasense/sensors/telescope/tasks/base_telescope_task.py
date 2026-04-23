@@ -15,7 +15,7 @@ from keplemon.enums import ReferenceFrame
 
 from citrasense.astro.sidereal import SIDEREAL_RATE_DEG_PER_S, make_observatory
 from citrasense.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
-from citrasense.tasks.fits_enrichment import enrich_fits_metadata
+from citrasense.sensors.telescope.fits_enrichment import enrich_fits_metadata
 from citrasense.tasks.views.telescope_task_view import TelescopeTaskView
 
 

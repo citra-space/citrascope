@@ -92,7 +92,7 @@ def _daemon_kwargs(daemon):
 
 class TestFetchSatellite:
     def test_uses_best_elset_endpoint(self):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         api = MagicMock()
         api.get_satellite.return_value = {"name": "ISS", "elsets": []}
@@ -115,7 +115,7 @@ class TestFetchSatellite:
         api.get_best_elset.assert_called_once_with("sat-iss", types=None)
 
     def test_falls_back_to_client_side_selection(self):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         api = MagicMock()
         api.get_satellite.return_value = {
@@ -138,7 +138,7 @@ class TestFetchSatellite:
         assert result["most_recent_elset"]["tle"] == ["new1", "new2"]
 
     def test_returns_none_when_no_data(self):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         api = MagicMock()
         api.get_satellite.return_value = None
@@ -152,7 +152,7 @@ class TestFetchSatellite:
         assert ct.fetch_satellite() is None
 
     def test_returns_none_when_no_elsets_anywhere(self):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         api = MagicMock()
         api.get_satellite.return_value = {"name": "ISS", "elsets": []}
@@ -169,7 +169,7 @@ class TestFetchSatellite:
     def test_threads_adapter_elset_types_into_best_elset(self):
         """NINA-style adapters narrow the server-side ranking to classic SGP4."""
         from citrasense.astro.elset_types import CLASSIC_SGP4_ELSET_TYPES
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         api = MagicMock()
         api.get_satellite.return_value = {"name": "ISS", "elsets": []}
@@ -195,7 +195,7 @@ class TestFetchSatellite:
         would mis-propagate downstream.
         """
         from citrasense.astro.elset_types import CLASSIC_SGP4_ELSET_TYPES
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         api = MagicMock()
         api.get_satellite.return_value = {
@@ -230,7 +230,7 @@ class TestFetchSatellite:
 
 class TestGetMostRecentElset:
     def test_returns_cached_elset(self):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         class ConcreteTask(AbstractBaseTelescopeTask):
             def execute(self):
@@ -241,7 +241,7 @@ class TestGetMostRecentElset:
         assert ct._get_most_recent_elset(sat_data) == {"tle": ["a", "b"]}
 
     def test_selects_most_recent_by_epoch(self):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         class ConcreteTask(AbstractBaseTelescopeTask):
             def execute(self):
@@ -258,7 +258,7 @@ class TestGetMostRecentElset:
         assert result["tle"] == ["new1", "new2"]
 
     def test_empty_elsets_returns_none(self):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         class ConcreteTask(AbstractBaseTelescopeTask):
             def execute(self):
@@ -268,7 +268,7 @@ class TestGetMostRecentElset:
         assert ct._get_most_recent_elset({"elsets": []}) is None
 
     def test_missing_epoch_uses_fallback(self):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         class ConcreteTask(AbstractBaseTelescopeTask):
             def execute(self):
@@ -286,7 +286,7 @@ class TestGetMostRecentElset:
 
     def test_types_filter_excludes_non_matching(self):
         from citrasense.astro.elset_types import CLASSIC_SGP4_ELSET_TYPES
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         class ConcreteTask(AbstractBaseTelescopeTask):
             def execute(self):
@@ -306,7 +306,7 @@ class TestGetMostRecentElset:
 
     def test_types_filter_returns_none_when_nothing_matches(self):
         from citrasense.astro.elset_types import CLASSIC_SGP4_ELSET_TYPES
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         class ConcreteTask(AbstractBaseTelescopeTask):
             def execute(self):
@@ -323,7 +323,7 @@ class TestGetMostRecentElset:
 
     def test_types_none_matches_all(self):
         """Passing ``types=None`` bypasses the filter entirely (direct-adapter path)."""
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         class ConcreteTask(AbstractBaseTelescopeTask):
             def execute(self):
@@ -343,7 +343,7 @@ class TestGetMostRecentElset:
 
 class TestUploadImageAndMarkComplete:
     def test_single_filepath_str(self):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         class ConcreteTask(AbstractBaseTelescopeTask):
             def execute(self):
@@ -353,14 +353,14 @@ class TestUploadImageAndMarkComplete:
         task_obj = _make_task_dict()
         ct = ConcreteTask(MagicMock(), MagicMock(), MagicMock(), task_obj, **_daemon_kwargs(daemon))
 
-        with patch("citrasense.tasks.scope.base_telescope_task.enrich_fits_metadata"):
+        with patch("citrasense.sensors.telescope.tasks.base_telescope_task.enrich_fits_metadata"):
             result = ct.upload_image_and_mark_complete(["/path/to/img.fits"])
 
         assert result is True
         daemon.runtime.record_task_started.assert_called_once()
 
     def test_multiple_filepaths(self):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         class ConcreteTask(AbstractBaseTelescopeTask):
             def execute(self):
@@ -370,14 +370,14 @@ class TestUploadImageAndMarkComplete:
         task_obj = _make_task_dict()
         ct = ConcreteTask(MagicMock(), MagicMock(), MagicMock(), task_obj, **_daemon_kwargs(daemon))
 
-        with patch("citrasense.tasks.scope.base_telescope_task.enrich_fits_metadata"):
+        with patch("citrasense.sensors.telescope.tasks.base_telescope_task.enrich_fits_metadata"):
             result = ct.upload_image_and_mark_complete(["/a.fits", "/b.fits"])
 
         assert result is True
         assert daemon.runtime.processing_queue.submit.call_count == 2
 
     def test_processors_disabled_goes_to_upload(self):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         class ConcreteTask(AbstractBaseTelescopeTask):
             def execute(self):
@@ -388,13 +388,13 @@ class TestUploadImageAndMarkComplete:
         task_obj = _make_task_dict()
         ct = ConcreteTask(MagicMock(), MagicMock(), MagicMock(), task_obj, **_daemon_kwargs(daemon))
 
-        with patch("citrasense.tasks.scope.base_telescope_task.enrich_fits_metadata"):
+        with patch("citrasense.sensors.telescope.tasks.base_telescope_task.enrich_fits_metadata"):
             with patch.object(ct, "_queue_for_upload") as mock_upload:
                 ct.upload_image_and_mark_complete(["/img.fits"])
                 mock_upload.assert_called_once()
 
     def test_enrichment_failure_continues(self):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         class ConcreteTask(AbstractBaseTelescopeTask):
             def execute(self):
@@ -405,7 +405,7 @@ class TestUploadImageAndMarkComplete:
         ct = ConcreteTask(MagicMock(), MagicMock(), MagicMock(), task_obj, **_daemon_kwargs(daemon))
 
         with patch(
-            "citrasense.tasks.scope.base_telescope_task.enrich_fits_metadata",
+            "citrasense.sensors.telescope.tasks.base_telescope_task.enrich_fits_metadata",
             side_effect=Exception("boom"),
         ):
             result = ct.upload_image_and_mark_complete(["/img.fits"])
@@ -414,7 +414,7 @@ class TestUploadImageAndMarkComplete:
 
 class TestOnProcessingComplete:
     def _make_concrete(self):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         class ConcreteTask(AbstractBaseTelescopeTask):
             def execute(self):
@@ -486,7 +486,7 @@ class TestOnProcessingComplete:
 
 class TestQueueForUpload:
     def test_submits_to_upload_queue(self):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         class ConcreteTask(AbstractBaseTelescopeTask):
             def execute(self):
@@ -498,7 +498,7 @@ class TestQueueForUpload:
         daemon.runtime.upload_queue.submit.assert_called_once()
 
     def test_location_service_failure_passes_none(self):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         class ConcreteTask(AbstractBaseTelescopeTask):
             def execute(self):
@@ -514,7 +514,7 @@ class TestQueueForUpload:
 
 class TestOnImageDone:
     def _make_concrete(self):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         class ConcreteTask(AbstractBaseTelescopeTask):
             def execute(self):
@@ -538,7 +538,7 @@ class TestOnImageDone:
 
 class TestCancellation:
     def _make_concrete(self):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         class ConcreteTask(AbstractBaseTelescopeTask):
             def execute(self):
@@ -589,7 +589,7 @@ class TestEstimateSlewTime:
     def test_short_distance_triangle_profile(self):
         import math
 
-        from citrasense.tasks.scope.base_telescope_task import estimate_slew_time
+        from citrasense.sensors.telescope.tasks.base_telescope_task import estimate_slew_time
 
         # 0.5 deg at 5 deg/s with 2 deg/s² accel → triangle (threshold = 25/2 = 12.5 deg)
         result = estimate_slew_time(0.5, max_rate=5.0, acceleration=2.0, settle_time=0.0)
@@ -597,7 +597,7 @@ class TestEstimateSlewTime:
         assert abs(result - expected) < 0.001
 
     def test_long_distance_trapezoid_profile(self):
-        from citrasense.tasks.scope.base_telescope_task import estimate_slew_time
+        from citrasense.sensors.telescope.tasks.base_telescope_task import estimate_slew_time
 
         # 30 deg at 5 deg/s with 2 deg/s² accel → trapezoid (threshold = 12.5 deg)
         result = estimate_slew_time(30.0, max_rate=5.0, acceleration=2.0, settle_time=0.0)
@@ -605,7 +605,7 @@ class TestEstimateSlewTime:
         assert abs(result - expected) < 0.001
 
     def test_settle_time_always_added(self):
-        from citrasense.tasks.scope.base_telescope_task import estimate_slew_time
+        from citrasense.sensors.telescope.tasks.base_telescope_task import estimate_slew_time
 
         result_zero = estimate_slew_time(0.0, max_rate=5.0, settle_time=1.5)
         assert result_zero == 1.5
@@ -615,14 +615,14 @@ class TestEstimateSlewTime:
         assert abs(result_nonzero - result_no_settle - 2.0) < 0.001
 
     def test_minimum_floor_prevents_sub_second_predictions(self):
-        from citrasense.tasks.scope.base_telescope_task import estimate_slew_time
+        from citrasense.sensors.telescope.tasks.base_telescope_task import estimate_slew_time
 
         # Tiny distance: the trapezoidal model + settle_time should still give a realistic minimum
         result = estimate_slew_time(0.01, max_rate=5.0, acceleration=2.0, settle_time=1.5)
         assert result >= 1.5  # At least settle time
 
     def test_negative_or_zero_inputs_return_settle_time(self):
-        from citrasense.tasks.scope.base_telescope_task import estimate_slew_time
+        from citrasense.sensors.telescope.tasks.base_telescope_task import estimate_slew_time
 
         assert estimate_slew_time(-1.0, max_rate=5.0, settle_time=1.5) == 1.5
         assert estimate_slew_time(10.0, max_rate=0.0, settle_time=1.5) == 1.5
@@ -630,7 +630,7 @@ class TestEstimateSlewTime:
 
     def test_transition_point_continuity(self):
         """At the triangle/trapezoid boundary, both formulas should give the same time."""
-        from citrasense.tasks.scope.base_telescope_task import estimate_slew_time
+        from citrasense.sensors.telescope.tasks.base_telescope_task import estimate_slew_time
 
         max_rate, accel = 5.0, 2.0
         d_transition = max_rate**2 / accel  # 12.5 deg
@@ -649,7 +649,7 @@ class TestPredictSlewTime:
     """Tests for predict_slew_time_seconds (angular distance + trapezoidal model)."""
 
     def _make_concrete(self):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         class ConcreteTask(AbstractBaseTelescopeTask):
             def execute(self):
@@ -691,7 +691,7 @@ class TestConvergenceThreshold:
     """Tests for _compute_convergence_threshold (FOV-aware pointing tolerance)."""
 
     def _make_concrete(self, **adapter_kwargs):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         class ConcreteTask(AbstractBaseTelescopeTask):
             def execute(self):
@@ -703,7 +703,7 @@ class TestConvergenceThreshold:
         return ConcreteTask(MagicMock(), adapter, MagicMock(), _make_task_dict(), **_daemon_kwargs(daemon))
 
     def test_from_telescope_record(self):
-        from citrasense.tasks.scope.base_telescope_task import _FOV_CONVERGENCE_FRACTION
+        from citrasense.sensors.telescope.tasks.base_telescope_task import _FOV_CONVERGENCE_FRACTION
 
         tr = {
             "pixelSize": 5.86,
@@ -720,13 +720,13 @@ class TestConvergenceThreshold:
         assert abs(threshold - expected) < 0.01
 
     def test_fallback_when_no_telescope_record(self):
-        from citrasense.tasks.scope.base_telescope_task import _DEFAULT_CONVERGENCE_THRESHOLD_DEG
+        from citrasense.sensors.telescope.tasks.base_telescope_task import _DEFAULT_CONVERGENCE_THRESHOLD_DEG
 
         ct = self._make_concrete(telescope_record=None)
         assert ct._compute_convergence_threshold() == _DEFAULT_CONVERGENCE_THRESHOLD_DEG
 
     def test_plate_solved_fov_overrides_nominal(self):
-        from citrasense.tasks.scope.base_telescope_task import _FOV_CONVERGENCE_FRACTION
+        from citrasense.sensors.telescope.tasks.base_telescope_task import _FOV_CONVERGENCE_FRACTION
 
         tr = {
             "pixelSize": 5.86,
@@ -745,7 +745,7 @@ class TestConvergenceThreshold:
         assert threshold != ct_nominal._compute_convergence_threshold()
 
     def test_fallback_with_incomplete_telescope_record(self):
-        from citrasense.tasks.scope.base_telescope_task import _DEFAULT_CONVERGENCE_THRESHOLD_DEG
+        from citrasense.sensors.telescope.tasks.base_telescope_task import _DEFAULT_CONVERGENCE_THRESHOLD_DEG
 
         ct = self._make_concrete(telescope_record={"pixelSize": 5.86})
         assert ct._compute_convergence_threshold() == _DEFAULT_CONVERGENCE_THRESHOLD_DEG
@@ -755,7 +755,7 @@ class TestFormatProcessingSummary:
     """Tests for FOV dimensions in processing summary."""
 
     def test_fov_included_in_summary(self):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         result = AbstractBaseTelescopeTask._format_processing_summary(
             "abcd1234",
@@ -773,7 +773,7 @@ class TestFormatProcessingSummary:
         assert "6.64" in result
 
     def test_fov_omitted_when_not_present(self):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         result = AbstractBaseTelescopeTask._format_processing_summary(
             "abcd1234",
@@ -786,7 +786,7 @@ class TestGetFovRadiusDeg:
     """Tests for _get_fov_radius_deg helper."""
 
     def _make_concrete(self, **adapter_kwargs):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         class ConcreteTask(AbstractBaseTelescopeTask):
             def execute(self):
@@ -821,7 +821,7 @@ class TestComputeAngularRate:
     """Tests for compute_angular_rate."""
 
     def _make_concrete(self):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         class ConcreteTask(AbstractBaseTelescopeTask):
             def execute(self):
@@ -879,7 +879,7 @@ class TestComputeSatelliteTiming:
     """Tests for compute_satellite_timing."""
 
     def _make_concrete(self, fov_short_deg=2.0):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         class ConcreteTask(AbstractBaseTelescopeTask):
             def execute(self):
@@ -950,7 +950,7 @@ class TestEstimateLeadPositionExtraLead:
     """Tests for extra_lead_seconds parameter in estimate_lead_position."""
 
     def _make_concrete(self):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         class ConcreteTask(AbstractBaseTelescopeTask):
             def execute(self):
@@ -996,7 +996,7 @@ class TestAdaptiveSlewRate:
     """Tests for rolling-mean slew rate tracking via ``SlewRateTracker``."""
 
     def _make_concrete(self, initial_samples=None):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         class ConcreteTask(AbstractBaseTelescopeTask):
             def execute(self):
@@ -1050,8 +1050,8 @@ class TestAdaptiveSlewRate:
 
         ct.hardware_adapter.point_telescope.side_effect = point_and_advance
 
-        with patch("citrasense.tasks.scope.base_telescope_task.time.time", side_effect=fake_time):
-            with patch("citrasense.tasks.scope.base_telescope_task.time.sleep"):
+        with patch("citrasense.sensors.telescope.tasks.base_telescope_task.time.time", side_effect=fake_time):
+            with patch("citrasense.sensors.telescope.tasks.base_telescope_task.time.sleep"):
                 with patch.object(ct, "estimate_lead_position", return_value=(10.0, 20.0, 1.0)):
                     with patch.object(ct, "get_target_radec_and_rates", return_value=sat_pos):
                         ct.point_to_lead_position({"most_recent_elset": {"tle": ["a", "b"]}})
@@ -1134,7 +1134,7 @@ class TestAdaptiveExposure:
     """Tests for compute_adaptive_exposure."""
 
     def _make_concrete(self, telescope_record=None, **settings_overrides):
-        from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+        from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
         class ConcreteTask(AbstractBaseTelescopeTask):
             def execute(self):
@@ -1309,7 +1309,7 @@ def _make_sat_data(tle: tuple[str, str], name: str = "TEST-SAT") -> dict:
 
 def _make_concrete_for_propagation():
     """Build a ConcreteTask wired with a real location service (not propagation-mocked)."""
-    from citrasense.tasks.scope.base_telescope_task import AbstractBaseTelescopeTask
+    from citrasense.sensors.telescope.tasks.base_telescope_task import AbstractBaseTelescopeTask
 
     class ConcreteTask(AbstractBaseTelescopeTask):
         def execute(self):
