@@ -102,3 +102,34 @@ class TestEvaluateSafetyEmergencyClear:
         tm._evaluate_safety()
 
         tm.hardware_adapter.abort_slew.assert_called()
+
+    def test_emergency_fires_toast_on_first_transition(self):
+        monitor = SafetyMonitor(MagicMock(), [_StubCheck("hw", SafetyAction.EMERGENCY)])
+        tm = _make_task_manager(monitor)
+        tm.on_toast = MagicMock()
+
+        tm._evaluate_safety()
+
+        tm.on_toast.assert_called_once()
+        msg, toast_type, toast_id = tm.on_toast.call_args[0]
+        assert "hw" in msg
+        assert toast_type == "danger"
+        assert toast_id == "safety-emergency"
+
+    def test_emergency_toast_not_fired_without_callback(self):
+        monitor = SafetyMonitor(MagicMock(), [_StubCheck("hw", SafetyAction.EMERGENCY)])
+        tm = _make_task_manager(monitor)
+        assert tm.on_toast is None
+
+        tm._evaluate_safety()
+
+    def test_emergency_toast_not_fired_on_subsequent_polls(self):
+        monitor = SafetyMonitor(MagicMock(), [_StubCheck("hw", SafetyAction.EMERGENCY)])
+        tm = _make_task_manager(monitor)
+        tm.on_toast = MagicMock()
+
+        tm._evaluate_safety()
+        tm.on_toast.reset_mock()
+
+        tm._evaluate_safety()
+        tm.on_toast.assert_not_called()

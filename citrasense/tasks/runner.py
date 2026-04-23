@@ -3,6 +3,7 @@ from __future__ import annotations
 import heapq
 import threading
 import time
+from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -59,6 +60,7 @@ class TaskManager:
         self._on_annotated_image = on_annotated_image
         self._preview_bus = preview_bus
         self.task_index = task_index
+        self.on_toast: Callable[[str, str, str | None], None] | None = None
 
         # Initialize work queues (TaskManager now owns these)
         from citrasense.tasks.imaging_queue import ImagingQueue
@@ -521,10 +523,17 @@ class TaskManager:
             is_new = self._last_safety_action != SafetyAction.EMERGENCY
             if is_new:
                 self.imaging_queue.clear()
+                trigger_name = triggered_check.name if triggered_check else "unknown"
                 self.logger.critical(
                     "EMERGENCY — cancelled in-flight imaging (trigger: %s)",
-                    triggered_check.name if triggered_check else "unknown",
+                    trigger_name,
                 )
+                if self.on_toast:
+                    self.on_toast(
+                        f"Safety EMERGENCY: {trigger_name} — imaging cancelled",
+                        "danger",
+                        "safety-emergency",
+                    )
             if triggered_check and is_new:
                 try:
                     triggered_check.execute_action()
