@@ -65,6 +65,8 @@ class SensorRuntime:
         self.logger = logger.getChild(f"SensorRuntime[{sensor.sensor_id}]")
         self.settings = settings
         self.api_client = api_client
+        if sensor.sensor_type == "telescope" and hardware_adapter is None:
+            raise ValueError(f"SensorRuntime for telescope sensor {sensor.sensor_id!r} " "requires a hardware_adapter")
         self.hardware_adapter = hardware_adapter
         self.processor_registry = processor_registry
         self.elset_cache = elset_cache
