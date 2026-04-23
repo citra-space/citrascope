@@ -133,3 +133,12 @@ class TestEvaluateSafetyEmergencyClear:
 
         tm._evaluate_safety()
         tm.on_toast.assert_not_called()
+
+    def test_emergency_clears_imaging_tasks_dict(self):
+        monitor = SafetyMonitor(MagicMock(), [_StubCheck("hw", SafetyAction.EMERGENCY)])
+        tm = _make_task_manager(monitor)
+        tm.imaging_tasks["fake-task-id"] = 1234567890.0
+
+        tm._evaluate_safety()
+
+        assert tm.imaging_tasks == {}

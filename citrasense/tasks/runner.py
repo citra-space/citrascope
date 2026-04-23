@@ -522,7 +522,7 @@ class TaskManager:
                 pass
             is_new = self._last_safety_action != SafetyAction.EMERGENCY
             if is_new:
-                self.imaging_queue.clear()
+                self.clear_pending_tasks()
                 trigger_name = triggered_check.name if triggered_check else "unknown"
                 self.logger.critical(
                     "EMERGENCY — cancelled in-flight imaging (trigger: %s)",

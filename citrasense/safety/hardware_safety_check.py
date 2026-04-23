@@ -38,9 +38,8 @@ class HardwareSafetyCheck(SafetyCheck):
         try:
             self._is_safe = self._query_fn()
         except Exception:
-            self._logger.warning("Hardware safety query failed — treating as EMERGENCY", exc_info=True)
+            self._logger.warning("Hardware safety query failed", exc_info=True)
             self._is_safe = None
-            return SafetyAction.EMERGENCY
 
         if self._is_safe is None:
             if self._prev_safe is not None:
