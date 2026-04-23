@@ -3,6 +3,7 @@ from __future__ import annotations
 import heapq
 import threading
 import time
+from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -59,6 +60,7 @@ class TaskManager:
         self._on_annotated_image = on_annotated_image
         self._preview_bus = preview_bus
         self.task_index = task_index
+        self.on_toast: Callable[[str, str, str | None], None] | None = None
 
         # Initialize work queues (TaskManager now owns these)
         from citrasense.tasks.imaging_queue import ImagingQueue
@@ -518,14 +520,25 @@ class TaskManager:
                 self.hardware_adapter.abort_slew()
             except Exception:
                 pass
-            if triggered_check:
-                is_new = self._last_safety_action != SafetyAction.EMERGENCY
-                if is_new:
-                    self.logger.critical("Executing safety action from %r", triggered_check.name)
-                    try:
-                        triggered_check.execute_action()
-                    except Exception:
-                        self.logger.error("Safety corrective action failed", exc_info=True)
+            is_new = self._last_safety_action != SafetyAction.EMERGENCY
+            if is_new:
+                self.clear_pending_tasks()
+                trigger_name = triggered_check.name if triggered_check else "unknown"
+                self.logger.critical(
+                    "EMERGENCY — cancelled in-flight imaging (trigger: %s)",
+                    trigger_name,
+                )
+                if self.on_toast:
+                    self.on_toast(
+                        f"Safety EMERGENCY: {trigger_name} — imaging cancelled",
+                        "danger",
+                        "safety-emergency",
+                    )
+            if triggered_check and is_new:
+                try:
+                    triggered_check.execute_action()
+                except Exception:
+                    self.logger.error("Safety corrective action failed", exc_info=True)
             self._last_safety_action = action
             return True
 

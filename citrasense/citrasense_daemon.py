@@ -495,9 +495,11 @@ class CitraSenseDaemon:
                 task_index=self.task_index,
             )
 
-            # Wire backend→frontend toast notifications for autofocus
-            if self.web_server and self.task_manager.autofocus_manager:
-                self.task_manager.autofocus_manager.on_toast = self.web_server.send_toast
+            # Wire backend→frontend toast notifications
+            if self.web_server:
+                self.task_manager.on_toast = self.web_server.send_toast
+                if self.task_manager.autofocus_manager:
+                    self.task_manager.autofocus_manager.on_toast = self.web_server.send_toast
 
             # Wire self-tasking session managers
             from citrasense.tasks.observing_session import ObservingSessionManager

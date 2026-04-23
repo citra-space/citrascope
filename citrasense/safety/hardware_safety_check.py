@@ -2,8 +2,9 @@
 
 Polls a callable that queries the hardware adapter's safety monitor device
 (e.g. NINA's safety monitor reporting ceiling/weather status).  Returns
-EMERGENCY when the device reports unsafe, WARN when the device state is
-unknown, and SAFE when conditions are confirmed safe.
+EMERGENCY when the device reports unsafe or is unreachable, and SAFE when
+conditions are confirmed safe.  Fail-closed: if we can't confirm safe, we
+stop.
 """
 
 from __future__ import annotations
@@ -37,12 +38,13 @@ class HardwareSafetyCheck(SafetyCheck):
         try:
             self._is_safe = self._query_fn()
         except Exception:
-            self._logger.warning("Hardware safety query failed — treating as WARN", exc_info=True)
+            self._logger.warning("Hardware safety query failed", exc_info=True)
             self._is_safe = None
-            return SafetyAction.WARN
 
         if self._is_safe is None:
-            return SafetyAction.WARN
+            if self._prev_safe is not None:
+                self._logger.critical("Hardware safety monitor unreachable — treating as EMERGENCY")
+            return SafetyAction.EMERGENCY
         if not self._is_safe:
             if self._prev_safe is not False:
                 self._logger.critical("Hardware safety monitor reports UNSAFE conditions")
@@ -50,8 +52,8 @@ class HardwareSafetyCheck(SafetyCheck):
         return SafetyAction.SAFE
 
     def check_proposed_action(self, action_type: str, **kwargs: object) -> bool:
-        if self._is_safe is False and action_type in ("slew", "capture"):
-            self._logger.warning("Blocking %s — hardware safety monitor reports unsafe", action_type)
+        if self._is_safe is not True and action_type in ("slew", "capture"):
+            self._logger.warning("Blocking %s — hardware safety state: %s", action_type, self._is_safe)
             return False
         return True
 

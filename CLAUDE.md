@@ -92,6 +92,7 @@ Tasks flow through three serial queues: **ImagingQueue** → **ProcessingQueue**
 - Real-time updates via WebSocket at `/ws` (`WebLogHandler` broadcasts logs to connected clients)
 - Templates in `web/templates/` (Jinja2 partials prefixed with `_`)
 - The web server runs in a **daemon thread** with its own event loop (`web/server.py`). Use thread-safe mechanisms when accessing daemon state from web handlers. The daemon only calls `web_server.start()` — all web complexity stays in `web/server.py`.
+- **Toast notifications**: Use `web_server.send_toast(message, type, id)` from daemon threads to push Bootstrap toasts to the browser. `type` is `"success"`, `"info"`, `"warning"`, or `"danger"`. `danger`/`warning` toasts persist until dismissed; `success`/`info` auto-hide. Pass an `id` to deduplicate (only one toast with that id shown at a time). Wire via an `on_toast` callback attribute — see `TaskManager.on_toast` and `AutofocusManager.on_toast` for the pattern. **Use toasts for safety-critical events** so operators who return later see what happened.
 
 ### Adding a new setting
 
