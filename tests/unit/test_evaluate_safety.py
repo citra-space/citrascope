@@ -47,7 +47,7 @@ class TestEvaluateSafetyEmergencyClear:
     def test_emergency_clears_imaging_queue_on_first_transition(self):
         monitor = SafetyMonitor(MagicMock(), [_StubCheck("hw", SafetyAction.EMERGENCY)])
         td = _make_task_dispatcher(monitor)
-        acq = td._default_runtime.acquisition_queue
+        acq = td.get_runtime("test-scope").acquisition_queue
 
         result = td._evaluate_safety()
 
@@ -57,7 +57,7 @@ class TestEvaluateSafetyEmergencyClear:
     def test_emergency_does_not_clear_on_subsequent_polls(self):
         monitor = SafetyMonitor(MagicMock(), [_StubCheck("hw", SafetyAction.EMERGENCY)])
         td = _make_task_dispatcher(monitor)
-        acq = td._default_runtime.acquisition_queue
+        acq = td.get_runtime("test-scope").acquisition_queue
 
         td._evaluate_safety()
         acq.clear.reset_mock()
@@ -68,7 +68,7 @@ class TestEvaluateSafetyEmergencyClear:
     def test_safe_does_not_clear_imaging_queue(self):
         monitor = SafetyMonitor(MagicMock(), [_StubCheck("hw", SafetyAction.SAFE)])
         td = _make_task_dispatcher(monitor)
-        acq = td._default_runtime.acquisition_queue
+        acq = td.get_runtime("test-scope").acquisition_queue
 
         result = td._evaluate_safety()
 
@@ -78,7 +78,7 @@ class TestEvaluateSafetyEmergencyClear:
     def test_queue_stop_does_not_clear_imaging_queue(self):
         monitor = SafetyMonitor(MagicMock(), [_StubCheck("hw", SafetyAction.QUEUE_STOP)])
         td = _make_task_dispatcher(monitor)
-        acq = td._default_runtime.acquisition_queue
+        acq = td.get_runtime("test-scope").acquisition_queue
 
         result = td._evaluate_safety()
 
@@ -89,7 +89,7 @@ class TestEvaluateSafetyEmergencyClear:
         check = _StubCheck("hw", SafetyAction.EMERGENCY)
         monitor = SafetyMonitor(MagicMock(), [check])
         td = _make_task_dispatcher(monitor)
-        acq = td._default_runtime.acquisition_queue
+        acq = td.get_runtime("test-scope").acquisition_queue
 
         td._evaluate_safety()
         acq.clear.assert_called_once()
@@ -108,7 +108,7 @@ class TestEvaluateSafetyEmergencyClear:
 
         td._evaluate_safety()
 
-        td._default_runtime.hardware_adapter.abort_slew.assert_called()
+        td.get_runtime("test-scope").hardware_adapter.abort_slew.assert_called()
 
     def test_emergency_fires_toast_on_first_transition(self):
         monitor = SafetyMonitor(MagicMock(), [_StubCheck("hw", SafetyAction.EMERGENCY)])

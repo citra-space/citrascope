@@ -988,6 +988,7 @@
                     <!-- Robotic Operations Configuration              -->
                     <!-- ============================================ -->
                     <div x-show="configTab === 'selftasking'">
+                        {% include '_config_sensor_picker.html' %}
                         <!-- Robotic Session -->
                         <h5 class="mb-3 pb-2 border-bottom border-secondary d-flex align-items-center gap-2">
                             <i class="bi bi-moon-stars"></i>Robotic Session
@@ -997,7 +998,7 @@
                             <div class="col-md-6">
                                 <label class="form-label" for="sessionSunThreshold">Darkness Threshold</label>
                                 <select id="sessionSunThreshold" class="form-select"
-                                        x-model.number="$store.citrasense.config.observing_session_sun_altitude_threshold">
+                                        x-model.number="$store.citrasense.config.sensors[$store.citrasense.configSensorIndex].observing_session_sun_altitude_threshold">
                                     <option value="-6">Civil Twilight (-6&deg;)</option>
                                     <option value="-12">Nautical Twilight (-12&deg;)</option>
                                     <option value="-18">Astronomical Twilight (-18&deg;)</option>
@@ -1009,14 +1010,14 @@
                                 <label class="form-label">Startup / Shutdown</label>
                                 <div class="form-check mb-2">
                                     <input class="form-check-input" type="checkbox" id="sessionDoPointingCal"
-                                           x-model="$store.citrasense.config.observing_session_do_pointing_calibration">
+                                           x-model="$store.citrasense.config.sensors[$store.citrasense.configSensorIndex].observing_session_do_pointing_calibration">
                                     <label class="form-check-label" for="sessionDoPointingCal">
                                         Calibrate pointing model at start of night
                                     </label>
                                 </div>
                                 <div class="form-check mb-2">
                                     <input class="form-check-input" type="checkbox" id="sessionDoAutofocus"
-                                           x-model="$store.citrasense.config.observing_session_do_autofocus">
+                                           x-model="$store.citrasense.config.sensors[$store.citrasense.configSensorIndex].observing_session_do_autofocus">
                                     <label class="form-check-label" for="sessionDoAutofocus">
                                         Autofocus at start of night
                                     </label>
@@ -1029,7 +1030,7 @@
                                 </div>
                                 <div class="form-check mb-2">
                                     <input class="form-check-input" type="checkbox" id="sessionDoPark"
-                                           x-model="$store.citrasense.config.observing_session_do_park">
+                                           x-model="$store.citrasense.config.sensors[$store.citrasense.configSensorIndex].observing_session_do_park">
                                     <label class="form-check-label" for="sessionDoPark">
                                         Unpark at dusk / Park at dawn
                                     </label>
@@ -1046,12 +1047,12 @@
                         <div class="row g-3 mb-4">
                             <div class="col-md-6"
                                  x-data="{
-                                     get types() { return $store.citrasense.config.self_tasking_exclude_object_types || []; },
+                                     get types() { return $store.citrasense.config.sensors[$store.citrasense.configSensorIndex].self_tasking_exclude_object_types || []; },
                                      toggleType(t) {
                                          let arr = [...(this.types)];
                                          let idx = arr.indexOf(t);
                                          if (idx >= 0) arr.splice(idx, 1); else arr.push(t);
-                                         $store.citrasense.config.self_tasking_exclude_object_types = arr;
+                                         $store.citrasense.config.sensors[$store.citrasense.configSensorIndex].self_tasking_exclude_object_types = arr;
                                      }
                                  }">
                                 <label class="form-label">Exclude Object Types</label>
@@ -1066,12 +1067,12 @@
                             </div>
                             <div class="col-md-6"
                                  x-data="{
-                                     get regimes() { return $store.citrasense.config.self_tasking_include_orbit_regimes || []; },
+                                     get regimes() { return $store.citrasense.config.sensors[$store.citrasense.configSensorIndex].self_tasking_include_orbit_regimes || []; },
                                      toggleRegime(r) {
                                          let arr = [...(this.regimes)];
                                          let idx = arr.indexOf(r);
                                          if (idx >= 0) arr.splice(idx, 1); else arr.push(r);
-                                         $store.citrasense.config.self_tasking_include_orbit_regimes = arr;
+                                         $store.citrasense.config.sensors[$store.citrasense.configSensorIndex].self_tasking_include_orbit_regimes = arr;
                                      }
                                  }">
                                 <label class="form-label">Include Orbit Regimes</label>
@@ -1090,14 +1091,14 @@
                                 <label class="form-label" for="selfTaskingGroupIds">Satellite Group IDs</label>
                                 <input type="text" class="form-control" id="selfTaskingGroupIds"
                                        placeholder="Leave empty for auto-discovery"
-                                       :value="($store.citrasense.config.self_tasking_satellite_group_ids || []).join(', ')"
-                                       @change="$store.citrasense.config.self_tasking_satellite_group_ids = $event.target.value ? $event.target.value.split(',').map(s => s.trim()).filter(Boolean) : []">
+                                       :value="($store.citrasense.config.sensors[$store.citrasense.configSensorIndex].self_tasking_satellite_group_ids || []).join(', ')"
+                                       @change="$store.citrasense.config.sensors[$store.citrasense.configSensorIndex].self_tasking_satellite_group_ids = $event.target.value ? $event.target.value.split(',').map(s => s.trim()).filter(Boolean) : []">
                                 <small class="text-muted d-block mt-1">Comma-separated group UUIDs. Empty = server discovers visible satellites automatically.</small>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label" for="selfTaskingCollectionType">Collection Type</label>
                                 <select id="selfTaskingCollectionType" class="form-select"
-                                        x-model="$store.citrasense.config.self_tasking_collection_type">
+                                        x-model="$store.citrasense.config.sensors[$store.citrasense.configSensorIndex].self_tasking_collection_type">
                                     <option value="Track">Track (single filter)</option>
                                     <option value="Characterization">Characterization (multi-filter)</option>
                                 </select>

@@ -70,12 +70,12 @@ class TestRuntimeRegistration:
         rt.set_dispatcher.assert_called_once_with(td)
         assert td._runtimes["scope-0"] is rt
 
-    def test_default_runtime_returns_first(self):
+    def test_registered_runtime_accessible(self):
         td = _make_dispatcher()
         rt = _mock_runtime()
         td.register_runtime(rt)
 
-        assert td._default_runtime is rt
+        assert td.get_runtime(rt.sensor_id) is rt
 
     def test_multiple_runtimes(self):
         td = _make_dispatcher()
@@ -111,13 +111,13 @@ class TestTaskRouting:
         task = _mock_task(sensor_type="passive_radar", sensor_id=None)
         assert td._runtime_for_task(task) is rt2
 
-    def test_falls_back_to_default(self):
+    def test_returns_none_for_unknown_sensor_type(self):
         td = _make_dispatcher()
         rt = _mock_runtime("scope-0", "telescope")
         td.register_runtime(rt)
 
         task = _mock_task(sensor_type="unknown", sensor_id=None)
-        assert td._runtime_for_task(task) is rt
+        assert td._runtime_for_task(task) is None
 
     def test_rejects_task_with_no_runtimes(self):
         td = _make_dispatcher()
@@ -270,7 +270,7 @@ def test_poll_tasks_adds_new_tasks(wired_dispatcher):
 
     with td.heap_lock:
         td._report_online()
-        tasks = api_client.get_telescope_tasks(td._first_telescope_record()["id"])
+        tasks = api_client.get_telescope_tasks(td._telescope_runtimes()[0].sensor.citra_record["id"])
         api_task_map = {}
         for task_dict in tasks:
             task = Task.from_dict(task_dict)
@@ -314,7 +314,7 @@ def test_poll_tasks_removes_cancelled_tasks(wired_dispatcher):
     api_client.get_telescope_tasks.return_value = [task1.__dict__]
 
     with td.heap_lock:
-        tasks = api_client.get_telescope_tasks(td._first_telescope_record()["id"])
+        tasks = api_client.get_telescope_tasks(td._telescope_runtimes()[0].sensor.citra_record["id"])
         api_task_map = {}
         for task_dict in tasks:
             task = Task.from_dict(task_dict)
@@ -355,7 +355,7 @@ def test_poll_tasks_removes_tasks_with_changed_status(wired_dispatcher):
     api_client.get_telescope_tasks.return_value = [cancelled.__dict__]
 
     with td.heap_lock:
-        tasks = api_client.get_telescope_tasks(td._first_telescope_record()["id"])
+        tasks = api_client.get_telescope_tasks(td._telescope_runtimes()[0].sensor.citra_record["id"])
         api_task_map = {}
         for td2 in tasks:
             t = Task.from_dict(td2)
@@ -391,7 +391,7 @@ def test_poll_tasks_does_not_remove_current_task(wired_dispatcher):
     api_client.get_telescope_tasks.return_value = []
 
     with td.heap_lock:
-        tasks = api_client.get_telescope_tasks(td._first_telescope_record()["id"])
+        tasks = api_client.get_telescope_tasks(td._telescope_runtimes()[0].sensor.citra_record["id"])
         api_task_map = {}
         for td2 in tasks:
             t = Task.from_dict(td2)
@@ -423,7 +423,7 @@ class TestEvaluateSafetyQueueStop:
         mock_monitor = MagicMock()
         mock_monitor.evaluate.return_value = (action, triggered_check)
         td.safety_monitor = mock_monitor
-        td._default_runtime.acquisition_queue.is_idle.return_value = queue_idle
+        td.get_runtime("test-telescope-123").acquisition_queue.is_idle.return_value = queue_idle
         return td._evaluate_safety()
 
     def test_unwind_fires_after_queue_drains(self, wired_dispatcher):
@@ -468,3 +468,101 @@ class TestEvaluateSafetyQueueStop:
         td, _ = wired_dispatcher
         result = self._call(td, queue_idle=True, action=SafetyAction.SAFE)
         assert result is False
+
+
+# ── Multi-runtime coverage ─────────────────────────────────────────────────
+
+
+class TestMultiRuntime:
+    def test_are_queues_idle_all_runtimes(self):
+        td = _make_dispatcher()
+        rt1 = _mock_runtime("scope-0", "telescope")
+        rt2 = _mock_runtime("scope-1", "telescope")
+        td.register_runtime(rt1)
+        td.register_runtime(rt2)
+
+        rt1.are_queues_idle.return_value = True
+        rt2.are_queues_idle.return_value = True
+        assert td.are_queues_idle() is True
+
+        rt2.are_queues_idle.return_value = False
+        assert td.are_queues_idle() is False
+
+    def test_clear_pending_tasks_clears_all_runtimes(self):
+        td = _make_dispatcher()
+        rt1 = _mock_runtime("scope-0", "telescope")
+        rt2 = _mock_runtime("scope-1", "telescope")
+        rt1.acquisition_queue.clear.return_value = 2
+        rt2.acquisition_queue.clear.return_value = 3
+        td.register_runtime(rt1)
+        td.register_runtime(rt2)
+
+        total = td.clear_pending_tasks()
+        assert total == 5
+        rt1.acquisition_queue.clear.assert_called_once()
+        rt2.acquisition_queue.clear.assert_called_once()
+
+    def test_report_online_reports_all_telescopes(self):
+        api_client = MagicMock()
+        td = _make_dispatcher(api_client=api_client)
+        rt1 = _mock_runtime("scope-0", "telescope")
+        rt1.sensor.citra_record = {"id": "api-scope-0"}
+        rt2 = _mock_runtime("scope-1", "telescope")
+        rt2.sensor.citra_record = {"id": "api-scope-1"}
+        td.register_runtime(rt1)
+        td.register_runtime(rt2)
+
+        td._report_online()
+        api_client.put_telescope_status.assert_called_once()
+        statuses = api_client.put_telescope_status.call_args[0][0]
+        ids = {s["id"] for s in statuses}
+        assert ids == {"api-scope-0", "api-scope-1"}
+
+    def test_session_manager_from_first_telescope_runtime(self):
+        td = _make_dispatcher()
+        rt1 = _mock_runtime("scope-0", "telescope")
+        rt2 = _mock_runtime("scope-1", "telescope")
+        osm = MagicMock()
+        stm = MagicMock()
+        rt1.observing_session_manager = osm
+        rt1.self_tasking_manager = stm
+        rt2.observing_session_manager = None
+        rt2.self_tasking_manager = None
+        td.register_runtime(rt1)
+        td.register_runtime(rt2)
+
+        assert td.observing_session_manager is osm
+        assert td.self_tasking_manager is stm
+
+    def test_automated_scheduling_any_telescope(self):
+        td = _make_dispatcher()
+        rt1 = _mock_runtime("scope-0", "telescope")
+        rt1.sensor.citra_record = {"id": "a", "automatedScheduling": False}
+        rt2 = _mock_runtime("scope-1", "telescope")
+        rt2.sensor.citra_record = {"id": "b", "automatedScheduling": True}
+        td.register_runtime(rt1)
+        td.register_runtime(rt2)
+
+        assert td.automated_scheduling is True
+
+    def test_queue_stop_waits_for_all_runtimes(self):
+        monitor = MagicMock()
+        check = MagicMock()
+        check.name = "cable_wrap"
+        monitor.evaluate.return_value = (SafetyAction.QUEUE_STOP, check)
+
+        td = _make_dispatcher()
+        rt1 = _mock_runtime("scope-0", "telescope")
+        rt2 = _mock_runtime("scope-1", "telescope")
+        td.register_runtime(rt1)
+        td.register_runtime(rt2)
+        td.safety_monitor = monitor
+
+        rt1.acquisition_queue.is_idle.return_value = True
+        rt2.acquisition_queue.is_idle.return_value = False
+        td._evaluate_safety()
+        check.execute_action.assert_not_called()
+
+        rt2.acquisition_queue.is_idle.return_value = True
+        td._evaluate_safety()
+        check.execute_action.assert_called()

@@ -528,12 +528,16 @@ class StatusCollector:
         ts["sun_altitude"] = status.sun_altitude
         ts["dark_window_start"] = status.dark_window_start
         ts["dark_window_end"] = status.dark_window_end
-        ts["observing_session_enabled"] = status.observing_session_enabled
-        ts["self_tasking_enabled"] = status.self_tasking_enabled
-        ts["automated_scheduling"] = status.automated_scheduling
         ts["last_batch_request"] = status.last_batch_request
         ts["last_batch_created"] = status.last_batch_created
         ts["next_request_seconds"] = status.next_request_seconds
+
+        sensor_cfg = self.daemon.settings.get_sensor_config(telescope_sensor.sensor_id) if self.daemon else None
+        ts["task_processing_paused"] = sensor_cfg.task_processing_paused if sensor_cfg else False
+        ts["observing_session_enabled"] = sensor_cfg.observing_session_enabled if sensor_cfg else False
+        ts["self_tasking_enabled"] = sensor_cfg.self_tasking_enabled if sensor_cfg else False
+        tr = getattr(telescope_sensor, "citra_record", None)
+        ts["automated_scheduling"] = (tr or {}).get("automated_scheduling", False)
 
         ts["last_alignment_timestamp"] = status.last_alignment_timestamp
         ts["hfr_increase_percent"] = status.hfr_increase_percent

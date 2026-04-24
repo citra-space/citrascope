@@ -17,7 +17,7 @@ import threading
 import time
 from collections.abc import Callable
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from dateutil import parser as dtparser
 
@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from citrasense.sensors.sensor_runtime import SensorRuntime
     from citrasense.sensors.telescope.observing_session import ObservingSessionManager
     from citrasense.sensors.telescope.self_tasking_manager import SelfTaskingManager
+    from citrasense.sensors.telescope.telescope_sensor import TelescopeSensor
 
 TASK_POLL_INTERVAL_SECONDS = 15
 
@@ -79,9 +80,7 @@ class TaskDispatcher:
         self.total_tasks_succeeded: int = 0
         self.total_tasks_failed: int = 0
 
-        # ── Session managers (set after construction) ──────────────────
-        self._observing_session_manager: ObservingSessionManager | None = None
-        self._self_tasking_manager: SelfTaskingManager | None = None
+        # Session managers now live on SensorRuntime (per-sensor).
 
     # ── Runtime registration ───────────────────────────────────────────
 
@@ -89,11 +88,6 @@ class TaskDispatcher:
         """Add a SensorRuntime and wire its dispatcher back-reference."""
         self._runtimes[runtime.sensor_id] = runtime
         runtime.set_dispatcher(self)
-
-    @property
-    def _default_runtime(self) -> SensorRuntime:
-        """Phase 1: the single registered runtime."""
-        return next(iter(self._runtimes.values()))
 
     def get_runtime(self, sensor_id: str) -> SensorRuntime | None:
         """Look up a registered runtime by *sensor_id*."""
@@ -106,51 +100,48 @@ class TaskDispatcher:
         for rt in self._runtimes.values():
             if rt.sensor_type == task.sensor_type:
                 return rt
-        return self._default_runtime if self._runtimes else None
+        return None
 
-    def _first_telescope_record(self) -> dict | None:
-        """Return the Citra API record from the first telescope runtime."""
+    # ── Session managers (per-runtime convenience accessors) ─────────
+
+    @property
+    def observing_session_manager(self) -> ObservingSessionManager | None:
+        """Return the observing session manager from the first telescope runtime."""
+        for rt in self._runtimes.values():
+            if rt.sensor_type == "telescope" and rt.observing_session_manager:
+                return rt.observing_session_manager
+        return None
+
+    @property
+    def self_tasking_manager(self) -> SelfTaskingManager | None:
+        """Return the self-tasking manager from the first telescope runtime."""
+        for rt in self._runtimes.values():
+            if rt.sensor_type == "telescope" and rt.self_tasking_manager:
+                return rt.self_tasking_manager
+        return None
+
+    @property
+    def automated_scheduling(self) -> bool:
+        """Check if any telescope runtime has automated scheduling enabled."""
+        for rt in self._runtimes.values():
+            if rt.sensor_type == "telescope":
+                rec = getattr(rt.sensor, "citra_record", None)
+                if rec and rec.get("automatedScheduling", False):
+                    return True
+        return False
+
+    @automated_scheduling.setter
+    def automated_scheduling(self, value: bool) -> None:
         for rt in self._runtimes.values():
             if rt.sensor_type == "telescope":
                 rec = getattr(rt.sensor, "citra_record", None)
                 if rec:
-                    return rec
-        return None
-
-    # ── Session managers ───────────────────────────────────────────────
-
-    def set_session_managers(
-        self,
-        observing_session_manager: ObservingSessionManager,
-        self_tasking_manager: SelfTaskingManager,
-    ) -> None:
-        """Wire session managers after construction (resolves circular dependency)."""
-        self._observing_session_manager = observing_session_manager
-        self._self_tasking_manager = self_tasking_manager
-
-    @property
-    def observing_session_manager(self) -> ObservingSessionManager | None:
-        return self._observing_session_manager
-
-    @property
-    def self_tasking_manager(self) -> SelfTaskingManager | None:
-        return self._self_tasking_manager
-
-    @property
-    def automated_scheduling(self) -> bool:
-        rec = self._first_telescope_record()
-        return rec.get("automatedScheduling", False) if rec else False
-
-    @automated_scheduling.setter
-    def automated_scheduling(self, value: bool) -> None:
-        rec = self._first_telescope_record()
-        if rec:
-            rec["automatedScheduling"] = value
+                    rec["automatedScheduling"] = value
 
     # ── Queue helpers (facade) ─────────────────────────────────────────
 
     def are_queues_idle(self) -> bool:
-        return self._default_runtime.are_queues_idle()
+        return all(rt.are_queues_idle() for rt in self._runtimes.values())
 
     # ── Stage tracking ─────────────────────────────────────────────────
 
@@ -275,35 +266,50 @@ class TaskDispatcher:
 
     # ── Poll loop ──────────────────────────────────────────────────────
 
+    def _telescope_runtimes(self) -> list[SensorRuntime]:
+        """Return all telescope runtimes that have a citra_record."""
+        return [
+            rt
+            for rt in self._runtimes.values()
+            if rt.sensor_type == "telescope" and getattr(rt.sensor, "citra_record", None)
+        ]
+
     def poll_tasks(self) -> None:
-        telescope_record = self._first_telescope_record()
-        if telescope_record is None:
-            self.logger.error("poll_tasks called without telescope_record; cannot poll for tasks")
+        if not self._telescope_runtimes():
+            self.logger.error("poll_tasks called without any telescope runtimes; cannot poll for tasks")
             return
 
         while not self._stop_event.is_set():
             try:
-                if self._observing_session_manager:
-                    self._observing_session_manager.update()
-                if self._self_tasking_manager:
-                    self._self_tasking_manager.check_and_request()
+                for rt in self._runtimes.values():
+                    if rt.observing_session_manager:
+                        rt.observing_session_manager.update()
+                    if rt.self_tasking_manager:
+                        rt.self_tasking_manager.check_and_request()
 
                 if self.elset_cache:
                     interval_hours = self.settings.elset_refresh_interval_hours
                     self.elset_cache.refresh_if_stale(self.api_client, self.logger, interval_hours=interval_hours)
                 self._report_online()
                 now_iso = datetime.now(timezone.utc).isoformat()
-                telescope_record = self._first_telescope_record()
-                if telescope_record is None:
+                telescope_rts = self._telescope_runtimes()
+                if not telescope_rts:
                     self._stop_event.wait(TASK_POLL_INTERVAL_SECONDS)
                     continue
-                tasks = self.api_client.get_telescope_tasks(
-                    telescope_record["id"],
-                    statuses=["Pending", "Scheduled"],
-                    task_stop_after=now_iso,
-                )
 
-                if tasks is None:
+                tasks: list = []
+                for trt in telescope_rts:
+                    rec = cast("TelescopeSensor", trt.sensor).citra_record
+                    assert rec is not None
+                    batch = self.api_client.get_telescope_tasks(
+                        rec["id"],
+                        statuses=["Pending", "Scheduled"],
+                        task_stop_after=now_iso,
+                    )
+                    if batch:
+                        tasks.extend(batch)
+
+                if not tasks:
                     self._stop_event.wait(TASK_POLL_INTERVAL_SECONDS)
                     continue
 
@@ -368,13 +374,15 @@ class TaskDispatcher:
             self._stop_event.wait(TASK_POLL_INTERVAL_SECONDS)
 
     def _report_online(self) -> None:
-        rec = self._first_telescope_record()
-        if rec is None:
-            return
-        telescope_id = rec["id"]
         iso_timestamp = datetime.now(timezone.utc).isoformat()
-        self.api_client.put_telescope_status([{"id": telescope_id, "last_connection_epoch": iso_timestamp}])
-        self.logger.debug("Reported online status for telescope %s at %s", telescope_id, iso_timestamp)
+        statuses = []
+        for trt in self._telescope_runtimes():
+            rec = cast("TelescopeSensor", trt.sensor).citra_record
+            assert rec is not None
+            statuses.append({"id": rec["id"], "last_connection_epoch": iso_timestamp})
+        if statuses:
+            self.api_client.put_telescope_status(statuses)
+            self.logger.debug("Reported online status for %d telescope(s) at %s", len(statuses), iso_timestamp)
 
     # ── Task runner ────────────────────────────────────────────────────
 
@@ -397,8 +405,9 @@ class TaskDispatcher:
                 is_paused = not self._processing_active
 
             if not is_paused:
-                winding_down = (
-                    self._observing_session_manager is not None and self._observing_session_manager.is_winding_down()
+                winding_down = any(
+                    rt.observing_session_manager is not None and rt.observing_session_manager.is_winding_down()
+                    for rt in self._runtimes.values()
                 )
 
                 try:
@@ -409,11 +418,17 @@ class TaskDispatcher:
                             if not self._processing_active:
                                 break
 
-                        # Check if the default runtime can accept work
-                        rt = self._default_runtime
-                        if not rt.acquisition_queue.is_idle():
+                        # Peek at the next task and check its target runtime
+                        with self.heap_lock:
+                            if not (self.task_heap and self.task_heap[0][0] <= now):
+                                break
+                            peek_task = self.task_heap[0][3]
+                        target_rt = self._runtime_for_task(peek_task)
+                        if target_rt is None:
                             break
-                        if rt.is_focus_or_alignment_active():
+                        if not target_rt.acquisition_queue.is_idle():
+                            break
+                        if target_rt.is_focus_or_alignment_active():
                             break
 
                         if self._last_safety_action in (SafetyAction.EMERGENCY, SafetyAction.QUEUE_STOP):
@@ -518,7 +533,8 @@ class TaskDispatcher:
             return True
 
         if action == SafetyAction.QUEUE_STOP:
-            if self._default_runtime.acquisition_queue.is_idle() and triggered_check:
+            all_idle = all(rt.acquisition_queue.is_idle() for rt in self._runtimes.values())
+            if all_idle and triggered_check:
                 is_new = self._last_safety_action != SafetyAction.QUEUE_STOP
                 if is_new:
                     self.logger.warning("Executing safety action from %r (queue idle)", triggered_check.name)
@@ -536,12 +552,14 @@ class TaskDispatcher:
     # ── Pending task management ────────────────────────────────────────
 
     def clear_pending_tasks(self) -> int:
-        """Cancel in-flight imaging and clear stage tracking.
+        """Cancel in-flight imaging on all runtimes and clear stage tracking.
 
         Returns the number of queued imaging items drained.
         """
         with self._stage_lock:
-            cleared = self._default_runtime.acquisition_queue.clear()
+            cleared = 0
+            for rt in self._runtimes.values():
+                cleared += rt.acquisition_queue.clear()
             self.imaging_tasks.clear()
         return cleared
 

@@ -176,14 +176,18 @@ function compareVersions(v1, v2) {
                 }
             },
 
-            async toggleProcessing(enabled) {
+            async toggleProcessing(enabled, sensorId) {
                 const endpoint = enabled ? '/api/tasks/resume' : '/api/tasks/pause';
+                const body = sensorId ? { sensor_id: sensorId } : {};
                 try {
-                    const response = await fetch(endpoint, { method: 'POST' });
+                    const response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
                     const result = await response.json();
                     if (!response.ok) {
                         alert(result.error || 'Failed to toggle task processing');
-                        // Revert on error
                         this.status.processing_active = !enabled;
                     }
                 } catch (error) {
@@ -193,12 +197,14 @@ function compareVersions(v1, v2) {
                 }
             },
 
-            async toggleObservingSession(enabled) {
+            async toggleObservingSession(enabled, sensorId) {
+                const body = { enabled };
+                if (sensorId) body.sensor_id = sensorId;
                 try {
                     const response = await fetch('/api/observing-session', {
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ enabled: enabled })
+                        body: JSON.stringify(body)
                     });
                     const result = await response.json();
                     if (!response.ok) {
@@ -212,12 +218,14 @@ function compareVersions(v1, v2) {
                 }
             },
 
-            async toggleSelfTasking(enabled) {
+            async toggleSelfTasking(enabled, sensorId) {
+                const body = { enabled };
+                if (sensorId) body.sensor_id = sensorId;
                 try {
                     const response = await fetch('/api/self-tasking', {
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ enabled: enabled })
+                        body: JSON.stringify(body)
                     });
                     const result = await response.json();
                     if (!response.ok) {
@@ -231,17 +239,18 @@ function compareVersions(v1, v2) {
                 }
             },
 
-            async toggleAutomatedScheduling(enabled) {
+            async toggleAutomatedScheduling(enabled, sensorId) {
+                const body = { enabled };
+                if (sensorId) body.sensor_id = sensorId;
                 try {
                     const response = await fetch('/api/telescope/automated-scheduling', {
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ enabled: enabled })
+                        body: JSON.stringify(body)
                     });
                     const result = await response.json();
                     if (!response.ok) {
                         alert(result.error || 'Failed to toggle automated scheduling');
-                        // Revert on error
                         this.status.automated_scheduling = !enabled;
                     }
                 } catch (error) {

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
@@ -95,26 +95,32 @@ def build_tasks_router(ctx: CitraSenseWebApp) -> APIRouter:
         return {"status": "ok", "task_id": task_id}
 
     @router.post("/tasks/pause")
-    async def pause_tasks():
-        """Pause task processing."""
+    async def pause_tasks(request: dict | None = None):
+        """Pause task processing for a sensor (or all sensors)."""
         if not ctx.daemon or not ctx.daemon.task_dispatcher:
             return JSONResponse({"error": "Task manager not available"}, status_code=503)
 
+        sensor_id = (request or {}).get("sensor_id")
         ctx.daemon.task_dispatcher.pause()
-        ctx.daemon.settings.task_processing_paused = True
+        for sc in ctx.daemon.settings.sensors:
+            if sensor_id is None or sc.id == sensor_id:
+                sc.task_processing_paused = True
         ctx.daemon.settings.save()
         await ctx.broadcast_status()
 
         return {"status": "paused", "message": "Task processing paused"}
 
     @router.post("/tasks/resume")
-    async def resume_tasks():
-        """Resume task processing."""
+    async def resume_tasks(request: dict | None = None):
+        """Resume task processing for a sensor (or all sensors)."""
         if not ctx.daemon or not ctx.daemon.task_dispatcher:
             return JSONResponse({"error": "Task manager not available"}, status_code=503)
 
+        sensor_id = (request or {}).get("sensor_id")
         ctx.daemon.task_dispatcher.resume()
-        ctx.daemon.settings.task_processing_paused = False
+        for sc in ctx.daemon.settings.sensors:
+            if sensor_id is None or sc.id == sensor_id:
+                sc.task_processing_paused = False
         ctx.daemon.settings.save()
         await ctx.broadcast_status()
 
@@ -152,8 +158,8 @@ def build_tasks_router(ctx: CitraSenseWebApp) -> APIRouter:
             return JSONResponse({"error": str(e)}, status_code=500)
 
     @router.patch("/observing-session")
-    async def toggle_observing_session(request: dict[str, bool]):
-        """Toggle observing session on/off."""
+    async def toggle_observing_session(request: dict[str, Any]):
+        """Toggle observing session on/off for a sensor."""
         if not ctx.daemon:
             return JSONResponse({"error": "Daemon not available"}, status_code=503)
 
@@ -161,15 +167,18 @@ def build_tasks_router(ctx: CitraSenseWebApp) -> APIRouter:
         if enabled is None:
             return JSONResponse({"error": "Missing 'enabled' field in request body"}, status_code=400)
 
-        ctx.daemon.settings.observing_session_enabled = enabled
+        sensor_id = request.get("sensor_id")
+        for sc in ctx.daemon.settings.sensors:
+            if sensor_id is None or sc.id == sensor_id:
+                sc.observing_session_enabled = enabled
         ctx.daemon.settings.save()
         CITRASENSE_LOGGER.info(f"Observing session set to {'enabled' if enabled else 'disabled'}")
         await ctx.broadcast_status()
         return {"status": "success", "enabled": enabled}
 
     @router.patch("/self-tasking")
-    async def toggle_self_tasking(request: dict[str, bool]):
-        """Toggle self-tasking on/off.
+    async def toggle_self_tasking(request: dict[str, Any]):
+        """Toggle self-tasking on/off for a sensor.
 
         When enabling, also enables Observing Session, Scheduling
         (server-side), and Processing (local) so the autonomous
@@ -182,19 +191,24 @@ def build_tasks_router(ctx: CitraSenseWebApp) -> APIRouter:
         if enabled is None:
             return JSONResponse({"error": "Missing 'enabled' field in request body"}, status_code=400)
 
-        ctx.daemon.settings.self_tasking_enabled = enabled
+        sensor_id = request.get("sensor_id")
+        target_configs = [sc for sc in ctx.daemon.settings.sensors if sensor_id is None or sc.id == sensor_id]
+        for sc in target_configs:
+            sc.self_tasking_enabled = enabled
         ctx.daemon.settings.save()
 
         if enabled:
-            if not ctx.daemon.settings.observing_session_enabled:
-                ctx.daemon.settings.observing_session_enabled = True
-                ctx.daemon.settings.save()
-                CITRASENSE_LOGGER.info("Self-tasking: auto-enabled observing session")
+            for sc in target_configs:
+                if not sc.observing_session_enabled:
+                    sc.observing_session_enabled = True
+                    CITRASENSE_LOGGER.info("Self-tasking: auto-enabled observing session for %s", sc.id)
+            ctx.daemon.settings.save()
 
         if enabled and ctx.daemon.task_dispatcher:
             if not ctx.daemon.task_dispatcher.is_processing_active():
                 ctx.daemon.task_dispatcher.resume()
-                ctx.daemon.settings.task_processing_paused = False
+                for sc in target_configs:
+                    sc.task_processing_paused = False
                 ctx.daemon.settings.save()
                 CITRASENSE_LOGGER.info("Self-tasking: auto-enabled processing")
 
@@ -229,14 +243,15 @@ def build_tasks_router(ctx: CitraSenseWebApp) -> APIRouter:
         if not gs or not tr:
             return JSONResponse({"error": "Ground station or telescope not configured"}, status_code=503)
 
-        settings = ctx.daemon.settings
+        ts = ctx.daemon._telescope_sensor
+        sc = ctx.daemon.settings.get_sensor_config(ts.sensor_id) if ts else None
         ground_station_id = gs["id"]
         sensor_id = tr["id"]
 
-        group_ids = settings.self_tasking_satellite_group_ids or None
-        exclude_types = settings.self_tasking_exclude_object_types or None
-        orbit_regimes = settings.self_tasking_include_orbit_regimes or None
-        collection_type = settings.self_tasking_collection_type or "Track"
+        group_ids = (sc.self_tasking_satellite_group_ids if sc else []) or None
+        exclude_types = (sc.self_tasking_exclude_object_types if sc else []) or None
+        orbit_regimes = (sc.self_tasking_include_orbit_regimes if sc else []) or None
+        collection_type = (sc.self_tasking_collection_type if sc else "Track") or "Track"
 
         now = datetime.now(timezone.utc)
         window_start = now.strftime("%Y-%m-%dT%H:%M:%SZ")

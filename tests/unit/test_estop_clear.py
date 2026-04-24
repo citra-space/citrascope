@@ -85,11 +85,12 @@ class TestClearPendingTasks:
 
     def test_calls_imaging_queue_clear(self):
         td = _make_task_dispatcher()
-        td._default_runtime.acquisition_queue.clear = MagicMock(return_value=2)
+        rt = td.get_runtime("test-scope")
+        rt.acquisition_queue.clear = MagicMock(return_value=2)
 
         count = td.clear_pending_tasks()
 
-        td._default_runtime.acquisition_queue.clear.assert_called_once()
+        rt.acquisition_queue.clear.assert_called_once()
         assert count == 2
 
     def test_no_orphan_guids_after_clear(self):

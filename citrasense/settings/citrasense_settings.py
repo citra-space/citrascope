@@ -22,7 +22,9 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator,
 #     of citra-space/citrasense#306). Scalar fields kept as compatibility aliases.
 # v3: ``sensors[]`` is the sole source of truth. Legacy scalars removed from
 #     the model; ``load()`` migrates v1/v2 files automatically.
-CONFIG_VERSION = 3
+# v4: operational settings (task_processing_paused, observing_session_*,
+#     self_tasking_*) moved from global to per-sensor.
+CONFIG_VERSION = 4
 # Legacy scalar-only shape — synthesized ``sensors`` entries are marked with
 # this id so they round-trip cleanly on resave.
 DEFAULT_TELESCOPE_SENSOR_ID = "telescope-0"
@@ -72,6 +74,33 @@ class SensorConfig(BaseModel):
     adapter: str = ""
     adapter_settings: dict[str, Any] = Field(default_factory=dict)
     citra_sensor_id: str = ""
+
+    # Per-sensor operational settings (moved from global in config_version 4).
+    task_processing_paused: bool = False
+
+    observing_session_enabled: bool = False
+    observing_session_sun_altitude_threshold: float = -12.0
+    observing_session_do_pointing_calibration: bool = False
+    observing_session_do_autofocus: bool = True
+    observing_session_do_park: bool = True
+
+    self_tasking_enabled: bool = False
+    self_tasking_satellite_group_ids: list[str] = Field(default_factory=list)
+    self_tasking_include_orbit_regimes: list[str] = Field(default_factory=list)
+    self_tasking_exclude_object_types: list[str] = Field(default_factory=list)
+    self_tasking_collection_type: str = "Track"
+
+    @field_validator("observing_session_sun_altitude_threshold", mode="before")
+    @classmethod
+    def _validate_sun_altitude_threshold(cls, v: Any) -> float:
+        valid = (-6.0, -12.0, -18.0)
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            return -12.0
+        if v not in valid:
+            return -12.0
+        return v
 
 
 class CitraSenseSettings(BaseModel):
@@ -164,9 +193,6 @@ class CitraSenseSettings(BaseModel):
     gps_location_updates_enabled: bool = True
     gps_update_interval_minutes: int = 5
 
-    # Task processing
-    task_processing_paused: bool = False
-
     # Observation mode: "auto", "tracking", or "sidereal"
     observation_mode: str = "auto"
 
@@ -188,20 +214,6 @@ class CitraSenseSettings(BaseModel):
     # Calibration
     calibration_frame_count: int = 30
     flat_frame_count: int = 15
-
-    # Observing session (darkness-driven night lifecycle)
-    observing_session_enabled: bool = False
-    observing_session_sun_altitude_threshold: float = -12.0  # Civil=-6, Nautical=-12, Astronomical=-18
-    observing_session_do_pointing_calibration: bool = False
-    observing_session_do_autofocus: bool = True
-    observing_session_do_park: bool = True
-
-    # Self-tasking (autonomous work requests)
-    self_tasking_enabled: bool = False
-    self_tasking_satellite_group_ids: list[str] = Field(default_factory=list)
-    self_tasking_include_orbit_regimes: list[str] = Field(default_factory=list)
-    self_tasking_exclude_object_types: list[str] = Field(default_factory=list)
-    self_tasking_collection_type: str = "Track"
 
     # ── Non-persisted public attrs (excluded from model_dump) ─────────
     web_port: int = Field(default=DEFAULT_WEB_PORT, exclude=True)
@@ -494,24 +506,6 @@ class CitraSenseSettings(BaseModel):
             return "default"
         return v
 
-    @field_validator("observing_session_sun_altitude_threshold", mode="before")
-    @classmethod
-    def _validate_sun_altitude_threshold(cls, v: Any) -> float:
-        valid = (-6.0, -12.0, -18.0)
-        try:
-            v = float(v)
-        except (TypeError, ValueError):
-            CITRASENSE_LOGGER.warning(
-                "Invalid observing_session_sun_altitude_threshold (%r). Falling back to -12.0.", v
-            )
-            return -12.0
-        if v not in valid:
-            CITRASENSE_LOGGER.warning(
-                "observing_session_sun_altitude_threshold (%s) not in %s. Falling back to -12.0.", v, valid
-            )
-            return -12.0
-        return v
-
     @field_validator("custom_data_dir", "custom_log_dir", mode="before")
     @classmethod
     def _validate_custom_dir(cls, v: Any) -> str:
@@ -558,6 +552,67 @@ class CitraSenseSettings(BaseModel):
     def adapter_settings(self, value: dict[str, Any]) -> None:
         if self.sensors:
             self.sensors[0].adapter_settings = value
+
+    # ── Per-sensor operational compat (delegates to sensors[0]) ───────
+
+    @property
+    def task_processing_paused(self) -> bool:
+        return self.sensors[0].task_processing_paused if self.sensors else False
+
+    @task_processing_paused.setter
+    def task_processing_paused(self, value: bool) -> None:
+        if self.sensors:
+            self.sensors[0].task_processing_paused = value
+
+    @property
+    def observing_session_enabled(self) -> bool:
+        return self.sensors[0].observing_session_enabled if self.sensors else False
+
+    @observing_session_enabled.setter
+    def observing_session_enabled(self, value: bool) -> None:
+        if self.sensors:
+            self.sensors[0].observing_session_enabled = value
+
+    @property
+    def self_tasking_enabled(self) -> bool:
+        return self.sensors[0].self_tasking_enabled if self.sensors else False
+
+    @self_tasking_enabled.setter
+    def self_tasking_enabled(self, value: bool) -> None:
+        if self.sensors:
+            self.sensors[0].self_tasking_enabled = value
+
+    @property
+    def observing_session_sun_altitude_threshold(self) -> float:
+        return self.sensors[0].observing_session_sun_altitude_threshold if self.sensors else -12.0
+
+    @property
+    def observing_session_do_pointing_calibration(self) -> bool:
+        return self.sensors[0].observing_session_do_pointing_calibration if self.sensors else False
+
+    @property
+    def observing_session_do_autofocus(self) -> bool:
+        return self.sensors[0].observing_session_do_autofocus if self.sensors else True
+
+    @property
+    def observing_session_do_park(self) -> bool:
+        return self.sensors[0].observing_session_do_park if self.sensors else True
+
+    @property
+    def self_tasking_satellite_group_ids(self) -> list[str]:
+        return self.sensors[0].self_tasking_satellite_group_ids if self.sensors else []
+
+    @property
+    def self_tasking_include_orbit_regimes(self) -> list[str]:
+        return self.sensors[0].self_tasking_include_orbit_regimes if self.sensors else []
+
+    @property
+    def self_tasking_exclude_object_types(self) -> list[str]:
+        return self.sensors[0].self_tasking_exclude_object_types if self.sensors else []
+
+    @property
+    def self_tasking_collection_type(self) -> str:
+        return self.sensors[0].self_tasking_collection_type if self.sensors else "Track"
 
     # ── Factory ───────────────────────────────────────────────────────
 
@@ -615,6 +670,26 @@ class CitraSenseSettings(BaseModel):
                 adapter = sd.get("adapter", "")
                 if not sd.get("adapter_settings") and adapter and adapter in all_adapter_settings:
                     sd["adapter_settings"] = all_adapter_settings[adapter]
+
+        # ── v3 → v4: move operational settings into each sensor ───────
+        _OPS_FIELDS = (
+            "task_processing_paused",
+            "observing_session_enabled",
+            "observing_session_sun_altitude_threshold",
+            "observing_session_do_pointing_calibration",
+            "observing_session_do_autofocus",
+            "observing_session_do_park",
+            "self_tasking_enabled",
+            "self_tasking_satellite_group_ids",
+            "self_tasking_include_orbit_regimes",
+            "self_tasking_exclude_object_types",
+            "self_tasking_collection_type",
+        )
+        top_ops = {k: config.pop(k) for k in _OPS_FIELDS if k in config}
+        if top_ops:
+            for sd in config.get("sensors") or []:
+                for k, v in top_ops.items():
+                    sd.setdefault(k, v)
 
         instance = cls.model_validate(config)
         instance._config_manager = mgr

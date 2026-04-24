@@ -27,6 +27,8 @@ if TYPE_CHECKING:
     from citrasense.preview_bus import PreviewBus
     from citrasense.sensors.abstract_sensor import AbstractSensor
     from citrasense.sensors.bus import SensorBus, Subscription
+    from citrasense.sensors.telescope.observing_session import ObservingSessionManager
+    from citrasense.sensors.telescope.self_tasking_manager import SelfTaskingManager
     from citrasense.settings.citrasense_settings import CitraSenseSettings
     from citrasense.tasks.task import Task
     from citrasense.tasks.task_dispatcher import TaskDispatcher
@@ -106,6 +108,8 @@ class SensorRuntime:
         self.alignment_manager: Any = None
         self.homing_manager: Any = None
         self.calibration_manager: Any = None
+        self.observing_session_manager: ObservingSessionManager | None = None
+        self.self_tasking_manager: SelfTaskingManager | None = None
 
         if sensor.sensor_type == "telescope" and hardware_adapter is not None:
             from citrasense.sensors.telescope.managers.alignment_manager import AlignmentManager
