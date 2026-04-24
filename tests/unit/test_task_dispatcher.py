@@ -1,10 +1,18 @@
-"""Tests for TaskDispatcher: routing, facade, runtime registration."""
+"""Tests for TaskDispatcher: routing, facade, runtime registration, queue
+management, and safety evaluation."""
 
 from __future__ import annotations
 
 import heapq
+import time
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
+import pytest
+from dateutil import parser as dtparser
+
+from citrasense.safety.safety_monitor import SafetyAction
+from citrasense.tasks.task import Task
 from citrasense.tasks.task_dispatcher import TaskDispatcher
 
 # ── helpers ────────────────────────────────────────────────────────────────
@@ -117,52 +125,6 @@ class TestTaskRouting:
         assert td._runtime_for_task(task) is None
 
 
-# ── Web facade ────────────────────────────────────────────────────────────
-
-
-class TestWebFacade:
-    def _wired_dispatcher(self):
-        td = _make_dispatcher()
-        rt = _mock_runtime()
-        td.register_runtime(rt)
-        return td, rt
-
-    def test_imaging_queue_delegates(self):
-        td, rt = self._wired_dispatcher()
-        assert td.imaging_queue is rt.acquisition_queue
-
-    def test_processing_queue_delegates(self):
-        td, rt = self._wired_dispatcher()
-        assert td.processing_queue is rt.processing_queue
-
-    def test_upload_queue_delegates(self):
-        td, rt = self._wired_dispatcher()
-        assert td.upload_queue is rt.upload_queue
-
-    def test_autofocus_manager_delegates(self):
-        td, rt = self._wired_dispatcher()
-        assert td.autofocus_manager is rt.autofocus_manager
-
-    def test_alignment_manager_delegates(self):
-        td, rt = self._wired_dispatcher()
-        assert td.alignment_manager is rt.alignment_manager
-
-    def test_homing_manager_delegates(self):
-        td, rt = self._wired_dispatcher()
-        assert td.homing_manager is rt.homing_manager
-
-    def test_calibration_manager_setter(self):
-        td, rt = self._wired_dispatcher()
-        mock_cal = MagicMock()
-        td.calibration_manager = mock_cal
-        assert rt.calibration_manager is mock_cal
-
-    def test_are_queues_idle_delegates(self):
-        td, rt = self._wired_dispatcher()
-        rt.are_queues_idle.return_value = False
-        assert td.are_queues_idle() is False
-
-
 # ── Stage tracking ────────────────────────────────────────────────────────
 
 
@@ -239,3 +201,270 @@ class TestLifecycle:
         td.stop()
 
         rt.stop.assert_called_once()
+
+
+# ── Queue management (migrated from test_task_manager.py) ────────────────
+
+
+def _create_test_task(task_id, status="Pending", start_offset_seconds=60):
+    now = datetime.now(timezone.utc)
+    start_time = now + timedelta(seconds=start_offset_seconds)
+    stop_time = start_time + timedelta(seconds=300)
+    return Task(
+        id=task_id,
+        type="observation",
+        status=status,
+        creationEpoch=now.isoformat(),
+        updateEpoch=now.isoformat(),
+        taskStart=start_time.isoformat(),
+        taskStop=stop_time.isoformat(),
+        userId="user-123",
+        username="testuser",
+        satelliteId="sat-456",
+        satelliteName="Test Satellite",
+        telescopeId="test-telescope-123",
+        telescopeName="Test Telescope",
+        groundStationId="test-gs-456",
+        groundStationName="Test Ground Station",
+    )
+
+
+@pytest.fixture
+def wired_dispatcher():
+    """Create a TaskDispatcher with a registered runtime, for queue management tests."""
+    api_client = MagicMock()
+    api_client.get_telescope_tasks.return_value = []
+    api_client.put_telescope_status.return_value = None
+    settings = MagicMock()
+    settings.keep_images = False
+    settings.max_task_retries = 3
+    settings.initial_retry_delay_seconds = 30
+    settings.max_retry_delay_seconds = 300
+    settings.task_processing_paused = False
+
+    td = TaskDispatcher(
+        api_client=api_client,
+        logger=MagicMock(),
+        settings=settings,
+        telescope_record={"id": "test-telescope-123", "maxSlewRate": 5.0, "automatedScheduling": False},
+    )
+
+    runtime = MagicMock()
+    runtime.sensor_id = "test-telescope-123"
+    runtime.sensor_type = "telescope"
+    runtime.acquisition_queue = MagicMock()
+    runtime.acquisition_queue.is_idle.return_value = True
+    runtime.processing_queue = MagicMock()
+    runtime.upload_queue = MagicMock()
+    runtime.are_queues_idle.return_value = True
+    td._runtimes["test-telescope-123"] = runtime
+    return td, api_client
+
+
+def test_poll_tasks_adds_new_tasks(wired_dispatcher):
+    td, api_client = wired_dispatcher
+    task1 = _create_test_task("task-001", "Pending")
+    task2 = _create_test_task("task-002", "Scheduled", start_offset_seconds=120)
+
+    api_client.get_telescope_tasks.return_value = [task1.__dict__, task2.__dict__]
+
+    with td.heap_lock:
+        td._report_online()
+        tasks = api_client.get_telescope_tasks(td.telescope_record["id"])
+        api_task_map = {}
+        for task_dict in tasks:
+            task = Task.from_dict(task_dict)
+            tid = task.id
+            if tid and task.status in ["Pending", "Scheduled"]:
+                api_task_map[tid] = task
+
+        now = int(time.time())
+        for tid, task in api_task_map.items():
+            if tid not in td.task_ids and tid != td.current_task_id:
+                start_epoch = int(dtparser.isoparse(task.taskStart).timestamp())
+                stop_epoch = int(dtparser.isoparse(task.taskStop).timestamp()) if task.taskStop else 0
+                if not (stop_epoch and stop_epoch < now):
+                    heapq.heappush(td.task_heap, (start_epoch, stop_epoch, tid, task))
+                    td.task_ids.add(tid)
+                    td.task_dict[tid] = task
+
+    assert len(td.task_heap) == 2
+    assert "task-001" in td.task_ids
+    assert "task-002" in td.task_ids
+
+
+def test_poll_tasks_removes_cancelled_tasks(wired_dispatcher):
+    td, api_client = wired_dispatcher
+    task1 = _create_test_task("task-001", "Pending")
+    task2 = _create_test_task("task-002", "Pending", start_offset_seconds=120)
+
+    start1 = int(dtparser.isoparse(task1.taskStart).timestamp())
+    stop1 = int(dtparser.isoparse(task1.taskStop).timestamp())
+    start2 = int(dtparser.isoparse(task2.taskStart).timestamp())
+    stop2 = int(dtparser.isoparse(task2.taskStop).timestamp())
+
+    with td.heap_lock:
+        heapq.heappush(td.task_heap, (start1, stop1, "task-001", task1))
+        heapq.heappush(td.task_heap, (start2, stop2, "task-002", task2))
+        td.task_ids.update({"task-001", "task-002"})
+        td.task_dict.update({"task-001": task1, "task-002": task2})
+
+    assert len(td.task_heap) == 2
+
+    api_client.get_telescope_tasks.return_value = [task1.__dict__]
+
+    with td.heap_lock:
+        tasks = api_client.get_telescope_tasks(td.telescope_record["id"])
+        api_task_map = {}
+        for task_dict in tasks:
+            task = Task.from_dict(task_dict)
+            tid = task.id
+            if tid and task.status in ["Pending", "Scheduled"]:
+                api_task_map[tid] = task
+
+        new_heap = []
+        removed = 0
+        for se, so, tid, task in td.task_heap:
+            if tid == td.current_task_id or tid in api_task_map:
+                new_heap.append((se, so, tid, task))
+            else:
+                td.task_ids.discard(tid)
+                td.task_dict.pop(tid, None)
+                removed += 1
+        if removed > 0:
+            td.task_heap = new_heap
+            heapq.heapify(td.task_heap)
+
+    assert len(td.task_heap) == 1
+    assert "task-001" in td.task_ids
+    assert "task-002" not in td.task_ids
+
+
+def test_poll_tasks_removes_tasks_with_changed_status(wired_dispatcher):
+    td, api_client = wired_dispatcher
+    task1 = _create_test_task("task-001", "Pending")
+    se = int(dtparser.isoparse(task1.taskStart).timestamp())
+    so = int(dtparser.isoparse(task1.taskStop).timestamp())
+
+    with td.heap_lock:
+        heapq.heappush(td.task_heap, (se, so, "task-001", task1))
+        td.task_ids.add("task-001")
+        td.task_dict["task-001"] = task1
+
+    cancelled = _create_test_task("task-001", "Cancelled")
+    api_client.get_telescope_tasks.return_value = [cancelled.__dict__]
+
+    with td.heap_lock:
+        tasks = api_client.get_telescope_tasks(td.telescope_record["id"])
+        api_task_map = {}
+        for td2 in tasks:
+            t = Task.from_dict(td2)
+            if t.id and t.status in ["Pending", "Scheduled"]:
+                api_task_map[t.id] = t
+
+        new_heap = []
+        for se2, so2, tid, task in td.task_heap:
+            if tid == td.current_task_id or tid in api_task_map:
+                new_heap.append((se2, so2, tid, task))
+            else:
+                td.task_ids.discard(tid)
+                td.task_dict.pop(tid, None)
+        td.task_heap = new_heap
+        heapq.heapify(td.task_heap)
+
+    assert len(td.task_heap) == 0
+    assert "task-001" not in td.task_ids
+
+
+def test_poll_tasks_does_not_remove_current_task(wired_dispatcher):
+    td, api_client = wired_dispatcher
+    task1 = _create_test_task("task-001", "Pending")
+    se = int(dtparser.isoparse(task1.taskStart).timestamp())
+    so = int(dtparser.isoparse(task1.taskStop).timestamp())
+
+    with td.heap_lock:
+        heapq.heappush(td.task_heap, (se, so, "task-001", task1))
+        td.task_ids.add("task-001")
+        td.task_dict["task-001"] = task1
+        td.current_task_id = "task-001"
+
+    api_client.get_telescope_tasks.return_value = []
+
+    with td.heap_lock:
+        tasks = api_client.get_telescope_tasks(td.telescope_record["id"])
+        api_task_map = {}
+        for td2 in tasks:
+            t = Task.from_dict(td2)
+            if t.id and t.status in ["Pending", "Scheduled"]:
+                api_task_map[t.id] = t
+
+        new_heap = []
+        for se2, so2, tid, task in td.task_heap:
+            if tid == td.current_task_id or tid in api_task_map:
+                new_heap.append((se2, so2, tid, task))
+            else:
+                td.task_ids.discard(tid)
+        td.task_heap = new_heap
+        heapq.heapify(td.task_heap)
+
+    assert len(td.task_heap) == 1
+    assert "task-001" in td.task_ids
+
+
+# ── _evaluate_safety — cable wrap soft-lock regression (#239) ────────────
+
+
+class TestEvaluateSafetyQueueStop:
+    """Verify QUEUE_STOP always attempts corrective action when the imaging
+    queue is idle, even if the state transition already happened on a
+    previous tick (regression for issue #239 soft-lock)."""
+
+    def _call(self, td, *, queue_idle: bool, action: SafetyAction, triggered_check=None):
+        mock_monitor = MagicMock()
+        mock_monitor.evaluate.return_value = (action, triggered_check)
+        td.safety_monitor = mock_monitor
+        td._default_runtime.acquisition_queue.is_idle.return_value = queue_idle
+        return td._evaluate_safety()
+
+    def test_unwind_fires_after_queue_drains(self, wired_dispatcher):
+        td, _ = wired_dispatcher
+        check = MagicMock()
+        check.name = "cable_wrap"
+
+        result = self._call(td, queue_idle=False, action=SafetyAction.QUEUE_STOP, triggered_check=check)
+        assert result is True
+        check.execute_action.assert_not_called()
+
+        result = self._call(td, queue_idle=True, action=SafetyAction.QUEUE_STOP, triggered_check=check)
+        assert result is True
+        check.execute_action.assert_called_once()
+
+    def test_unwind_retried_after_failure(self, wired_dispatcher):
+        td, _ = wired_dispatcher
+        check = MagicMock()
+        check.name = "cable_wrap"
+        check.execute_action.side_effect = [RuntimeError("stall"), None]
+
+        self._call(td, queue_idle=True, action=SafetyAction.QUEUE_STOP, triggered_check=check)
+        assert check.execute_action.call_count == 1
+        td.logger.error.assert_called()
+
+        self._call(td, queue_idle=True, action=SafetyAction.QUEUE_STOP, triggered_check=check)
+        assert check.execute_action.call_count == 2
+
+    def test_no_action_when_queue_busy(self, wired_dispatcher):
+        td, _ = wired_dispatcher
+        check = MagicMock()
+        check.name = "cable_wrap"
+        self._call(td, queue_idle=False, action=SafetyAction.QUEUE_STOP, triggered_check=check)
+        check.execute_action.assert_not_called()
+
+    def test_queue_stop_yields_task_loop(self, wired_dispatcher):
+        td, _ = wired_dispatcher
+        result = self._call(td, queue_idle=False, action=SafetyAction.QUEUE_STOP)
+        assert result is True
+
+    def test_safe_does_not_yield(self, wired_dispatcher):
+        td, _ = wired_dispatcher
+        result = self._call(td, queue_idle=True, action=SafetyAction.SAFE)
+        assert result is False

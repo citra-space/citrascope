@@ -63,7 +63,7 @@ class CitraSenseDaemon:
         self.api_client = api_client
         self.hardware_adapter = hardware_adapter
         self.web_server = None
-        self.task_manager = None
+        self.task_dispatcher = None
         self.time_monitor = None
         self.location_service = None
         self.ground_station = None
@@ -234,15 +234,15 @@ class CitraSenseDaemon:
             old_uploading_tasks = {}
 
             # Cleanup existing resources
-            if self.task_manager:
+            if self.task_dispatcher:
                 CITRASENSE_LOGGER.info("Stopping existing task manager...")
                 # Capture task metadata before destruction
-                old_task_dict = dict(self.task_manager.task_dict)
-                old_imaging_tasks = dict(self.task_manager.imaging_tasks)
-                old_processing_tasks = dict(self.task_manager.processing_tasks)
-                old_uploading_tasks = dict(self.task_manager.uploading_tasks)
-                self.task_manager.stop()
-                self.task_manager = None
+                old_task_dict = dict(self.task_dispatcher.task_dict)
+                old_imaging_tasks = dict(self.task_dispatcher.imaging_tasks)
+                old_processing_tasks = dict(self.task_dispatcher.processing_tasks)
+                old_uploading_tasks = dict(self.task_dispatcher.uploading_tasks)
+                self.task_dispatcher.stop()
+                self.task_dispatcher = None
 
             if self.safety_monitor:
                 if self._telescope_sensor:
@@ -529,7 +529,7 @@ class CitraSenseDaemon:
             )
 
             # Create TaskDispatcher (site-level orchestration)
-            self.task_manager = TaskDispatcher(
+            self.task_dispatcher = TaskDispatcher(
                 self.api_client,
                 CITRASENSE_LOGGER,
                 self.settings,
@@ -538,13 +538,13 @@ class CitraSenseDaemon:
                 telescope_record=self.telescope_record,
                 elset_cache=self.elset_cache,
             )
-            self.task_manager.register_runtime(telescope_runtime)
+            self.task_dispatcher.register_runtime(telescope_runtime)
 
             # Wire backend→frontend toast notifications
             if self.web_server:
-                self.task_manager.on_toast = self.web_server.send_toast
-                if self.task_manager.autofocus_manager:
-                    self.task_manager.autofocus_manager.on_toast = self.web_server.send_toast
+                self.task_dispatcher.on_toast = self.web_server.send_toast
+                if telescope_runtime.autofocus_manager:
+                    telescope_runtime.autofocus_manager.on_toast = self.web_server.send_toast
 
             # Wire self-tasking session managers
             from citrasense.sensors.telescope.observing_session import ObservingSessionManager
@@ -558,18 +558,19 @@ class CitraSenseDaemon:
                     return loc["latitude"], loc["longitude"]
                 return None
 
-            can_park = self.hardware_adapter.supports_park()
-            alignment_mgr = self.task_manager.alignment_manager
+            adapter = self._telescope_sensor.adapter
+            can_park = adapter.supports_park()
+            alignment_mgr = telescope_runtime.alignment_manager
             observing_session_manager = ObservingSessionManager(
                 settings=self.settings,
                 logger=CITRASENSE_LOGGER,
                 get_location=_get_location_tuple,
-                request_autofocus=self.task_manager.autofocus_manager.request,
-                is_autofocus_running=self.task_manager.autofocus_manager.is_running,
-                is_imaging_idle=self.task_manager.imaging_queue.is_idle,
-                are_queues_idle=self.task_manager.are_queues_idle,
-                park_mount=self.hardware_adapter.park_mount if can_park else None,
-                unpark_mount=self.hardware_adapter.unpark_mount if can_park else None,
+                request_autofocus=telescope_runtime.autofocus_manager.request,
+                is_autofocus_running=telescope_runtime.autofocus_manager.is_running,
+                is_imaging_idle=telescope_runtime.acquisition_queue.is_idle,
+                are_queues_idle=telescope_runtime.are_queues_idle,
+                park_mount=adapter.park_mount if can_park else None,
+                unpark_mount=adapter.unpark_mount if can_park else None,
                 request_pointing_calibration=alignment_mgr.request_calibration,
                 is_pointing_calibration_running=alignment_mgr.is_calibrating,
             )
@@ -584,19 +585,19 @@ class CitraSenseDaemon:
                 get_observing_window=lambda: observing_session_manager.observing_window,
             )
 
-            self.task_manager.set_session_managers(observing_session_manager, self_tasking_manager)
+            self.task_dispatcher.set_session_managers(observing_session_manager, self_tasking_manager)
 
             # Wire pointing model to AlignmentManager
-            if self.hardware_adapter.pointing_model:
-                self.task_manager.alignment_manager.set_pointing_model(self.hardware_adapter.pointing_model)
+            if adapter.pointing_model:
+                telescope_runtime.alignment_manager.set_pointing_model(adapter.pointing_model)
 
             # Restore preserved task metadata
             if old_task_dict:
                 CITRASENSE_LOGGER.info(f"Restoring {len(old_task_dict)} task(s) from previous TaskDispatcher")
-                self.task_manager.task_dict.update(old_task_dict)
+                self.task_dispatcher.task_dict.update(old_task_dict)
             if old_imaging_tasks:
                 CITRASENSE_LOGGER.info(f"Restoring {len(old_imaging_tasks)} imaging task(s)")
-                self.task_manager.imaging_tasks.update(old_imaging_tasks)
+                self.task_dispatcher.imaging_tasks.update(old_imaging_tasks)
 
             # Don't restore processing_tasks or uploading_tasks — those represent
             # in-flight work that died with the old queues.  The tasks still exist
@@ -609,17 +610,17 @@ class CitraSenseDaemon:
                 )
 
             # Initialize CalibrationManager if direct camera control is available
-            if self.hardware_adapter.supports_direct_camera_control():
+            if adapter.supports_direct_camera_control():
                 from citrasense.calibration.calibration_library import CalibrationLibrary
                 from citrasense.pipelines.optical.calibration_processor import CalibrationProcessor
                 from citrasense.sensors.telescope.managers.calibration_manager import CalibrationManager
 
                 self.calibration_library = CalibrationLibrary()
-                self.task_manager.calibration_manager = CalibrationManager(
+                telescope_runtime.calibration_manager = CalibrationManager(
                     CITRASENSE_LOGGER,
-                    self.hardware_adapter,
+                    adapter,
                     self.calibration_library,
-                    imaging_queue=self.task_manager.imaging_queue,
+                    imaging_queue=telescope_runtime.acquisition_queue,
                 )
                 # Inject the library into the CalibrationProcessor
                 for proc in self.processor_registry.processors:
@@ -627,7 +628,7 @@ class CitraSenseDaemon:
                         proc.library = self.calibration_library
                         break
 
-            self.task_manager.start()
+            self.task_dispatcher.start()
             self._start_retention_timer()
 
             CITRASENSE_LOGGER.info("Telescope initialized successfully!")
@@ -688,19 +689,23 @@ class CitraSenseDaemon:
                 )
 
         def abort_callback() -> None:
-            try:
-                m = self.hardware_adapter.mount if self.hardware_adapter else None
-                if not m:
-                    return
-                m.abort_slew()
-                m.stop_tracking()
-                for d in ("north", "south", "east", "west"):
-                    m.stop_move(d)
-            except Exception:
-                pass
+            if not self.sensor_manager:
+                return
+            for sensor in self.sensor_manager:
+                mount = getattr(getattr(sensor, "adapter", None), "mount", None)
+                if not mount:
+                    continue
+                try:
+                    mount.abort_slew()
+                    mount.stop_tracking()
+                    for d in ("north", "south", "east", "west"):
+                        mount.stop_move(d)
+                except Exception:
+                    pass
 
         self.safety_monitor = SafetyMonitor(CITRASENSE_LOGGER, checks, abort_callback=abort_callback)
-        self.hardware_adapter.set_safety_monitor(self.safety_monitor)
+        if self.hardware_adapter:
+            self.hardware_adapter.set_safety_monitor(self.safety_monitor)
 
         self.safety_monitor.start_watchdog()
         CITRASENSE_LOGGER.info("Safety monitor started with %d site-level check(s)", len(checks))
@@ -719,11 +724,14 @@ class CitraSenseDaemon:
         Thread safety: This modifies self.settings and writes to disk.
         Should be called from main daemon thread or properly synchronized.
         """
-        if not self.hardware_adapter or not self.hardware_adapter.supports_filter_management():
+        if not self._telescope_sensor:
+            return
+        adapter = self._telescope_sensor.adapter
+        if not adapter.supports_filter_management():
             return
 
         try:
-            filter_config = self.hardware_adapter.get_filter_config()
+            filter_config = adapter.get_filter_config()
             if filter_config:
                 self.settings.adapter_settings["filters"] = filter_config
                 self.settings.save()
@@ -732,85 +740,75 @@ class CitraSenseDaemon:
             CITRASENSE_LOGGER.warning(f"Failed to save filter configuration: {e}")
 
     def sync_filters_to_backend(self):
-        """Sync enabled filters to backend API.
-
-        Extracts enabled filter names from hardware adapter, expands them via
-        the filter library API, then updates the telescope's spectral_config.
-        Logs warnings on failure without blocking daemon operations.
-        """
-        if not self.hardware_adapter or not self.api_client or not self.telescope_record:
+        """Sync enabled filters to backend API."""
+        if not self._telescope_sensor or not self.api_client or not self.telescope_record:
             return
 
         try:
-            filter_config = self.hardware_adapter.get_filter_config()
+            filter_config = self._telescope_sensor.adapter.get_filter_config()
             sync_filters_to_backend(self.api_client, self.telescope_record["id"], filter_config, CITRASENSE_LOGGER)
         except Exception as e:
             CITRASENSE_LOGGER.warning(f"Failed to sync filters to backend: {e}", exc_info=True)
 
+    @property
+    def _telescope_runtime(self):
+        """Resolve the default telescope runtime via the task dispatcher."""
+        if not self.task_dispatcher or not self._telescope_sensor:
+            return None
+        return self.task_dispatcher.get_runtime(self._telescope_sensor.sensor_id)
+
     def trigger_autofocus(self) -> tuple[bool, str | None]:
-        """Request autofocus to run at next safe point between tasks.
-
-        Returns:
-            Tuple of (success, error_message)
-        """
-        if not self.hardware_adapter:
-            return False, "No hardware adapter initialized"
-
-        if not self.hardware_adapter.supports_filter_management():
+        """Request autofocus to run at next safe point between tasks."""
+        rt = self._telescope_runtime
+        if rt is None:
+            return False, "Telescope runtime not initialized"
+        if not self._telescope_sensor.adapter.supports_filter_management():
             return False, "Hardware adapter does not support filter management"
-
-        if not self.task_manager:
-            return False, "Task manager not initialized"
-
-        # Request autofocus - will run between tasks
-        self.task_manager.autofocus_manager.request()
+        rt.autofocus_manager.request()
         return True, None
 
     def cancel_autofocus(self) -> bool:
-        """Cancel autofocus whether it is queued or actively running.
-
-        Returns:
-            bool: True if something was cancelled, False if nothing to cancel.
-        """
-        if not self.task_manager:
+        """Cancel autofocus whether it is queued or actively running."""
+        rt = self._telescope_runtime
+        if rt is None:
             return False
-        return self.task_manager.autofocus_manager.cancel()
+        return rt.autofocus_manager.cancel()
 
     def is_autofocus_requested(self) -> bool:
-        """Check if autofocus is currently queued.
-
-        Returns:
-            bool: True if autofocus is queued, False otherwise.
-        """
-        if not self.task_manager:
+        """Check if autofocus is currently queued."""
+        rt = self._telescope_runtime
+        if rt is None:
             return False
-        return self.task_manager.autofocus_manager.is_requested()
+        return rt.autofocus_manager.is_requested()
 
     def trigger_calibration(self, params: dict) -> tuple[bool, str | None]:
         """Request calibration capture at next safe point between tasks."""
-        if not self.task_manager or not self.task_manager.calibration_manager:
+        rt = self._telescope_runtime
+        if rt is None or not rt.calibration_manager:
             return False, "Calibration not available (no direct camera control)"
-        ok = self.task_manager.calibration_manager.request(params)
+        ok = rt.calibration_manager.request(params)
         if not ok:
             return False, "Calibration already in progress"
         return True, None
 
     def trigger_calibration_suite(self, jobs: list[dict]) -> tuple[bool, str | None]:
         """Request a batch calibration suite at next safe point between tasks."""
-        if not self.task_manager or not self.task_manager.calibration_manager:
+        rt = self._telescope_runtime
+        if rt is None or not rt.calibration_manager:
             return False, "Calibration not available (no direct camera control)"
         if not jobs:
             return False, "No calibration jobs specified"
-        ok = self.task_manager.calibration_manager.request_suite(jobs)
+        ok = rt.calibration_manager.request_suite(jobs)
         if not ok:
             return False, "Calibration already in progress"
         return True, None
 
     def cancel_calibration(self) -> bool:
         """Cancel calibration whether queued or actively running."""
-        if not self.task_manager or not self.task_manager.calibration_manager:
+        rt = self._telescope_runtime
+        if rt is None or not rt.calibration_manager:
             return False
-        return self.task_manager.calibration_manager.cancel()
+        return rt.calibration_manager.cancel()
 
     def run(self):
         assert self.web_server is not None
@@ -872,15 +870,15 @@ class CitraSenseDaemon:
             self._retention_timer.cancel()
 
         # 1. Stop sources of new motion
-        if self.task_manager:
-            self.task_manager.stop()
+        if self.task_dispatcher:
+            self.task_dispatcher.stop()
         if self.time_monitor:
             self.time_monitor.stop()
 
         # 2. Abort any residual motion
-        if self.hardware_adapter:
+        if self._telescope_sensor:
             try:
-                m = self.hardware_adapter.mount
+                m = self._telescope_sensor.adapter.mount
                 if m:
                     m.abort_slew()
             except Exception:

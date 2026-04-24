@@ -10,6 +10,20 @@ function updateStoreFromStatus(status) {
     const store = Alpine.store('citrasense');
     store.status = status;
 
+    // Sync sensor list from status.sensors dict
+    if (status.sensors && typeof status.sensors === 'object') {
+        const list = Object.entries(status.sensors).map(([id, info]) => ({
+            id,
+            type: info.type,
+            connected: info.connected,
+            name: info.name || id,
+        }));
+        store.sensors = list;
+        if (!store.activeSensorId && list.length > 0) {
+            store.activeSensorId = list[0].id;
+        }
+    }
+
     if (status.current_task && status.current_task !== 'None') {
         store.isTaskActive = true;
         store.currentTaskId = status.current_task;
@@ -19,13 +33,11 @@ function updateStoreFromStatus(status) {
         store.currentTaskId = null;
     }
 
-    // Set nextTaskStartTime from tasks if we have them and no active task
     if (!store.isTaskActive && store.tasks.length > 0) {
         const sorted = [...store.tasks].sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
         store.nextTaskStartTime = sorted[0].start_time;
     }
 
-    // Update Optics pane with latest annotated task image (don't interrupt live loop)
     if (status.latest_task_image_url && status.latest_task_image_url !== store._lastTaskImageUrl) {
         store._lastTaskImageUrl = status.latest_task_image_url;
         if (!store.isLooping) {

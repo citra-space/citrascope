@@ -5,7 +5,7 @@ import threading
 import time
 from unittest.mock import MagicMock
 
-from citrasense.acquisition.acquisition_queue import AcquisitionQueue as ImagingQueue
+from citrasense.acquisition.acquisition_queue import AcquisitionQueue
 from citrasense.tasks.task_dispatcher import TaskDispatcher
 
 
@@ -194,7 +194,7 @@ class TestExpiredTaskGuard:
 
 
 # ---------------------------------------------------------------------------
-# ImagingQueue._on_cancelled does NOT mark the task as failed on the API
+# AcquisitionQueue._on_cancelled does NOT mark the task as failed on the API
 # ---------------------------------------------------------------------------
 
 
@@ -209,7 +209,7 @@ class TestImagingCancelledNotFailed:
         logger = MagicMock()
         api_client = MagicMock()
         runtime = MagicMock()
-        iq = ImagingQueue(
+        iq = AcquisitionQueue(
             num_workers=0,
             settings=settings,
             logger=logger,

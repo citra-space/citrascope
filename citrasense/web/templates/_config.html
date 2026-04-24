@@ -110,6 +110,7 @@
                         <h5 class="mb-3 pb-2 border-bottom border-secondary d-flex align-items-center gap-2">
                             <i class="bi bi-hdd-network"></i>Hardware Configuration
                         </h5>
+                        {% include '_config_sensor_picker.html' %}
                         {% include '_config_hardware.html' %}
                     </div>
 
@@ -121,6 +122,7 @@
                         <h5 class="mb-3 pb-2 border-bottom border-secondary d-flex align-items-center gap-2">
                             <i class="bi bi-arrows-expand"></i>Autofocus
                         </h5>
+                        {% include '_config_sensor_picker.html' %}
                         {% include '_config_autofocus.html' %}
                     </div>
 
@@ -128,7 +130,7 @@
                     <!-- ============================================ -->
                     <!-- Calibration                                  -->
                     <!-- ============================================ -->
-                    <div x-show="configTab === 'calibration'"
+                    <div x-show="configTab === 'calibration'" class="calibration-pane"
                          x-data="{
                              calStatus: null,
                              calLoading: false,
@@ -140,7 +142,7 @@
                              twilightTimer: null,
                              async loadCalStatus() {
                                  try {
-                                     const resp = await fetch('/api/calibration/status');
+                                     const resp = await fetch($store.citrasense.sensorApiBase + '/calibration/status');
                                      this.calStatus = await resp.json();
                                  } catch(e) { this.calStatus = null; }
                              },
@@ -205,7 +207,7 @@
                                      if (this.calFrameType === 'flat') {
                                          body.filter_position = this.calFilterPosition;
                                      }
-                                     await fetch('/api/calibration/capture', {
+                                     await fetch($store.citrasense.sensorApiBase + '/calibration/capture', {
                                          method: 'POST',
                                          headers: {'Content-Type': 'application/json'},
                                          body: JSON.stringify(body)
@@ -215,11 +217,11 @@
                                  } catch(e) { console.error(e); }
                              },
                              async cancelCapture() {
-                                 await fetch('/api/calibration/cancel', { method: 'POST' });
+                                 await fetch($store.citrasense.sensorApiBase + '/calibration/cancel', { method: 'POST' });
                              },
                              async captureSuite(suiteName) {
                                  try {
-                                     const resp = await fetch('/api/calibration/capture-suite', {
+                                     const resp = await fetch($store.citrasense.sensorApiBase + '/calibration/capture-suite', {
                                          method: 'POST',
                                          headers: {'Content-Type': 'application/json'},
                                          body: JSON.stringify({ suite: suiteName })
@@ -235,7 +237,7 @@
                              },
                              async deleteMaster(type, entry) {
                                  if (!confirm('Delete this master frame?')) return;
-                                 await fetch('/api/calibration/master', {
+                                 await fetch($store.citrasense.sensorApiBase + '/calibration/master', {
                                      method: 'DELETE',
                                      headers: {'Content-Type': 'application/json'},
                                      body: JSON.stringify({
@@ -257,6 +259,7 @@
                         <h5 class="mb-3 pb-2 border-bottom border-secondary d-flex align-items-center gap-2">
                             <i class="bi bi-grid-3x3"></i>Calibration
                         </h5>
+                        {% include '_config_sensor_picker.html' %}
 
                         <template x-if="calStatus?.available">
                             <div>

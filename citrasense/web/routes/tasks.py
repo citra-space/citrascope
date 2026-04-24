@@ -34,10 +34,10 @@ def build_tasks_router(ctx: CitraSenseWebApp) -> APIRouter:
     @router.get("/tasks/active")
     async def get_active_tasks():
         """Get currently executing tasks (all stages)."""
-        if not ctx.daemon or not hasattr(ctx.daemon, "task_manager") or ctx.daemon.task_manager is None:
+        if not ctx.daemon or not hasattr(ctx.daemon, "task_dispatcher") or ctx.daemon.task_dispatcher is None:
             return []
 
-        tasks_by_stage = ctx.daemon.task_manager.get_tasks_by_stage()
+        tasks_by_stage = ctx.daemon.task_dispatcher.get_tasks_by_stage()
 
         active = []
         for stage, tasks in tasks_by_stage.items():
@@ -67,7 +67,7 @@ def build_tasks_router(ctx: CitraSenseWebApp) -> APIRouter:
         if not ctx.daemon or not ctx.daemon.api_client:
             return JSONResponse({"error": "API client not available"}, status_code=503)
 
-        tm = getattr(ctx.daemon, "task_manager", None)
+        tm = getattr(ctx.daemon, "task_dispatcher", None)
         if tm is None:
             return JSONResponse({"error": "Task manager not available"}, status_code=503)
 
@@ -97,10 +97,10 @@ def build_tasks_router(ctx: CitraSenseWebApp) -> APIRouter:
     @router.post("/tasks/pause")
     async def pause_tasks():
         """Pause task processing."""
-        if not ctx.daemon or not ctx.daemon.task_manager:
+        if not ctx.daemon or not ctx.daemon.task_dispatcher:
             return JSONResponse({"error": "Task manager not available"}, status_code=503)
 
-        ctx.daemon.task_manager.pause()
+        ctx.daemon.task_dispatcher.pause()
         ctx.daemon.settings.task_processing_paused = True
         ctx.daemon.settings.save()
         await ctx.broadcast_status()
@@ -110,10 +110,10 @@ def build_tasks_router(ctx: CitraSenseWebApp) -> APIRouter:
     @router.post("/tasks/resume")
     async def resume_tasks():
         """Resume task processing."""
-        if not ctx.daemon or not ctx.daemon.task_manager:
+        if not ctx.daemon or not ctx.daemon.task_dispatcher:
             return JSONResponse({"error": "Task manager not available"}, status_code=503)
 
-        ctx.daemon.task_manager.resume()
+        ctx.daemon.task_dispatcher.resume()
         ctx.daemon.settings.task_processing_paused = False
         ctx.daemon.settings.save()
         await ctx.broadcast_status()
@@ -123,7 +123,7 @@ def build_tasks_router(ctx: CitraSenseWebApp) -> APIRouter:
     @router.patch("/telescope/automated-scheduling")
     async def update_automated_scheduling(request: dict[str, bool]):
         """Toggle automated scheduling on/off."""
-        if not ctx.daemon or not ctx.daemon.task_manager:
+        if not ctx.daemon or not ctx.daemon.task_dispatcher:
             return JSONResponse({"error": "Task manager not available"}, status_code=503)
 
         if not ctx.daemon.api_client:
@@ -138,7 +138,7 @@ def build_tasks_router(ctx: CitraSenseWebApp) -> APIRouter:
             success = ctx.daemon.api_client.update_telescope_automated_scheduling(telescope_id, enabled)
 
             if success:
-                ctx.daemon.task_manager.automated_scheduling = enabled
+                ctx.daemon.task_dispatcher.automated_scheduling = enabled
                 CITRASENSE_LOGGER.info(f"Automated scheduling set to {'enabled' if enabled else 'disabled'}")
                 await ctx.broadcast_status()
                 return {"status": "success", "enabled": enabled}
@@ -188,19 +188,19 @@ def build_tasks_router(ctx: CitraSenseWebApp) -> APIRouter:
                 ctx.daemon.settings.save()
                 CITRASENSE_LOGGER.info("Self-tasking: auto-enabled observing session")
 
-        if enabled and ctx.daemon.task_manager:
-            if not ctx.daemon.task_manager.is_processing_active():
-                ctx.daemon.task_manager.resume()
+        if enabled and ctx.daemon.task_dispatcher:
+            if not ctx.daemon.task_dispatcher.is_processing_active():
+                ctx.daemon.task_dispatcher.resume()
                 ctx.daemon.settings.task_processing_paused = False
                 ctx.daemon.settings.save()
                 CITRASENSE_LOGGER.info("Self-tasking: auto-enabled processing")
 
-            if not ctx.daemon.task_manager.automated_scheduling:
+            if not ctx.daemon.task_dispatcher.automated_scheduling:
                 try:
                     telescope_id = ctx.daemon.telescope_record["id"]
                     success = ctx.daemon.api_client.update_telescope_automated_scheduling(telescope_id, True)
                     if success:
-                        ctx.daemon.task_manager.automated_scheduling = True
+                        ctx.daemon.task_dispatcher.automated_scheduling = True
                         CITRASENSE_LOGGER.info("Self-tasking: auto-enabled scheduling")
                     else:
                         CITRASENSE_LOGGER.warning("Self-tasking: failed to enable scheduling on server")

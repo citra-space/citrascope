@@ -284,10 +284,10 @@ def get_web_tasks(
 
     Returns ``[]`` when the daemon or task manager isn't yet ready.
     """
-    if not daemon or not getattr(daemon, "task_manager", None):
+    if not daemon or not getattr(daemon, "task_dispatcher", None):
         return []
 
-    tasks = [_task_to_dict(t) for t in daemon.task_manager.get_tasks_snapshot(exclude_active=exclude_active)]
+    tasks = [_task_to_dict(t) for t in daemon.task_dispatcher.get_tasks_snapshot(exclude_active=exclude_active)]
     _enrich_tasks(tasks, daemon=daemon, status=status)
     return tasks
 

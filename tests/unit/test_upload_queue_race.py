@@ -124,7 +124,7 @@ class TestConfigReloadDropsInFlightStages:
         daemon.elset_cache = MagicMock()
         daemon.apass_catalog = MagicMock()
         daemon.processor_registry = MagicMock()
-        daemon.task_manager = None
+        daemon.task_dispatcher = None
         daemon.safety_monitor = MagicMock()
         daemon.telescope_record = None
         daemon.ground_station = None

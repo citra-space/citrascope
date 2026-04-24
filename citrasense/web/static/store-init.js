@@ -48,6 +48,26 @@ function compareVersions(v1, v2) {
             // countdownText) read this so they re-render reactively without
             // each component running its own setInterval.
             now: Date.now(),
+
+            // Multi-sensor support
+            sensors: [],
+            activeSensorId: null,
+            tierCollapse: { site: false, tasks: false, sensor: false },
+
+            get sensorApiBase() {
+                return this.activeSensorId
+                    ? `/api/sensors/${this.activeSensorId}`
+                    : '/api/sensors/_default';
+            },
+
+            get activeSensor() {
+                return this.sensors.find(s => s.id === this.activeSensorId) || null;
+            },
+
+            get showSensorSwitcher() {
+                return this.sensors.length > 1;
+            },
+
             config: {},
             apiEndpoint: 'production',
             hardwareAdapters: [], // [{value, label}]
@@ -133,7 +153,7 @@ function compareVersions(v1, v2) {
 
                 this.isSaving = true;
                 try {
-                    const response = await fetch('/api/camera/capture', {
+                    const response = await fetch(`${this.sensorApiBase}/camera/capture`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ duration })
@@ -269,13 +289,12 @@ function compareVersions(v1, v2) {
                     return;
                 }
                 try {
-                    const response = await fetch('/api/camera/preview', {
+                    const response = await fetch(`${this.sensorApiBase}/camera/preview`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ duration: this.previewExposure, flip_horizontal: this.previewFlipH })
                     });
                     if (response.status === 409) {
-                        // Camera busy with previous capture — wait and retry
                         if (this.isLooping) {
                             setTimeout(() => this.capturePreview(), 250);
                         }
@@ -317,7 +336,7 @@ function compareVersions(v1, v2) {
                 if (this.isLooping) return;
                 this.isCapturing = true;
                 try {
-                    const response = await fetch('/api/camera/preview', {
+                    const response = await fetch(`${this.sensorApiBase}/camera/preview`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ duration: this.previewExposure, flip_horizontal: this.previewFlipH })

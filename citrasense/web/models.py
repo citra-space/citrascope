@@ -107,6 +107,7 @@ class SystemStatus(BaseModel):
     last_batch_request: float | None = None
     last_batch_created: int | None = None
     next_request_seconds: float | None = None
+    sensors: dict[str, dict] = {}
 
 
 class HardwareConfig(BaseModel):

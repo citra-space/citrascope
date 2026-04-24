@@ -48,55 +48,60 @@ class TestEvaluateSafetyEmergencyClear:
     def test_emergency_clears_imaging_queue_on_first_transition(self):
         monitor = SafetyMonitor(MagicMock(), [_StubCheck("hw", SafetyAction.EMERGENCY)])
         td = _make_task_dispatcher(monitor)
+        acq = td._default_runtime.acquisition_queue
 
         result = td._evaluate_safety()
 
         assert result is True
-        td.imaging_queue.clear.assert_called_once()
+        acq.clear.assert_called_once()
 
     def test_emergency_does_not_clear_on_subsequent_polls(self):
         monitor = SafetyMonitor(MagicMock(), [_StubCheck("hw", SafetyAction.EMERGENCY)])
         td = _make_task_dispatcher(monitor)
+        acq = td._default_runtime.acquisition_queue
 
         td._evaluate_safety()
-        td.imaging_queue.clear.reset_mock()
+        acq.clear.reset_mock()
 
         td._evaluate_safety()
-        td.imaging_queue.clear.assert_not_called()
+        acq.clear.assert_not_called()
 
     def test_safe_does_not_clear_imaging_queue(self):
         monitor = SafetyMonitor(MagicMock(), [_StubCheck("hw", SafetyAction.SAFE)])
         td = _make_task_dispatcher(monitor)
+        acq = td._default_runtime.acquisition_queue
 
         result = td._evaluate_safety()
 
         assert result is False
-        td.imaging_queue.clear.assert_not_called()
+        acq.clear.assert_not_called()
 
     def test_queue_stop_does_not_clear_imaging_queue(self):
         monitor = SafetyMonitor(MagicMock(), [_StubCheck("hw", SafetyAction.QUEUE_STOP)])
         td = _make_task_dispatcher(monitor)
+        acq = td._default_runtime.acquisition_queue
 
         result = td._evaluate_safety()
 
         assert result is True
-        td.imaging_queue.clear.assert_not_called()
+        acq.clear.assert_not_called()
 
     def test_emergency_recovery_then_re_emergency_clears_again(self):
         check = _StubCheck("hw", SafetyAction.EMERGENCY)
         monitor = SafetyMonitor(MagicMock(), [check])
         td = _make_task_dispatcher(monitor)
+        acq = td._default_runtime.acquisition_queue
 
         td._evaluate_safety()
-        td.imaging_queue.clear.assert_called_once()
-        td.imaging_queue.clear.reset_mock()
+        acq.clear.assert_called_once()
+        acq.clear.reset_mock()
 
         check._action = SafetyAction.SAFE
         td._evaluate_safety()
 
         check._action = SafetyAction.EMERGENCY
         td._evaluate_safety()
-        td.imaging_queue.clear.assert_called_once()
+        acq.clear.assert_called_once()
 
     def test_emergency_calls_abort_slew(self):
         monitor = SafetyMonitor(MagicMock(), [_StubCheck("hw", SafetyAction.EMERGENCY)])

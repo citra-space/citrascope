@@ -4,7 +4,7 @@ Tracks sun altitude to determine when it is dark enough to observe, and
 orchestrates startup actions (unpark, autofocus) and shutdown actions (drain
 queues, park) based on configurable ``do_*`` switches.
 
-The ``update()`` method is called from the ``TaskManager.poll_tasks`` loop
+The ``update()`` method is called from the ``TaskDispatcher.poll_tasks`` loop
 every 15 seconds.  It recomputes the session state and triggers actions
 as needed — no additional threads.
 """

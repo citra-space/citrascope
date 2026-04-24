@@ -1,0 +1,13 @@
+<!-- Sensor picker — shown only when 2+ sensors are registered -->
+<div class="mb-3" x-show="$store.citrasense.showSensorSwitcher">
+    <label class="form-label small text-muted">Sensor</label>
+    <div class="d-flex flex-wrap gap-2">
+        <template x-for="sensor in $store.citrasense.sensors" :key="sensor.id">
+            <button type="button" class="btn btn-sm"
+                    :class="sensor.id === $store.citrasense.activeSensorId ? 'btn-primary' : 'btn-outline-secondary'"
+                    @click="$store.citrasense.activeSensorId = sensor.id"
+                    x-text="sensor.name">
+            </button>
+        </template>
+    </div>
+</div>

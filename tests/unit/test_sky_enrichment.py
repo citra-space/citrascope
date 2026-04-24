@@ -103,9 +103,9 @@ def _task(sat_id: str, start_offset_s: int = 60, duration_s: int = 30, *, task_i
 def _make_daemon(*, tasks: list[Any], location: dict | None, elsets: list[dict]) -> Any:
     """Stub daemon exposing just the surface get_web_tasks reads."""
     cache = _StubElsetCache(elsets)
-    task_manager = SimpleNamespace(get_tasks_snapshot=lambda exclude_active=False: list(tasks))
+    task_dispatcher = SimpleNamespace(get_tasks_snapshot=lambda exclude_active=False: list(tasks))
     return SimpleNamespace(
-        task_manager=task_manager,
+        task_dispatcher=task_dispatcher,
         elset_cache=cache,
         location_service=_StubLocationService(location),
     )
@@ -386,7 +386,7 @@ def test_evicts_memo_for_tasks_no_longer_in_queue():
 
 def test_get_web_tasks_returns_empty_when_daemon_not_ready():
     assert get_web_tasks(None, _make_status()) == []
-    assert get_web_tasks(SimpleNamespace(task_manager=None), _make_status()) == []
+    assert get_web_tasks(SimpleNamespace(task_dispatcher=None), _make_status()) == []
 
 
 def test_propagate_static_passes_per_sample_gast_override(monkeypatch):

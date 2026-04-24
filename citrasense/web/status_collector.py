@@ -20,6 +20,18 @@ class StatusCollector:
     def __init__(self, daemon: Any) -> None:
         self.daemon = daemon
 
+    def _resolve_telescope(self):
+        """Return (sensor, runtime, adapter) for the first telescope, or (None, None, None)."""
+        sm = getattr(self.daemon, "sensor_manager", None)
+        td = getattr(self.daemon, "task_dispatcher", None)
+        if not sm:
+            return None, None, None
+        sensor = sm.first_of_type("telescope")
+        if sensor is None:
+            return None, None, None
+        runtime = td.get_runtime(sensor.sensor_id) if td else None
+        return sensor, runtime, sensor.adapter
+
     def collect(self, status: SystemStatus) -> None:
         """Update `status` in-place from the daemon's current state."""
         if not self.daemon:
@@ -38,11 +50,21 @@ class StatusCollector:
         try:
             status.hardware_adapter = self.daemon.settings.hardware_adapter
 
-            if hasattr(self.daemon, "hardware_adapter") and self.daemon.hardware_adapter:
-                adapter = self.daemon.hardware_adapter
+            _sensor, runtime, adapter = self._resolve_telescope()
+
+            # Build per-sensor metadata for the sensors dict
+            sm = getattr(self.daemon, "sensor_manager", None)
+            if sm:
+                for s in sm:
+                    status.sensors[s.sensor_id] = {
+                        "type": s.sensor_type,
+                        "connected": s.is_connected(),
+                        "name": getattr(s, "name", s.sensor_id),
+                    }
+
+            if adapter:
                 mount = adapter.mount
 
-                # Check telescope connection status
                 try:
                     status.telescope_connected = adapter.is_telescope_connected()
                     if status.telescope_connected:
@@ -69,7 +91,6 @@ class StatusCollector:
                     status.mount_slewing = False
                 _mark("hw.telescope")
 
-                # Check camera connection status
                 try:
                     status.camera_connected = adapter.is_camera_connected()
                     camera = adapter.camera
@@ -82,14 +103,12 @@ class StatusCollector:
                     status.camera_temperature = None
                 _mark("hw.camera")
 
-                # Check adapter capabilities
                 try:
                     status.supports_direct_camera_control = adapter.supports_direct_camera_control()
                 except Exception:
                     status.supports_direct_camera_control = False
 
                 status.supports_direct_mount_control = mount is not None and status.telescope_connected
-
                 status.supports_autofocus = adapter.supports_autofocus()
                 status.supports_hardware_safety_monitor = adapter.supports_hardware_safety_monitor
                 _mark("hw.capabilities")
@@ -106,7 +125,6 @@ class StatusCollector:
                     status.current_filter_name = None
                 _mark("hw.filter")
 
-                # Check focuser status
                 focuser = adapter.focuser
                 if focuser is not None and focuser.is_connected():
                     status.focuser_connected = True
@@ -144,21 +162,23 @@ class StatusCollector:
                     status.mount_overhead_limit = o_limit
                 _mark("hw.mount_state")
 
-            if hasattr(self.daemon, "task_manager") and self.daemon.task_manager:
-                task_manager = self.daemon.task_manager
-                status.current_task = task_manager.current_task_id
-                status.mount_homing = (
-                    task_manager.homing_manager.is_running() or task_manager.homing_manager.is_requested()
-                )
-                status.autofocus_requested = task_manager.autofocus_manager.is_requested()
-                status.autofocus_running = task_manager.autofocus_manager.is_running()
-                status.autofocus_progress = task_manager.autofocus_manager.progress
+            # Task dispatcher + per-sensor runtime managers
+            td = getattr(self.daemon, "task_dispatcher", None)
+            if td:
+                status.current_task = td.current_task_id
+                status.tasks_pending = td.pending_task_count
+
+            if runtime:
+                status.mount_homing = runtime.homing_manager.is_running() or runtime.homing_manager.is_requested()
+                status.autofocus_requested = runtime.autofocus_manager.is_requested()
+                status.autofocus_running = runtime.autofocus_manager.is_running()
+                status.autofocus_progress = runtime.autofocus_manager.progress
                 status.autofocus_points = [
-                    {"pos": p, "hfr": h, "filter": f} for p, h, f in task_manager.autofocus_manager.points
+                    {"pos": p, "hfr": h, "filter": f} for p, h, f in runtime.autofocus_manager.points
                 ]
-                status.autofocus_filter_results = task_manager.autofocus_manager.filter_results
-                status.autofocus_last_result = task_manager.autofocus_manager.last_result
-                hfr_hist = task_manager.autofocus_manager.hfr_history
+                status.autofocus_filter_results = runtime.autofocus_manager.filter_results
+                status.autofocus_last_result = runtime.autofocus_manager.last_result
+                hfr_hist = runtime.autofocus_manager.hfr_history
                 status.hfr_history = [{"hfr": h, "ts": t, "filter": f} for h, t, f in hfr_hist]
                 status.last_hfr_median = hfr_hist[-1][0] if hfr_hist else None
                 if self.daemon.settings:
@@ -166,17 +186,17 @@ class StatusCollector:
                     status.hfr_increase_percent = self.daemon.settings.autofocus_hfr_increase_percent
                     status.hfr_refocus_enabled = self.daemon.settings.autofocus_on_hfr_increase_enabled
                     status.hfr_sample_window = self.daemon.settings.autofocus_hfr_sample_window
-                status.alignment_requested = task_manager.alignment_manager.is_requested()
-                status.alignment_running = task_manager.alignment_manager.is_running()
-                status.alignment_progress = task_manager.alignment_manager.progress
-                status.pointing_calibration_running = task_manager.alignment_manager.is_calibrating()
-                status.pointing_calibration_progress = task_manager.alignment_manager.calibration_progress
-                status.tasks_pending = task_manager.pending_task_count
+                status.alignment_requested = runtime.alignment_manager.is_requested()
+                status.alignment_running = runtime.alignment_manager.is_running()
+                status.alignment_progress = runtime.alignment_manager.progress
+                status.pointing_calibration_running = runtime.alignment_manager.is_calibrating()
+                status.pointing_calibration_progress = runtime.alignment_manager.calibration_progress
 
+            if td:
                 busy_reasons: list[str] = []
-                if task_manager.is_processing_active():
+                if td.is_processing_active():
                     busy_reasons.append("processing")
-                if not task_manager.imaging_queue.is_idle():
+                if runtime and not runtime.acquisition_queue.is_idle():
                     busy_reasons.append("imaging")
                 if status.alignment_running:
                     busy_reasons.append("alignment")
@@ -189,24 +209,17 @@ class StatusCollector:
                 status.system_busy = bool(busy_reasons)
                 status.system_busy_reason = ", ".join(busy_reasons)
 
-            _mark("task_manager")
+            _mark("task_dispatcher")
 
-            # Get autofocus timing information
+            # Autofocus timing
             if self.daemon.settings:
                 settings = self.daemon.settings
                 status.last_autofocus_timestamp = settings.last_autofocus_timestamp
                 status.last_alignment_timestamp = settings.last_alignment_timestamp
                 status.autofocus_target_name = _resolve_autofocus_target_name(settings)
 
-                # Calculate next autofocus time (delegates mode-aware logic to AutofocusManager)
-                if (
-                    hasattr(self.daemon, "task_manager")
-                    and self.daemon.task_manager
-                    and hasattr(self.daemon.task_manager, "autofocus_manager")
-                ):
-                    status.next_autofocus_minutes = (
-                        self.daemon.task_manager.autofocus_manager.get_next_autofocus_minutes()
-                    )
+                if runtime and hasattr(runtime, "autofocus_manager"):
+                    status.next_autofocus_minutes = runtime.autofocus_manager.get_next_autofocus_minutes()
                 elif settings.scheduled_autofocus_enabled:
                     last_ts = settings.last_autofocus_timestamp
                     interval_minutes = settings.autofocus_interval_minutes
@@ -221,16 +234,14 @@ class StatusCollector:
 
             _mark("autofocus")
 
-            # Get time sync status from time monitor
+            # Time sync status
             if hasattr(self.daemon, "time_monitor") and self.daemon.time_monitor:
                 health = self.daemon.time_monitor.get_current_health()
                 status.time_health = health.to_dict() if health else None
             else:
-                # Time monitoring not initialized yet
                 status.time_health = None
 
-            # Get GPS status from both sources separately
-            # Use allow_blocking=False to prevent blocking the async event loop
+            # GPS status
             if hasattr(self.daemon, "location_service") and self.daemon.location_service:
                 gpsd_fix = self.daemon.location_service.get_gpsd_fix(allow_blocking=False)
                 status.gpsd_fix = _gps_fix_to_dict(gpsd_fix) if gpsd_fix else None
@@ -241,13 +252,12 @@ class StatusCollector:
                 status.gpsd_fix = None
                 status.adapter_gps = None
 
-            # Get ground station information from daemon (available after API validation)
+            # Ground station
             if hasattr(self.daemon, "ground_station") and self.daemon.ground_station:
                 gs_record = self.daemon.ground_station
                 gs_id = gs_record.get("id")
                 gs_name = gs_record.get("name", "Unknown")
 
-                # Build the URL based on the API host (dev vs prod)
                 api_host = self.daemon.settings.host
                 base_url = DEV_APP_URL if "dev." in api_host else PROD_APP_URL
 
@@ -258,8 +268,7 @@ class StatusCollector:
                 status.ground_station_longitude = gs_record.get("longitude")
                 status.ground_station_altitude = gs_record.get("altitude")
 
-            # Resolve active operating location from data already fetched above
-            # (avoids calling get_current_location() which can block on subprocess)
+            # Resolve active operating location
             best_gps = status.gpsd_fix if status.gpsd_fix and status.gpsd_fix.get("is_strong") else None
             if not best_gps and status.adapter_gps and status.adapter_gps.get("is_strong"):
                 best_gps = status.adapter_gps
@@ -282,14 +291,13 @@ class StatusCollector:
 
             _mark("time_gps_location")
 
-            # Update task processing state
-            if hasattr(self.daemon, "task_manager") and self.daemon.task_manager:
-                status.processing_active = self.daemon.task_manager.is_processing_active()
-                status.automated_scheduling = self.daemon.task_manager.automated_scheduling
+            # Task processing state
+            if td:
+                status.processing_active = td.is_processing_active()
+                status.automated_scheduling = td.automated_scheduling
 
-                # Observing session / self-tasking status
-                osm = self.daemon.task_manager.observing_session_manager
-                stm = self.daemon.task_manager.self_tasking_manager
+                osm = td.observing_session_manager
+                stm = td.self_tasking_manager
                 if osm:
                     sd = osm.status_dict()
                     status.observing_session_state = sd.get("observing_session_state", "daytime")
@@ -309,37 +317,34 @@ class StatusCollector:
 
             _mark("session")
 
-            # Merge hardware + processor missing-dep issues into one list.
-            # Hardware is declarative per-device; processors are a small fixed
-            # cast checked imperatively at daemon startup (see startup_checks.py).
+            # Missing dependencies
             status.missing_dependencies = []
-            if getattr(self.daemon, "hardware_adapter", None):
+            if adapter:
                 try:
-                    status.missing_dependencies.extend(self.daemon.hardware_adapter.get_missing_dependencies())
+                    status.missing_dependencies.extend(adapter.get_missing_dependencies())
                 except Exception as e:
                     CITRASENSE_LOGGER.debug(f"Could not read hardware missing dependencies: {e}")
             status.missing_dependencies.extend(getattr(self.daemon, "_processor_dep_issues", []) or [])
 
-            # Get list of active processors
+            # Active processors
             if hasattr(self.daemon, "processor_registry") and self.daemon.processor_registry:
                 status.active_processors = [p.name for p in self.daemon.processor_registry.processors]
             else:
                 status.active_processors = []
 
-            # Get tasks by pipeline stage
-            if hasattr(self.daemon, "task_manager") and self.daemon.task_manager:
-                status.tasks_by_stage = self.daemon.task_manager.get_tasks_by_stage()
+            # Tasks by pipeline stage
+            if td:
+                status.tasks_by_stage = td.get_tasks_by_stage()
             else:
                 status.tasks_by_stage = None
 
-            # Collect lifetime pipeline stats from queues, processor registry, and task manager
-            if hasattr(self.daemon, "task_manager") and self.daemon.task_manager:
-                tm = self.daemon.task_manager
+            # Lifetime pipeline stats
+            if td and runtime:
                 status.pipeline_stats = {
-                    "imaging": tm.imaging_queue.get_stats(),
-                    "processing": tm.processing_queue.get_stats(),
-                    "uploading": tm.upload_queue.get_stats(),
-                    "tasks": tm.get_task_stats(),
+                    "imaging": runtime.acquisition_queue.get_stats(),
+                    "processing": runtime.processing_queue.get_stats(),
+                    "uploading": runtime.upload_queue.get_stats(),
+                    "tasks": td.get_task_stats(),
                 }
             else:
                 status.pipeline_stats = None
@@ -359,7 +364,7 @@ class StatusCollector:
             else:
                 status.safety_status = None
 
-            # Elset cache health for satellite matching status
+            # Elset cache health
             if hasattr(self.daemon, "elset_cache") and self.daemon.elset_cache:
                 status.elset_health = self.daemon.elset_cache.get_health()
             else:
@@ -367,7 +372,7 @@ class StatusCollector:
 
             _mark("safety_elset")
 
-            # Latest annotated task image for the Optics pane
+            # Latest annotated task image
             ann_path = getattr(self.daemon, "latest_annotated_image_path", None)
             if ann_path and Path(ann_path).exists():
                 mtime_ns = Path(ann_path).stat().st_mtime_ns
@@ -376,23 +381,12 @@ class StatusCollector:
                 status.latest_task_image_url = None
 
             # Calibration status
-            status.calibration_status = self._build_calibration_status()
+            status.calibration_status = self._build_calibration_status(adapter, runtime)
 
             # Pointing model status
-            adapter = self.daemon.hardware_adapter
             status.pointing_model = adapter.get_pointing_model_status() if adapter else None
             status.fov_short_deg = adapter.observed_fov_short_deg if adapter else None
 
-            # User-defined "won't observe below this" elevation from the
-            # telescope record on the Citra backend.  Different from the mount's
-            # hardware altitude limit; both can be set independently.  Used by
-            # the Sky compass on the monitoring page to color targets that fall
-            # under the operator's preferred floor.
-            #
-            # Always overwrite so a disappearing telescope_record clears the
-            # previous value rather than leaving the UI to color against a
-            # stale floor.  Parse defensively: the outer try/except would
-            # otherwise abort the whole collect() cycle on a single bad field.
             status.telescope_min_elevation = None
             if self.daemon.telescope_record:
                 min_el = self.daemon.telescope_record.get("minElevation")
@@ -402,7 +396,7 @@ class StatusCollector:
                     except (TypeError, ValueError):
                         pass
 
-            # Config health: compare server telescope record vs hardware + plate solve
+            # Config health
             if self.daemon.telescope_record and adapter:
                 from citrasense.hardware.config_health import assess_config_health
 
@@ -431,16 +425,15 @@ class StatusCollector:
         except Exception:
             CITRASENSE_LOGGER.exception("Error updating status")
 
-    def _build_calibration_status(self) -> dict[str, Any] | None:
+    def _build_calibration_status(self, adapter: Any, runtime: Any) -> dict[str, Any] | None:
         """Build calibration status dict for SystemStatus."""
         if not self.daemon:
             return None
         lib = getattr(self.daemon, "calibration_library", None)
-        hw = self.daemon.hardware_adapter
-        if not lib or not hw or not hw.supports_direct_camera_control():
+        if not lib or not adapter or not adapter.supports_direct_camera_control():
             return None
 
-        camera = hw.camera
+        camera = adapter.camera
         if not camera:
             return None
 
@@ -455,9 +448,9 @@ class StatusCollector:
         read_mode = profile.read_mode
 
         filter_name = ""
-        filter_pos = hw.get_filter_position() if hasattr(hw, "get_filter_position") else None
-        if filter_pos is not None and hasattr(hw, "filter_map"):
-            fdata = hw.filter_map.get(filter_pos, {})
+        filter_pos = adapter.get_filter_position() if hasattr(adapter, "get_filter_position") else None
+        if filter_pos is not None and hasattr(adapter, "filter_map"):
+            fdata = adapter.filter_map.get(filter_pos, {})
             filter_name = fdata.get("name", "")
 
         has_bias = lib.get_master_bias(cam_id, gain, binning, read_mode) is not None
@@ -479,9 +472,7 @@ class StatusCollector:
         if filter_name and not has_flat:
             missing.append(f"flat ({filter_name})")
 
-        # CalibrationManager state
-        tm = self.daemon.task_manager
-        cal_mgr = tm.calibration_manager if tm else None
+        cal_mgr = runtime.calibration_manager if runtime else None
         capture_running = cal_mgr.is_running() if cal_mgr else False
         capture_requested = cal_mgr.is_requested() if cal_mgr else False
         capture_progress = cal_mgr.get_progress() if cal_mgr else {}

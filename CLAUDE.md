@@ -103,7 +103,7 @@ The NINA adapter uses a **WebSocket event listener** (`nina/event_listener.py`) 
 
 ### Work queues
 
-Tasks flow through three serial queues owned by a **SensorRuntime**: **AcquisitionQueue** → **ProcessingQueue** → **UploadQueue**. Each has background worker threads. Use `queue.is_idle()` to check if a queue has pending work. The **TaskDispatcher** sits above runtimes handling API polling, task scheduling (heap), routing tasks to the right runtime, safety evaluation, and stage tracking. It exposes web-compat facade properties (`imaging_queue`, `autofocus_manager`, etc.) that delegate to the default runtime so existing web routes work unchanged.
+Tasks flow through three serial queues owned by a **SensorRuntime**: **AcquisitionQueue** → **ProcessingQueue** → **UploadQueue**. Each has background worker threads. Use `queue.is_idle()` to check if a queue has pending work. The **TaskDispatcher** sits above runtimes handling API polling, task scheduling (heap), routing tasks to the right runtime, safety evaluation, and stage tracking. Use `task_dispatcher.get_runtime(sensor_id)` to resolve a sensor's runtime.
 
 ### Web UI
 
@@ -113,7 +113,34 @@ Tasks flow through three serial queues owned by a **SensorRuntime**: **Acquisiti
 - Real-time updates via WebSocket at `/ws` (`WebLogHandler` broadcasts logs to connected clients)
 - Templates in `web/templates/` (Jinja2 partials prefixed with `_`)
 - The web server runs in a **daemon thread** with its own event loop (`web/server.py`). Use thread-safe mechanisms when accessing daemon state from web handlers. The daemon only calls `web_server.start()` — all web complexity stays in `web/server.py`.
-- **Toast notifications**: Use `web_server.send_toast(message, type, id)` from daemon threads to push Bootstrap toasts to the browser. `type` is `"success"`, `"info"`, `"warning"`, or `"danger"`. `danger`/`warning` toasts persist until dismissed; `success`/`info` auto-hide. Pass an `id` to deduplicate (only one toast with that id shown at a time). Wire via an `on_toast` callback attribute — see `TaskManager.on_toast` and `AutofocusManager.on_toast` for the pattern. **Use toasts for safety-critical events** so operators who return later see what happened.
+- **Toast notifications**: Use `web_server.send_toast(message, type, id)` from daemon threads to push Bootstrap toasts to the browser. `type` is `"success"`, `"info"`, `"warning"`, or `"danger"`. `danger`/`warning` toasts persist until dismissed; `success`/`info` auto-hide. Pass an `id` to deduplicate (only one toast with that id shown at a time). Wire via an `on_toast` callback attribute — see `TaskDispatcher.on_toast` and `AutofocusManager.on_toast` for the pattern. **Use toasts for safety-critical events** so operators who return later see what happened.
+
+#### Route structure
+
+Sensor-specific routes are namespaced under `/api/sensors/{sensor_id}/...`:
+- `/api/sensors` — list all registered sensors
+- `/api/sensors/{id}` — sensor detail, connect/disconnect
+- `/api/sensors/{id}/mount/...` — mount control
+- `/api/sensors/{id}/camera/...` — camera capture/preview
+- `/api/sensors/{id}/filters/...` — filter management
+- `/api/sensors/{id}/focuser/...` — focuser movement
+- `/api/sensors/{id}/autofocus` — autofocus trigger/cancel/presets
+- `/api/sensors/{id}/alignment` — alignment trigger/cancel
+- `/api/sensors/{id}/calibration/...` — calibration library/capture
+- `/api/sensors/{id}/safety/cable-wrap/reset` — per-sensor safety
+
+Site-level routes remain at `/api/...` (e.g., `/api/emergency-stop`, `/api/tasks/...`, `/api/config`).
+
+Route handlers resolve sensors via `get_sensor_context(ctx, sensor_id)` from `web/helpers.py`, which returns `(sensor, runtime)` or raises 404/503. Hardware access goes through `sensor.adapter`, managers through `runtime.*_manager`.
+
+#### Monitoring layout (3 tiers)
+
+The monitoring tab is structured in three collapsible tiers:
+1. **Site** — ground station, location, time health, safety summary
+2. **Tasks & Queue** — robotic session, active task pipeline, scheduled tasks
+3. **Sensor** — sensor switcher (pill tabs, shown when 2+ sensors), telescope + optics panels
+
+The Alpine store (`$store.citrasense`) holds `sensors`, `activeSensorId`, and `tierCollapse` state. Frontend API calls use `sensorApiBase` (computed getter) to prefix sensor-scoped requests.
 
 ### Adding a new setting
 

@@ -110,6 +110,121 @@
                 </template>
             </div>
 
+            <!-- ═══════════════ Tier 1: Site ═══════════════ -->
+            <div class="mb-3">
+                <div class="d-flex align-items-center gap-2 mb-2 small text-muted"
+                     role="button" @click="$store.citrasense.tierCollapse.site = !$store.citrasense.tierCollapse.site"
+                     style="user-select: none;">
+                    <i class="bi" :class="$store.citrasense.tierCollapse.site ? 'bi-chevron-right' : 'bi-chevron-down'"></i>
+                    <span class="fw-semibold text-uppercase" style="letter-spacing: .05em;">Site</span>
+                </div>
+                <div x-show="!$store.citrasense.tierCollapse.site" x-collapse>
+                    <div class="row g-3 mb-0">
+                        <!-- Ground Station -->
+                        <div class="col-6 col-md-3">
+                            <div class="card bg-dark text-light border-secondary h-100">
+                                <div class="card-body py-2 px-3">
+                                    <div class="text-muted small">Ground Station</div>
+                                    <div>
+                                        <template x-if="$store.citrasense.status?.ground_station_name && $store.citrasense.status?.ground_station_url">
+                                            <a :href="$store.citrasense.status.ground_station_url" target="_blank"
+                                               class="ground-station-link"
+                                               x-text="$store.citrasense.status.ground_station_name + ' \u2197'"></a>
+                                        </template>
+                                        <template x-if="$store.citrasense.status?.ground_station_name && !$store.citrasense.status?.ground_station_url">
+                                            <span x-text="$store.citrasense.status.ground_station_name"></span>
+                                        </template>
+                                        <template x-if="!$store.citrasense.status?.ground_station_name">
+                                            <span class="text-muted">-</span>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Location -->
+                        <div class="col-6 col-md-3"
+                             x-data="{
+                                 get lat() { return $store.citrasense.status?.location_latitude; },
+                                 get lon() { return $store.citrasense.status?.location_longitude; }
+                             }">
+                            <div class="card bg-dark text-light border-secondary h-100">
+                                <div class="card-body py-2 px-3">
+                                    <div class="text-muted small">Location</div>
+                                    <div>
+                                        <template x-if="lat != null">
+                                            <a :href="'https://www.google.com/maps/search/?api=1&query=' + lat + ',' + lon"
+                                               target="_blank" rel="noopener noreferrer"
+                                               class="font-monospace small text-body text-decoration-none"
+                                               style="border-bottom: 1px dashed var(--bs-secondary);"
+                                               :title="'Open ' + lat.toFixed(5) + ', ' + lon.toFixed(5) + ' in Google Maps'"
+                                               x-text="$store.citrasense.formatCompactLocation($store.citrasense.status)"></a>
+                                        </template>
+                                        <template x-if="lat == null">
+                                            <span class="text-muted">-</span>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Time Health -->
+                        <div class="col-6 col-md-3">
+                            <div class="card bg-dark text-light border-secondary h-100">
+                                <div class="card-body py-2 px-3">
+                                    <div class="text-muted small">Time Health</div>
+                                    <div x-data="{ get h() { return $store.citrasense.status?.time_health; } }">
+                                        <template x-if="h">
+                                            <span :class="{
+                                                'text-success': h.status === 'ok',
+                                                'text-warning': h.status === 'warning',
+                                                'text-danger':  h.status === 'error'
+                                            }">
+                                                <i class="bi bi-clock me-1"></i>
+                                                <span x-text="h.status === 'ok' ? (h.offset_ms?.toFixed(0) + ' ms') : h.status"></span>
+                                            </span>
+                                        </template>
+                                        <template x-if="!h">
+                                            <span class="text-muted">-</span>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Safety Summary -->
+                        <div class="col-6 col-md-3">
+                            <div class="card bg-dark text-light border-secondary h-100">
+                                <div class="card-body py-2 px-3">
+                                    <div class="text-muted small">Safety</div>
+                                    <div x-data="{ get s() { return $store.citrasense.status?.safety; } }">
+                                        <template x-if="s">
+                                            <span :class="{
+                                                'text-success': s.safe,
+                                                'text-danger': !s.safe
+                                            }">
+                                                <i class="bi" :class="s.safe ? 'bi-shield-check' : 'bi-shield-exclamation'"></i>
+                                                <span x-text="s.safe ? 'OK' : (s.reason || 'Unsafe')"></span>
+                                            </span>
+                                        </template>
+                                        <template x-if="!s">
+                                            <span class="text-muted">-</span>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════════ Tier 2: Tasks & Queue ═══════════════ -->
+            <div class="mb-3">
+                <div class="d-flex align-items-center gap-2 mb-2 small text-muted"
+                     role="button" @click="$store.citrasense.tierCollapse.tasks = !$store.citrasense.tierCollapse.tasks"
+                     style="user-select: none;">
+                    <i class="bi" :class="$store.citrasense.tierCollapse.tasks ? 'bi-chevron-right' : 'bi-chevron-down'"></i>
+                    <span class="fw-semibold text-uppercase" style="letter-spacing: .05em;">Tasks &amp; Queue</span>
+                </div>
+                <div x-show="!$store.citrasense.tierCollapse.tasks" x-collapse>
+
             <!-- ═══════════════ Robotic Session ═══════════════ -->
             <div class="card bg-dark text-light border-secondary mb-3"
                  x-show="$store.citrasense.status?.observing_session_enabled"
@@ -245,7 +360,35 @@
                 </div>
             </div>
 
-            <!-- ═══════════════ Main Cards Row ═══════════════ -->
+                </div> <!-- /Tier 2 x-collapse -->
+            </div> <!-- /Tier 2 -->
+
+            <!-- ═══════════════ Tier 3: Sensor Panels ═══════════════ -->
+            <div class="mb-3">
+                <div class="d-flex align-items-center gap-2 mb-2 small text-muted"
+                     role="button" @click="$store.citrasense.tierCollapse.sensor = !$store.citrasense.tierCollapse.sensor"
+                     style="user-select: none;">
+                    <i class="bi" :class="$store.citrasense.tierCollapse.sensor ? 'bi-chevron-right' : 'bi-chevron-down'"></i>
+                    <span class="fw-semibold text-uppercase" style="letter-spacing: .05em;">Sensor</span>
+                    <span class="text-muted ms-1" x-show="$store.citrasense.activeSensor"
+                          x-text="$store.citrasense.activeSensor?.name"></span>
+                </div>
+                <div x-show="!$store.citrasense.tierCollapse.sensor" x-collapse>
+
+                    <!-- Sensor switcher pill tabs (only when 2+ sensors) -->
+                    <div class="mb-3" x-show="$store.citrasense.showSensorSwitcher">
+                        <div class="d-flex flex-wrap gap-2">
+                            <template x-for="sensor in $store.citrasense.sensors" :key="sensor.id">
+                                <button class="btn btn-sm"
+                                        :class="sensor.id === $store.citrasense.activeSensorId ? 'btn-primary' : 'btn-outline-secondary'"
+                                        @click="$store.citrasense.activeSensorId = sensor.id"
+                                        x-text="sensor.name">
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+
+            <!-- Main Cards Row -->
             <div class="row g-3 mb-3">
 
                 <!-- ── Telescope Card ── -->
@@ -253,45 +396,6 @@
                     <div class="card bg-dark text-light border-secondary h-100">
                         <div class="card-header"><i class="bi bi-crosshair me-1"></i>Telescope</div>
                         <div class="card-body">
-
-                            <!-- Ground Station -->
-                            <div class="row mb-2">
-                                <div class="col-6 fw-semibold">Ground Station</div>
-                                <div class="col-6">
-                                    <template x-if="$store.citrasense.status?.ground_station_name && $store.citrasense.status?.ground_station_url">
-                                        <a :href="$store.citrasense.status.ground_station_url" target="_blank" class="ground-station-link" x-text="$store.citrasense.status.ground_station_name + ' \u2197'"></a>
-                                    </template>
-                                    <template x-if="$store.citrasense.status?.ground_station_name && !$store.citrasense.status?.ground_station_url">
-                                        <span x-text="$store.citrasense.status.ground_station_name"></span>
-                                    </template>
-                                    <template x-if="!$store.citrasense.status?.ground_station_name">
-                                        <span>-</span>
-                                    </template>
-                                </div>
-                            </div>
-
-                            <!-- Operating Location — click opens Google Maps in a new tab so
-                                 the operator can sanity-check where the scope thinks it is. -->
-                            <div class="row mb-2"
-                                 x-data="{
-                                     get lat() { return $store.citrasense.status?.location_latitude; },
-                                     get lon() { return $store.citrasense.status?.location_longitude; }
-                                 }">
-                                <div class="col-6 fw-semibold">Location</div>
-                                <div class="col-6">
-                                    <template x-if="lat != null">
-                                        <a :href="'https://www.google.com/maps/search/?api=1&query=' + lat + ',' + lon"
-                                           target="_blank" rel="noopener noreferrer"
-                                           class="font-monospace small text-body text-decoration-none"
-                                           style="border-bottom: 1px dashed var(--bs-secondary);"
-                                           :title="'Open ' + lat.toFixed(5) + ', ' + lon.toFixed(5) + ' in Google Maps'"
-                                           x-text="$store.citrasense.formatCompactLocation($store.citrasense.status)"></a>
-                                    </template>
-                                    <template x-if="lat == null">
-                                        <span>-</span>
-                                    </template>
-                                </div>
-                            </div>
 
                             <div class="row mb-2">
                                 <div class="col-6 fw-semibold">Adapter</div>
@@ -1168,9 +1272,14 @@
                 </div>
 
             </div>
+
+                </div> <!-- /Tier 3 x-collapse -->
+            </div> <!-- /Tier 3 -->
+
         </div>
 
         <div class="container">
+            <div x-show="!$store.citrasense.tierCollapse.tasks" x-collapse>
             <!-- Active Tasks Card with Pipeline Stages -->
             <div class="row g-3 mb-3">
                 <div class="col-12">
@@ -1434,6 +1543,7 @@
                     </div>
                 </div>
             </div>
+            </div> <!-- /Tier 2 tasks x-collapse -->
         </div>
 
         <!-- Fullscreen Preview Modal -->

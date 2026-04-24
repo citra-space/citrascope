@@ -5,9 +5,9 @@ new tasks, manages the scheduling heap, routes tasks to the appropriate
 :class:`~citrasense.sensors.sensor_runtime.SensorRuntime`, tracks task stages,
 handles safety evaluation, pause/resume, lifetime stats, and session managers.
 
-It exposes a backward-compatible facade so existing web routes (which access
-``daemon.task_manager.imaging_queue``, ``daemon.task_manager.autofocus_manager``,
-etc.) continue to work without modification.
+Web routes and the daemon resolve per-sensor hardware through
+``SensorManager`` / ``SensorRuntime`` directly; TaskDispatcher no longer
+exposes per-sensor facade properties.
 """
 
 from __future__ import annotations
@@ -104,6 +104,10 @@ class TaskDispatcher:
         """Phase 1: the single registered runtime."""
         return next(iter(self._runtimes.values()))
 
+    def get_runtime(self, sensor_id: str) -> SensorRuntime | None:
+        """Look up a registered runtime by *sensor_id*."""
+        return self._runtimes.get(sensor_id)
+
     def _runtime_for_task(self, task: Task) -> SensorRuntime | None:
         """Resolve the runtime responsible for this task."""
         if task.sensor_id and task.sensor_id in self._runtimes:
@@ -112,42 +116,6 @@ class TaskDispatcher:
             if rt.sensor_type == task.sensor_type:
                 return rt
         return self._default_runtime if self._runtimes else None
-
-    # ── Web-compat facade ──────────────────────────────────────────────
-    # Existing web routes access daemon.task_manager.<property>.
-    # These properties delegate to the default (phase 1: only) runtime.
-
-    @property
-    def imaging_queue(self):
-        return self._default_runtime.acquisition_queue
-
-    @property
-    def processing_queue(self):
-        return self._default_runtime.processing_queue
-
-    @property
-    def upload_queue(self):
-        return self._default_runtime.upload_queue
-
-    @property
-    def autofocus_manager(self):
-        return self._default_runtime.autofocus_manager
-
-    @property
-    def alignment_manager(self):
-        return self._default_runtime.alignment_manager
-
-    @property
-    def homing_manager(self):
-        return self._default_runtime.homing_manager
-
-    @property
-    def calibration_manager(self):
-        return self._default_runtime.calibration_manager
-
-    @calibration_manager.setter
-    def calibration_manager(self, value: Any) -> None:
-        self._default_runtime.calibration_manager = value
 
     # ── Session managers ───────────────────────────────────────────────
 
@@ -536,7 +504,7 @@ class TaskDispatcher:
             return True
 
         if action == SafetyAction.QUEUE_STOP:
-            if self.imaging_queue.is_idle() and triggered_check:
+            if self._default_runtime.acquisition_queue.is_idle() and triggered_check:
                 is_new = self._last_safety_action != SafetyAction.QUEUE_STOP
                 if is_new:
                     self.logger.warning("Executing safety action from %r (queue idle)", triggered_check.name)

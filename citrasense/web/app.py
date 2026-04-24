@@ -129,7 +129,7 @@ class CitraSenseWebApp:
         Always broadcasts when the daemon is ready (even an empty list) so
         the client can clear its table when the queue drains.
         """
-        if not self.daemon or not getattr(self.daemon, "task_manager", None):
+        if not self.daemon or not getattr(self.daemon, "task_dispatcher", None):
             return
         tasks = get_web_tasks(self.daemon, self.status)
         await self.connection_manager.broadcast({"type": "tasks", "data": tasks})

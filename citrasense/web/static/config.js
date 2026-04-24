@@ -175,7 +175,7 @@ async function loadConfiguration() {
 
             // Load autofocus presets before setting config so the select renders with options
             try {
-                const presetsResp = await fetch('/api/adapter/autofocus/presets');
+                const presetsResp = await fetch(`${store.sensorApiBase}/autofocus/presets`);
                 const presetsData = await presetsResp.json();
                 store.autofocusPresets = presetsData.presets || [];
             } catch (e) {
@@ -559,7 +559,7 @@ async function loadFilterConfig() {
     store.filterAdapterChangeMessageVisible = false;
 
     try {
-        const response = await fetch('/api/adapter/filters');
+        const response = await fetch(`${store.sensorApiBase}/filters`);
 
         if (response.status === 404 || response.status === 503) {
             store.filterConfigVisible = false;
@@ -634,7 +634,7 @@ async function saveModifiedFilters() {
 
     // Send single batch update
     try {
-        const response = await fetch('/api/adapter/filters/batch', {
+        const response = await fetch(`${store.sensorApiBase}/filters/batch`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -648,7 +648,7 @@ async function saveModifiedFilters() {
 
             // After batch update, sync to backend
             try {
-                const syncResponse = await fetch('/api/adapter/filters/sync', {
+                const syncResponse = await fetch(`${store.sensorApiBase}/filters/sync`, {
                     method: 'POST'
                 });
                 if (!syncResponse.ok) {
@@ -686,7 +686,7 @@ async function triggerAutofocus() {
 
     if (shouldCancel) {
         try {
-            const response = await fetch('/api/adapter/autofocus/cancel', {
+            const response = await fetch(`${store.sensorApiBase}/autofocus/cancel`, {
                 method: 'POST'
             });
             const data = await response.json();
@@ -707,7 +707,7 @@ async function triggerAutofocus() {
     store.isAutofocusing = true;
 
     try {
-        const response = await fetch('/api/adapter/autofocus', {
+        const response = await fetch(`${store.sensorApiBase}/autofocus`, {
             method: 'POST'
         });
 
@@ -742,7 +742,7 @@ async function triggerAlignment() {
 
     if (isCancel) {
         try {
-            const response = await fetch('/api/adapter/alignment/cancel', { method: 'POST' });
+            const response = await fetch(`${store.sensorApiBase}/alignment/cancel`, { method: 'POST' });
             const data = await response.json();
             if (response.ok && data.success) {
                 showToast('Alignment cancelled', 'info');
@@ -757,7 +757,7 @@ async function triggerAlignment() {
     }
 
     try {
-        const response = await fetch('/api/adapter/alignment', { method: 'POST' });
+        const response = await fetch(`${store.sensorApiBase}/alignment`, { method: 'POST' });
         const data = await response.json();
         if (response.ok) {
             showToast('Alignment queued', 'success');
@@ -777,7 +777,7 @@ async function manualSync(ra, dec) {
     }
 
     try {
-        const response = await fetch('/api/adapter/sync', {
+        const response = await fetch(`${store.sensorApiBase}/sync`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ra: parseFloat(ra), dec: parseFloat(dec) }),
@@ -798,8 +798,9 @@ async function manualSync(ra, dec) {
  * Initiate mount homing routine.
  */
 async function homeMount() {
+    const store = Alpine.store('citrasense');
     try {
-        const response = await fetch('/api/mount/home', { method: 'POST' });
+        const response = await fetch(`${store.sensorApiBase}/mount/home`, { method: 'POST' });
         const data = await response.json();
         if (response.ok) {
             showToast('Mount homing initiated', 'success');
@@ -816,8 +817,9 @@ async function homeMount() {
  * Trigger cable unwind to resolve cable wrap buildup.
  */
 async function triggerCableUnwind() {
+    const store = Alpine.store('citrasense');
     try {
-        const response = await fetch('/api/mount/unwind', { method: 'POST' });
+        const response = await fetch(`${store.sensorApiBase}/mount/unwind`, { method: 'POST' });
         const data = await response.json();
         if (response.ok) {
             showToast('Cable unwind started — monitor progress in the Telescope card', 'success');
@@ -834,8 +836,9 @@ async function triggerCableUnwind() {
  * Reset cable wrap counter to zero after operator verifies cables are straight.
  */
 async function resetCableWrap() {
+    const store = Alpine.store('citrasense');
     try {
-        const response = await fetch('/api/safety/cable-wrap/reset', { method: 'POST' });
+        const response = await fetch(`${store.sensorApiBase}/safety/cable-wrap/reset`, { method: 'POST' });
         const data = await response.json();
         if (response.ok) {
             showToast('Cable wrap counter reset to 0°', 'success');
@@ -893,7 +896,7 @@ async function changeFilterPosition(position) {
     if (wasLooping) store.stopFocusLoop();
 
     try {
-        const response = await fetch('/api/adapter/filter/set', {
+        const response = await fetch(`${store.sensorApiBase}/filter/set`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ position: parseInt(position) })
@@ -913,8 +916,9 @@ async function changeFilterPosition(position) {
 }
 
 async function moveFocuserRelative(steps) {
+    const store = Alpine.store('citrasense');
     try {
-        const response = await fetch('/api/focuser/move', {
+        const response = await fetch(`${store.sensorApiBase}/focuser/move`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ relative: parseInt(steps) })
@@ -930,8 +934,9 @@ async function moveFocuserRelative(steps) {
 }
 
 async function moveFocuserAbsolute(position) {
+    const store = Alpine.store('citrasense');
     try {
-        const response = await fetch('/api/focuser/move', {
+        const response = await fetch(`${store.sensorApiBase}/focuser/move`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ position: parseInt(position) })
@@ -949,8 +954,9 @@ async function moveFocuserAbsolute(position) {
 }
 
 async function abortFocuser() {
+    const store = Alpine.store('citrasense');
     try {
-        const response = await fetch('/api/focuser/abort', {
+        const response = await fetch(`${store.sensorApiBase}/focuser/abort`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         });
@@ -967,8 +973,9 @@ async function abortFocuser() {
 }
 
 async function mountMove(action, direction) {
+    const store = Alpine.store('citrasense');
     try {
-        const response = await fetch('/api/mount/move', {
+        const response = await fetch(`${store.sensorApiBase}/mount/move`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action, direction })
@@ -983,8 +990,9 @@ async function mountMove(action, direction) {
 }
 
 async function mountGoto(ra, dec) {
+    const store = Alpine.store('citrasense');
     try {
-        const response = await fetch('/api/mount/goto', {
+        const response = await fetch(`${store.sensorApiBase}/mount/goto`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ra: parseFloat(ra), dec: parseFloat(dec) })
@@ -1002,8 +1010,9 @@ async function mountGoto(ra, dec) {
 }
 
 async function mountSetTracking(enabled) {
+    const store = Alpine.store('citrasense');
     try {
-        const response = await fetch('/api/mount/tracking', {
+        const response = await fetch(`${store.sensorApiBase}/mount/tracking`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ enabled })
@@ -1023,8 +1032,9 @@ async function mountSetTracking(enabled) {
 }
 
 async function calibratePointingModel() {
+    const store = Alpine.store('citrasense');
     try {
-        const response = await fetch('/api/mount/pointing-model/calibrate', { method: 'POST' });
+        const response = await fetch(`${store.sensorApiBase}/pointing-model/calibrate`, { method: 'POST' });
         const data = await response.json();
         if (response.ok && data.success) {
             showToast('Pointing calibration started', 'success');
@@ -1038,8 +1048,9 @@ async function calibratePointingModel() {
 }
 
 async function resetPointingModel() {
+    const store = Alpine.store('citrasense');
     try {
-        const response = await fetch('/api/mount/pointing-model/reset', { method: 'POST' });
+        const response = await fetch(`${store.sensorApiBase}/pointing-model/reset`, { method: 'POST' });
         const data = await response.json();
         if (response.ok && data.success) {
             showToast('Pointing model reset', 'success');
@@ -1053,8 +1064,9 @@ async function resetPointingModel() {
 }
 
 async function cancelPointingCalibration() {
+    const store = Alpine.store('citrasense');
     try {
-        const response = await fetch('/api/mount/pointing-model/calibrate/cancel', { method: 'POST' });
+        const response = await fetch(`${store.sensorApiBase}/pointing-model/calibrate/cancel`, { method: 'POST' });
         const data = await response.json();
         if (response.ok && data.success) {
             showToast('Pointing calibration cancelled', 'success');

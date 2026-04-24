@@ -73,31 +73,31 @@ def mock_daemon(mock_settings):
     d.hardware_adapter.supports_autofocus.return_value = False
     d.hardware_adapter.get_missing_dependencies.return_value = []
     d.hardware_adapter.mount = None
-    d.task_manager = MagicMock()
-    d.task_manager.current_task_id = None
-    d.task_manager.autofocus_manager = MagicMock()
-    d.task_manager.autofocus_manager.is_requested.return_value = False
-    d.task_manager.autofocus_manager.is_running.return_value = False
-    d.task_manager.autofocus_manager.progress = ""
-    d.task_manager.autofocus_manager.get_next_autofocus_minutes.return_value = None
-    d.task_manager.alignment_manager = MagicMock()
-    d.task_manager.alignment_manager.is_requested.return_value = False
-    d.task_manager.alignment_manager.is_running.return_value = False
-    d.task_manager.alignment_manager.progress = ""
-    d.task_manager.is_processing_active.return_value = True
-    d.task_manager.automated_scheduling = False
-    d.task_manager.observing_session_manager = None
-    d.task_manager.self_tasking_manager = None
-    d.task_manager.get_tasks_by_stage.return_value = {}
-    d.task_manager.get_tasks_snapshot.return_value = []
-    d.task_manager.pending_task_count = 0
-    d.task_manager.imaging_queue = MagicMock()
-    d.task_manager.imaging_queue.get_stats.return_value = {"attempts": 0, "successes": 0, "permanent_failures": 0}
-    d.task_manager.processing_queue = MagicMock()
-    d.task_manager.processing_queue.get_stats.return_value = {"attempts": 0, "successes": 0, "permanent_failures": 0}
-    d.task_manager.upload_queue = MagicMock()
-    d.task_manager.upload_queue.get_stats.return_value = {"attempts": 0, "successes": 0, "permanent_failures": 0}
-    d.task_manager.get_task_stats.return_value = {}
+    d.task_dispatcher = MagicMock()
+    d.task_dispatcher.current_task_id = None
+    d.task_dispatcher.autofocus_manager = MagicMock()
+    d.task_dispatcher.autofocus_manager.is_requested.return_value = False
+    d.task_dispatcher.autofocus_manager.is_running.return_value = False
+    d.task_dispatcher.autofocus_manager.progress = ""
+    d.task_dispatcher.autofocus_manager.get_next_autofocus_minutes.return_value = None
+    d.task_dispatcher.alignment_manager = MagicMock()
+    d.task_dispatcher.alignment_manager.is_requested.return_value = False
+    d.task_dispatcher.alignment_manager.is_running.return_value = False
+    d.task_dispatcher.alignment_manager.progress = ""
+    d.task_dispatcher.is_processing_active.return_value = True
+    d.task_dispatcher.automated_scheduling = False
+    d.task_dispatcher.observing_session_manager = None
+    d.task_dispatcher.self_tasking_manager = None
+    d.task_dispatcher.get_tasks_by_stage.return_value = {}
+    d.task_dispatcher.get_tasks_snapshot.return_value = []
+    d.task_dispatcher.pending_task_count = 0
+    d.task_dispatcher.imaging_queue = MagicMock()
+    d.task_dispatcher.imaging_queue.get_stats.return_value = {"attempts": 0, "successes": 0, "permanent_failures": 0}
+    d.task_dispatcher.processing_queue = MagicMock()
+    d.task_dispatcher.processing_queue.get_stats.return_value = {"attempts": 0, "successes": 0, "permanent_failures": 0}
+    d.task_dispatcher.upload_queue = MagicMock()
+    d.task_dispatcher.upload_queue.get_stats.return_value = {"attempts": 0, "successes": 0, "permanent_failures": 0}
+    d.task_dispatcher.get_task_stats.return_value = {}
     d.processor_registry = MagicMock()
     d.processor_registry.processors = []
     d.processor_registry.get_all_processors.return_value = []
@@ -107,6 +107,32 @@ def mock_daemon(mock_settings):
     d.ground_station = None
     d.api_client = MagicMock()
     d.telescope_record = {"id": "tel-1", "name": "Test Scope"}
+
+    mock_sensor = MagicMock()
+    mock_sensor.sensor_id = "scope-0"
+    mock_sensor.sensor_type = "telescope"
+    mock_sensor.is_connected.return_value = True
+    mock_sensor.adapter = d.hardware_adapter
+    mock_sensor.name = "Test Scope"
+
+    mock_sm = MagicMock()
+    mock_sm.get_sensor.return_value = mock_sensor
+    mock_sm.first_of_type.return_value = mock_sensor
+    mock_sm.__iter__ = lambda self: iter([mock_sensor])
+    d.sensor_manager = mock_sm
+
+    mock_runtime = MagicMock()
+    mock_runtime.sensor_id = "scope-0"
+    mock_runtime.homing_manager = MagicMock()
+    mock_runtime.homing_manager.is_running.return_value = False
+    mock_runtime.homing_manager.is_requested.return_value = False
+    mock_runtime.alignment_manager = d.task_dispatcher.alignment_manager
+    mock_runtime.autofocus_manager = d.task_dispatcher.autofocus_manager
+    mock_runtime.acquisition_queue = d.task_dispatcher.imaging_queue
+    mock_runtime.processing_queue = d.task_dispatcher.processing_queue
+    mock_runtime.upload_queue = d.task_dispatcher.upload_queue
+    mock_runtime.calibration_manager = None
+    d.task_dispatcher.get_runtime.return_value = mock_runtime
     return d
 
 
@@ -169,43 +195,43 @@ def test_toggle_self_tasking_enable_cascades_observing_session(client, mock_daem
 
 def test_toggle_self_tasking_enable_cascades_scheduling(client, mock_daemon):
     """Enabling self-tasking should auto-enable scheduling on the server."""
-    mock_daemon.task_manager.automated_scheduling = False
+    mock_daemon.task_dispatcher.automated_scheduling = False
     mock_daemon.api_client.update_telescope_automated_scheduling.return_value = True
 
     resp = client.patch("/api/self-tasking", json={"enabled": True})
     assert resp.status_code == 200
 
     mock_daemon.api_client.update_telescope_automated_scheduling.assert_called_once_with("tel-1", True)
-    assert mock_daemon.task_manager.automated_scheduling is True
+    assert mock_daemon.task_dispatcher.automated_scheduling is True
 
 
 def test_toggle_self_tasking_enable_cascades_processing(client, mock_daemon):
     """Enabling self-tasking should auto-resume processing if paused."""
-    mock_daemon.task_manager.is_processing_active.return_value = False
+    mock_daemon.task_dispatcher.is_processing_active.return_value = False
 
     resp = client.patch("/api/self-tasking", json={"enabled": True})
     assert resp.status_code == 200
 
-    mock_daemon.task_manager.resume.assert_called_once()
+    mock_daemon.task_dispatcher.resume.assert_called_once()
     assert mock_daemon.settings.task_processing_paused is False
 
 
 def test_toggle_self_tasking_enable_skips_cascade_when_already_active(client, mock_daemon):
     """No cascade calls when scheduling, processing, and session are already active."""
     mock_daemon.settings.observing_session_enabled = True
-    mock_daemon.task_manager.automated_scheduling = True
-    mock_daemon.task_manager.is_processing_active.return_value = True
+    mock_daemon.task_dispatcher.automated_scheduling = True
+    mock_daemon.task_dispatcher.is_processing_active.return_value = True
 
     resp = client.patch("/api/self-tasking", json={"enabled": True})
     assert resp.status_code == 200
 
-    mock_daemon.task_manager.resume.assert_not_called()
+    mock_daemon.task_dispatcher.resume.assert_not_called()
     mock_daemon.api_client.update_telescope_automated_scheduling.assert_not_called()
 
 
 def test_toggle_self_tasking_enable_scheduling_failure_non_blocking(client, mock_daemon):
     """If the scheduling API call fails, self-tasking still enables."""
-    mock_daemon.task_manager.automated_scheduling = False
+    mock_daemon.task_dispatcher.automated_scheduling = False
     mock_daemon.api_client.update_telescope_automated_scheduling.side_effect = Exception("network error")
 
     resp = client.patch("/api/self-tasking", json={"enabled": True})
@@ -217,15 +243,15 @@ def test_toggle_self_tasking_disable_no_cascade(client, mock_daemon):
     """Disabling self-tasking should NOT touch scheduling, processing, or session."""
     mock_daemon.settings.self_tasking_enabled = True
     mock_daemon.settings.observing_session_enabled = True
-    mock_daemon.task_manager.automated_scheduling = True
-    mock_daemon.task_manager.is_processing_active.return_value = True
+    mock_daemon.task_dispatcher.automated_scheduling = True
+    mock_daemon.task_dispatcher.is_processing_active.return_value = True
 
     resp = client.patch("/api/self-tasking", json={"enabled": False})
     assert resp.status_code == 200
     assert mock_daemon.settings.self_tasking_enabled is False
     assert mock_daemon.settings.observing_session_enabled is True
 
-    mock_daemon.task_manager.resume.assert_not_called()
+    mock_daemon.task_dispatcher.resume.assert_not_called()
     mock_daemon.api_client.update_telescope_automated_scheduling.assert_not_called()
 
 
