@@ -15,7 +15,7 @@ Phase 1 contract
 * ``get_settings_schema`` forwards to the adapter class's classmethod (same
   API the web config form uses today).
 * :meth:`acquire` is wired in phase 4 (task-flow refactor). In phase 1 the
-  daemon still drives acquisition through ``TaskManager`` → telescope tasks
+  daemon still drives acquisition through ``TaskDispatcher`` → telescope tasks
   → ``self.hardware_adapter.*``, so calling ``acquire`` is a programming
   error and raises ``NotImplementedError``.
 * Streaming verbs raise ``NotImplementedError`` (this sensor is on-demand).
@@ -76,6 +76,7 @@ class TelescopeSensor(AbstractSensor):
         super().__init__(sensor_id=sensor_id)
         self.adapter = adapter
         self.adapter_key = adapter_key
+        self.citra_record: dict[str, Any] | None = None
         self._cable_wrap_check: CableWrapCheck | None = None
 
     # ── Factory ───────────────────────────────────────────────────────

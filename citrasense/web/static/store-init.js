@@ -48,11 +48,34 @@ function compareVersions(v1, v2) {
             // countdownText) read this so they re-render reactively without
             // each component running its own setInterval.
             now: Date.now(),
+
+            // Multi-sensor support
+            sensors: [],
+            sensorCollapse: {},
+
+            sensorApiBaseFor(sensorId) {
+                return sensorId
+                    ? `/api/sensors/${sensorId}`
+                    : '/api/sensors/_default';
+            },
+
+            // Config editing state
+            configSensorId: null,
+            get configSensorIndex() {
+                if (!this.config?.sensors) return 0;
+                const idx = this.config.sensors.findIndex(s => s.id === this.configSensorId);
+                return idx >= 0 ? idx : 0;
+            },
+            get configSensorStatus() {
+                const sid = this.configSensorId;
+                return sid ? (this.status?.sensors?.[sid] || {}) : {};
+            },
+
             config: {},
             apiEndpoint: 'production',
             hardwareAdapters: [], // [{value, label}]
             filters: {},
-            savedAdapter: null,
+            savedAdapters: {},
             enabledFilters: [],
             filterConfigVisible: false,
             filterNamesEditable: false,
@@ -81,6 +104,7 @@ function compareVersions(v1, v2) {
             isLooping: false,
             previewDataUrl: null,
             previewSource: '',
+            previewDataUrls: {},
             loopCount: 0,
             previewExposure: null,
             _lastTaskImageUrl: null,
@@ -102,9 +126,9 @@ function compareVersions(v1, v2) {
                 return Object.entries(grouped);
             },
 
-            telescopeTooltip() {
-                const s = this.status;
-                if (!s?.telescope_connected) return 'Telescope disconnected';
+            telescopeTooltip(sensorStatus) {
+                const s = sensorStatus || {};
+                if (!s.telescope_connected) return 'Telescope disconnected';
                 let tip = 'Telescope connected';
                 const pm = s.pointing_model;
                 if (pm && pm.state !== 'untrained') {
@@ -123,7 +147,7 @@ function compareVersions(v1, v2) {
             // Store methods
             previewFlipH: false,
 
-            async captureImage() {
+            async captureImage(sensorId) {
                 const duration = this.previewExposure;
                 if (Number.isNaN(duration) || duration <= 0) {
                     const { showToast } = await import('./config.js');
@@ -133,7 +157,7 @@ function compareVersions(v1, v2) {
 
                 this.isSaving = true;
                 try {
-                    const response = await fetch('/api/camera/capture', {
+                    const response = await fetch(`${this.sensorApiBaseFor(sensorId)}/camera/capture`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ duration })
@@ -157,78 +181,91 @@ function compareVersions(v1, v2) {
                 }
             },
 
-            async toggleProcessing(enabled) {
+            async toggleProcessing(enabled, sensorId) {
                 const endpoint = enabled ? '/api/tasks/resume' : '/api/tasks/pause';
+                const body = sensorId ? { sensor_id: sensorId } : {};
                 try {
-                    const response = await fetch(endpoint, { method: 'POST' });
+                    const response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
                     const result = await response.json();
                     if (!response.ok) {
                         alert(result.error || 'Failed to toggle task processing');
-                        // Revert on error
-                        this.status.processing_active = !enabled;
+                        if (sensorId && this.status?.sensors?.[sensorId]) {
+                            this.status.sensors[sensorId].task_processing_paused = enabled;
+                        }
                     }
                 } catch (error) {
                     console.error('Error toggling processing:', error);
                     alert('Error toggling task processing');
-                    this.status.processing_active = !enabled;
                 }
             },
 
-            async toggleObservingSession(enabled) {
+            async toggleObservingSession(enabled, sensorId) {
+                const body = { enabled };
+                if (sensorId) body.sensor_id = sensorId;
                 try {
                     const response = await fetch('/api/observing-session', {
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ enabled: enabled })
+                        body: JSON.stringify(body)
                     });
                     const result = await response.json();
                     if (!response.ok) {
                         alert(result.error || 'Failed to toggle observing session');
-                        this.status.observing_session_enabled = !enabled;
+                        if (sensorId && this.status?.sensors?.[sensorId]) {
+                            this.status.sensors[sensorId].observing_session_enabled = !enabled;
+                        }
                     }
                 } catch (error) {
                     console.error('Error toggling observing session:', error);
                     alert('Error toggling observing session');
-                    this.status.observing_session_enabled = !enabled;
                 }
             },
 
-            async toggleSelfTasking(enabled) {
+            async toggleSelfTasking(enabled, sensorId) {
+                const body = { enabled };
+                if (sensorId) body.sensor_id = sensorId;
                 try {
                     const response = await fetch('/api/self-tasking', {
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ enabled: enabled })
+                        body: JSON.stringify(body)
                     });
                     const result = await response.json();
                     if (!response.ok) {
                         alert(result.error || 'Failed to toggle self-tasking');
-                        this.status.self_tasking_enabled = !enabled;
+                        if (sensorId && this.status?.sensors?.[sensorId]) {
+                            this.status.sensors[sensorId].self_tasking_enabled = !enabled;
+                        }
                     }
                 } catch (error) {
                     console.error('Error toggling self-tasking:', error);
                     alert('Error toggling self-tasking');
-                    this.status.self_tasking_enabled = !enabled;
                 }
             },
 
-            async toggleAutomatedScheduling(enabled) {
+            async toggleAutomatedScheduling(enabled, sensorId) {
+                const body = { enabled };
+                if (sensorId) body.sensor_id = sensorId;
                 try {
                     const response = await fetch('/api/telescope/automated-scheduling', {
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ enabled: enabled })
+                        body: JSON.stringify(body)
                     });
                     const result = await response.json();
                     if (!response.ok) {
                         alert(result.error || 'Failed to toggle automated scheduling');
-                        // Revert on error
-                        this.status.automated_scheduling = !enabled;
+                        if (sensorId && this.status?.sensors?.[sensorId]) {
+                            this.status.sensors[sensorId].automated_scheduling = !enabled;
+                        }
                     }
                 } catch (error) {
                     console.error('Error toggling automated scheduling:', error);
                     alert('Error toggling automated scheduling');
-                    this.status.automated_scheduling = !enabled;
                 }
             },
 
@@ -263,26 +300,26 @@ function compareVersions(v1, v2) {
                 return this.isSystemBusy || this.status?.processing_active === true;
             },
 
-            async capturePreview() {
+            async capturePreview(sensorId) {
                 if (this.isImagingTaskActive) {
                     this.isLooping = false;
                     return;
                 }
                 try {
-                    const response = await fetch('/api/camera/preview', {
+                    const response = await fetch(`${this.sensorApiBaseFor(sensorId)}/camera/preview`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ duration: this.previewExposure, flip_horizontal: this.previewFlipH })
                     });
                     if (response.status === 409) {
-                        // Camera busy with previous capture — wait and retry
                         if (this.isLooping) {
-                            setTimeout(() => this.capturePreview(), 250);
+                            setTimeout(() => this.capturePreview(sensorId), 250);
                         }
                         return;
                     }
                     const data = await response.json();
                     if (response.ok && data.image_data) {
+                        this.previewDataUrls = { ...this.previewDataUrls, [sensorId]: data.image_data };
                         this.previewDataUrl = data.image_data;
                         this.loopCount++;
                     } else {
@@ -298,32 +335,34 @@ function compareVersions(v1, v2) {
                 }
 
                 if (this.isLooping) {
-                    requestAnimationFrame(() => this.capturePreview());
+                    requestAnimationFrame(() => this.capturePreview(sensorId));
                 }
             },
 
-            startFocusLoop() {
+            startFocusLoop(sensorId) {
                 if (this.isLooping || this.isSystemBusy) return;
                 this.isLooping = true;
                 this.loopCount = 0;
-                this.capturePreview();
+                this._loopSensorId = sensorId;
+                this.capturePreview(sensorId);
             },
 
             stopFocusLoop() {
                 this.isLooping = false;
             },
 
-            async singlePreview() {
+            async singlePreview(sensorId) {
                 if (this.isLooping) return;
                 this.isCapturing = true;
                 try {
-                    const response = await fetch('/api/camera/preview', {
+                    const response = await fetch(`${this.sensorApiBaseFor(sensorId)}/camera/preview`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ duration: this.previewExposure, flip_horizontal: this.previewFlipH })
                     });
                     const data = await response.json();
                     if (response.ok && data.image_data) {
+                        this.previewDataUrls = { ...this.previewDataUrls, [sensorId]: data.image_data };
                         this.previewDataUrl = data.image_data;
                         this.loopCount++;
                     } else {

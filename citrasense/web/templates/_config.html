@@ -1,7 +1,7 @@
     <div class="container my-4" id="configSection" x-show="$store.citrasense.currentSection === 'config'" x-cloak
          x-data="{ configTab: $persist('api').as('configTab') }"
-         x-effect="if (configTab === 'calibration' && !($store.citrasense.status?.supports_direct_camera_control)) configTab = 'api';
-                  if (configTab === 'autofocus' && !($store.citrasense.status?.supports_autofocus)) configTab = 'hardware'">
+         x-effect="if (configTab === 'calibration' && !($store.citrasense.configSensorStatus?.supports_direct_camera_control)) configTab = 'api';
+                  if (configTab === 'autofocus' && !($store.citrasense.configSensorStatus?.supports_autofocus)) configTab = 'hardware'">
         <form @submit.prevent="window.saveConfiguration($event)"
               @invalid.capture="window.handleInvalidConfigField($event, (tab) => configTab = tab)">
             <div class="row">
@@ -18,12 +18,12 @@
                         </a>
                         <a class="nav-link" href="#" :class="{ active: configTab === 'autofocus' }"
                            @click.prevent="configTab = 'autofocus'"
-                           x-show="$store.citrasense.status?.supports_autofocus">
+                           x-show="$store.citrasense.configSensorStatus?.supports_autofocus">
                             <i class="bi bi-arrows-expand me-2"></i>Autofocus
                         </a>
                         <a class="nav-link" href="#" :class="{ active: configTab === 'calibration' }"
                            @click.prevent="configTab = 'calibration'"
-                           x-show="$store.citrasense.status?.supports_direct_camera_control">
+                           x-show="$store.citrasense.configSensorStatus?.supports_direct_camera_control">
                             <i class="bi bi-grid-3x3 me-2"></i>Calibration
                         </a>
                         <a class="nav-link" href="#" :class="{ active: configTab === 'observation' }"
@@ -90,14 +90,10 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="col-12 col-md-6">
+                            <div class="col-12">
                                 <label for="personal_access_token" class="form-label">Personal Access Token <span class="text-danger">*</span></label>
                                 <input type="password" id="personal_access_token" class="form-control" placeholder="Enter your Citra API token" required x-model="$store.citrasense.config.personal_access_token">
-                                <small class="text-muted">Get your token and telescope ID from <a :href="$store.citrasense.config.app_url || ''" target="_blank" rel="noopener noreferrer" x-text="($store.citrasense.config.app_url || '').replace('https://', '')"></a></small>
-                            </div>
-                            <div class="col-12 col-md-6">
-                                <label for="telescopeId" class="form-label">Telescope ID <span class="text-danger">*</span></label>
-                                <input type="text" id="telescopeId" class="form-control" placeholder="Enter telescope ID" required x-model="$store.citrasense.config.telescope_id">
+                                <small class="text-muted">Get your token from <a :href="$store.citrasense.config.app_url || ''" target="_blank" rel="noopener noreferrer" x-text="($store.citrasense.config.app_url || '').replace('https://', '')"></a></small>
                             </div>
                         </div>
                     </div>
@@ -110,6 +106,7 @@
                         <h5 class="mb-3 pb-2 border-bottom border-secondary d-flex align-items-center gap-2">
                             <i class="bi bi-hdd-network"></i>Hardware Configuration
                         </h5>
+                        {% include '_config_sensor_picker.html' %}
                         {% include '_config_hardware.html' %}
                     </div>
 
@@ -121,6 +118,7 @@
                         <h5 class="mb-3 pb-2 border-bottom border-secondary d-flex align-items-center gap-2">
                             <i class="bi bi-arrows-expand"></i>Autofocus
                         </h5>
+                        {% include '_config_sensor_picker.html' %}
                         {% include '_config_autofocus.html' %}
                     </div>
 
@@ -128,7 +126,7 @@
                     <!-- ============================================ -->
                     <!-- Calibration                                  -->
                     <!-- ============================================ -->
-                    <div x-show="configTab === 'calibration'"
+                    <div x-show="configTab === 'calibration'" class="calibration-pane"
                          x-data="{
                              calStatus: null,
                              calLoading: false,
@@ -140,7 +138,7 @@
                              twilightTimer: null,
                              async loadCalStatus() {
                                  try {
-                                     const resp = await fetch('/api/calibration/status');
+                                     const resp = await fetch($store.citrasense.sensorApiBaseFor($store.citrasense.configSensorId) + '/calibration/status');
                                      this.calStatus = await resp.json();
                                  } catch(e) { this.calStatus = null; }
                              },
@@ -205,7 +203,7 @@
                                      if (this.calFrameType === 'flat') {
                                          body.filter_position = this.calFilterPosition;
                                      }
-                                     await fetch('/api/calibration/capture', {
+                                     await fetch($store.citrasense.sensorApiBaseFor($store.citrasense.configSensorId) + '/calibration/capture', {
                                          method: 'POST',
                                          headers: {'Content-Type': 'application/json'},
                                          body: JSON.stringify(body)
@@ -215,11 +213,11 @@
                                  } catch(e) { console.error(e); }
                              },
                              async cancelCapture() {
-                                 await fetch('/api/calibration/cancel', { method: 'POST' });
+                                 await fetch($store.citrasense.sensorApiBaseFor($store.citrasense.configSensorId) + '/calibration/cancel', { method: 'POST' });
                              },
                              async captureSuite(suiteName) {
                                  try {
-                                     const resp = await fetch('/api/calibration/capture-suite', {
+                                     const resp = await fetch($store.citrasense.sensorApiBaseFor($store.citrasense.configSensorId) + '/calibration/capture-suite', {
                                          method: 'POST',
                                          headers: {'Content-Type': 'application/json'},
                                          body: JSON.stringify({ suite: suiteName })
@@ -235,7 +233,7 @@
                              },
                              async deleteMaster(type, entry) {
                                  if (!confirm('Delete this master frame?')) return;
-                                 await fetch('/api/calibration/master', {
+                                 await fetch($store.citrasense.sensorApiBaseFor($store.citrasense.configSensorId) + '/calibration/master', {
                                      method: 'DELETE',
                                      headers: {'Content-Type': 'application/json'},
                                      body: JSON.stringify({
@@ -257,6 +255,7 @@
                         <h5 class="mb-3 pb-2 border-bottom border-secondary d-flex align-items-center gap-2">
                             <i class="bi bi-grid-3x3"></i>Calibration
                         </h5>
+                        {% include '_config_sensor_picker.html' %}
 
                         <template x-if="calStatus?.available">
                             <div>
@@ -291,19 +290,19 @@
                                 </div>
 
                                 <!-- Calibration readiness for current settings -->
-                                <div class="mb-3" x-show="$store.citrasense.status?.calibration_status?.calibration_applicable">
-                                    <template x-if="$store.citrasense.status?.calibration_status?.has_bias && $store.citrasense.status?.calibration_status?.has_dark && $store.citrasense.status?.calibration_status?.has_flat">
+                                <div class="mb-3" x-show="$store.citrasense.configSensorStatus?.calibration_status?.calibration_applicable">
+                                    <template x-if="$store.citrasense.configSensorStatus?.calibration_status?.has_bias && $store.citrasense.configSensorStatus?.calibration_status?.has_dark && $store.citrasense.configSensorStatus?.calibration_status?.has_flat">
                                         <div class="alert alert-success py-2 mb-0 small">
                                             <i class="bi bi-check-circle-fill me-1"></i>
                                             All calibration masters available for current settings.
                                         </div>
                                     </template>
-                                    <template x-if="$store.citrasense.status?.calibration_status && !($store.citrasense.status.calibration_status.has_bias && $store.citrasense.status.calibration_status.has_dark && $store.citrasense.status.calibration_status.has_flat)">
+                                    <template x-if="$store.citrasense.configSensorStatus?.calibration_status && !($store.citrasense.configSensorStatus.calibration_status.has_bias && $store.citrasense.configSensorStatus.calibration_status.has_dark && $store.citrasense.configSensorStatus.calibration_status.has_flat)">
                                         <div class="alert alert-warning py-2 mb-0 small">
                                             <i class="bi bi-exclamation-triangle-fill me-1"></i>
                                             <strong>Missing for current settings:</strong>
                                             <ul class="mb-0 ps-3 mt-1">
-                                                <template x-for="m in ($store.citrasense.status?.calibration_status?.missing || [])" :key="m">
+                                                <template x-for="m in ($store.citrasense.configSensorStatus?.calibration_status?.missing || [])" :key="m">
                                                     <li x-text="m"></li>
                                                 </template>
                                             </ul>
@@ -980,6 +979,7 @@
                     <!-- Robotic Operations Configuration              -->
                     <!-- ============================================ -->
                     <div x-show="configTab === 'selftasking'">
+                        {% include '_config_sensor_picker.html' %}
                         <!-- Robotic Session -->
                         <h5 class="mb-3 pb-2 border-bottom border-secondary d-flex align-items-center gap-2">
                             <i class="bi bi-moon-stars"></i>Robotic Session
@@ -989,7 +989,7 @@
                             <div class="col-md-6">
                                 <label class="form-label" for="sessionSunThreshold">Darkness Threshold</label>
                                 <select id="sessionSunThreshold" class="form-select"
-                                        x-model.number="$store.citrasense.config.observing_session_sun_altitude_threshold">
+                                        x-model.number="$store.citrasense.config.sensors[$store.citrasense.configSensorIndex].observing_session_sun_altitude_threshold">
                                     <option value="-6">Civil Twilight (-6&deg;)</option>
                                     <option value="-12">Nautical Twilight (-12&deg;)</option>
                                     <option value="-18">Astronomical Twilight (-18&deg;)</option>
@@ -1001,14 +1001,14 @@
                                 <label class="form-label">Startup / Shutdown</label>
                                 <div class="form-check mb-2">
                                     <input class="form-check-input" type="checkbox" id="sessionDoPointingCal"
-                                           x-model="$store.citrasense.config.observing_session_do_pointing_calibration">
+                                           x-model="$store.citrasense.config.sensors[$store.citrasense.configSensorIndex].observing_session_do_pointing_calibration">
                                     <label class="form-check-label" for="sessionDoPointingCal">
                                         Calibrate pointing model at start of night
                                     </label>
                                 </div>
                                 <div class="form-check mb-2">
                                     <input class="form-check-input" type="checkbox" id="sessionDoAutofocus"
-                                           x-model="$store.citrasense.config.observing_session_do_autofocus">
+                                           x-model="$store.citrasense.config.sensors[$store.citrasense.configSensorIndex].observing_session_do_autofocus">
                                     <label class="form-check-label" for="sessionDoAutofocus">
                                         Autofocus at start of night
                                     </label>
@@ -1021,7 +1021,7 @@
                                 </div>
                                 <div class="form-check mb-2">
                                     <input class="form-check-input" type="checkbox" id="sessionDoPark"
-                                           x-model="$store.citrasense.config.observing_session_do_park">
+                                           x-model="$store.citrasense.config.sensors[$store.citrasense.configSensorIndex].observing_session_do_park">
                                     <label class="form-check-label" for="sessionDoPark">
                                         Unpark at dusk / Park at dawn
                                     </label>
@@ -1038,12 +1038,12 @@
                         <div class="row g-3 mb-4">
                             <div class="col-md-6"
                                  x-data="{
-                                     get types() { return $store.citrasense.config.self_tasking_exclude_object_types || []; },
+                                     get types() { return $store.citrasense.config.sensors[$store.citrasense.configSensorIndex].self_tasking_exclude_object_types || []; },
                                      toggleType(t) {
                                          let arr = [...(this.types)];
                                          let idx = arr.indexOf(t);
                                          if (idx >= 0) arr.splice(idx, 1); else arr.push(t);
-                                         $store.citrasense.config.self_tasking_exclude_object_types = arr;
+                                         $store.citrasense.config.sensors[$store.citrasense.configSensorIndex].self_tasking_exclude_object_types = arr;
                                      }
                                  }">
                                 <label class="form-label">Exclude Object Types</label>
@@ -1058,12 +1058,12 @@
                             </div>
                             <div class="col-md-6"
                                  x-data="{
-                                     get regimes() { return $store.citrasense.config.self_tasking_include_orbit_regimes || []; },
+                                     get regimes() { return $store.citrasense.config.sensors[$store.citrasense.configSensorIndex].self_tasking_include_orbit_regimes || []; },
                                      toggleRegime(r) {
                                          let arr = [...(this.regimes)];
                                          let idx = arr.indexOf(r);
                                          if (idx >= 0) arr.splice(idx, 1); else arr.push(r);
-                                         $store.citrasense.config.self_tasking_include_orbit_regimes = arr;
+                                         $store.citrasense.config.sensors[$store.citrasense.configSensorIndex].self_tasking_include_orbit_regimes = arr;
                                      }
                                  }">
                                 <label class="form-label">Include Orbit Regimes</label>
@@ -1082,14 +1082,14 @@
                                 <label class="form-label" for="selfTaskingGroupIds">Satellite Group IDs</label>
                                 <input type="text" class="form-control" id="selfTaskingGroupIds"
                                        placeholder="Leave empty for auto-discovery"
-                                       :value="($store.citrasense.config.self_tasking_satellite_group_ids || []).join(', ')"
-                                       @change="$store.citrasense.config.self_tasking_satellite_group_ids = $event.target.value ? $event.target.value.split(',').map(s => s.trim()).filter(Boolean) : []">
+                                       :value="($store.citrasense.config.sensors[$store.citrasense.configSensorIndex].self_tasking_satellite_group_ids || []).join(', ')"
+                                       @change="$store.citrasense.config.sensors[$store.citrasense.configSensorIndex].self_tasking_satellite_group_ids = $event.target.value ? $event.target.value.split(',').map(s => s.trim()).filter(Boolean) : []">
                                 <small class="text-muted d-block mt-1">Comma-separated group UUIDs. Empty = server discovers visible satellites automatically.</small>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label" for="selfTaskingCollectionType">Collection Type</label>
                                 <select id="selfTaskingCollectionType" class="form-select"
-                                        x-model="$store.citrasense.config.self_tasking_collection_type">
+                                        x-model="$store.citrasense.config.sensors[$store.citrasense.configSensorIndex].self_tasking_collection_type">
                                     <option value="Track">Track (single filter)</option>
                                     <option value="Characterization">Characterization (multi-filter)</option>
                                 </select>

@@ -5,7 +5,7 @@ import threading
 import time
 from unittest.mock import MagicMock
 
-from citrasense.acquisition.acquisition_queue import AcquisitionQueue as ImagingQueue
+from citrasense.acquisition.acquisition_queue import AcquisitionQueue
 from citrasense.tasks.task_dispatcher import TaskDispatcher
 
 
@@ -22,7 +22,6 @@ def _make_task_dispatcher() -> TaskDispatcher:
         api_client=MagicMock(),
         logger=MagicMock(),
         settings=settings,
-        telescope_record={"id": "test-scope"},
     )
 
     # Register a mock runtime with real-ish queues
@@ -86,11 +85,12 @@ class TestClearPendingTasks:
 
     def test_calls_imaging_queue_clear(self):
         td = _make_task_dispatcher()
-        td._default_runtime.acquisition_queue.clear = MagicMock(return_value=2)
+        rt = td.get_runtime("test-scope")
+        rt.acquisition_queue.clear = MagicMock(return_value=2)
 
         count = td.clear_pending_tasks()
 
-        td._default_runtime.acquisition_queue.clear.assert_called_once()
+        rt.acquisition_queue.clear.assert_called_once()
         assert count == 2
 
     def test_no_orphan_guids_after_clear(self):
@@ -194,7 +194,7 @@ class TestExpiredTaskGuard:
 
 
 # ---------------------------------------------------------------------------
-# ImagingQueue._on_cancelled does NOT mark the task as failed on the API
+# AcquisitionQueue._on_cancelled does NOT mark the task as failed on the API
 # ---------------------------------------------------------------------------
 
 
@@ -209,7 +209,7 @@ class TestImagingCancelledNotFailed:
         logger = MagicMock()
         api_client = MagicMock()
         runtime = MagicMock()
-        iq = ImagingQueue(
+        iq = AcquisitionQueue(
             num_workers=0,
             settings=settings,
             logger=logger,

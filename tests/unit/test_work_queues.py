@@ -1,4 +1,4 @@
-"""Unit tests for BaseWorkQueue, ImagingQueue, and ProcessingQueue."""
+"""Unit tests for BaseWorkQueue, AcquisitionQueue, and ProcessingQueue."""
 
 import threading
 import time
@@ -177,12 +177,12 @@ def test_clear_epoch_discards_in_flight_result():
 
 
 # ---------------------------------------------------------------------------
-# ImagingQueue
+# AcquisitionQueue
 # ---------------------------------------------------------------------------
 
 
-def test_imaging_queue_clear_cancels_in_flight_task():
-    from citrasense.acquisition.acquisition_queue import AcquisitionQueue as ImagingQueue
+def test_acquisition_queue_clear_cancels_in_flight_task():
+    from citrasense.acquisition.acquisition_queue import AcquisitionQueue
 
     cancel_event = threading.Event()
 
@@ -194,7 +194,7 @@ def test_imaging_queue_clear_cancels_in_flight_task():
         def cancel(self):
             cancel_event.set()
 
-    iq = ImagingQueue(
+    iq = AcquisitionQueue(
         num_workers=1,
         settings=MagicMock(max_task_retries=3, initial_retry_delay_seconds=1, max_retry_delay_seconds=10),
         logger=MagicMock(),
@@ -212,10 +212,10 @@ def test_imaging_queue_clear_cancels_in_flight_task():
     iq.stop()
 
 
-def test_imaging_queue_submit():
-    from citrasense.acquisition.acquisition_queue import AcquisitionQueue as ImagingQueue
+def test_acquisition_queue_submit():
+    from citrasense.acquisition.acquisition_queue import AcquisitionQueue
 
-    iq = ImagingQueue(
+    iq = AcquisitionQueue(
         num_workers=1,
         settings=MagicMock(max_task_retries=3, initial_retry_delay_seconds=1, max_retry_delay_seconds=10),
         logger=MagicMock(),
@@ -229,11 +229,11 @@ def test_imaging_queue_submit():
     assert not iq.is_idle()
 
 
-def test_imaging_queue_success():
-    from citrasense.acquisition.acquisition_queue import AcquisitionQueue as ImagingQueue
+def test_acquisition_queue_success():
+    from citrasense.acquisition.acquisition_queue import AcquisitionQueue
 
     mock_tm = MagicMock()
-    iq = ImagingQueue(
+    iq = AcquisitionQueue(
         num_workers=1,
         settings=MagicMock(max_task_retries=3, initial_retry_delay_seconds=1, max_retry_delay_seconds=10),
         logger=MagicMock(),
@@ -253,10 +253,10 @@ def test_imaging_queue_success():
     cb.assert_called_once_with("t1", success=True)
 
 
-def test_imaging_queue_get_task_from_item():
-    from citrasense.acquisition.acquisition_queue import AcquisitionQueue as ImagingQueue
+def test_acquisition_queue_get_task_from_item():
+    from citrasense.acquisition.acquisition_queue import AcquisitionQueue
 
-    iq = ImagingQueue(
+    iq = AcquisitionQueue(
         num_workers=1,
         settings=MagicMock(),
         logger=MagicMock(),

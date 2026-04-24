@@ -69,9 +69,12 @@ class SensorManager:
         """Return the sensor registered under ``sensor_id``."""
         return self._sensors[sensor_id]
 
-    def get_or_none(self, sensor_id: str) -> AbstractSensor | None:
-        """Return the sensor registered under ``sensor_id`` or ``None``."""
+    def get_sensor(self, sensor_id: str) -> AbstractSensor | None:
+        """Return the sensor registered under *sensor_id*, or ``None``."""
         return self._sensors.get(sensor_id)
+
+    # Kept for internal callers that prefer the shorter name.
+    get_or_none = get_sensor
 
     def all(self) -> list[AbstractSensor]:
         """All registered sensors, in registration order."""

@@ -112,21 +112,29 @@ class TestConfigReloadDropsInFlightStages:
         }
         daemon.api_client.get_ground_station.return_value = {"id": "gs1", "name": "TestGS"}
 
-        daemon.hardware_adapter = MagicMock()
-        daemon.hardware_adapter.connect.return_value = True
-        daemon.hardware_adapter.is_mount_homed.return_value = True
-        daemon.hardware_adapter.supports_direct_camera_control.return_value = False
-        daemon.hardware_adapter.get_filter_config.return_value = {}
+        telescope_sensor = MagicMock()
+        telescope_sensor.sensor_id = "t1"
+        telescope_sensor.sensor_type = "telescope"
+        telescope_sensor.adapter = MagicMock()
+        telescope_sensor.adapter.connect.return_value = True
+        telescope_sensor.adapter.is_mount_homed.return_value = True
+        telescope_sensor.adapter.supports_direct_camera_control.return_value = False
+        telescope_sensor.adapter.get_filter_config.return_value = {}
+        telescope_sensor.citra_record = None
 
+        sensor_manager = MagicMock()
+        sensor_manager.first_of_type.return_value = telescope_sensor
+        sensor_manager.iter_by_type.return_value = iter([telescope_sensor])
+
+        daemon.sensor_manager = sensor_manager
         daemon.location_service = MagicMock()
         daemon.time_monitor = MagicMock()
         daemon.web_server = MagicMock()
         daemon.elset_cache = MagicMock()
         daemon.apass_catalog = MagicMock()
         daemon.processor_registry = MagicMock()
-        daemon.task_manager = None
+        daemon.task_dispatcher = None
         daemon.safety_monitor = MagicMock()
-        daemon.telescope_record = None
         daemon.ground_station = None
         daemon.latest_annotated_image_path = None
         daemon.preview_bus = MagicMock()
@@ -134,9 +142,6 @@ class TestConfigReloadDropsInFlightStages:
         daemon.sensor_bus = MagicMock()
         daemon._retention_timer = None
         daemon._stop_requested = False
-        daemon._telescope_sensor = MagicMock()
-        daemon._telescope_sensor.sensor_id = "t1"
-        daemon._telescope_sensor.sensor_type = "telescope"
         return daemon
 
     def test_processing_and_uploading_not_restored(self):
