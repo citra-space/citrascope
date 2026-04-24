@@ -76,6 +76,7 @@ class TelescopeSensor(AbstractSensor):
         super().__init__(sensor_id=sensor_id)
         self.adapter = adapter
         self.adapter_key = adapter_key
+        self.citra_record: dict[str, Any] | None = None
         self._cable_wrap_check: CableWrapCheck | None = None
 
     # ── Factory ───────────────────────────────────────────────────────

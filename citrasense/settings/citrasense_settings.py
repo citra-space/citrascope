@@ -19,9 +19,10 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator,
 # v1: legacy scalar fields (``hardware_adapter`` / ``telescope_id``) plus a
 #     top-level ``adapter_settings`` dict keyed by adapter name.
 # v2: introduces ``sensors: list[SensorConfig]`` as the forward shape (phase 1
-#     of citra-space/citrasense#306). Scalar fields are kept as compatibility
-#     aliases mirroring ``sensors[0]`` for one release.
-CONFIG_VERSION = 2
+#     of citra-space/citrasense#306). Scalar fields kept as compatibility aliases.
+# v3: ``sensors[]`` is the sole source of truth. Legacy scalars removed from
+#     the model; ``load()`` migrates v1/v2 files automatically.
+CONFIG_VERSION = 3
 # Legacy scalar-only shape — synthesized ``sensors`` entries are marked with
 # this id so they round-trip cleanly on resave.
 DEFAULT_TELESCOPE_SENSOR_ID = "telescope-0"
@@ -89,19 +90,10 @@ class CitraSenseSettings(BaseModel):
     port: int = DEFAULT_API_PORT
     use_ssl: bool = True
     personal_access_token: str = ""
-    telescope_id: str = ""
     use_dummy_api: bool = False
 
-    # Hardware
-    # ``hardware_adapter`` / ``telescope_id`` / ``adapter_settings`` are kept
-    # as compatibility aliases for ``sensors[0]``. Callers that still read
-    # these scalars continue to work; new callers should iterate
-    # ``self.sensors`` instead (see issue #306 phase 1).
-    hardware_adapter: str = ""
-
-    # Sensors — forward shape for the multi-sensor migration. Phase 1 always
-    # carries exactly one ``telescope`` entry; the model-level validator
-    # reconciles this list with the legacy scalar fields in both directions.
+    # Sensors — single source of truth for all sensor configuration.
+    # Each entry describes one physical sensor (telescope, radar, RF, …).
     sensors: list[SensorConfig] = Field(default_factory=list)
 
     # Persisted config schema version. Missing/older values trigger the
@@ -213,12 +205,10 @@ class CitraSenseSettings(BaseModel):
 
     # ── Non-persisted public attrs (excluded from model_dump) ─────────
     web_port: int = Field(default=DEFAULT_WEB_PORT, exclude=True)
-    adapter_settings: dict[str, Any] = Field(default_factory=dict, exclude=True)
 
     # ── Private infrastructure ────────────────────────────────────────
     _config_manager: SettingsFileManager = PrivateAttr()
     _dir_manager: DirectoryManager = PrivateAttr()
-    _all_adapter_settings: dict[str, dict[str, Any]] = PrivateAttr(default_factory=dict)
 
     # ── Validators (warn-and-fallback, never raise) ───────────────────
 
@@ -547,44 +537,27 @@ class CitraSenseSettings(BaseModel):
             self.adaptive_exposure_min_seconds = self.adaptive_exposure_max_seconds
         return self
 
-    @model_validator(mode="after")
-    def _reconcile_sensors_with_scalars(self) -> CitraSenseSettings:
-        """Keep ``sensors[0]`` and the legacy ``hardware_adapter``/``telescope_id`` aliases in sync.
+    # ── Deprecated scalar access (delegates to sensors[0]) ───────────
 
-        * If ``sensors`` is non-empty, mirror ``sensors[0]`` back into the
-          scalar fields so old consumers keep reading the same values.
-        * If ``sensors`` is empty but the scalars carry a configured
-          adapter, synthesize a single-entry list. ``adapter_settings`` is
-          injected by :meth:`load` *after* model validation (from the
-          previously-flat top-level ``adapter_settings`` dict), so at this
-          point ``sensors[0].adapter_settings`` is typically the default
-          ``{}`` — that's fine, ``load`` patches it in place.
+    @property
+    def hardware_adapter(self) -> str:
+        """Legacy compat: adapter key of the first sensor."""
+        return self.sensors[0].adapter if self.sensors else ""
 
-        This runs every time the model is constructed (including when the
-        web UI re-validates the settings in memory), so the two shapes never
-        drift.
-        """
+    @property
+    def telescope_id(self) -> str:
+        """Legacy compat: Citra sensor ID of the first sensor."""
+        return self.sensors[0].citra_sensor_id if self.sensors else ""
+
+    @property
+    def adapter_settings(self) -> dict[str, Any]:
+        """Legacy compat: adapter settings of the first sensor."""
+        return self.sensors[0].adapter_settings if self.sensors else {}
+
+    @adapter_settings.setter
+    def adapter_settings(self, value: dict[str, Any]) -> None:
         if self.sensors:
-            head = self.sensors[0]
-            # Only mirror when the scalar is empty — users may legitimately
-            # set both at once (the web UI for example), and we don't want
-            # to silently overwrite a freshly-set scalar.
-            if not self.hardware_adapter and head.adapter:
-                self.hardware_adapter = head.adapter
-            if not self.telescope_id and head.citra_sensor_id:
-                self.telescope_id = head.citra_sensor_id
-        elif self.hardware_adapter:
-            # Synthesize a phase-2 sensors list from the legacy scalars.
-            self.sensors = [
-                SensorConfig(
-                    id=DEFAULT_TELESCOPE_SENSOR_ID,
-                    type="telescope",
-                    adapter=self.hardware_adapter,
-                    adapter_settings={},
-                    citra_sensor_id=self.telescope_id,
-                )
-            ]
-        return self
+            self.sensors[0].adapter_settings = value
 
     # ── Factory ───────────────────────────────────────────────────────
 
@@ -592,12 +565,22 @@ class CitraSenseSettings(BaseModel):
     def load(cls, web_port: int = DEFAULT_WEB_PORT) -> CitraSenseSettings:
         """Load settings from the JSON config file on disk.
 
+        Handles transparent migration from v1/v2 config files:
+
+        * **v1** (scalars only): ``hardware_adapter``, ``telescope_id``, and a
+          top-level ``adapter_settings`` dict keyed by adapter name are
+          converted into a single ``sensors[0]`` entry.
+        * **v2** (dual-write): ``sensors[]`` exists alongside scalars. The
+          scalars are stripped; any ``adapter_settings`` archive entries are
+          injected into the matching sensor if its own blob is empty.
+
         Args:
             web_port: Port for web interface (CLI bootstrap option only).
         """
         mgr = SettingsFileManager()
         config = mgr.load_config()
 
+        # Pop the legacy nested adapter_settings archive (keyed by adapter name).
         all_adapter_settings: dict[str, dict[str, Any]] = config.pop("adapter_settings", {})
         config["web_port"] = web_port
 
@@ -608,23 +591,34 @@ class CitraSenseSettings(BaseModel):
         else:
             config.pop("keep_processing_output", None)
 
+        # ── v1/v2 → v3 migration ──────────────────────────────────────
+        hw_adapter = config.pop("hardware_adapter", "")
+        telescope_id = config.pop("telescope_id", "")
+
+        sensors_raw: list[dict[str, Any]] | None = config.get("sensors")
+
+        if not sensors_raw and hw_adapter:
+            # v1: no sensors list — synthesize from legacy scalars.
+            config["sensors"] = [
+                {
+                    "id": DEFAULT_TELESCOPE_SENSOR_ID,
+                    "type": "telescope",
+                    "adapter": hw_adapter,
+                    "adapter_settings": all_adapter_settings.get(hw_adapter, {}),
+                    "citra_sensor_id": telescope_id,
+                }
+            ]
+        elif sensors_raw:
+            # v2: sensors exist.  Inject adapter_settings from the archive
+            # if the sensor's own blob is empty.
+            for sd in sensors_raw:
+                adapter = sd.get("adapter", "")
+                if not sd.get("adapter_settings") and adapter and adapter in all_adapter_settings:
+                    sd["adapter_settings"] = all_adapter_settings[adapter]
+
         instance = cls.model_validate(config)
         instance._config_manager = mgr
         instance._dir_manager = DirectoryManager(instance.custom_data_dir, instance.custom_log_dir)
-
-        instance._all_adapter_settings = all_adapter_settings
-        instance.adapter_settings = all_adapter_settings.get(instance.hardware_adapter, {})
-
-        # Keep ``sensors[0].adapter_settings`` aligned with the scalar adapter's
-        # settings dict. Phase-1 invariant: when the model validator
-        # synthesized a ``sensors`` entry from legacy scalars, its
-        # ``adapter_settings`` starts empty; patch it here so downstream
-        # consumers (``SensorManager.from_configs``) see the real settings.
-        if instance.sensors and instance.hardware_adapter:
-            head = instance.sensors[0]
-            legacy_settings = all_adapter_settings.get(instance.hardware_adapter)
-            if head.adapter == instance.hardware_adapter and not head.adapter_settings and legacy_settings is not None:
-                head.adapter_settings = legacy_settings
         return instance
 
     # ── Public helpers ────────────────────────────────────────────────
@@ -641,7 +635,17 @@ class CitraSenseSettings(BaseModel):
 
     def is_configured(self) -> bool:
         """Check if minimum required configuration is present."""
-        return bool(self.personal_access_token and self.telescope_id and self.hardware_adapter)
+        if not self.personal_access_token or not self.sensors:
+            return False
+        head = self.sensors[0]
+        return bool(head.citra_sensor_id and head.adapter)
+
+    def get_sensor_config(self, sensor_id: str) -> SensorConfig | None:
+        """Look up a sensor config by its local id."""
+        for s in self.sensors:
+            if s.id == sensor_id:
+                return s
+        return None
 
     # ── Serialization & persistence ───────────────────────────────────
 
@@ -650,72 +654,63 @@ class CitraSenseSettings(BaseModel):
 
         Returns:
             Dictionary of all persisted settings (excludes runtime-only
-            ``web_port`` and ``adapter_settings`` which are handled separately).
+            ``web_port``).  ``sensors[]`` is the canonical sensor config.
         """
         d = self.model_dump()
-        # ``adapter_settings`` at the top level is the per-adapter nested
-        # dict (keyed by adapter name), same shape as legacy configs.
-        d["adapter_settings"] = self._all_adapter_settings
-        # Write the forward-looking ``sensors`` list and ``config_version``
-        # so that next load can skip the migration path.
         d["config_version"] = CONFIG_VERSION
         return d
 
     def save(self) -> None:
         """Save current settings to JSON config file."""
-        if self.hardware_adapter:
-            self._all_adapter_settings[self.hardware_adapter] = self.adapter_settings
-
-        # Keep sensors[0].adapter_settings in sync before serialising.
-        if self.sensors and self.hardware_adapter:
-            head = self.sensors[0]
-            if head.adapter == self.hardware_adapter:
-                head.adapter_settings = self.adapter_settings
-
         self._config_manager.save_config(self.to_dict())
         CITRASENSE_LOGGER.info("Configuration saved to %s", self._config_manager.get_config_path())
 
     def update_and_save(self, config: dict[str, Any]) -> None:
-        """Update settings from dict and save, preserving other adapters' settings.
+        """Update settings from dict and save.
 
         Merges the incoming *config* on top of the current ``to_dict()`` so
         that fields not present in the incoming payload are preserved (e.g.
         backend-only settings that the web UI never sends).
 
+        Per-sensor ``adapter_settings`` are shallow-merged so partial saves
+        from the web form don't wipe keys like ``"filters"`` that the form
+        never sends.
+
         Args:
-            config: Configuration dict with flat adapter_settings for current adapter.
+            config: Configuration dict.  May contain ``sensors[]`` with
+                per-sensor config including ``adapter_settings``.
         """
         config.pop("web_port", None)
+        # Strip legacy scalars that old clients may still send.
+        config.pop("hardware_adapter", None)
+        config.pop("telescope_id", None)
 
-        # Flush the current adapter's live state so it isn't lost on switch
-        if self.hardware_adapter:
-            self._all_adapter_settings[self.hardware_adapter] = self.adapter_settings
+        # Smart-merge per-sensor adapter_settings.
+        incoming_sensors: list[dict[str, Any]] | None = config.get("sensors")
+        if incoming_sensors and self.sensors:
+            existing_by_id = {s.id: s for s in self.sensors}
+            for sd in incoming_sensors:
+                existing = existing_by_id.get(sd.get("id", ""))
+                if existing:
+                    merged_as = {**existing.adapter_settings, **sd.get("adapter_settings", {})}
+                    sd["adapter_settings"] = merged_as
 
-        adapter = config.get("hardware_adapter", self.hardware_adapter)
-        if adapter:
-            existing = self._all_adapter_settings.get(adapter, {})
-            incoming = config.get("adapter_settings", {})
-            self._all_adapter_settings[adapter] = {**existing, **incoming}
-        config["adapter_settings"] = self._all_adapter_settings
+        # Handle legacy top-level adapter_settings from old web clients.
+        old_as: dict | None = config.pop("adapter_settings", None)
+        if old_as and isinstance(old_as, dict) and self.sensors:
+            head = self.sensors[0]
+            head.adapter_settings = {**head.adapter_settings, **old_as}
+            if incoming_sensors:
+                for sd in incoming_sensors:
+                    if sd.get("id") == head.id:
+                        sd["adapter_settings"] = head.adapter_settings
+                        break
 
         merged = self.to_dict()
         merged.update(config)
 
-        allowed_keys = {k for k, v in type(self).model_fields.items() if not v.exclude} | {"adapter_settings"}
+        allowed_keys = {k for k, v in type(self).model_fields.items() if not v.exclude}
         merged = {k: v for k, v in merged.items() if k in allowed_keys}
-
-        # Keep ``sensors`` in the persisted payload, reflecting the latest
-        # adapter value so a config-file round-trip keeps the forward shape.
-        if self.sensors:
-            head = self.sensors[0]
-            if adapter and head.adapter != adapter:
-                head.adapter = adapter
-            if adapter:
-                head.adapter_settings = self._all_adapter_settings.get(adapter, {})
-            telescope_id = config.get("telescope_id", self.telescope_id)
-            if telescope_id:
-                head.citra_sensor_id = telescope_id
-            merged["sensors"] = [s.model_dump() for s in self.sensors]
         merged["config_version"] = CONFIG_VERSION
 
         self._config_manager.save_config(merged)

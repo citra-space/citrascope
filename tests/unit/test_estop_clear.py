@@ -22,7 +22,6 @@ def _make_task_dispatcher() -> TaskDispatcher:
         api_client=MagicMock(),
         logger=MagicMock(),
         settings=settings,
-        telescope_record={"id": "test-scope"},
     )
 
     # Register a mock runtime with real-ish queues

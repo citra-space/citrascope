@@ -138,38 +138,43 @@ def build_hardware_router(ctx: CitraSenseWebApp) -> APIRouter:
             if not ctx.daemon:
                 return JSONResponse({"error": "Daemon not available"}, status_code=503)
 
-            required_fields = ["personal_access_token", "telescope_id", "hardware_adapter"]
-            for field in required_fields:
-                if field not in config or not config[field]:
+            if not config.get("personal_access_token"):
+                return JSONResponse({"error": "Missing required field: personal_access_token"}, status_code=400)
+
+            sensors = config.get("sensors", [])
+            if not sensors:
+                return JSONResponse({"error": "At least one sensor is required"}, status_code=400)
+
+            for sensor_cfg in sensors:
+                adapter_name = sensor_cfg.get("adapter")
+                if not adapter_name:
                     return JSONResponse(
-                        {"error": f"Missing required field: {field}"},
+                        {"error": f"Sensor '{sensor_cfg.get('id', '?')}' missing adapter"},
+                        status_code=400,
+                    )
+                if not sensor_cfg.get("citra_sensor_id"):
+                    return JSONResponse(
+                        {"error": f"Sensor '{sensor_cfg.get('id', '?')}' missing citra_sensor_id"},
                         status_code=400,
                     )
 
-            adapter_name = config.get("hardware_adapter")
-            adapter_settings = config.get("adapter_settings", {})
-
-            if adapter_name:
+                adapter_settings = sensor_cfg.get("adapter_settings", {})
                 schema_response = await _fetch_adapter_schema(adapter_name)
                 if isinstance(schema_response, JSONResponse):
                     return schema_response
 
                 schema = schema_response.get("schema", [])
-
                 for field_schema in schema:
                     field_name = field_schema.get("name")
                     is_required = field_schema.get("required", False)
-
                     if is_required and field_name not in adapter_settings:
                         return JSONResponse(
                             {"error": f"Missing required adapter setting: {field_name}"},
                             status_code=400,
                         )
-
                     if field_name in adapter_settings:
                         value = adapter_settings[field_name]
                         field_type = field_schema.get("type")
-
                         if field_type == "int":
                             try:
                                 value = int(value)
@@ -179,7 +184,6 @@ def build_hardware_router(ctx: CitraSenseWebApp) -> APIRouter:
                                     {"error": f"Field '{field_name}' must be an integer"},
                                     status_code=400,
                                 )
-
                             if "min" in field_schema and value < field_schema["min"]:
                                 return JSONResponse(
                                     {"error": f"Field '{field_name}' must be >= {field_schema['min']}"},
@@ -190,7 +194,6 @@ def build_hardware_router(ctx: CitraSenseWebApp) -> APIRouter:
                                     {"error": f"Field '{field_name}' must be <= {field_schema['max']}"},
                                     status_code=400,
                                 )
-
                         elif field_type == "float":
                             try:
                                 value = float(value)

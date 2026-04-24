@@ -130,7 +130,7 @@ class TestFilterPreservationAcrossMigration:
         )
 
         saved: dict = mock_sfm.save_config.call_args[0][0]
-        nina_settings = saved["adapter_settings"]["nina"]
+        nina_settings = saved["sensors"][0]["adapter_settings"]
         assert "filters" in nina_settings
         assert nina_settings["filters"]["0"]["name"] == "Luminance"
         assert nina_settings["host"] == "10.0.0.1"
@@ -184,13 +184,13 @@ class TestAllAdapterMigration:
         assert saved["config_version"] == CONFIG_VERSION
         assert len(saved["sensors"]) == 1
         assert saved["sensors"][0]["adapter"] == adapter_name
-        assert saved["adapter_settings"][adapter_name]["key"] == "val"
+        assert saved["sensors"][0]["adapter_settings"]["key"] == "val"
 
 
 class TestUpdateAndSaveSyncsCitraSensorId:
-    """Fix 1: ``update_and_save`` must propagate ``telescope_id`` changes to ``sensors[0].citra_sensor_id``."""
+    """``update_and_save`` must propagate sensor ID changes via sensors[]."""
 
-    def test_telescope_id_change_updates_sensor(self):
+    def test_citra_sensor_id_change_updates_sensor(self):
         s, mock_sfm = _make_settings(
             {
                 "hardware_adapter": "dummy",
@@ -200,12 +200,24 @@ class TestUpdateAndSaveSyncsCitraSensorId:
         )
         assert s.sensors[0].citra_sensor_id == "old-id"
 
-        s.update_and_save({"telescope_id": "new-id"})
+        s.update_and_save(
+            {
+                "sensors": [
+                    {
+                        "id": DEFAULT_TELESCOPE_SENSOR_ID,
+                        "type": "telescope",
+                        "adapter": "dummy",
+                        "adapter_settings": {},
+                        "citra_sensor_id": "new-id",
+                    }
+                ],
+            }
+        )
 
         saved: dict = mock_sfm.save_config.call_args[0][0]
         assert saved["sensors"][0]["citra_sensor_id"] == "new-id"
 
-    def test_telescope_id_unchanged_preserves_sensor(self):
+    def test_citra_sensor_id_unchanged_preserves_sensor(self):
         s, mock_sfm = _make_settings(
             {
                 "hardware_adapter": "dummy",
@@ -213,7 +225,7 @@ class TestUpdateAndSaveSyncsCitraSensorId:
                 "adapter_settings": {"dummy": {}},
             }
         )
-        s.update_and_save({"hardware_adapter": "dummy"})
+        s.update_and_save({"personal_access_token": "tok"})
 
         saved: dict = mock_sfm.save_config.call_args[0][0]
         assert saved["sensors"][0]["citra_sensor_id"] == "keep-me"

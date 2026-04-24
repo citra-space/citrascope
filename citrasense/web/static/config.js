@@ -3,11 +3,6 @@
 import { getConfig, saveConfig, getConfigStatus, getHardwareAdapters, getProcessors } from './api.js';
 import { getFilterColor } from './filters.js';
 
-function defaultSensorId() {
-    const store = typeof Alpine !== 'undefined' && Alpine.store ? Alpine.store('citrasense') : null;
-    return store?.sensors?.[0]?.id || null;
-}
-
 function updateStoreEnabledFilters(filters) {
     if (typeof Alpine !== 'undefined' && Alpine.store) {
         const enabled = Object.values(filters || {})
@@ -28,14 +23,13 @@ const DEFAULT_API_PORT = 443;
 async function handleAdapterChange(adapter) {
     const store = Alpine.store('citrasense');
     if (adapter) {
-        const allAdapterSettings = store.config.adapter_settings || {};
-        const newAdapterSettings = allAdapterSettings[adapter] || {};
+        const sensorCfg = store.config.sensors?.[store.configSensorIndex] || {};
+        const currentSettings = sensorCfg.adapter_settings || {};
 
         console.log(`Switching to adapter: ${adapter}`);
-        console.log('All adapter settings:', allAdapterSettings);
-        console.log('Settings for this adapter:', newAdapterSettings);
+        console.log('Settings for this adapter:', currentSettings);
 
-        await loadAdapterSchema(adapter, newAdapterSettings);
+        await loadAdapterSchema(adapter, currentSettings);
         await loadFilterConfig();
     } else {
         store.adapterFields = [];
@@ -178,9 +172,13 @@ async function loadConfiguration() {
                 config.autofocus_after_sunset_offset_minutes = 60;
             }
 
+            // Set configSensorId to the first sensor
+            const firstSensor = config.sensors?.[0];
+            store.configSensorId = firstSensor?.id || null;
+
             // Load autofocus presets before setting config so the select renders with options
             try {
-                const presetsResp = await fetch(`${store.sensorApiBaseFor(defaultSensorId())}/autofocus/presets`);
+                const presetsResp = await fetch(`${store.sensorApiBaseFor(store.configSensorId)}/autofocus/presets`);
                 const presetsData = await presetsResp.json();
                 store.autofocusPresets = presetsData.presets || [];
             } catch (e) {
@@ -192,16 +190,18 @@ async function loadConfiguration() {
             if (store.previewExposure === null) {
                 store.previewExposure = config.exposure_seconds || 2.0;
             }
-            store.savedAdapter = config.hardware_adapter; // Sync savedAdapter to store
+            // Track per-sensor saved adapter for change detection
+            if (firstSensor) {
+                store.savedAdapters[firstSensor.id] = firstSensor.adapter;
+            }
             store.apiEndpoint =
                 config.host === PROD_API_HOST ? 'production' :
                 config.host === DEV_API_HOST ? 'development' : 'custom';
 
-            // Load adapter-specific settings if adapter is selected
-            if (config.hardware_adapter) {
-                const allAdapterSettings = config.adapter_settings || {};
-                const currentAdapterSettings = allAdapterSettings[config.hardware_adapter] || {};
-                await loadAdapterSchema(config.hardware_adapter, currentAdapterSettings);
+            // Load adapter-specific settings for the first sensor
+            if (firstSensor?.adapter) {
+                const currentAdapterSettings = firstSensor.adapter_settings || {};
+                await loadAdapterSchema(firstSensor.adapter, currentAdapterSettings);
             }
         }
     } catch (error) {
@@ -288,14 +288,22 @@ async function saveConfiguration(event) {
         use_ssl = formConfig.use_ssl !== undefined ? formConfig.use_ssl : true;
     }
 
-    // Convert adapterFields back to flat settings object (for current adapter only)
+    // Convert adapterFields back to flat settings for the selected sensor
     const adapterSettings = {};
     (store.adapterFields || []).forEach(field => {
-        // Include all fields with defined values (including 0, false, empty string)
         if (field.value !== undefined && field.value !== null) {
             adapterSettings[field.name] = field.value;
         }
     });
+
+    // Inject adapter_settings into the selected sensor config
+    const sensorIndex = store.configSensorIndex;
+    if (store.config.sensors?.[sensorIndex]) {
+        store.config.sensors[sensorIndex].adapter_settings = {
+            ...store.config.sensors[sensorIndex].adapter_settings,
+            ...adapterSettings,
+        };
+    }
 
     // Server-computed fields that should not be sent back on save
     const COMPUTED_FIELDS = [
@@ -305,8 +313,6 @@ async function saveConfiguration(event) {
 
     const config = {
         ...store.config,
-        // Overrides for specially-handled fields
-        adapter_settings: adapterSettings,
         host, port, use_ssl,
         // Type coercions for form-bound numeric inputs (Alpine x-model can produce strings)
         autofocus_interval_minutes: parseInt(store.config.autofocus_interval_minutes || 60, 10),
@@ -322,6 +328,8 @@ async function saveConfiguration(event) {
     };
 
     COMPUTED_FIELDS.forEach(f => delete config[f]);
+    // adapter_settings is now embedded in sensors[].adapter_settings
+    delete config.adapter_settings;
 
     try {
         // Validate filters BEFORE saving main config
@@ -339,17 +347,17 @@ async function saveConfiguration(event) {
 
         if (result.ok) {
             // Capture previous adapter before updating so we can detect switches
-            const previousAdapter = store.savedAdapter;
+            const sensorId = store.configSensorId;
+            const currentAdapter = store.config.sensors?.[sensorIndex]?.adapter;
+            const previousAdapter = store.savedAdapters[sensorId];
 
-            // Update saved adapter to match newly saved config
-            if (typeof Alpine !== 'undefined' && Alpine.store) {
-                Alpine.store('citrasense').savedAdapter = config.hardware_adapter;
+            // Update saved adapter for this sensor
+            if (sensorId && currentAdapter) {
+                store.savedAdapters[sensorId] = currentAdapter;
             }
 
             // Only push filter changes when staying on the same adapter.
-            // On adapter switch, store.filters holds stale data from the
-            // old adapter — skip it and just reload the new adapter's filters.
-            const adapterChanged = config.hardware_adapter !== previousAdapter;
+            const adapterChanged = currentAdapter !== previousAdapter;
             const filterResults = adapterChanged
                 ? { success: 0, failed: 0 }
                 : await saveModifiedFilters();
@@ -550,21 +558,21 @@ export function showConfigSection() {
 async function loadFilterConfig() {
     const store = Alpine.store('citrasense');
 
-    // Check if selected adapter matches saved adapter
-    const selectedAdapter = store.config.hardware_adapter;
+    // Check if selected adapter matches saved adapter for this sensor
+    const sensorId = store.configSensorId;
+    const selectedAdapter = store.config.sensors?.[store.configSensorIndex]?.adapter;
+    const savedAdapter = store.savedAdapters[sensorId];
 
-    if (selectedAdapter && store.savedAdapter && selectedAdapter !== store.savedAdapter) {
-        // Adapter has changed but not saved yet - show message and hide table
+    if (selectedAdapter && savedAdapter && selectedAdapter !== savedAdapter) {
         store.filterConfigVisible = true;
         store.filterAdapterChangeMessageVisible = true;
         return;
     }
 
-    // Hide message and show table when adapters match
     store.filterAdapterChangeMessageVisible = false;
 
     try {
-        const response = await fetch(`${store.sensorApiBaseFor(defaultSensorId())}/filters`);
+        const response = await fetch(`${store.sensorApiBaseFor(sensorId)}/filters`);
 
         if (response.status === 404 || response.status === 503) {
             store.filterConfigVisible = false;
@@ -639,7 +647,7 @@ async function saveModifiedFilters() {
 
     // Send single batch update
     try {
-        const response = await fetch(`${store.sensorApiBaseFor(defaultSensorId())}/filters/batch`, {
+        const response = await fetch(`${store.sensorApiBaseFor(store.configSensorId)}/filters/batch`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -653,7 +661,7 @@ async function saveModifiedFilters() {
 
             // After batch update, sync to backend
             try {
-                const syncResponse = await fetch(`${store.sensorApiBaseFor(defaultSensorId())}/filters/sync`, {
+                const syncResponse = await fetch(`${store.sensorApiBaseFor(store.configSensorId)}/filters/sync`, {
                     method: 'POST'
                 });
                 if (!syncResponse.ok) {
@@ -1110,7 +1118,7 @@ export function setupAutofocusButton() {
  */
 async function reloadAdapterSchema() {
     const store = Alpine.store('citrasense');
-    const adapter = store.config.hardware_adapter;
+    const adapter = store.config.sensors?.[store.configSensorIndex]?.adapter;
     if (!adapter) return;
 
     // Convert current adapterFields back to flat settings object
@@ -1128,7 +1136,7 @@ async function reloadAdapterSchema() {
  */
 async function scanHardware() {
     const store = Alpine.store('citrasense');
-    const adapter = store.config.hardware_adapter;
+    const adapter = store.config.sensors?.[store.configSensorIndex]?.adapter;
     if (!adapter) return;
 
     store.isScanning = true;

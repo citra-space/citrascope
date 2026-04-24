@@ -164,7 +164,7 @@ That's it. `to_dict()` (via `model_dump()`), `GET /api/config`, `saveConfigurati
 
 ### Adapter settings persistence
 
-`_all_adapter_settings` in `CitraSenseSettings` is a nested dict keyed by adapter name (e.g., `"NinaAdvancedHttpAdapter"`). Each entry contains adapter-specific settings *including* a `"filters"` key saved by `_save_filter_config()`. The web form sends flat adapter_settings for only the **current** adapter — `update_and_save()` must **merge** incoming settings with existing ones, not replace the entire dict. Replacing it will silently wipe filters and other adapter-specific state.
+Each sensor's `adapter_settings` lives on its `SensorConfig` within the `sensors[]` array — there is no top-level `adapter_settings` dict or `_all_adapter_settings` archive. The web form sends the `sensors[]` array with per-sensor `adapter_settings` for only the fields it controls — `update_and_save()` shallow-merges incoming settings with existing ones so partial saves don't wipe keys like `"filters"` that the form never sends. Legacy v1/v2 configs (with top-level `hardware_adapter`, `telescope_id`, and a keyed `adapter_settings` dict) are migrated automatically in `CitraSenseSettings.load()`.
 
 ### Task lifecycle and race conditions
 

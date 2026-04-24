@@ -15,7 +15,6 @@ class SystemStatus(BaseModel):
     tasks_pending: int = 0
     processing_active: bool = True
     automated_scheduling: bool = False
-    hardware_adapter: str = "unknown"
     telescope_ra: float | None = None
     telescope_dec: float | None = None
     telescope_az: float | None = None

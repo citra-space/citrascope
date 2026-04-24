@@ -28,7 +28,6 @@ def _make_task_dispatcher(safety_monitor):
         api_client=MagicMock(),
         logger=MagicMock(),
         settings=MagicMock(),
-        hardware_adapter=MagicMock(),
         safety_monitor=safety_monitor,
     )
 
@@ -109,7 +108,7 @@ class TestEvaluateSafetyEmergencyClear:
 
         td._evaluate_safety()
 
-        td.hardware_adapter.abort_slew.assert_called()
+        td._default_runtime.hardware_adapter.abort_slew.assert_called()
 
     def test_emergency_fires_toast_on_first_transition(self):
         monitor = SafetyMonitor(MagicMock(), [_StubCheck("hw", SafetyAction.EMERGENCY)])

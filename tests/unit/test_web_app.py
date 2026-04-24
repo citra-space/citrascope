@@ -294,15 +294,25 @@ def test_get_config_status_no_daemon():
     assert resp.json()["configured"] is False
 
 
+def _sensor_config(adapter="nina", citra_sensor_id="tel-1", adapter_settings=None):
+    return {
+        "id": "telescope-0",
+        "type": "telescope",
+        "adapter": adapter,
+        "citra_sensor_id": citra_sensor_id,
+        "adapter_settings": adapter_settings or {},
+    }
+
+
 def test_post_config(client, mock_daemon):
     mock_daemon.reload_configuration.return_value = (True, None)
     resp = client.post(
         "/api/config",
         json={
             "personal_access_token": "tok_new",
-            "telescope_id": "tel-2",
-            "hardware_adapter": "nina",
-            "adapter_settings": {"nina_api_path": "http://new:1888/v2/api"},
+            "sensors": [
+                _sensor_config(citra_sensor_id="tel-2", adapter_settings={"nina_api_path": "http://new:1888/v2/api"})
+            ],
         },
     )
     assert resp.status_code == 200
@@ -320,7 +330,10 @@ def test_post_config_no_daemon():
     c = TestClient(app.app)
     resp = c.post(
         "/api/config",
-        json={"personal_access_token": "x", "telescope_id": "y", "hardware_adapter": "z"},
+        json={
+            "personal_access_token": "x",
+            "sensors": [_sensor_config()],
+        },
     )
     assert resp.status_code == 503
 
@@ -331,9 +344,7 @@ def test_post_config_reload_fails(client, mock_daemon):
         "/api/config",
         json={
             "personal_access_token": "tok",
-            "telescope_id": "tel",
-            "hardware_adapter": "nina",
-            "adapter_settings": {"nina_api_path": "http://localhost:1888/v2/api"},
+            "sensors": [_sensor_config(adapter_settings={"nina_api_path": "http://localhost:1888/v2/api"})],
         },
     )
     assert resp.status_code == 500
@@ -837,13 +848,12 @@ def test_status_scheduled_autofocus_never_run(client, mock_daemon):
 
 def test_post_config_validates_int_field(client, mock_daemon):
     mock_daemon.reload_configuration.return_value = (True, None)
+    as_ = {"nina_api_path": "http://x:1888/v2/api", "binning_x": "not_int"}
     resp = client.post(
         "/api/config",
         json={
             "personal_access_token": "tok",
-            "telescope_id": "tel",
-            "hardware_adapter": "nina",
-            "adapter_settings": {"nina_api_path": "http://x:1888/v2/api", "binning_x": "not_int"},
+            "sensors": [_sensor_config(adapter_settings=as_)],
         },
     )
     assert resp.status_code == 400
@@ -852,13 +862,12 @@ def test_post_config_validates_int_field(client, mock_daemon):
 
 def test_post_config_validates_int_range(client, mock_daemon):
     mock_daemon.reload_configuration.return_value = (True, None)
+    as_ = {"nina_api_path": "http://x:1888/v2/api", "binning_x": 99}
     resp = client.post(
         "/api/config",
         json={
             "personal_access_token": "tok",
-            "telescope_id": "tel",
-            "hardware_adapter": "nina",
-            "adapter_settings": {"nina_api_path": "http://x:1888/v2/api", "binning_x": 99},
+            "sensors": [_sensor_config(adapter_settings=as_)],
         },
     )
     assert resp.status_code == 400

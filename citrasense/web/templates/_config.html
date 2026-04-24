@@ -96,8 +96,13 @@
                                 <small class="text-muted">Get your token and telescope ID from <a :href="$store.citrasense.config.app_url || ''" target="_blank" rel="noopener noreferrer" x-text="($store.citrasense.config.app_url || '').replace('https://', '')"></a></small>
                             </div>
                             <div class="col-12 col-md-6">
-                                <label for="telescopeId" class="form-label">Telescope ID <span class="text-danger">*</span></label>
-                                <input type="text" id="telescopeId" class="form-control" placeholder="Enter telescope ID" required x-model="$store.citrasense.config.telescope_id">
+                                <label for="telescopeId" class="form-label">Sensor ID <span class="text-danger">*</span></label>
+                                <input type="text" id="telescopeId" class="form-control" placeholder="Enter Citra sensor ID" required
+                                       x-model="$store.citrasense.config.sensors[$store.citrasense.configSensorIndex].citra_sensor_id">
+                                <small class="text-muted">
+                                    Sensor:
+                                    <span x-text="$store.citrasense.config.sensors?.[$store.citrasense.configSensorIndex]?.id || 'default'"></span>
+                                </small>
                             </div>
                         </div>
                     </div>
@@ -142,7 +147,7 @@
                              twilightTimer: null,
                              async loadCalStatus() {
                                  try {
-                                     const resp = await fetch($store.citrasense.sensorApiBaseFor($store.citrasense.sensors?.[0]?.id) + '/calibration/status');
+                                     const resp = await fetch($store.citrasense.sensorApiBaseFor($store.citrasense.configSensorId) + '/calibration/status');
                                      this.calStatus = await resp.json();
                                  } catch(e) { this.calStatus = null; }
                              },
@@ -207,7 +212,7 @@
                                      if (this.calFrameType === 'flat') {
                                          body.filter_position = this.calFilterPosition;
                                      }
-                                     await fetch($store.citrasense.sensorApiBaseFor($store.citrasense.sensors?.[0]?.id) + '/calibration/capture', {
+                                     await fetch($store.citrasense.sensorApiBaseFor($store.citrasense.configSensorId) + '/calibration/capture', {
                                          method: 'POST',
                                          headers: {'Content-Type': 'application/json'},
                                          body: JSON.stringify(body)
@@ -217,11 +222,11 @@
                                  } catch(e) { console.error(e); }
                              },
                              async cancelCapture() {
-                                 await fetch($store.citrasense.sensorApiBaseFor($store.citrasense.sensors?.[0]?.id) + '/calibration/cancel', { method: 'POST' });
+                                 await fetch($store.citrasense.sensorApiBaseFor($store.citrasense.configSensorId) + '/calibration/cancel', { method: 'POST' });
                              },
                              async captureSuite(suiteName) {
                                  try {
-                                     const resp = await fetch($store.citrasense.sensorApiBaseFor($store.citrasense.sensors?.[0]?.id) + '/calibration/capture-suite', {
+                                     const resp = await fetch($store.citrasense.sensorApiBaseFor($store.citrasense.configSensorId) + '/calibration/capture-suite', {
                                          method: 'POST',
                                          headers: {'Content-Type': 'application/json'},
                                          body: JSON.stringify({ suite: suiteName })
@@ -237,7 +242,7 @@
                              },
                              async deleteMaster(type, entry) {
                                  if (!confirm('Delete this master frame?')) return;
-                                 await fetch($store.citrasense.sensorApiBaseFor($store.citrasense.sensors?.[0]?.id) + '/calibration/master', {
+                                 await fetch($store.citrasense.sensorApiBaseFor($store.citrasense.configSensorId) + '/calibration/master', {
                                      method: 'DELETE',
                                      headers: {'Content-Type': 'application/json'},
                                      body: JSON.stringify({

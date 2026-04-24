@@ -2,7 +2,8 @@
 <div class="row g-3 mb-3">
     <div class="col">
         <label for="hardwareAdapterSelect" class="form-label">Hardware Adapter <span class="text-danger">*</span></label>
-        <select id="hardwareAdapterSelect" class="form-select" required x-model="$store.citrasense.config.hardware_adapter"
+        <select id="hardwareAdapterSelect" class="form-select" required
+            x-model="$store.citrasense.config.sensors[$store.citrasense.configSensorIndex].adapter"
             @change="$store.citrasense.handleAdapterChange($event.target.value)">
             <option value="">-- Select Hardware Adapter --</option>
             <template x-for="adapter in $store.citrasense.hardwareAdapters" :key="adapter.value">
@@ -11,9 +12,9 @@
         </select>
     </div>
     <div class="col-auto d-flex align-items-end gap-2"
-         x-show="$store.citrasense.config.hardware_adapter">
+         x-show="$store.citrasense.config.sensors?.[$store.citrasense.configSensorIndex]?.adapter">
         <button type="button" class="btn btn-sm btn-outline-secondary"
-                x-show="$store.citrasense.config.hardware_adapter === 'direct'"
+                x-show="$store.citrasense.config.sensors?.[$store.citrasense.configSensorIndex]?.adapter === 'direct'"
                 :disabled="$store.citrasense.isScanning || $store.citrasense.isSavingConfig"
                 @click="$store.citrasense.scanHardware()"
                 data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="bottom"

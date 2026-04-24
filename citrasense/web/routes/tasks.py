@@ -134,7 +134,10 @@ def build_tasks_router(ctx: CitraSenseWebApp) -> APIRouter:
             return JSONResponse({"error": "Missing 'enabled' field in request body"}, status_code=400)
 
         try:
-            telescope_id = ctx.daemon.telescope_record["id"]
+            tr = ctx.daemon.telescope_record
+            if not tr:
+                return JSONResponse({"error": "Telescope record not available"}, status_code=503)
+            telescope_id = tr["id"]
             success = ctx.daemon.api_client.update_telescope_automated_scheduling(telescope_id, enabled)
 
             if success:
@@ -197,7 +200,11 @@ def build_tasks_router(ctx: CitraSenseWebApp) -> APIRouter:
 
             if not ctx.daemon.task_dispatcher.automated_scheduling:
                 try:
-                    telescope_id = ctx.daemon.telescope_record["id"]
+                    tr = ctx.daemon.telescope_record
+                    telescope_id = tr["id"] if tr else None
+                    if not telescope_id:
+                        CITRASENSE_LOGGER.warning("Self-tasking: no telescope record available")
+                        return {"status": "success", "enabled": enabled}
                     success = ctx.daemon.api_client.update_telescope_automated_scheduling(telescope_id, True)
                     if success:
                         ctx.daemon.task_dispatcher.automated_scheduling = True

@@ -59,11 +59,19 @@ function compareVersions(v1, v2) {
                     : '/api/sensors/_default';
             },
 
+            // Config editing state
+            configSensorId: null,
+            get configSensorIndex() {
+                if (!this.config?.sensors) return 0;
+                const idx = this.config.sensors.findIndex(s => s.id === this.configSensorId);
+                return idx >= 0 ? idx : 0;
+            },
+
             config: {},
             apiEndpoint: 'production',
             hardwareAdapters: [], // [{value, label}]
             filters: {},
-            savedAdapter: null,
+            savedAdapters: {},
             enabledFilters: [],
             filterConfigVisible: false,
             filterNamesEditable: false,

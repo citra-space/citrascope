@@ -152,8 +152,8 @@ def test_settings_to_dict(tmp_path):
 
     d = s.to_dict()
     assert d["personal_access_token"] == "tok"
-    assert d["telescope_id"] == "tel"
-    assert d["hardware_adapter"] == "dummy"
+    assert d["sensors"][0]["citra_sensor_id"] == "tel"
+    assert d["sensors"][0]["adapter"] == "dummy"
     assert "autofocus_target_preset" in d
     assert "elset_refresh_interval_hours" in d
     assert "web_port" not in d
@@ -230,7 +230,7 @@ def test_settings_update_and_save():
     instance.save_config.assert_called_once()
     saved = instance.save_config.call_args[0][0]
     assert "web_port" not in saved
-    assert saved["adapter_settings"]["dummy"]["some_key"] == "val"
+    assert saved["sensors"][0]["adapter_settings"]["some_key"] == "val"
 
 
 def test_update_and_save_preserves_fields_not_in_payload():
@@ -282,7 +282,7 @@ def test_update_and_save_strips_computed_keys():
     saved = instance.save_config.call_args[0][0]
     for key in ("app_url", "config_file_path", "log_file_path", "images_dir_path", "processing_dir_path"):
         assert key not in saved, f"Computed key '{key}' should not be persisted"
-    assert saved["hardware_adapter"] == "dummy"
+    assert saved["sensors"][0]["adapter"] == "dummy"
 
 
 # ---------------------------------------------------------------------------

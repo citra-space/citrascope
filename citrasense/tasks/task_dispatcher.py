@@ -41,17 +41,13 @@ class TaskDispatcher:
         logger: Any,
         settings: Any,
         *,
-        hardware_adapter: Any = None,
         safety_monitor: Any = None,
-        telescope_record: dict | None = None,
         elset_cache: Any = None,
     ) -> None:
         self.api_client = api_client
         self.logger = logger.getChild(type(self).__name__)
         self.settings = settings
-        self.hardware_adapter = hardware_adapter
         self.safety_monitor = safety_monitor
-        self.telescope_record = telescope_record
         self.elset_cache = elset_cache
         self.on_toast: Callable[[str, str, str | None], None] | None = None
 
@@ -83,11 +79,6 @@ class TaskDispatcher:
         self.total_tasks_succeeded: int = 0
         self.total_tasks_failed: int = 0
 
-        # ── Automated scheduling ───────────────────────────────────────
-        self._automated_scheduling = (
-            self.telescope_record.get("automatedScheduling", False) if self.telescope_record else False
-        )
-
         # ── Session managers (set after construction) ──────────────────
         self._observing_session_manager: ObservingSessionManager | None = None
         self._self_tasking_manager: SelfTaskingManager | None = None
@@ -117,6 +108,15 @@ class TaskDispatcher:
                 return rt
         return self._default_runtime if self._runtimes else None
 
+    def _first_telescope_record(self) -> dict | None:
+        """Return the Citra API record from the first telescope runtime."""
+        for rt in self._runtimes.values():
+            if rt.sensor_type == "telescope":
+                rec = getattr(rt.sensor, "citra_record", None)
+                if rec:
+                    return rec
+        return None
+
     # ── Session managers ───────────────────────────────────────────────
 
     def set_session_managers(
@@ -138,11 +138,14 @@ class TaskDispatcher:
 
     @property
     def automated_scheduling(self) -> bool:
-        return self._automated_scheduling
+        rec = self._first_telescope_record()
+        return rec.get("automatedScheduling", False) if rec else False
 
     @automated_scheduling.setter
     def automated_scheduling(self, value: bool) -> None:
-        self._automated_scheduling = value
+        rec = self._first_telescope_record()
+        if rec:
+            rec["automatedScheduling"] = value
 
     # ── Queue helpers (facade) ─────────────────────────────────────────
 
@@ -273,7 +276,8 @@ class TaskDispatcher:
     # ── Poll loop ──────────────────────────────────────────────────────
 
     def poll_tasks(self) -> None:
-        if self.telescope_record is None:
+        telescope_record = self._first_telescope_record()
+        if telescope_record is None:
             self.logger.error("poll_tasks called without telescope_record; cannot poll for tasks")
             return
 
@@ -289,8 +293,12 @@ class TaskDispatcher:
                     self.elset_cache.refresh_if_stale(self.api_client, self.logger, interval_hours=interval_hours)
                 self._report_online()
                 now_iso = datetime.now(timezone.utc).isoformat()
+                telescope_record = self._first_telescope_record()
+                if telescope_record is None:
+                    self._stop_event.wait(TASK_POLL_INTERVAL_SECONDS)
+                    continue
                 tasks = self.api_client.get_telescope_tasks(
-                    self.telescope_record["id"],
+                    telescope_record["id"],
                     statuses=["Pending", "Scheduled"],
                     task_stop_after=now_iso,
                 )
@@ -360,9 +368,10 @@ class TaskDispatcher:
             self._stop_event.wait(TASK_POLL_INTERVAL_SECONDS)
 
     def _report_online(self) -> None:
-        if self.telescope_record is None:
+        rec = self._first_telescope_record()
+        if rec is None:
             return
-        telescope_id = self.telescope_record["id"]
+        telescope_id = rec["id"]
         iso_timestamp = datetime.now(timezone.utc).isoformat()
         self.api_client.put_telescope_status([{"id": telescope_id, "last_connection_epoch": iso_timestamp}])
         self.logger.debug("Reported online status for telescope %s at %s", telescope_id, iso_timestamp)
@@ -479,10 +488,13 @@ class TaskDispatcher:
             return True
 
         if action == SafetyAction.EMERGENCY:
-            try:
-                self.hardware_adapter.abort_slew()
-            except Exception:
-                pass
+            for rt in self._runtimes.values():
+                adapter = getattr(rt, "hardware_adapter", None)
+                if adapter:
+                    try:
+                        adapter.abort_slew()
+                    except Exception:
+                        pass
             is_new = self._last_safety_action != SafetyAction.EMERGENCY
             if is_new:
                 self.clear_pending_tasks()

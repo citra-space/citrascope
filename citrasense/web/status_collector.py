@@ -48,8 +48,6 @@ class StatusCollector:
             _prev = now
 
         try:
-            status.hardware_adapter = self.daemon.settings.hardware_adapter
-
             _sensor, runtime, adapter = self._resolve_telescope()
 
             # Build per-sensor metadata for the sensors dict
@@ -60,6 +58,7 @@ class StatusCollector:
                         "type": s.sensor_type,
                         "connected": s.is_connected(),
                         "name": getattr(s, "name", s.sensor_id),
+                        "adapter_key": getattr(s, "adapter_key", None),
                     }
 
             if adapter:
@@ -388,8 +387,9 @@ class StatusCollector:
             status.fov_short_deg = adapter.observed_fov_short_deg if adapter else None
 
             status.telescope_min_elevation = None
-            if self.daemon.telescope_record:
-                min_el = self.daemon.telescope_record.get("minElevation")
+            telescope_record = _sensor.citra_record if _sensor else None
+            if telescope_record:
+                min_el = telescope_record.get("minElevation")
                 if min_el is not None:
                     try:
                         status.telescope_min_elevation = float(min_el)
@@ -397,13 +397,13 @@ class StatusCollector:
                         pass
 
             # Config health
-            if self.daemon.telescope_record and adapter:
+            if telescope_record and adapter:
                 from citrasense.hardware.config_health import assess_config_health
 
                 camera_info = adapter.get_camera_info()
                 binning = adapter.get_current_binning()
                 health = assess_config_health(
-                    telescope_record=self.daemon.telescope_record,
+                    telescope_record=telescope_record,
                     camera_info=camera_info,
                     binning=binning,
                     observed_pixel_scale=adapter.observed_pixel_scale_arcsec,
@@ -450,9 +450,10 @@ class StatusCollector:
         # task filtering and frontend scheduled-task filtering can match
         # tasks (which carry the API's telescopeId/sensorId) to the local
         # sensor card group whose key is a local id like "telescope-0".
-        tr = getattr(self.daemon, "telescope_record", None)
-        if tr and telescope_sensor and telescope_sensor.sensor_id in status.sensors:
-            status.sensors[telescope_sensor.sensor_id]["api_id"] = tr.get("id")
+        if telescope_sensor and telescope_sensor.sensor_id in status.sensors:
+            tr = getattr(telescope_sensor, "citra_record", None)
+            if tr:
+                status.sensors[telescope_sensor.sensor_id]["api_id"] = tr.get("id")
 
         for sensor_id, sd in status.sensors.items():
             api_id = sd.get("api_id")
