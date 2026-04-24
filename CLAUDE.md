@@ -133,14 +133,20 @@ Site-level routes remain at `/api/...` (e.g., `/api/emergency-stop`, `/api/tasks
 
 Route handlers resolve sensors via `get_sensor_context(ctx, sensor_id)` from `web/helpers.py`, which returns `(sensor, runtime)` or raises 404/503. Hardware access goes through `sensor.adapter`, managers through `runtime.*_manager`.
 
-#### Monitoring layout (3 tiers)
+#### Monitoring layout (per-sensor card groups)
 
-The monitoring tab is structured in three collapsible tiers:
-1. **Site** — ground station, location, time health, safety summary
-2. **Tasks & Queue** — robotic session, active task pipeline, scheduled tasks
-3. **Sensor** — sensor switcher (pill tabs, shown when 2+ sensors), telescope + optics panels
+The monitoring tab has a site info row at the top followed by per-sensor card groups:
 
-The Alpine store (`$store.citrasense`) holds `sensors`, `activeSensorId`, and `tierCollapse` state. Frontend API calls use `sensorApiBase` (computed getter) to prefix sensor-scoped requests.
+1. **Site info row** — ground station, location, time health, safety summary (always visible)
+2. **Per-sensor card groups** — generated via `x-for="sensor in $store.citrasense.sensors"`, each containing:
+   - Collapsible section header with sensor name, type badge, and connection status
+   - **Telescope type**: Robotic Session card, Telescope + Optics cards (side by side), Active Tasks pipeline, Scheduled Tasks table
+   - **Other types**: generic status card, Active Tasks pipeline, Scheduled Tasks table
+   - All cards read per-sensor data from the enriched `sensor.*` object (populated by `_enrich_sensors` in `StatusCollector`)
+   - Scheduled tasks are filtered per-sensor: `$store.citrasense.tasks.filter(t => t.sensor_id === sensor.id)`
+   - Active pipeline stages use per-sensor `sensor.tasks_by_stage` and `sensor.pipeline_stats`
+
+The Alpine store (`$store.citrasense`) holds `sensors` (array of enriched sensor objects from `status.sensors`) and `sensorCollapse` (keyed by sensor ID). Frontend API calls use `store.sensorApiBaseFor(sensorId)` to prefix sensor-scoped requests. Template `@click` handlers pass `sensor.id` explicitly to all window functions (e.g., `homeMount(sensor.id)`).
 
 ### Adding a new setting
 

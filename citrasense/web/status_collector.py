@@ -418,12 +418,133 @@ class StatusCollector:
 
             _mark("optics_calibration")
 
+            self._enrich_sensors(status, _sensor, runtime, td)
+            _mark("sensor_enrichment")
+
             status.last_update = datetime.now().isoformat()
             status.status_collection_ms = round((time.perf_counter() - _t0) * 1000, 2)
             status.status_collection_breakdown = _breakdown
 
         except Exception:
             CITRASENSE_LOGGER.exception("Error updating status")
+
+    def _enrich_sensors(
+        self,
+        status: SystemStatus,
+        telescope_sensor: Any,
+        telescope_runtime: Any,
+        td: Any,
+    ) -> None:
+        """Bundle per-sensor operational state into status.sensors[id].
+
+        The monitoring page renders per-sensor card groups via ``x-for``.
+        Each sensor entry needs its own pipeline stats, tasks-by-stage, and
+        (for telescopes) hardware / manager / session state.
+        """
+        if not status.sensors:
+            return
+
+        site_tasks = status.tasks_by_stage or {}
+
+        # Attach the remote Citra API telescope record ID so both backend
+        # task filtering and frontend scheduled-task filtering can match
+        # tasks (which carry the API's telescopeId/sensorId) to the local
+        # sensor card group whose key is a local id like "telescope-0".
+        tr = getattr(self.daemon, "telescope_record", None)
+        if tr and telescope_sensor and telescope_sensor.sensor_id in status.sensors:
+            status.sensors[telescope_sensor.sensor_id]["api_id"] = tr.get("id")
+
+        for sensor_id, sd in status.sensors.items():
+            api_id = sd.get("api_id")
+            sd["tasks_by_stage"] = {
+                stage: [t for t in tasks if t.get("sensor_id") in (sensor_id, api_id)]
+                for stage, tasks in site_tasks.items()
+            }
+
+            s_runtime = td.get_runtime(sensor_id) if td else None
+            if s_runtime:
+                sd["pipeline_stats"] = {
+                    "imaging": s_runtime.acquisition_queue.get_stats(),
+                    "processing": s_runtime.processing_queue.get_stats(),
+                    "uploading": s_runtime.upload_queue.get_stats(),
+                }
+            else:
+                sd["pipeline_stats"] = None
+
+        if not telescope_sensor or telescope_sensor.sensor_id not in status.sensors:
+            return
+
+        ts = status.sensors[telescope_sensor.sensor_id]
+
+        ts["telescope_connected"] = status.telescope_connected
+        ts["telescope_ra"] = status.telescope_ra
+        ts["telescope_dec"] = status.telescope_dec
+        ts["telescope_az"] = status.telescope_az
+        ts["telescope_alt"] = status.telescope_alt
+        ts["mount_tracking"] = status.mount_tracking
+        ts["mount_slewing"] = status.mount_slewing
+        ts["mount_at_home"] = status.mount_at_home
+        ts["mount_horizon_limit"] = status.mount_horizon_limit
+        ts["mount_overhead_limit"] = status.mount_overhead_limit
+        ts["camera_connected"] = status.camera_connected
+        ts["camera_temperature"] = status.camera_temperature
+        ts["focuser_connected"] = status.focuser_connected
+        ts["focuser_position"] = status.focuser_position
+        ts["focuser_max_position"] = status.focuser_max_position
+        ts["focuser_temperature"] = status.focuser_temperature
+        ts["focuser_moving"] = status.focuser_moving
+        ts["current_filter_position"] = status.current_filter_position
+        ts["current_filter_name"] = status.current_filter_name
+
+        ts["supports_direct_camera_control"] = status.supports_direct_camera_control
+        ts["supports_direct_mount_control"] = status.supports_direct_mount_control
+        ts["supports_autofocus"] = status.supports_autofocus
+        ts["supports_alignment"] = status.supports_alignment
+        ts["supports_manual_sync"] = status.supports_manual_sync
+        ts["supports_hardware_safety_monitor"] = status.supports_hardware_safety_monitor
+
+        ts["mount_homing"] = status.mount_homing
+        ts["autofocus_requested"] = status.autofocus_requested
+        ts["autofocus_running"] = status.autofocus_running
+        ts["autofocus_progress"] = status.autofocus_progress
+        ts["autofocus_points"] = status.autofocus_points
+        ts["autofocus_filter_results"] = status.autofocus_filter_results
+        ts["autofocus_last_result"] = status.autofocus_last_result
+        ts["hfr_history"] = status.hfr_history
+        ts["last_hfr_median"] = status.last_hfr_median
+        ts["hfr_baseline"] = status.hfr_baseline
+        ts["alignment_requested"] = status.alignment_requested
+        ts["alignment_running"] = status.alignment_running
+        ts["alignment_progress"] = status.alignment_progress
+        ts["pointing_calibration_running"] = status.pointing_calibration_running
+        ts["pointing_calibration_progress"] = status.pointing_calibration_progress
+        ts["last_autofocus_timestamp"] = status.last_autofocus_timestamp
+        ts["next_autofocus_minutes"] = status.next_autofocus_minutes
+        ts["autofocus_target_name"] = status.autofocus_target_name
+
+        ts["observing_session_state"] = status.observing_session_state
+        ts["session_activity"] = status.session_activity
+        ts["sun_altitude"] = status.sun_altitude
+        ts["dark_window_start"] = status.dark_window_start
+        ts["dark_window_end"] = status.dark_window_end
+        ts["observing_session_enabled"] = status.observing_session_enabled
+        ts["self_tasking_enabled"] = status.self_tasking_enabled
+        ts["automated_scheduling"] = status.automated_scheduling
+        ts["last_batch_request"] = status.last_batch_request
+        ts["last_batch_created"] = status.last_batch_created
+        ts["next_request_seconds"] = status.next_request_seconds
+
+        ts["last_alignment_timestamp"] = status.last_alignment_timestamp
+        ts["hfr_increase_percent"] = status.hfr_increase_percent
+        ts["hfr_refocus_enabled"] = status.hfr_refocus_enabled
+
+        ts["calibration_status"] = status.calibration_status
+        ts["pointing_model"] = status.pointing_model
+        ts["fov_short_deg"] = status.fov_short_deg
+        ts["config_health"] = status.config_health
+        ts["telescope_min_elevation"] = status.telescope_min_elevation
+        ts["latest_task_image_url"] = status.latest_task_image_url
+        ts["missing_dependencies"] = status.missing_dependencies
 
     def _build_calibration_status(self, adapter: Any, runtime: Any) -> dict[str, Any] | None:
         """Build calibration status dict for SystemStatus."""

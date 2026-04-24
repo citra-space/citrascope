@@ -10,18 +10,13 @@ function updateStoreFromStatus(status) {
     const store = Alpine.store('citrasense');
     store.status = status;
 
-    // Sync sensor list from status.sensors dict
+    // Sync sensor list from status.sensors dict (spread all enriched data)
     if (status.sensors && typeof status.sensors === 'object') {
         const list = Object.entries(status.sensors).map(([id, info]) => ({
             id,
-            type: info.type,
-            connected: info.connected,
-            name: info.name || id,
+            ...info,
         }));
         store.sensors = list;
-        if (!store.activeSensorId && list.length > 0) {
-            store.activeSensorId = list[0].id;
-        }
     }
 
     if (status.current_task && status.current_task !== 'None') {

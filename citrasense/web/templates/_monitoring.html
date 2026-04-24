@@ -16,29 +16,34 @@
                 <i class="bi bi-{{ icon }} text-{{ color }}"></i>
                 <h6 class="mb-0">{{ label }}</h6>
                 <span class="badge bg-{{ color }}{% if color == 'warning' %} text-dark{% endif %} ms-auto"
-                      x-show="$store.citrasense.status?.tasks_by_stage?.{{ stage }}?.length > 0"
-                      x-text="$store.citrasense.status?.tasks_by_stage?.{{ stage }}?.length"></span>
+                      x-show="sensor?.tasks_by_stage?.{{ stage }}?.length > 0"
+                      x-text="sensor?.tasks_by_stage?.{{ stage }}?.length"></span>
             </div>
             {% if caller is defined %}
             {{ caller() }}
             {% else %}
             <div class="progress mb-2" style="height: 4px; cursor: default;"
-                 x-show="$store.citrasense.status?.pipeline_stats?.{{ stage }}?.attempts > 0"
-                 x-init="new bootstrap.Tooltip($el, {
-                     placement: 'top',
-                     trigger: 'hover',
-                     title() {
-                         const s = $store.citrasense.status?.pipeline_stats?.{{ stage }};
-                         if (!s) return '';
-                         const retries = s.attempts - s.successes - s.permanent_failures;
-                         const retrySuffix = retries > 0 ? ` · ${retries} retr${retries === 1 ? 'y' : 'ies'}` : '';
-                         return `${s.successes} ok · ${s.permanent_failures} failed${retrySuffix}`;
-                     }
-                 })">
+                 x-show="sensor?.pipeline_stats?.{{ stage }}?.attempts > 0"
+                 x-init="(() => {
+                     const sid = $el.closest('[data-sensor-id]')?.dataset?.sensorId;
+                     new bootstrap.Tooltip($el, {
+                         placement: 'top',
+                         trigger: 'hover',
+                         title() {
+                             const sn = $store.citrasense.status?.sensors?.[sid];
+                             const s = sn?.pipeline_stats?.{{ stage }};
+                             if (!s) return '';
+                             const retries = s.attempts - s.successes - s.permanent_failures;
+                             const retrySuffix = retries > 0 ? ` · ${retries} retr${retries === 1 ? 'y' : 'ies'}` : '';
+                             return `${s.successes} ok · ${s.permanent_failures} failed${retrySuffix}`;
+                         }
+                     });
+                 })()"
+                 >
                 <div class="progress-bar bg-success" role="progressbar"
-                     :style="`width: ${(() => { const s = $store.citrasense.status?.pipeline_stats?.{{ stage }}; if (!s) return 0; const r = s.successes + s.permanent_failures; return r > 0 ? (s.successes / r) * 100 : 0; })()}%`"></div>
+                     :style="`width: ${(() => { const s = sensor?.pipeline_stats?.{{ stage }}; if (!s) return 0; const r = s.successes + s.permanent_failures; return r > 0 ? (s.successes / r) * 100 : 0; })()}%`"></div>
                 <div class="progress-bar bg-danger" role="progressbar"
-                     :style="`width: ${(() => { const s = $store.citrasense.status?.pipeline_stats?.{{ stage }}; if (!s) return 0; const r = s.successes + s.permanent_failures; return r > 0 ? (s.permanent_failures / r) * 100 : 0; })()}%`"></div>
+                     :style="`width: ${(() => { const s = sensor?.pipeline_stats?.{{ stage }}; if (!s) return 0; const r = s.successes + s.permanent_failures; return r > 0 ? (s.permanent_failures / r) * 100 : 0; })()}%`"></div>
             </div>
             {% endif %}
             {{ task_list(stage) }}
@@ -48,15 +53,15 @@
 
     <!-- Macro for task list display -->
     {% macro task_list(stage_name) %}
-        <template x-if="!$store.citrasense.status?.tasks_by_stage?.{{ stage_name }}?.length">
+        <template x-if="!sensor?.tasks_by_stage?.{{ stage_name }}?.length">
             <div class="text-muted text-center py-2">
                 <small>Idle</small>
             </div>
         </template>
-        <template x-if="$store.citrasense.status?.tasks_by_stage?.{{ stage_name }}?.length > 0">
+        <template x-if="sensor?.tasks_by_stage?.{{ stage_name }}?.length > 0">
             <div>
-                <template x-for="(task, index) in ($store.citrasense.status?.tasks_by_stage?.{{ stage_name }} || [])" :key="task.task_id">
-                    <div class="mb-2" :class="index < ($store.citrasense.status?.tasks_by_stage?.{{ stage_name }}?.length || 0) - 1 ? 'pb-2 border-bottom border-secondary' : ''">
+                <template x-for="(task, index) in (sensor?.tasks_by_stage?.{{ stage_name }} || [])" :key="task.task_id">
+                    <div class="mb-2" :class="index < (sensor?.tasks_by_stage?.{{ stage_name }}?.length || 0) - 1 ? 'pb-2 border-bottom border-secondary' : ''">
                         <div>
                             <span class="fw-semibold" x-text="task.target_name || task.task_id"></span>
                             <span class="text-muted small ms-2" x-text="'(' + Math.floor(task.elapsed) + 's)'"></span>
@@ -110,15 +115,8 @@
                 </template>
             </div>
 
-            <!-- ═══════════════ Tier 1: Site ═══════════════ -->
+            <!-- ═══════════════ Site Info ═══════════════ -->
             <div class="mb-3">
-                <div class="d-flex align-items-center gap-2 mb-2 small text-muted"
-                     role="button" @click="$store.citrasense.tierCollapse.site = !$store.citrasense.tierCollapse.site"
-                     style="user-select: none;">
-                    <i class="bi" :class="$store.citrasense.tierCollapse.site ? 'bi-chevron-right' : 'bi-chevron-down'"></i>
-                    <span class="fw-semibold text-uppercase" style="letter-spacing: .05em;">Site</span>
-                </div>
-                <div x-show="!$store.citrasense.tierCollapse.site" x-collapse>
                     <div class="row g-3 mb-0">
                         <!-- Ground Station -->
                         <div class="col-6 col-md-3">
@@ -212,24 +210,32 @@
                             </div>
                         </div>
                     </div>
-                </div>
             </div>
 
-            <!-- ═══════════════ Tier 2: Tasks & Queue ═══════════════ -->
-            <div class="mb-3">
-                <div class="d-flex align-items-center gap-2 mb-2 small text-muted"
-                     role="button" @click="$store.citrasense.tierCollapse.tasks = !$store.citrasense.tierCollapse.tasks"
+            <!-- ═══════════════ Per-Sensor Card Groups ═══════════════ -->
+            <template x-for="sensor in $store.citrasense.sensors" :key="sensor.id">
+            <div class="mb-4" :data-sensor-id="sensor.id">
+                <div class="d-flex align-items-center gap-2 mb-2"
+                     role="button"
+                     @click="$store.citrasense.sensorCollapse[sensor.id] = !$store.citrasense.sensorCollapse[sensor.id]"
                      style="user-select: none;">
-                    <i class="bi" :class="$store.citrasense.tierCollapse.tasks ? 'bi-chevron-right' : 'bi-chevron-down'"></i>
-                    <span class="fw-semibold text-uppercase" style="letter-spacing: .05em;">Tasks &amp; Queue</span>
+                    <i class="bi" :class="$store.citrasense.sensorCollapse[sensor.id] ? 'bi-chevron-right' : 'bi-chevron-down'"></i>
+                    <span class="fw-semibold" x-text="sensor.name"></span>
+                    <span class="badge bg-secondary rounded-pill" x-text="sensor.type"></span>
+                    <span class="badge rounded-pill ms-1"
+                          :class="sensor.connected ? 'bg-success' : 'bg-danger'"
+                          x-text="sensor.connected ? 'Connected' : 'Disconnected'"></span>
                 </div>
-                <div x-show="!$store.citrasense.tierCollapse.tasks" x-collapse>
+                <div x-show="!$store.citrasense.sensorCollapse[sensor.id]" x-collapse>
+
+            <template x-if="sensor.type === 'telescope'">
+            <div>
 
             <!-- ═══════════════ Robotic Session ═══════════════ -->
             <div class="card bg-dark text-light border-secondary mb-3"
-                 x-show="$store.citrasense.status?.observing_session_enabled"
+                 x-show="sensor?.observing_session_enabled"
                  x-data="{
-                     get ss() { return $store.citrasense.status || {}; },
+                     get ss() { return sensor || {}; },
                      get state() { return this.ss.observing_session_state || 'daytime'; },
                      get badgeClass() {
                          const m = { daytime: 'bg-secondary', night_startup: 'bg-info text-dark', observing: 'bg-success', night_shutdown: 'bg-warning text-dark' };
@@ -330,13 +336,13 @@
 
                         <!-- Divider: vertical on md+, hidden on mobile -->
                         <div class="col-auto d-none d-md-block px-0"
-                             x-show="$store.citrasense.status?.self_tasking_enabled">
+                             x-show="sensor?.self_tasking_enabled">
                             <div class="border-start border-secondary h-100"></div>
                         </div>
 
                         <!-- Self-tasking column -->
                         <div class="col"
-                             x-show="$store.citrasense.status?.self_tasking_enabled">
+                             x-show="sensor?.self_tasking_enabled">
                             <div class="mb-1">
                                 <small class="text-muted">Self-Tasking</small>
                                 <template x-if="ss.last_batch_request">
@@ -360,34 +366,6 @@
                 </div>
             </div>
 
-                </div> <!-- /Tier 2 x-collapse -->
-            </div> <!-- /Tier 2 -->
-
-            <!-- ═══════════════ Tier 3: Sensor Panels ═══════════════ -->
-            <div class="mb-3">
-                <div class="d-flex align-items-center gap-2 mb-2 small text-muted"
-                     role="button" @click="$store.citrasense.tierCollapse.sensor = !$store.citrasense.tierCollapse.sensor"
-                     style="user-select: none;">
-                    <i class="bi" :class="$store.citrasense.tierCollapse.sensor ? 'bi-chevron-right' : 'bi-chevron-down'"></i>
-                    <span class="fw-semibold text-uppercase" style="letter-spacing: .05em;">Sensor</span>
-                    <span class="text-muted ms-1" x-show="$store.citrasense.activeSensor"
-                          x-text="$store.citrasense.activeSensor?.name"></span>
-                </div>
-                <div x-show="!$store.citrasense.tierCollapse.sensor" x-collapse>
-
-                    <!-- Sensor switcher pill tabs (only when 2+ sensors) -->
-                    <div class="mb-3" x-show="$store.citrasense.showSensorSwitcher">
-                        <div class="d-flex flex-wrap gap-2">
-                            <template x-for="sensor in $store.citrasense.sensors" :key="sensor.id">
-                                <button class="btn btn-sm"
-                                        :class="sensor.id === $store.citrasense.activeSensorId ? 'btn-primary' : 'btn-outline-secondary'"
-                                        @click="$store.citrasense.activeSensorId = sensor.id"
-                                        x-text="sensor.name">
-                                </button>
-                            </template>
-                        </div>
-                    </div>
-
             <!-- Main Cards Row -->
             <div class="row g-3 mb-3">
 
@@ -405,8 +383,8 @@
                                 <div class="col-6 fw-semibold">RA / Dec</div>
                                 <div class="col-6"
                                      x-data="{
-                                         get ra() { return $store.citrasense.status?.telescope_ra; },
-                                         get dec() { return $store.citrasense.status?.telescope_dec; }
+                                         get ra() { return sensor?.telescope_ra; },
+                                         get dec() { return sensor?.telescope_dec; }
                                      }"
                                      x-text="(ra != null && dec != null) ? (ra.toFixed(3) + '\u00b0 / ' + dec.toFixed(3) + '\u00b0') : '-'">
                                 </div>
@@ -415,8 +393,8 @@
                                 <div class="col-6 fw-semibold">Alt / Az</div>
                                 <div class="col-6 d-flex align-items-center gap-2"
                                      x-data="{
-                                         get alt() { return $store.citrasense.status?.telescope_alt; },
-                                         get az() { return $store.citrasense.status?.telescope_az; },
+                                         get alt() { return sensor?.telescope_alt; },
+                                         get az() { return sensor?.telescope_az; },
                                          get dotX() {
                                              if (this.alt == null || this.az == null) return 14;
                                              const a = (this.az / 360) * 2 * Math.PI;
@@ -449,13 +427,13 @@
                                     </svg>
                                     <span x-text="(alt != null && az != null) ? (alt.toFixed(1) + '\u00b0 / ' + az.toFixed(1) + '\u00b0') : '-'"></span>
                                     <span class="badge rounded-pill bg-warning text-dark ms-auto"
-                                          x-show="$store.citrasense.status?.telescope_connected && $store.citrasense.status?.mount_homing">
+                                          x-show="sensor?.telescope_connected && sensor?.mount_homing">
                                         <span class="spinner-border spinner-border-sm me-1" style="width: .6rem; height: .6rem;"></span>
                                         Homing...
                                     </span>
                                     <button class="btn btn-sm btn-outline-light ms-auto"
-                                            x-show="$store.citrasense.status?.telescope_connected && !$store.citrasense.status?.mount_homing"
-                                            @click="homeMount()"
+                                            x-show="sensor?.telescope_connected && !sensor?.mount_homing"
+                                            @click="homeMount(sensor.id)"
                                             data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="top"
                                             title="Send mount to home position">
                                         <i class="bi bi-house-door"></i>
@@ -488,14 +466,14 @@
                                     <div class="d-flex gap-1">
                                         <button class="btn btn-sm btn-outline-warning text-nowrap"
                                                 x-show="cw && !cw.unwinding && Math.abs(cw.cumulative_deg) > 5"
-                                                @click="triggerCableUnwind()"
+                                                @click="triggerCableUnwind(sensor.id)"
                                                 data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="top"
                                                 title="Unwind cable by reversing mount rotation">
                                             <i class="bi bi-arrow-counterclockwise"></i> Unwind
                                         </button>
                                         <button class="btn btn-sm btn-outline-secondary text-nowrap"
                                                 x-show="cw && !cw.unwinding && Math.abs(cw.cumulative_deg) > 0"
-                                                @click="resetCableWrap()"
+                                                @click="resetCableWrap(sensor.id)"
                                                 data-bs-toggle="tooltip" data-bs-theme="dark" data-bs-placement="top"
                                                 title="Reset counter to 0° — use after manually straightening cables">
                                             <i class="bi bi-0-circle"></i> Reset
@@ -505,12 +483,12 @@
                             </div>
 
                             <!-- Alt Limits -->
-                            <div class="row mb-2" x-show="$store.citrasense.status?.telescope_connected && ($store.citrasense.status?.mount_horizon_limit != null || $store.citrasense.status?.mount_overhead_limit != null)">
+                            <div class="row mb-2" x-show="sensor?.telescope_connected && (sensor?.mount_horizon_limit != null || sensor?.mount_overhead_limit != null)">
                                 <div class="col-6 fw-semibold">Alt Limits</div>
                                 <div class="col-6">
-                                    <span x-text="($store.citrasense.status?.mount_horizon_limit ?? '?') + '\u00b0 min'"></span>
+                                    <span x-text="(sensor?.mount_horizon_limit ?? '?') + '\u00b0 min'"></span>
                                     /
-                                    <span x-text="($store.citrasense.status?.mount_overhead_limit ?? '?') + '\u00b0 max'"></span>
+                                    <span x-text="(sensor?.mount_overhead_limit ?? '?') + '\u00b0 max'"></span>
                                 </div>
                             </div>
 
@@ -519,7 +497,7 @@
                                  strip so a matching slew rate renders as a single value, a
                                  warning renders "cfg → obs (+pct%)", and the rolling-mean
                                  sample count shows up as "(n=N)" — consistent with Optics. -->
-                            <template x-for="chk in ($store.citrasense.status?.config_health?.checks || []).filter(c => c.group === 'telescope')" :key="chk.name">
+                            <template x-for="chk in (sensor?.config_health?.checks || []).filter(c => c.group === 'telescope')" :key="chk.name">
                                 <div class="row mb-2">
                                     <div class="col-6 fw-semibold" x-text="chk.label"></div>
                                     <div class="col-6 font-monospace small">
@@ -529,12 +507,12 @@
                             </template>
 
                             <!-- Pointing Model -->
-                            <div x-show="$store.citrasense.status?.supports_direct_mount_control && $store.citrasense.status?.pointing_model"
+                            <div x-show="sensor?.supports_direct_mount_control && sensor?.pointing_model"
                                  class="mt-3 pt-3 border-top border-secondary"
                                  x-data="{
-                                     get pm() { return $store.citrasense.status?.pointing_model || {}; },
+                                     get pm() { return sensor?.pointing_model || {}; },
                                      accColor(deg) {
-                                         return $store.citrasense.pointingAccuracyClass(deg, $store.citrasense.status?.fov_short_deg);
+                                         return $store.citrasense.pointingAccuracyClass(deg, sensor?.fov_short_deg);
                                      }
                                  }">
 
@@ -588,11 +566,11 @@
                                                             },
                                                             bandY(deg) { return Math.max(2, 22 - deg / this.mx * 20); },
                                                             get greenLim() {
-                                                                const fov = $store.citrasense.status?.fov_short_deg;
+                                                                const fov = sensor?.fov_short_deg;
                                                                 return fov ? fov * 0.10 : 0.05;
                                                             },
                                                             get yellowLim() {
-                                                                const fov = $store.citrasense.status?.fov_short_deg;
+                                                                const fov = sensor?.fov_short_deg;
                                                                 return fov ? fov * 0.33 : 0.15;
                                                             }
                                                         }">
@@ -660,34 +638,34 @@
                                     </div>
                                 </template>
 
-                                <template x-if="!$store.citrasense.status?.pointing_calibration_running">
+                                <template x-if="!sensor?.pointing_calibration_running">
                                     <div class="d-flex gap-2 mt-2">
                                         <button class="btn btn-sm btn-outline-light"
-                                                @click="calibratePointingModel()">
+                                                @click="calibratePointingModel(sensor.id)">
                                             Calibrate
                                         </button>
                                         <button class="btn btn-sm btn-outline-danger"
                                                 x-show="pm.state !== 'untrained'"
                                                 :disabled="$store.citrasense.isSystemBusy"
-                                                @click="if (confirm('Reset the pointing model? This clears all calibration data.')) resetPointingModel()">
+                                                @click="if (confirm('Reset the pointing model? This clears all calibration data.')) resetPointingModel(sensor.id)">
                                             Reset
                                         </button>
                                     </div>
                                 </template>
-                                <template x-if="$store.citrasense.status?.pointing_calibration_running">
+                                <template x-if="sensor?.pointing_calibration_running">
                                     <div class="d-flex align-items-center gap-2 mt-2"
-                                         x-data="{ get prog() { return $store.citrasense.status?.pointing_calibration_progress } }">
+                                         x-data="{ get prog() { return sensor?.pointing_calibration_progress } }">
                                         <div class="progress flex-grow-1" style="height: 18px;">
                                             <div class="progress-bar progress-bar-striped progress-bar-animated"
                                                  role="progressbar"
                                                  :style="'width:' + (prog?.total > 0 ? Math.round((prog.step / prog.total) * 100) : 100) + '%'"
                                                  :aria-valuenow="prog?.step || 0"
                                                  :aria-valuemax="prog?.total || 1"
-                                                 x-text="prog?.total > 0 ? (prog.step + ' / ' + prog.total) : ($store.citrasense.status?.alignment_progress || 'Working...')">
+                                                 x-text="prog?.total > 0 ? (prog.step + ' / ' + prog.total) : (sensor?.alignment_progress || 'Working...')">
                                             </div>
                                         </div>
                                         <button class="btn btn-sm btn-outline-warning flex-shrink-0"
-                                                @click="cancelPointingCalibration()">
+                                                @click="cancelPointingCalibration(sensor.id)">
                                             Cancel
                                         </button>
                                     </div>
@@ -695,10 +673,10 @@
                             </div>
 
                             <!-- Mount Controls (direct hardware adapters only) -->
-                            <div x-show="$store.citrasense.status?.supports_direct_mount_control"
+                            <div x-show="sensor?.supports_direct_mount_control"
                                  x-data="{ gotoRa: '', gotoDec: '', jogActive: null,
-                                            jogStart(dir) { if ($store.citrasense.isSystemBusy) return; this.jogActive = dir; mountMove('start', dir); },
-                                            jogStop(dir)  { if (this.jogActive === dir) { this.jogActive = null; mountMove('stop', dir); } } }"
+                                            jogStart(dir) { if ($store.citrasense.isSystemBusy) return; this.jogActive = dir; mountMove(sensor.id, 'start', dir); },
+                                            jogStop(dir)  { if (this.jogActive === dir) { this.jogActive = null; mountMove(sensor.id, 'stop', dir); } } }"
                                  class="mt-3 pt-3 border-top border-secondary">
 
                                 <div x-show="$store.citrasense.isSystemBusy"
@@ -740,7 +718,7 @@
                                             <button class="btn btn-sm btn-outline-danger d-flex align-items-center justify-content-center p-0"
                                                     style="width:36px;height:36px;"
                                                     :disabled="$store.citrasense.isSystemBusy"
-                                                    @click="jogActive = null; mountMove('stop','north'); mountMove('stop','south'); mountMove('stop','east'); mountMove('stop','west')"
+                                                    @click="jogActive = null; mountMove(sensor.id,'stop','north'); mountMove(sensor.id,'stop','south'); mountMove(sensor.id,'stop','east'); mountMove(sensor.id,'stop','west')"
                                                     title="Stop all motion">
                                                 <i class="bi bi-stop-fill"></i>
                                             </button>
@@ -788,8 +766,8 @@
                                                            x-model.lazy="gotoDec" step="any" min="-90" max="90" placeholder="-90–90">
                                                 </div>
                                                 <button class="btn btn-sm btn-outline-primary text-nowrap"
-                                                        :disabled="gotoRa === '' || gotoDec === '' || $store.citrasense.status?.mount_slewing || $store.citrasense.isSystemBusy"
-                                                        @click="mountGoto(gotoRa, gotoDec)">
+                                                        :disabled="gotoRa === '' || gotoDec === '' || sensor?.mount_slewing || $store.citrasense.isSystemBusy"
+                                                        @click="mountGoto(sensor.id, gotoRa, gotoDec)">
                                                     <i class="bi bi-cursor"></i> Go
                                                 </button>
                                             </div>
@@ -798,37 +776,37 @@
                                         <!-- Alignment, Tracking, Slewing -->
                                         <div class="d-flex align-items-center flex-wrap gap-2">
                                             <button type="button" class="btn btn-sm"
-                                                    x-show="$store.citrasense.status?.supports_alignment"
-                                                    :class="$store.citrasense.status?.alignment_running ? 'btn-outline-info' : ($store.citrasense.status?.alignment_requested ? 'btn-outline-warning' : 'btn-outline-primary')"
-                                                    :disabled="$store.citrasense.status?.alignment_running"
-                                                    @click="window.triggerAlignment()">
-                                                <template x-if="$store.citrasense.status?.alignment_running">
+                                                    x-show="sensor?.supports_alignment"
+                                                    :class="sensor?.alignment_running ? 'btn-outline-info' : (sensor?.alignment_requested ? 'btn-outline-warning' : 'btn-outline-primary')"
+                                                    :disabled="sensor?.alignment_running"
+                                                    @click="window.triggerAlignment(sensor.id)">
+                                                <template x-if="sensor?.alignment_running">
                                                     <span>
                                                         <span class="spinner-border spinner-border-sm me-1" role="status"></span>
                                                         Aligning...
                                                     </span>
                                                 </template>
-                                                <template x-if="!$store.citrasense.status?.alignment_running">
-                                                    <span x-text="$store.citrasense.status?.alignment_requested ? 'Cancel Alignment' : 'Align Now'">Align Now</span>
+                                                <template x-if="!sensor?.alignment_running">
+                                                    <span x-text="sensor?.alignment_requested ? 'Cancel Alignment' : 'Align Now'">Align Now</span>
                                                 </template>
                                             </button>
                                             <button class="btn btn-sm"
-                                                    :class="$store.citrasense.status?.mount_tracking ? 'btn-success' : 'btn-outline-secondary'"
+                                                    :class="sensor?.mount_tracking ? 'btn-success' : 'btn-outline-secondary'"
                                                     :disabled="$store.citrasense.isSystemBusy"
-                                                    @click="mountSetTracking(!$store.citrasense.status?.mount_tracking)">
+                                                    @click="mountSetTracking(sensor.id, !sensor?.mount_tracking)">
                                                 <i class="bi bi-broadcast me-1"></i>Sidereal Tracking
                                             </button>
                                             <span class="badge rounded-pill bg-info"
-                                                  x-show="$store.citrasense.status?.mount_slewing">
+                                                  x-show="sensor?.mount_slewing">
                                                 <span class="spinner-border spinner-border-sm me-1" style="width: .6rem; height: .6rem;"></span>
                                                 Slewing
                                             </span>
                                         </div>
-                                        <div x-show="$store.citrasense.status?.supports_alignment">
-                                            <div class="small mt-1" x-show="$store.citrasense.status?.alignment_running"
-                                                 x-text="$store.citrasense.status?.alignment_progress || 'In progress...'"></div>
-                                            <small class="text-muted" x-show="!$store.citrasense.status?.alignment_running"
-                                                   x-text="'Last: ' + $store.citrasense.formatTimestamp($store.citrasense.status?.last_alignment_timestamp)"></small>
+                                        <div x-show="sensor?.supports_alignment">
+                                            <div class="small mt-1" x-show="sensor?.alignment_running"
+                                                 x-text="sensor?.alignment_progress || 'In progress...'"></div>
+                                            <small class="text-muted" x-show="!sensor?.alignment_running"
+                                                   x-text="'Last: ' + $store.citrasense.formatTimestamp(sensor?.last_alignment_timestamp)"></small>
                                         </div>
                                     </div>
                                 </div>
@@ -858,7 +836,7 @@
                                   x-data="{
                                       get headerChecks() {
                                           const byName = Object.fromEntries(
-                                              ($store.citrasense.status?.config_health?.checks || [])
+                                              (sensor?.config_health?.checks || [])
                                                   .map(c => [c.name, c])
                                           );
                                           const out = [];
@@ -903,11 +881,11 @@
                                  Enumerates every failing check, including the PX/SENSOR ones
                                  that aren't shown in the header.  Nothing renders here when
                                  there are no warnings. -->
-                            <template x-if="$store.citrasense.status?.config_health?.has_warnings">
+                            <template x-if="sensor?.config_health?.has_warnings">
                                 <div class="alert alert-warning py-1 px-2 mb-2 small d-flex align-items-center">
                                     <i class="bi bi-exclamation-triangle-fill me-2"></i>
                                     <span>Hardware differs from server config &mdash; check telescope settings in Citra.
-                                        <template x-for="w in ($store.citrasense.status?.config_health?.checks || []).filter(c => c.status === 'warning')" :key="w.name">
+                                        <template x-for="w in (sensor?.config_health?.checks || []).filter(c => c.status === 'warning')" :key="w.name">
                                             <span class="d-block" x-text="w.label + ': ' + w.configured_fmt + ' \u2192 ' + w.observed_fmt + ' (' + w.pct_diff + '% off, from ' + w.source + ')'"></span>
                                         </template>
                                     </span>
@@ -915,7 +893,7 @@
                             </template>
 
                             <!-- ─── Preview Image (visible for all adapters when an image is available) ─── -->
-                            <div x-show="$store.citrasense.previewDataUrl || ($store.citrasense.status?.camera_connected && $store.citrasense.status?.supports_direct_camera_control)">
+                            <div x-show="$store.citrasense.previewDataUrl || (sensor?.camera_connected && sensor?.supports_direct_camera_control)">
                                 <div class="text-center mb-2 position-relative"
                                      style="min-height: 80px; background: #111; border-radius: .375rem; overflow: hidden;">
                                     <template x-if="!$store.citrasense.previewDataUrl">
@@ -936,7 +914,7 @@
                             </div>
 
                             <!-- ─── Camera Controls (only for direct camera adapters) ─── -->
-                            <div x-show="$store.citrasense.status?.camera_connected && $store.citrasense.status?.supports_direct_camera_control">
+                            <div x-show="sensor?.camera_connected && sensor?.supports_direct_camera_control">
                                 <div class="d-flex align-items-end gap-2 flex-wrap mb-2">
                                     <div>
                                         <label class="form-label small mb-0">Exp (s)</label>
@@ -947,19 +925,19 @@
                                     </div>
                                     <button class="btn btn-sm btn-outline-light"
                                             :disabled="$store.citrasense.isCapturing || $store.citrasense.isLooping || $store.citrasense.isSystemBusy"
-                                            @click="$store.citrasense.singlePreview()">
+                                            @click="$store.citrasense.singlePreview(sensor.id)">
                                         <i class="bi bi-camera"></i> Snap
                                     </button>
                                     <button class="btn btn-sm"
                                             :class="$store.citrasense.isLooping ? 'btn-danger' : 'btn-success'"
                                             :disabled="!$store.citrasense.isLooping && $store.citrasense.isSystemBusy"
-                                            @click="$store.citrasense.isLooping ? $store.citrasense.stopFocusLoop() : $store.citrasense.startFocusLoop()">
+                                            @click="$store.citrasense.isLooping ? $store.citrasense.stopFocusLoop() : $store.citrasense.startFocusLoop(sensor.id)">
                                         <i class="bi" :class="$store.citrasense.isLooping ? 'bi-stop-fill' : 'bi-play-fill'"></i>
                                         <span x-text="$store.citrasense.isLooping ? 'Stop' : 'Loop'"></span>
                                     </button>
                                     <button class="btn btn-sm btn-outline-secondary"
                                             :disabled="$store.citrasense.isSaving || $store.citrasense.isLooping || $store.citrasense.isSystemBusy"
-                                            @click="$store.citrasense.captureImage()"
+                                            @click="$store.citrasense.captureImage(sensor.id)"
                                             data-bs-toggle="tooltip" data-bs-theme="dark" title="Capture to FITS using current exposure">
                                         <i class="bi bi-save"></i>
                                         <span x-text="$store.citrasense.isSaving ? 'Saving...' : 'Save'"></span>
@@ -978,22 +956,22 @@
 
                             <!-- ─── Filters ─── -->
                             <div class="pt-2 mt-2 border-top border-secondary"
-                                 x-show="$store.citrasense.enabledFilters.length > 0 || $store.citrasense.status?.current_filter_position != null">
+                                 x-show="$store.citrasense.enabledFilters.length > 0 || sensor?.current_filter_position != null">
                                 <div class="d-flex align-items-center gap-2 flex-wrap">
                                     <template x-for="f in $store.citrasense.enabledFilters" :key="f.name">
                                         <span class="badge"
                                               :style="'background-color: ' + f.color + '; color: white;'
-                                                  + (f.name === $store.citrasense.status?.current_filter_name ? ' outline: 2px solid white; outline-offset: 1px;' : '')"
+                                                  + (f.name === sensor?.current_filter_name ? ' outline: 2px solid white; outline-offset: 1px;' : '')"
                                               x-text="f.name"></span>
                                     </template>
-                                    <template x-if="$store.citrasense.status?.supports_direct_camera_control && $store.citrasense.status?.current_filter_position != null">
+                                    <template x-if="sensor?.supports_direct_camera_control && sensor?.current_filter_position != null">
                                         <div class="d-flex align-items-center gap-2 ms-auto" style="max-width: 200px;">
                                             <span class="rounded-circle d-inline-block flex-shrink-0"
-                                                  :style="{ width: '10px', height: '10px', minWidth: '10px', backgroundColor: $store.citrasense.filterColors[$store.citrasense.status?.current_filter_name] || '#777' }"></span>
+                                                  :style="{ width: '10px', height: '10px', minWidth: '10px', backgroundColor: $store.citrasense.filterColors[sensor?.current_filter_name] || '#777' }"></span>
                                             <select class="form-select form-select-sm"
                                                     :disabled="$store.citrasense.isSystemBusy"
-                                                    :value="String($store.citrasense.status?.current_filter_position ?? '')"
-                                                    @change="window.changeFilterPosition($event.target.value)">
+                                                    :value="String(sensor?.current_filter_position ?? '')"
+                                                    @change="window.changeFilterPosition(sensor.id, $event.target.value)">
                                                 <template x-for="[fid, fdata] in Object.entries($store.citrasense.filters || {}).filter(([_, f]) => f.enabled !== false)" :key="fid">
                                                     <option :value="fid" x-text="fdata.name"></option>
                                                 </template>
@@ -1005,17 +983,17 @@
 
                             <!-- ─── Focus ─── -->
                             <div class="pt-2 mt-2 border-top border-secondary"
-                                 x-show="$store.citrasense.status?.focuser_connected"
-                                 x-data="{ stepSize: 100, targetPos: $store.citrasense.status?.focuser_position ?? 0 }">
+                                 x-show="sensor?.focuser_connected"
+                                 x-data="{ stepSize: 100, targetPos: sensor?.focuser_position ?? 0 }">
                                 <div class="d-flex align-items-center justify-content-between mb-2">
                                     <h6 class="mb-0 small fw-semibold"><i class="bi bi-arrows-expand me-1"></i>Focus</h6>
                                     <div class="d-flex align-items-center gap-2">
                                         <small class="text-muted font-monospace"
-                                               x-show="$store.citrasense.status?.focuser_temperature != null"
-                                               x-text="$store.citrasense.status?.focuser_temperature?.toFixed(1) + ' \u00b0C'"></small>
+                                               x-show="sensor?.focuser_temperature != null"
+                                               x-text="sensor?.focuser_temperature?.toFixed(1) + ' \u00b0C'"></small>
                                         <small class="text-muted font-monospace"
-                                               x-show="$store.citrasense.status?.focuser_position != null"
-                                               x-text="'Pos: ' + $store.citrasense.status?.focuser_position"></small>
+                                               x-show="sensor?.focuser_position != null"
+                                               x-text="'Pos: ' + sensor?.focuser_position"></small>
                                     </div>
                                 </div>
 
@@ -1024,13 +1002,13 @@
                                     <div class="col-12 col-md">
                                         <div class="d-flex align-items-center gap-1">
                                             <button type="button" class="btn btn-sm btn-outline-secondary"
-                                                    :disabled="$store.citrasense.status?.focuser_moving || $store.citrasense.isSystemBusy"
-                                                    @click="window.moveFocuserRelative(-stepSize * 10)" title="In (coarse)">
+                                                    :disabled="sensor?.focuser_moving || $store.citrasense.isSystemBusy"
+                                                    @click="window.moveFocuserRelative(sensor.id, -stepSize * 10)" title="In (coarse)">
                                                 <i class="bi bi-chevron-double-left"></i>
                                             </button>
                                             <button type="button" class="btn btn-sm btn-outline-secondary"
-                                                    :disabled="$store.citrasense.status?.focuser_moving || $store.citrasense.isSystemBusy"
-                                                    @click="window.moveFocuserRelative(-stepSize)" title="In (fine)">
+                                                    :disabled="sensor?.focuser_moving || $store.citrasense.isSystemBusy"
+                                                    @click="window.moveFocuserRelative(sensor.id, -stepSize)" title="In (fine)">
                                                 <i class="bi bi-chevron-left"></i>
                                             </button>
                                             <div class="input-group input-group-sm" style="width: 120px;">
@@ -1039,18 +1017,18 @@
                                                 <span class="input-group-text">steps</span>
                                             </div>
                                             <button type="button" class="btn btn-sm btn-outline-secondary"
-                                                    :disabled="$store.citrasense.status?.focuser_moving || $store.citrasense.isSystemBusy"
-                                                    @click="window.moveFocuserRelative(stepSize)" title="Out (fine)">
+                                                    :disabled="sensor?.focuser_moving || $store.citrasense.isSystemBusy"
+                                                    @click="window.moveFocuserRelative(sensor.id, stepSize)" title="Out (fine)">
                                                 <i class="bi bi-chevron-right"></i>
                                             </button>
                                             <button type="button" class="btn btn-sm btn-outline-secondary"
-                                                    :disabled="$store.citrasense.status?.focuser_moving || $store.citrasense.isSystemBusy"
-                                                    @click="window.moveFocuserRelative(stepSize * 10)" title="Out (coarse)">
+                                                    :disabled="sensor?.focuser_moving || $store.citrasense.isSystemBusy"
+                                                    @click="window.moveFocuserRelative(sensor.id, stepSize * 10)" title="Out (coarse)">
                                                 <i class="bi bi-chevron-double-right"></i>
                                             </button>
                                             <button type="button" class="btn btn-sm btn-outline-danger"
-                                                    x-show="$store.citrasense.status?.focuser_moving"
-                                                    @click="window.abortFocuser()" title="Stop">
+                                                    x-show="sensor?.focuser_moving"
+                                                    @click="window.abortFocuser(sensor.id)" title="Stop">
                                                 <i class="bi bi-stop-fill"></i>
                                             </button>
                                         </div>
@@ -1061,7 +1039,7 @@
                                             <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size: 0.7rem;" @click="stepSize = 500">500</button>
                                             <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size: 0.7rem;" @click="stepSize = 1000">1k</button>
                                         </div>
-                                        <span class="small text-info" x-show="$store.citrasense.status?.focuser_moving">
+                                        <span class="small text-info" x-show="sensor?.focuser_moving">
                                             <span class="spinner-border spinner-border-sm me-1" style="width: .5rem; height: .5rem;" role="status"></span>
                                             Moving...
                                         </span>
@@ -1072,10 +1050,10 @@
                                         <div class="d-flex align-items-center gap-1">
                                             <input type="number" class="form-control form-control-sm" style="width: 80px;"
                                                    x-model.number="targetPos" min="0" placeholder="Pos"
-                                                   :max="$store.citrasense.status?.focuser_max_position || 999999">
+                                                   :max="sensor?.focuser_max_position || 999999">
                                             <button type="button" class="btn btn-sm btn-outline-primary"
-                                                    :disabled="$store.citrasense.status?.focuser_moving || $store.citrasense.isSystemBusy"
-                                                    @click="window.moveFocuserAbsolute(targetPos)">
+                                                    :disabled="sensor?.focuser_moving || $store.citrasense.isSystemBusy"
+                                                    @click="window.moveFocuserAbsolute(sensor.id, targetPos)">
                                                 Go
                                             </button>
                                         </div>
@@ -1086,10 +1064,10 @@
 
                             <!-- ─── Autofocus ─── -->
                             <div class="pt-2 mt-2 border-top border-secondary"
-                                 x-show="$store.citrasense.status?.supports_autofocus"
+                                 x-show="sensor?.supports_autofocus"
                                  x-data="{
-                                     get pts() { return $store.citrasense.status?.autofocus_points || [] },
-                                     get filterResults() { return $store.citrasense.status?.autofocus_filter_results || [] },
+                                     get pts() { return sensor?.autofocus_points || [] },
+                                     get filterResults() { return sensor?.autofocus_filter_results || [] },
                                      get minPos() { return this.pts.length ? Math.min(...this.pts.map(p => p.pos)) : 0 },
                                      get maxPos() { return this.pts.length ? Math.max(...this.pts.map(p => p.pos)) : 1 },
                                      get minHfr() { return this.pts.length ? Math.min(...this.pts.map(p => p.hfr)) : 0 },
@@ -1119,23 +1097,23 @@
                                     <div class="col-12 col-md-5">
                                         <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
                                             <button type="button" class="btn btn-sm"
-                                                    :class="$store.citrasense.status?.autofocus_running ? 'btn-outline-danger' : ($store.citrasense.status?.autofocus_requested ? 'btn-outline-warning' : 'btn-outline-primary')"
-                                                    @click="window.triggerAutofocus()">
-                                                <template x-if="$store.citrasense.status?.autofocus_running">
+                                                    :class="sensor?.autofocus_running ? 'btn-outline-danger' : (sensor?.autofocus_requested ? 'btn-outline-warning' : 'btn-outline-primary')"
+                                                    @click="window.triggerAutofocus(sensor.id)">
+                                                <template x-if="sensor?.autofocus_running">
                                                     <span><i class="bi bi-stop-fill me-1"></i>Cancel AF</span>
                                                 </template>
-                                                <template x-if="!$store.citrasense.status?.autofocus_running">
-                                                    <span x-text="$store.citrasense.status?.autofocus_requested ? 'Cancel AF' : 'Autofocus'"></span>
+                                                <template x-if="!sensor?.autofocus_running">
+                                                    <span x-text="sensor?.autofocus_requested ? 'Cancel AF' : 'Autofocus'"></span>
                                                 </template>
                                             </button>
-                                            <small class="text-muted" x-show="!$store.citrasense.status?.autofocus_running"
-                                                   x-text="$store.citrasense.formatLastAutofocus($store.citrasense.status)"></small>
+                                            <small class="text-muted" x-show="!sensor?.autofocus_running"
+                                                   x-text="$store.citrasense.formatLastAutofocus(sensor)"></small>
                                         </div>
-                                        <div class="small mb-1" x-show="$store.citrasense.status?.autofocus_running">
+                                        <div class="small mb-1" x-show="sensor?.autofocus_running">
                                             <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                                            <span x-text="$store.citrasense.status?.autofocus_progress || 'Autofocusing...'"></span>
+                                            <span x-text="sensor?.autofocus_progress || 'Autofocusing...'"></span>
                                         </div>
-                                        <div x-show="!$store.citrasense.status?.autofocus_running && filterResults.length > 0" class="mb-1">
+                                        <div x-show="!sensor?.autofocus_running && filterResults.length > 0" class="mb-1">
                                             <template x-for="r in filterResults" :key="r.filter">
                                                 <div>
                                                     <small :style="'color:' + filterColor(r.filter)">
@@ -1145,17 +1123,17 @@
                                                 </div>
                                             </template>
                                         </div>
-                                        <div x-show="!$store.citrasense.status?.autofocus_running && $store.citrasense.status?.autofocus_last_result && filterResults.length === 0">
-                                            <small :class="$store.citrasense.status?.autofocus_last_result?.includes('one-sided') || $store.citrasense.status?.autofocus_last_result?.includes('Failed') ? 'text-warning' : 'text-success'"
-                                                   x-text="$store.citrasense.status?.autofocus_last_result"></small>
+                                        <div x-show="!sensor?.autofocus_running && sensor?.autofocus_last_result && filterResults.length === 0">
+                                            <small :class="sensor?.autofocus_last_result?.includes('one-sided') || sensor?.autofocus_last_result?.includes('Failed') ? 'text-warning' : 'text-success'"
+                                                   x-text="sensor?.autofocus_last_result"></small>
                                         </div>
-                                        <div x-show="!$store.citrasense.status?.autofocus_running">
-                                            <small class="text-muted" x-show="$store.citrasense.status?.autofocus_target_name"
-                                                   x-text="'Target: ' + $store.citrasense.status?.autofocus_target_name"></small>
+                                        <div x-show="!sensor?.autofocus_running">
+                                            <small class="text-muted" x-show="sensor?.autofocus_target_name"
+                                                   x-text="'Target: ' + sensor?.autofocus_target_name"></small>
                                         </div>
-                                        <div x-show="!$store.citrasense.status?.autofocus_running && $store.citrasense.status?.next_autofocus_minutes != null">
+                                        <div x-show="!sensor?.autofocus_running && sensor?.next_autofocus_minutes != null">
                                             <small class="text-muted"
-                                                   x-text="'Next in: ' + ($store.citrasense.status?.next_autofocus_minutes === 0 ? 'now (overdue)' : $store.citrasense.formatMinutes($store.citrasense.status?.next_autofocus_minutes || 0))"></small>
+                                                   x-text="'Next in: ' + (sensor?.next_autofocus_minutes === 0 ? 'now (overdue)' : $store.citrasense.formatMinutes(sensor?.next_autofocus_minutes || 0))"></small>
                                         </div>
                                     </div>
                                     <!-- Right: V-curve chart -->
@@ -1176,14 +1154,14 @@
 
                             <!-- ─── HFR Focus Health ─── -->
                             <div class="pt-2 mt-2 border-top border-secondary"
-                                 x-show="$store.citrasense.status?.last_hfr_median != null || $store.citrasense.status?.hfr_baseline != null"
+                                 x-show="sensor?.last_hfr_median != null || sensor?.hfr_baseline != null"
                                  x-data="{
-                                     get baseline() { return $store.citrasense.status?.hfr_baseline },
-                                     get pct() { return $store.citrasense.status?.hfr_increase_percent || 30 },
+                                     get baseline() { return sensor?.hfr_baseline },
+                                     get pct() { return sensor?.hfr_increase_percent || 30 },
                                      get greenLim() { return this.baseline ? this.baseline * (1 + this.pct / 200) : null },
                                      get yellowLim() { return this.baseline ? this.baseline * (1 + this.pct / 100) : null },
-                                     get hist() { return $store.citrasense.status?.hfr_history || [] },
-                                     get hfr() { return $store.citrasense.status?.last_hfr_median },
+                                     get hist() { return sensor?.hfr_history || [] },
+                                     get hfr() { return sensor?.last_hfr_median },
                                      get lastFilter() {
                                          if (!this.hist.length) return '';
                                          return this.hist[this.hist.length - 1].filter || '';
@@ -1259,7 +1237,7 @@
                                     <template x-if="baseline">
                                         <div class="text-muted" style="font-size: 0.7rem;">
                                             Baseline: <span x-text="baseline.toFixed(2)"></span> px
-                                            <template x-if="$store.citrasense.status?.hfr_refocus_enabled">
+                                            <template x-if="sensor?.hfr_refocus_enabled">
                                                 <span>&middot; refocus at +<span x-text="pct"></span>%</span>
                                             </template>
                                         </div>
@@ -1273,13 +1251,6 @@
 
             </div>
 
-                </div> <!-- /Tier 3 x-collapse -->
-            </div> <!-- /Tier 3 -->
-
-        </div>
-
-        <div class="container">
-            <div x-show="!$store.citrasense.tierCollapse.tasks" x-collapse>
             <!-- Active Tasks Card with Pipeline Stages -->
             <div class="row g-3 mb-3">
                 <div class="col-12">
@@ -1288,10 +1259,10 @@
                             <span><i class="bi bi-lightning-charge-fill me-2"></i>Active Tasks</span>
                             <span class="d-flex flex-wrap gap-3 text-muted small"
                                   x-show="$store.citrasense.status?.pipeline_stats?.tasks?.started > 0">
-                                <span><i class="bi bi-check-circle me-1 text-success"></i><span x-text="$store.citrasense.status?.pipeline_stats?.tasks?.succeeded || 0"></span> Completed</span>
-                                <span><i class="bi bi-rocket me-1 text-info"></i><span x-text="$store.citrasense.status?.pipeline_stats?.uploading?.satellites_identified || 0"></span> Satellites</span>
-                                <span><i class="bi bi-eye me-1 text-success"></i><span x-text="$store.citrasense.status?.pipeline_stats?.uploading?.observation_uploads || 0"></span> Obs</span>
-                                <span><i class="bi bi-image me-1 text-warning"></i><span x-text="$store.citrasense.status?.pipeline_stats?.uploading?.image_uploads || 0"></span> Img</span>
+                                <span><i class="bi bi-check-circle me-1 text-success"></i><span x-text="sensor?.pipeline_stats?.uploading?.successes || 0"></span> Completed</span>
+                                <span><i class="bi bi-rocket me-1 text-info"></i><span x-text="sensor?.pipeline_stats?.uploading?.satellites_identified || 0"></span> Satellites</span>
+                                <span><i class="bi bi-eye me-1 text-success"></i><span x-text="sensor?.pipeline_stats?.uploading?.observation_uploads || 0"></span> Obs</span>
+                                <span><i class="bi bi-image me-1 text-warning"></i><span x-text="sensor?.pipeline_stats?.uploading?.image_uploads || 0"></span> Img</span>
                             </span>
                         </div>
                         <div class="card-body">
@@ -1305,33 +1276,13 @@
 
                                 {% call stage_box('processing', 'Processing', 'gear-fill', 'warning', 'x-show="$store.citrasense.config?.processors_enabled"') %}
                                 <div class="d-flex flex-column gap-1 mb-2" style="cursor: default;"
-                                     x-show="$store.citrasense.status?.active_processors?.length > 0 && $store.citrasense.status?.pipeline_stats?.processors"
-                                     x-init="new bootstrap.Tooltip($el, {
-                                         placement: 'top',
-                                         trigger: 'hover',
-                                         html: true,
-                                         title() {
-                                             const procs = $store.citrasense.status?.pipeline_stats?.processors;
-                                             const names = $store.citrasense.status?.active_processors || [];
-                                             if (!procs || !names.length) return '';
-                                             return names.filter(n => procs[n]?.runs > 0).map(n => {
-                                                 const p = procs[n];
-                                                 const ok = p.runs - p.failures;
-                                                 const label = n.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-                                                 return `${label}: ${ok} ok / ${p.failures} failed`;
-                                             }).join('<br>');
-                                         }
-                                     })">
-                                    <template x-for="name in ($store.citrasense.status?.active_processors || [])" :key="name">
-                                        <template x-if="$store.citrasense.status?.pipeline_stats?.processors?.[name]?.runs > 0">
-                                            <div class="progress" style="height: 3px;">
-                                                <div class="progress-bar bg-success" role="progressbar"
-                                                     :style="`width: ${(() => { const p = $store.citrasense.status?.pipeline_stats?.processors?.[name]; if (!p) return 0; return p.runs > 0 ? ((p.runs - p.failures) / p.runs) * 100 : 0; })()}%`"></div>
-                                                <div class="progress-bar bg-danger" role="progressbar"
-                                                     :style="`width: ${(() => { const p = $store.citrasense.status?.pipeline_stats?.processors?.[name]; if (!p) return 0; return p.runs > 0 ? (p.failures / p.runs) * 100 : 0; })()}%`"></div>
-                                            </div>
-                                        </template>
-                                    </template>
+                                     x-show="$store.citrasense.status?.active_processors?.length > 0 && sensor?.pipeline_stats?.processing?.attempts > 0">
+                                    <div class="progress" style="height: 3px;">
+                                        <div class="progress-bar bg-success" role="progressbar"
+                                             :style="`width: ${(() => { const s = sensor?.pipeline_stats?.processing; if (!s) return 0; const r = s.successes + s.permanent_failures; return r > 0 ? (s.successes / r) * 100 : 0; })()}%`"></div>
+                                        <div class="progress-bar bg-danger" role="progressbar"
+                                             :style="`width: ${(() => { const s = sensor?.pipeline_stats?.processing; if (!s) return 0; const r = s.successes + s.permanent_failures; return r > 0 ? (s.permanent_failures / r) * 100 : 0; })()}%`"></div>
+                                    </div>
                                 </div>
                                 {% endcall %}
 
@@ -1342,28 +1293,14 @@
 
                                 {% call stage_box('uploading', 'Submission', 'cloud-upload-fill', 'success') %}
                                 <div class="d-flex flex-column gap-1 mb-2" style="cursor: default;"
-                                     x-show="(($store.citrasense.status?.pipeline_stats?.uploading?.observation_uploads || 0) + ($store.citrasense.status?.pipeline_stats?.uploading?.image_uploads || 0) + ($store.citrasense.status?.pipeline_stats?.uploading?.permanent_failures || 0)) > 0"
-                                     x-init="new bootstrap.Tooltip($el, {
-                                         placement: 'top',
-                                         trigger: 'hover',
-                                         html: true,
-                                         title() {
-                                             const u = $store.citrasense.status?.pipeline_stats?.uploading;
-                                             if (!u) return '';
-                                             const lines = [];
-                                             lines.push(`${u.observation_uploads || 0} observation uploads`);
-                                             lines.push(`${u.image_uploads || 0} image-only`);
-                                             if (u.permanent_failures > 0) lines.push(`${u.permanent_failures} failed`);
-                                             return lines.join('<br>');
-                                         }
-                                     })">
+                                     x-show="((sensor?.pipeline_stats?.uploading?.observation_uploads || 0) + (sensor?.pipeline_stats?.uploading?.image_uploads || 0) + (sensor?.pipeline_stats?.uploading?.permanent_failures || 0)) > 0">
                                     <div class="progress" style="height: 3px;">
                                         <div class="progress-bar bg-success" role="progressbar"
-                                             :style="`width: ${(() => { const u = $store.citrasense.status?.pipeline_stats?.uploading; if (!u) return 0; const t = (u.observation_uploads || 0) + (u.image_uploads || 0) + (u.permanent_failures || 0); return t > 0 ? ((u.observation_uploads || 0) / t) * 100 : 0; })()}%`"></div>
+                                             :style="`width: ${(() => { const u = sensor?.pipeline_stats?.uploading; if (!u) return 0; const t = (u.observation_uploads || 0) + (u.image_uploads || 0) + (u.permanent_failures || 0); return t > 0 ? ((u.observation_uploads || 0) / t) * 100 : 0; })()}%`"></div>
                                         <div class="progress-bar bg-warning" role="progressbar"
-                                             :style="`width: ${(() => { const u = $store.citrasense.status?.pipeline_stats?.uploading; if (!u) return 0; const t = (u.observation_uploads || 0) + (u.image_uploads || 0) + (u.permanent_failures || 0); return t > 0 ? ((u.image_uploads || 0) / t) * 100 : 0; })()}%`"></div>
+                                             :style="`width: ${(() => { const u = sensor?.pipeline_stats?.uploading; if (!u) return 0; const t = (u.observation_uploads || 0) + (u.image_uploads || 0) + (u.permanent_failures || 0); return t > 0 ? ((u.image_uploads || 0) / t) * 100 : 0; })()}%`"></div>
                                         <div class="progress-bar bg-danger" role="progressbar"
-                                             :style="`width: ${(() => { const u = $store.citrasense.status?.pipeline_stats?.uploading; if (!u) return 0; const t = (u.observation_uploads || 0) + (u.image_uploads || 0) + (u.permanent_failures || 0); return t > 0 ? ((u.permanent_failures || 0) / t) * 100 : 0; })()}%`"></div>
+                                             :style="`width: ${(() => { const u = sensor?.pipeline_stats?.uploading; if (!u) return 0; const t = (u.observation_uploads || 0) + (u.image_uploads || 0) + (u.permanent_failures || 0); return t > 0 ? ((u.permanent_failures || 0) / t) * 100 : 0; })()}%`"></div>
                                     </div>
                                 </div>
                                 {% endcall %}
@@ -1411,13 +1348,13 @@
                                     <span x-show="!batchLoading"><i class="bi bi-plus-circle me-1"></i>Request Batch</span>
                                     <span x-show="batchLoading"><span class="spinner-border spinner-border-sm me-1"></span>Requesting…</span>
                                 </button>
-                                <span class="small text-secondary"><span x-text="$store.citrasense.status?.tasks_pending ?? $store.citrasense.tasks?.length ?? 0">0</span> scheduled</span>
+                                <span class="small text-secondary"><span x-text="$store.citrasense.tasks.filter(t => t.sensor_id === (sensor.api_id || sensor.id)).length">0</span> scheduled</span>
                             </span>
                         </div>
                         <div class="card-body p-0">
                             <div class="table-responsive">
-                                <p class="p-3 text-muted-dark" x-show="$store.citrasense.tasks.length === 0">No scheduled tasks</p>
-                                <table class="table table-dark table-hover mb-0" x-show="$store.citrasense.tasks.length > 0">
+                                <p class="p-3 text-muted-dark" x-show="$store.citrasense.tasks.filter(t => t.sensor_id === (sensor.api_id || sensor.id)).length === 0">No scheduled tasks</p>
+                                <table class="table table-dark table-hover mb-0" x-show="$store.citrasense.tasks.filter(t => t.sensor_id === (sensor.api_id || sensor.id)).length > 0">
                                     <thead>
                                         <tr>
                                             <th>Target</th>
@@ -1434,7 +1371,7 @@
                                     <tbody>
                                         {# Need `index` in scope so the overlap check can compare this
                                            row's start time against the previous row's stop time. #}
-                                        <template x-for="(task, index) in $store.citrasense.tasks" :key="task.id">
+                                        <template x-for="(task, index) in $store.citrasense.tasks.filter(t => t.sensor_id === (sensor.api_id || sensor.id))" :key="task.id">
                                             <tr x-data="taskRow(task)"
                                                 class="task-row" :class="rowClass">
                                                 <td class="fw-semibold">
@@ -1475,13 +1412,13 @@
                                                     <template x-if="task.sky_alt_deg != null">
                                                         <svg width="40" height="40" viewBox="0 0 40 40"
                                                              class="d-inline-block align-middle"
-                                                             :class="$store.citrasense.skyAltClass(task.sky_alt_deg, $store.citrasense.status?.telescope_min_elevation)"
+                                                             :class="$store.citrasense.skyAltClass(task.sky_alt_deg, sensor?.telescope_min_elevation)"
                                                              aria-hidden="true">
                                                             <circle cx="20" cy="20" r="17" fill="none"
                                                                     stroke="currentColor" stroke-opacity="0.3" stroke-width="1"/>
-                                                            <template x-if="$store.citrasense.skyHorizonRingRadius($store.citrasense.status?.telescope_min_elevation) != null">
+                                                            <template x-if="$store.citrasense.skyHorizonRingRadius(sensor?.telescope_min_elevation) != null">
                                                                 <circle cx="20" cy="20"
-                                                                        :r="$store.citrasense.skyHorizonRingRadius($store.citrasense.status?.telescope_min_elevation)"
+                                                                        :r="$store.citrasense.skyHorizonRingRadius(sensor?.telescope_min_elevation)"
                                                                         fill="none" stroke="currentColor" stroke-opacity="0.35"
                                                                         stroke-width="1" stroke-dasharray="1.5 1.5"/>
                                                             </template>
@@ -1543,7 +1480,36 @@
                     </div>
                 </div>
             </div>
-            </div> <!-- /Tier 2 tasks x-collapse -->
+
+            </div> <!-- /telescope type template content -->
+            </template> <!-- /x-if telescope -->
+
+            <!-- Generic sensor placeholder (non-telescope) -->
+            <template x-if="sensor.type !== 'telescope'">
+            <div>
+                <div class="card bg-dark text-light border-secondary mb-3">
+                    <div class="card-header"><i class="bi bi-cpu me-1"></i><span x-text="sensor.name"></span></div>
+                    <div class="card-body">
+                        <div class="row mb-2">
+                            <div class="col-6 fw-semibold">Type</div>
+                            <div class="col-6" x-text="sensor.type"></div>
+                        </div>
+                        <div class="row mb-2">
+                            <div class="col-6 fw-semibold">Status</div>
+                            <div class="col-6">
+                                <span :class="sensor.connected ? 'text-success' : 'text-danger'"
+                                      x-text="sensor.connected ? 'Connected' : 'Disconnected'"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            </template> <!-- /x-if non-telescope -->
+
+                </div> <!-- /sensor collapse -->
+            </div> <!-- /sensor card group -->
+            </template> <!-- /x-for sensors -->
+
         </div>
 
         <!-- Fullscreen Preview Modal -->

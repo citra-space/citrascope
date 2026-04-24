@@ -51,21 +51,12 @@ function compareVersions(v1, v2) {
 
             // Multi-sensor support
             sensors: [],
-            activeSensorId: null,
-            tierCollapse: { site: false, tasks: false, sensor: false },
+            sensorCollapse: {},
 
-            get sensorApiBase() {
-                return this.activeSensorId
-                    ? `/api/sensors/${this.activeSensorId}`
+            sensorApiBaseFor(sensorId) {
+                return sensorId
+                    ? `/api/sensors/${sensorId}`
                     : '/api/sensors/_default';
-            },
-
-            get activeSensor() {
-                return this.sensors.find(s => s.id === this.activeSensorId) || null;
-            },
-
-            get showSensorSwitcher() {
-                return this.sensors.length > 1;
             },
 
             config: {},
@@ -143,7 +134,7 @@ function compareVersions(v1, v2) {
             // Store methods
             previewFlipH: false,
 
-            async captureImage() {
+            async captureImage(sensorId) {
                 const duration = this.previewExposure;
                 if (Number.isNaN(duration) || duration <= 0) {
                     const { showToast } = await import('./config.js');
@@ -153,7 +144,7 @@ function compareVersions(v1, v2) {
 
                 this.isSaving = true;
                 try {
-                    const response = await fetch(`${this.sensorApiBase}/camera/capture`, {
+                    const response = await fetch(`${this.sensorApiBaseFor(sensorId)}/camera/capture`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ duration })
@@ -283,20 +274,20 @@ function compareVersions(v1, v2) {
                 return this.isSystemBusy || this.status?.processing_active === true;
             },
 
-            async capturePreview() {
+            async capturePreview(sensorId) {
                 if (this.isImagingTaskActive) {
                     this.isLooping = false;
                     return;
                 }
                 try {
-                    const response = await fetch(`${this.sensorApiBase}/camera/preview`, {
+                    const response = await fetch(`${this.sensorApiBaseFor(sensorId)}/camera/preview`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ duration: this.previewExposure, flip_horizontal: this.previewFlipH })
                     });
                     if (response.status === 409) {
                         if (this.isLooping) {
-                            setTimeout(() => this.capturePreview(), 250);
+                            setTimeout(() => this.capturePreview(sensorId), 250);
                         }
                         return;
                     }
@@ -317,26 +308,27 @@ function compareVersions(v1, v2) {
                 }
 
                 if (this.isLooping) {
-                    requestAnimationFrame(() => this.capturePreview());
+                    requestAnimationFrame(() => this.capturePreview(sensorId));
                 }
             },
 
-            startFocusLoop() {
+            startFocusLoop(sensorId) {
                 if (this.isLooping || this.isSystemBusy) return;
                 this.isLooping = true;
                 this.loopCount = 0;
-                this.capturePreview();
+                this._loopSensorId = sensorId;
+                this.capturePreview(sensorId);
             },
 
             stopFocusLoop() {
                 this.isLooping = false;
             },
 
-            async singlePreview() {
+            async singlePreview(sensorId) {
                 if (this.isLooping) return;
                 this.isCapturing = true;
                 try {
-                    const response = await fetch(`${this.sensorApiBase}/camera/preview`, {
+                    const response = await fetch(`${this.sensorApiBaseFor(sensorId)}/camera/preview`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ duration: this.previewExposure, flip_horizontal: this.previewFlipH })

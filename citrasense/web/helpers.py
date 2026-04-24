@@ -75,6 +75,7 @@ def _task_to_dict(task: Any) -> dict:
         "stop_time": task.taskStop or None,
         "status": task.status,
         "sensor_type": getattr(task, "sensor_type", "telescope"),
+        "sensor_id": getattr(task, "sensor_id", None),
     }
     if getattr(task, "sensor_type", "telescope") == "telescope":
         d["satelliteId"] = task.satelliteId

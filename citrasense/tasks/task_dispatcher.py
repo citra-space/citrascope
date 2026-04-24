@@ -225,6 +225,8 @@ class TaskDispatcher:
                 task = self.get_task_by_id(task_id)
                 if task:
                     result["target_name"] = task.satelliteName if task.sensor_type == "telescope" else task.sensor_id
+                    result["sensor_type"] = task.sensor_type
+                    result["sensor_id"] = getattr(task, "sensor_id", None)
                     status_msg, retry_time, is_executing = task.get_status_info()
                     result["status_msg"] = status_msg
                     result["retry_scheduled_time"] = retry_time
