@@ -187,7 +187,7 @@ class StatusCollector:
                 agg_imaging: dict[str, int] = {}
                 agg_processing: dict[str, int] = {}
                 agg_uploading: dict[str, int] = {}
-                for rt in td._runtimes.values():
+                for rt in td.iter_runtimes():
                     for k, v in rt.acquisition_queue.get_stats().items():
                         agg_imaging[k] = agg_imaging.get(k, 0) + v
                     for k, v in rt.processing_queue.get_stats().items():
@@ -204,7 +204,7 @@ class StatusCollector:
                 status.pipeline_stats = None
             if td:
                 agg_proc_stats: dict[str, dict[str, Any]] = {}
-                for rt in td._runtimes.values():
+                for rt in td.iter_runtimes():
                     reg = getattr(rt, "processor_registry", None)
                     if not reg:
                         continue
@@ -273,7 +273,7 @@ class StatusCollector:
 
             # Per-sensor task state
             if td:
-                sd["current_task"] = td._current_task_ids.get(sensor_id)
+                sd["current_task"] = td.current_task_id_for_sensor(sensor_id)
                 sd["processing_active"] = not s_runtime.paused if s_runtime else False
             else:
                 sd["current_task"] = None

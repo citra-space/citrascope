@@ -1,11 +1,12 @@
-"""Telescope sensor — phase-1 wrapper around ``AbstractAstroHardwareAdapter``.
+"""Telescope sensor — wrapper around ``AbstractAstroHardwareAdapter``.
 
-This class adapts the existing telescope hardware stack (NINA, KStars, INDI,
-Direct, Dummy) to the new :class:`~citrasense.sensors.abstract_sensor.AbstractSensor`
-contract. It intentionally stays **thin** in phase 1: the adapter is the
-authoritative controller and still owns mount/camera/filter/focuser. Consumers
-who need telescope-specific verbs reach through ``sensor.adapter`` — the
-compatibility surface the daemon's ``hardware_adapter`` property relies on.
+This class adapts the telescope hardware stack (NINA, KStars, INDI,
+Direct, Dummy) to the :class:`~citrasense.sensors.abstract_sensor.AbstractSensor`
+contract. It stays **thin**: the adapter is the authoritative controller
+and still owns mount/camera/filter/focuser. Consumers who need
+telescope-specific verbs reach through ``sensor.adapter`` — the daemon
+no longer exposes a top-level ``hardware_adapter`` property; hardware
+is resolved per-sensor via the ``SensorManager`` + ``SensorRuntime``.
 
 Phase 1 contract
 ----------------

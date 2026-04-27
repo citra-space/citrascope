@@ -46,7 +46,7 @@ def build_mount_router(ctx: CitraSenseWebApp) -> APIRouter:
     async def set_mount_limits(sensor_id: str, request: dict[str, Any]):
         """Set the mount's altitude limits."""
         sensor, _runtime = get_sensor_context(ctx, sensor_id)
-        if busy := ctx._require_sensor_idle(_runtime):
+        if busy := ctx.require_sensor_idle(_runtime):
             return busy
         adapter = sensor.adapter
         results: dict[str, Any] = {}
@@ -83,7 +83,7 @@ def build_mount_router(ctx: CitraSenseWebApp) -> APIRouter:
     async def mount_move(sensor_id: str, body: dict[str, Any]):
         """Start or stop directional mount motion (jog control)."""
         sensor, _runtime = get_sensor_context(ctx, sensor_id)
-        if busy := ctx._require_sensor_idle(_runtime):
+        if busy := ctx.require_sensor_idle(_runtime):
             return busy
 
         mount = sensor.adapter.mount
@@ -119,7 +119,7 @@ def build_mount_router(ctx: CitraSenseWebApp) -> APIRouter:
     async def mount_goto(sensor_id: str, body: dict[str, Any]):
         """Slew the mount to arbitrary RA/Dec coordinates (degrees)."""
         sensor, _runtime = get_sensor_context(ctx, sensor_id)
-        if busy := ctx._require_sensor_idle(_runtime):
+        if busy := ctx.require_sensor_idle(_runtime):
             return busy
 
         mount = sensor.adapter.mount
@@ -148,7 +148,7 @@ def build_mount_router(ctx: CitraSenseWebApp) -> APIRouter:
     async def mount_tracking(sensor_id: str, body: dict[str, Any]):
         """Start or stop sidereal tracking."""
         sensor, _runtime = get_sensor_context(ctx, sensor_id)
-        if busy := ctx._require_sensor_idle(_runtime):
+        if busy := ctx.require_sensor_idle(_runtime):
             return busy
 
         mount = sensor.adapter.mount

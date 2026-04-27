@@ -422,4 +422,53 @@ def build_analysis_router(ctx: CitraSenseWebApp) -> APIRouter:
         job = ctx.job_runner.submit(_autotune_worker, total=total_evals)
         return {"job_id": job.job_id, "total": total_evals, "bundles": len(debug_dirs)}
 
+    @router.post("/sensors/{sensor_id}/autotune/apply")
+    async def apply_autotune(sensor_id: str, request: Request):
+        """Write a tuned SExtractor config back to one sensor's settings.
+
+        Body: ``{"detect_thresh": ..., "detect_minarea": ..., "filter_name": ...}``.
+        All three are required — this endpoint exists specifically so
+        operators can apply tuning from the UI without falling through
+        to "first sensor wins" semantics.
+        """
+        if not ctx.daemon:
+            return JSONResponse({"error": "Daemon not available"}, status_code=503)
+
+        body = await request.json() if await request.body() else {}
+        detect_thresh = body.get("detect_thresh")
+        detect_minarea = body.get("detect_minarea")
+        filter_name = body.get("filter_name")
+        if detect_thresh is None or detect_minarea is None or filter_name is None:
+            return JSONResponse(
+                {"error": "detect_thresh, detect_minarea, and filter_name are required"},
+                status_code=400,
+            )
+
+        sc = ctx.daemon.settings.get_sensor_config(sensor_id)
+        if sc is None:
+            return JSONResponse({"error": f"Unknown sensor_id: {sensor_id}"}, status_code=404)
+
+        try:
+            sc.sextractor_detect_thresh = float(detect_thresh)
+            sc.sextractor_detect_minarea = int(detect_minarea)
+            sc.sextractor_filter_name = str(filter_name)
+        except (TypeError, ValueError) as exc:
+            return JSONResponse({"error": f"Invalid value: {exc}"}, status_code=400)
+
+        ctx.daemon.settings.save()
+        CITRASENSE_LOGGER.info(
+            "Applied autotune to sensor %s: thresh=%s minarea=%s filter=%s",
+            sensor_id,
+            sc.sextractor_detect_thresh,
+            sc.sextractor_detect_minarea,
+            sc.sextractor_filter_name,
+        )
+        return {
+            "status": "applied",
+            "sensor_id": sensor_id,
+            "detect_thresh": sc.sextractor_detect_thresh,
+            "detect_minarea": sc.sextractor_detect_minarea,
+            "filter_name": sc.sextractor_filter_name,
+        }
+
     return router

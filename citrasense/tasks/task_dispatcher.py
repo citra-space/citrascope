@@ -95,6 +95,27 @@ class TaskDispatcher:
         """Look up a registered runtime by *sensor_id*."""
         return self._runtimes.get(sensor_id)
 
+    def iter_runtimes(self) -> list[SensorRuntime]:
+        """Public snapshot of all registered runtimes.
+
+        Returns a freshly copied list so callers can iterate safely without
+        reaching into :attr:`_runtimes`.
+        """
+        return list(self._runtimes.values())
+
+    def telescope_runtimes(self) -> list[SensorRuntime]:
+        """All telescope runtimes that have a ``citra_record`` wired up."""
+        return [
+            rt
+            for rt in self._runtimes.values()
+            if rt.sensor_type == "telescope" and getattr(rt.sensor, "citra_record", None)
+        ]
+
+    def current_task_id_for_sensor(self, sensor_id: str) -> str | None:
+        """Return the task id currently executing on *sensor_id* (or ``None``)."""
+        with self.heap_lock:
+            return self._current_task_ids.get(sensor_id)
+
     def _runtime_for_task(self, task: Task) -> SensorRuntime | None:
         """Resolve the runtime responsible for this task.
 
@@ -108,6 +129,7 @@ class TaskDispatcher:
         Returns ``None`` (task is dropped) if no unambiguous match exists.
         """
         sid = task.sensor_id
+        tid = getattr(task, "id", "?")
         if sid:
             if sid in self._runtimes:
                 return self._runtimes[sid]
@@ -117,8 +139,12 @@ class TaskDispatcher:
                     return rt
             self.logger.warning(
                 "Task %s has sensor_id=%r but no matching runtime; dropping",
-                getattr(task, "id", "?"),
+                tid,
                 sid,
+            )
+            self._notify_dropped_task(
+                f"Task dropped — sensor_id {sid!r} has no matching runtime",
+                toast_id=f"task-drop:unknown-sensor:{sid}",
             )
             return None
 
@@ -130,9 +156,14 @@ class TaskDispatcher:
         if len(candidates) > 1:
             self.logger.warning(
                 "Task %s has no sensor_id but %d %s runtimes are registered; dropping",
-                getattr(task, "id", "?"),
+                tid,
                 len(candidates),
                 task.sensor_type,
+            )
+            self._notify_dropped_task(
+                f"Task dropped — no sensor_id on {task.sensor_type} task but "
+                f"{len(candidates)} candidates exist (check Citra task payload)",
+                toast_id=f"task-drop:missing-sensor:{task.sensor_type}",
             )
         else:
             # No candidates: either nothing of this type is registered or
@@ -142,10 +173,23 @@ class TaskDispatcher:
             # type on the API side, no telescope registered, etc.).
             self.logger.warning(
                 "Task %s (sensor_type=%r) has no sensor_id and no matching runtime; dropping",
-                getattr(task, "id", "?"),
+                tid,
                 task.sensor_type,
             )
+            self._notify_dropped_task(
+                f"Task dropped — no {task.sensor_type} sensor registered to run it",
+                toast_id=f"task-drop:no-runtime:{task.sensor_type}",
+            )
         return None
+
+    def _notify_dropped_task(self, message: str, *, toast_id: str | None = None) -> None:
+        """Best-effort operator toast for dropped/unroutable tasks."""
+        if not self.on_toast:
+            return
+        try:
+            self.on_toast(message, "warning", toast_id)
+        except Exception:
+            self.logger.debug("Dropped-task toast failed", exc_info=True)
 
     @property
     def automated_scheduling(self) -> bool:
@@ -158,8 +202,8 @@ class TaskDispatcher:
         specific rig's state should read
         ``runtime.sensor.citra_record["automatedScheduling"]`` directly
         and toggles go through
-        ``POST /api/tasks/automated-scheduling`` (which updates exactly
-        one rig at a time).
+        ``PATCH /api/sensors/{sensor_id}/scheduling`` (which updates
+        exactly one rig at a time).
         """
         for rt in self._runtimes.values():
             if rt.sensor_type == "telescope":
@@ -343,14 +387,6 @@ class TaskDispatcher:
 
     # ── Poll loop ──────────────────────────────────────────────────────
 
-    def _telescope_runtimes(self) -> list[SensorRuntime]:
-        """Return all telescope runtimes that have a citra_record."""
-        return [
-            rt
-            for rt in self._runtimes.values()
-            if rt.sensor_type == "telescope" and getattr(rt.sensor, "citra_record", None)
-        ]
-
     def _all_task_ids(self) -> set[str]:
         """Union of all task IDs across all sensor heaps."""
         ids: set[str] = set()
@@ -359,7 +395,7 @@ class TaskDispatcher:
         return ids
 
     def poll_tasks(self) -> None:
-        if not self._telescope_runtimes():
+        if not self.telescope_runtimes():
             self.logger.error("poll_tasks called without any telescope runtimes; cannot poll for tasks")
             return
 
@@ -376,7 +412,7 @@ class TaskDispatcher:
                     self.elset_cache.refresh_if_stale(self.api_client, self.logger, interval_hours=interval_hours)
                 self._report_online()
                 now_iso = datetime.now(timezone.utc).isoformat()
-                telescope_rts = self._telescope_runtimes()
+                telescope_rts = self.telescope_runtimes()
                 if not telescope_rts:
                     self._stop_event.wait(TASK_POLL_INTERVAL_SECONDS)
                     continue
@@ -474,7 +510,7 @@ class TaskDispatcher:
     def _report_online(self) -> None:
         iso_timestamp = datetime.now(timezone.utc).isoformat()
         statuses = []
-        for trt in self._telescope_runtimes():
+        for trt in self.telescope_runtimes():
             rec = cast("TelescopeSensor", trt.sensor).citra_record
             assert rec is not None
             statuses.append({"id": rec["id"], "last_connection_epoch": iso_timestamp})

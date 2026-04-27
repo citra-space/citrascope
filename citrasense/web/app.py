@@ -16,7 +16,7 @@ from citrasense.web.helpers import (
     _gps_fix_to_dict,
     _resolve_autofocus_target_name,
 )
-from citrasense.web.models import HardwareConfig, SystemStatus
+from citrasense.web.models import SystemStatus
 from citrasense.web.routes import build_all_routers
 from citrasense.web.sky_enrichment import get_web_tasks
 from citrasense.web.status_collector import StatusCollector
@@ -25,7 +25,6 @@ __all__ = [
     "FILTER_NAME_OPTIONS",
     "CitraSenseWebApp",
     "ConnectionManager",
-    "HardwareConfig",
     "SystemStatus",
     "_gps_fix_to_dict",
     "_resolve_autofocus_target_name",
@@ -96,7 +95,7 @@ class CitraSenseWebApp:
     def _require_system_idle(self) -> JSONResponse | None:
         """Return a 409 response if the system is busy with automated operations, else None.
 
-        Prefer :meth:`_require_sensor_idle` for per-sensor hardware routes —
+        Prefer :meth:`require_sensor_idle` for per-sensor hardware routes —
         this site-level gate returns 409 when *any* sensor is busy, which
         shouldn't block manual control of a different, idle sensor.
         """
@@ -107,7 +106,7 @@ class CitraSenseWebApp:
             )
         return None
 
-    def _require_sensor_idle(self, runtime) -> JSONResponse | None:
+    def require_sensor_idle(self, runtime) -> JSONResponse | None:
         """Return a 409 if *runtime* itself is busy; otherwise None.
 
         Used by per-sensor hardware routes so one sensor imaging doesn't

@@ -312,13 +312,12 @@ function compareVersions(v1, v2) {
                     alert('Cannot toggle task processing: missing sensor_id');
                     return;
                 }
-                const endpoint = enabled ? '/api/tasks/resume' : '/api/tasks/pause';
-                const body = { sensor_id: sensorId };
+                const action = enabled ? 'resume' : 'pause';
+                const endpoint = `/api/sensors/${encodeURIComponent(sensorId)}/tasks/${action}`;
                 try {
                     const response = await fetch(endpoint, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(body)
+                        headers: { 'Content-Type': 'application/json' }
                     });
                     const result = await response.json();
                     if (!response.ok) {
@@ -339,9 +338,9 @@ function compareVersions(v1, v2) {
                     alert('Cannot toggle observing session: missing sensor_id');
                     return;
                 }
-                const body = { enabled, sensor_id: sensorId };
+                const body = { enabled };
                 try {
-                    const response = await fetch('/api/observing-session', {
+                    const response = await fetch(`/api/sensors/${encodeURIComponent(sensorId)}/observing-session`, {
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(body)
@@ -365,9 +364,9 @@ function compareVersions(v1, v2) {
                     alert('Cannot toggle self-tasking: missing sensor_id');
                     return;
                 }
-                const body = { enabled, sensor_id: sensorId };
+                const body = { enabled };
                 try {
-                    const response = await fetch('/api/self-tasking', {
+                    const response = await fetch(`/api/sensors/${encodeURIComponent(sensorId)}/self-tasking`, {
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(body)
@@ -391,9 +390,9 @@ function compareVersions(v1, v2) {
                     alert('Cannot toggle automated scheduling: missing sensor_id');
                     return;
                 }
-                const body = { enabled, sensor_id: sensorId };
+                const body = { enabled };
                 try {
-                    const response = await fetch('/api/telescope/automated-scheduling', {
+                    const response = await fetch(`/api/sensors/${encodeURIComponent(sensorId)}/scheduling`, {
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(body)

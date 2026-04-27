@@ -142,27 +142,33 @@ class SensorRuntime:
             from citrasense.sensors.telescope.managers.autofocus_manager import AutofocusManager
             from citrasense.sensors.telescope.managers.homing_manager import HomingManager
 
+            if self._sensor_config is None:
+                raise RuntimeError(
+                    f"Telescope sensor {self.sensor_id!r} has no SensorConfig in settings; "
+                    "cannot build AutofocusManager / AlignmentManager"
+                )
+
             self.autofocus_manager = AutofocusManager(
                 self.logger,
                 hardware_adapter,
                 settings,
+                sensor_id=self.sensor_id,
+                sensor_config=self._sensor_config,
                 imaging_queue=self.acquisition_queue,
                 location_service=location_service,
                 preview_bus=preview_bus,
             )
-            self.autofocus_manager._sensor_id = self.sensor_id
-            self.autofocus_manager._sensor_config = self._sensor_config
             self.alignment_manager = AlignmentManager(
                 self.logger,
                 hardware_adapter,
                 settings,
+                sensor_id=self.sensor_id,
+                sensor_config=self._sensor_config,
                 imaging_queue=self.acquisition_queue,
                 safety_monitor=safety_monitor,
                 location_service=location_service,
                 preview_bus=preview_bus,
             )
-            self.alignment_manager._sensor_id = self.sensor_id
-            self.alignment_manager._sensor_config = self._sensor_config
             self.homing_manager = HomingManager(
                 self.logger,
                 hardware_adapter,

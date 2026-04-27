@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from citrasense.acquisition.base_work_queue import BaseWorkQueue
     from citrasense.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
     from citrasense.hardware.devices.mount.altaz_pointing_model import AltAzPointingModel
-    from citrasense.settings.citrasense_settings import CitraSenseSettings
+    from citrasense.settings.citrasense_settings import CitraSenseSettings, SensorConfig
 
 
 class AlignmentManager:
@@ -44,11 +44,16 @@ class AlignmentManager:
         logger: logging.Logger | SensorLoggerAdapter,
         hardware_adapter: AbstractAstroHardwareAdapter,
         settings: CitraSenseSettings,
+        *,
+        sensor_id: str,
+        sensor_config: SensorConfig,
         imaging_queue: BaseWorkQueue | None = None,
         safety_monitor=None,
         location_service=None,
         preview_bus: PreviewBus | None = None,
     ):
+        if not sensor_id:
+            raise ValueError("AlignmentManager requires a non-empty sensor_id")
         self.logger = logger.getChild(type(self).__name__)
         self.hardware_adapter = hardware_adapter
         self.settings = settings
@@ -56,8 +61,8 @@ class AlignmentManager:
         self.safety_monitor = safety_monitor
         self.location_service = location_service
         self._preview_bus = preview_bus
-        self._sensor_id: str = ""
-        self._sensor_config = None
+        self._sensor_id: str = sensor_id
+        self._sensor_config: SensorConfig = sensor_config
 
         # Quick-align state
         self._requested = False
@@ -161,19 +166,7 @@ class AlignmentManager:
         return True
 
     def _get_exposure_seconds(self) -> float:
-        sc = getattr(self, "_sensor_config", None)
-        if sc is not None and getattr(sc, "alignment_exposure_seconds", None) is not None:
-            return sc.alignment_exposure_seconds
-        # Backward-compat for pre-v7 in-memory settings objects (e.g.
-        # external test fixtures) that may still carry
-        # ``alignment_exposure_seconds`` at the top level even though the
-        # field was moved to ``SensorConfig``. ``getattr`` with a default
-        # avoids a pyright attribute-access error for the post-migration
-        # class layout.
-        legacy = getattr(self.settings, "alignment_exposure_seconds", None) if self.settings else None
-        if legacy is not None:
-            return legacy
-        return 2.0
+        return self._sensor_config.alignment_exposure_seconds
 
     def _execute(self) -> None:
         """Execute alignment: take image → plate solve → sync mount."""
@@ -273,8 +266,7 @@ class AlignmentManager:
                 self._running = False
                 self._progress = ""
             ts = int(time.time())
-            if self._sensor_config:
-                self._sensor_config.last_alignment_timestamp = ts
+            self._sensor_config.last_alignment_timestamp = ts
             if self.settings:
                 self.settings.save()
 

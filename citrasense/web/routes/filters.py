@@ -160,7 +160,7 @@ def build_filters_router(ctx: CitraSenseWebApp) -> APIRouter:
     async def set_filter_position(sensor_id: str, body: dict[str, Any]):
         """Command the filter wheel to move to a specific position."""
         sensor, _runtime = get_sensor_context(ctx, sensor_id)
-        if busy := ctx._require_sensor_idle(_runtime):
+        if busy := ctx.require_sensor_idle(_runtime):
             return busy
         adapter = sensor.adapter
 

@@ -107,19 +107,29 @@ def mock_settings():
 
 
 @pytest.fixture
-def mock_daemon(mock_settings):
+def mock_adapter():
+    a = MagicMock()
+    a.is_telescope_connected.return_value = True
+    a.is_camera_connected.return_value = True
+    a.get_telescope_direction.return_value = (180.0, 45.0)
+    a.supports_direct_camera_control.return_value = False
+    a.supports_filter_management.return_value = True
+    a.supports_autofocus.return_value = True
+    a.get_filter_config.return_value = {0: {"name": "L", "enabled": True}}
+    a.get_missing_dependencies.return_value = []
+    a.mount.cached_state = None
+    return a
+
+
+@pytest.fixture
+def mock_daemon(mock_settings, mock_adapter):
     d = MagicMock()
     d.settings = mock_settings
-    d.hardware_adapter = MagicMock()
-    d.hardware_adapter.is_telescope_connected.return_value = True
-    d.hardware_adapter.is_camera_connected.return_value = True
-    d.hardware_adapter.get_telescope_direction.return_value = (180.0, 45.0)
-    d.hardware_adapter.supports_direct_camera_control.return_value = False
-    d.hardware_adapter.supports_filter_management.return_value = True
-    d.hardware_adapter.supports_autofocus.return_value = True
-    d.hardware_adapter.get_filter_config.return_value = {0: {"name": "L", "enabled": True}}
-    d.hardware_adapter.get_missing_dependencies.return_value = []
-    d.hardware_adapter.mount.cached_state = None
+    # Legacy ``daemon.hardware_adapter`` no longer exists in production —
+    # route handlers go through ``sensor.adapter`` via get_sensor_context.
+    # Delete the MagicMock auto-attribute so tests that still touch it fail
+    # loudly instead of silently mocking a nonexistent attribute.
+    del d.hardware_adapter
     d.task_dispatcher = MagicMock()
     d.task_dispatcher.current_task_ids = {}
     d.task_dispatcher.autofocus_manager = MagicMock()
@@ -157,17 +167,18 @@ def mock_daemon(mock_settings):
     mock_sensor.sensor_id = "scope-0"
     mock_sensor.sensor_type = "telescope"
     mock_sensor.is_connected.return_value = True
-    mock_sensor.adapter = d.hardware_adapter
+    mock_sensor.adapter = mock_adapter
     mock_sensor.name = "Test Scope"
     mock_sensor.adapter_key = "nina"
     mock_sensor.citra_record = {"id": "tel-1", "automated_scheduling": False}
 
     mock_sm = MagicMock()
-    mock_sm.get.return_value = mock_sensor
-    mock_sm.get_sensor.return_value = mock_sensor
-    mock_sm.first_of_type.return_value = mock_sensor
+    mock_sm.get.side_effect = lambda sid: mock_sensor if sid == "scope-0" else None
+    mock_sm.get_sensor.side_effect = lambda sid: mock_sensor if sid == "scope-0" else None
     mock_sm.__iter__ = lambda self: iter([mock_sensor])
     mock_sm.iter_by_type.return_value = iter([mock_sensor])
+    # first_of_type was removed — SensorManager no longer exposes it.
+    del mock_sm.first_of_type
     d.sensor_manager = mock_sm
 
     mock_runtime = MagicMock()
@@ -188,8 +199,9 @@ def mock_daemon(mock_settings):
     # explicitly override it.
     mock_runtime.busy_reason.return_value = ""
     d.task_dispatcher.get_runtime.side_effect = lambda sid: mock_runtime if sid == "scope-0" else None
-    d.task_dispatcher._telescope_runtimes.return_value = [mock_runtime]
-    d.task_dispatcher._runtimes = {"scope-0": mock_runtime}
+    d.task_dispatcher.telescope_runtimes.return_value = [mock_runtime]
+    d.task_dispatcher.iter_runtimes.return_value = [mock_runtime]
+    d.task_dispatcher.current_task_id_for_sensor.return_value = None
     return d
 
 
@@ -447,39 +459,27 @@ def test_get_active_tasks_empty(client):
 
 
 def test_pause_tasks(client, mock_daemon):
-    resp = client.post("/api/tasks/pause", json={"sensor_id": "scope-0"})
+    resp = client.post("/api/sensors/scope-0/tasks/pause")
     assert resp.status_code == 200
     mock_daemon.task_dispatcher.pause_sensor.assert_called_once_with("scope-0")
 
 
-def test_pause_tasks_requires_sensor_id(client):
-    """POST /api/tasks/pause must reject payloads without ``sensor_id`` — the
-    old "no body = all sensors" broadcast is gone in multi-sensor mode."""
-    resp = client.post("/api/tasks/pause", json={})
-    assert resp.status_code == 400
-
-
 def test_pause_tasks_unknown_sensor_id(client):
-    resp = client.post("/api/tasks/pause", json={"sensor_id": "does-not-exist"})
-    assert resp.status_code == 400
+    resp = client.post("/api/sensors/does-not-exist/tasks/pause")
+    assert resp.status_code == 404
 
 
 def test_resume_tasks(client, mock_daemon):
-    resp = client.post("/api/tasks/resume", json={"sensor_id": "scope-0"})
+    resp = client.post("/api/sensors/scope-0/tasks/resume")
     assert resp.status_code == 200
     mock_daemon.task_dispatcher.resume_sensor.assert_called_once_with("scope-0")
-
-
-def test_resume_tasks_requires_sensor_id(client):
-    resp = client.post("/api/tasks/resume", json={})
-    assert resp.status_code == 400
 
 
 def test_pause_no_daemon():
     with patch("citrasense.web.app.StaticFiles"):
         app = CitraSenseWebApp(daemon=None)
     c = TestClient(app.app)
-    assert c.post("/api/tasks/pause", json={"sensor_id": "scope-0"}).status_code == 503
+    assert c.post("/api/sensors/scope-0/tasks/pause").status_code == 503
 
 
 def test_cancel_task_success(client, mock_daemon):
@@ -675,20 +675,20 @@ def test_get_processors(client):
 # ---------------------------------------------------------------------------
 
 
-def test_camera_capture_not_supported(client, mock_daemon):
-    mock_daemon.hardware_adapter.supports_direct_camera_control.return_value = False
+def test_camera_capture_not_supported(client, mock_adapter):
+    mock_adapter.supports_direct_camera_control.return_value = False
     resp = client.post("/api/sensors/scope-0/camera/capture", json={"duration": 1.0})
     assert resp.status_code == 400
 
 
-def test_camera_capture_bad_duration(client, mock_daemon):
-    mock_daemon.hardware_adapter.supports_direct_camera_control.return_value = True
+def test_camera_capture_bad_duration(client, mock_adapter):
+    mock_adapter.supports_direct_camera_control.return_value = True
     resp = client.post("/api/sensors/scope-0/camera/capture", json={"duration": -1})
     assert resp.status_code == 400
 
 
-def test_camera_capture_too_long(client, mock_daemon):
-    mock_daemon.hardware_adapter.supports_direct_camera_control.return_value = True
+def test_camera_capture_too_long(client, mock_adapter):
+    mock_adapter.supports_direct_camera_control.return_value = True
     resp = client.post("/api/sensors/scope-0/camera/capture", json={"duration": 999})
     assert resp.status_code == 400
 
@@ -701,21 +701,20 @@ def test_camera_capture_too_long(client, mock_daemon):
 def test_toggle_automated_scheduling(client, mock_daemon):
     mock_daemon.api_client.update_telescope_automated_scheduling.return_value = True
     resp = client.patch(
-        "/api/telescope/automated-scheduling",
-        json={"enabled": True, "sensor_id": "scope-0"},
+        "/api/sensors/scope-0/scheduling",
+        json={"enabled": True},
     )
     assert resp.status_code == 200
 
 
 def test_toggle_automated_scheduling_missing_enabled(client):
-    resp = client.patch("/api/telescope/automated-scheduling", json={"sensor_id": "scope-0"})
+    resp = client.patch("/api/sensors/scope-0/scheduling", json={})
     assert resp.status_code == 400
 
 
-def test_toggle_automated_scheduling_missing_sensor_id(client):
-    """The old "no sensor_id = all telescopes" broadcast form is gone."""
-    resp = client.patch("/api/telescope/automated-scheduling", json={"enabled": True})
-    assert resp.status_code == 400
+def test_toggle_automated_scheduling_unknown_sensor(client):
+    resp = client.patch("/api/sensors/does-not-exist/scheduling", json={"enabled": True})
+    assert resp.status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -870,8 +869,8 @@ def test_status_with_ground_station(client, mock_daemon):
     assert data["ground_station_name"] == "Desert Station"
 
 
-def test_status_telescope_disconnected(client, mock_daemon):
-    mock_daemon.hardware_adapter.is_telescope_connected.side_effect = Exception("no connection")
+def test_status_telescope_disconnected(client, mock_adapter):
+    mock_adapter.is_telescope_connected.side_effect = Exception("no connection")
     resp = client.get("/api/status")
     sensor = resp.json()["sensors"]["scope-0"]
     assert sensor["telescope_connected"] is False
@@ -1080,9 +1079,10 @@ def mock_daemon_two_telescopes(mock_settings):
     rt0 = _make_runtime(sensor0)
     rt1 = _make_runtime(sensor1)
 
-    d.task_dispatcher._runtimes = {"scope-0": rt0, "scope-1": rt1}
-    d.task_dispatcher._telescope_runtimes = lambda: [rt0, rt1]
+    d.task_dispatcher.iter_runtimes = lambda: [rt0, rt1]
+    d.task_dispatcher.telescope_runtimes = lambda: [rt0, rt1]
     d.task_dispatcher.get_runtime = lambda sid: {"scope-0": rt0, "scope-1": rt1}.get(sid)
+    d.task_dispatcher.current_task_id_for_sensor = lambda _sid: None
 
     sm = MagicMock()
     sensors = {"scope-0": sensor0, "scope-1": sensor1}
@@ -1090,7 +1090,8 @@ def mock_daemon_two_telescopes(mock_settings):
     sm.get = lambda sid: sensors.get(sid)
     sm.__iter__ = lambda self: iter(sensors.values())
     sm.iter_by_type = lambda _t: iter(sensors.values())
-    sm.first_of_type = lambda _t: sensor0
+    # first_of_type was removed — callers must select by sensor_id explicitly.
+    del sm.first_of_type
     d.sensor_manager = sm
 
     d.processor_registry = MagicMock()
@@ -1113,7 +1114,7 @@ def test_request_batch_now_targets_the_requested_sensor(client_two, mock_daemon_
     sensor happens to be first in the dispatcher."""
     mock_daemon_two_telescopes.api_client.create_batch_collection_requests.return_value = {"created": 3}
 
-    resp = client_two.post("/api/self-tasking/request-now", json={"sensor_id": "scope-1"})
+    resp = client_two.post("/api/sensors/scope-1/self-tasking/request-now")
     assert resp.status_code == 200
 
     call_kwargs = mock_daemon_two_telescopes.api_client.create_batch_collection_requests.call_args.kwargs
@@ -1121,13 +1122,8 @@ def test_request_batch_now_targets_the_requested_sensor(client_two, mock_daemon_
     assert call_kwargs["ground_station_id"] == "gs-1"
 
 
-def test_request_batch_now_rejects_missing_sensor_id(client_two):
-    resp = client_two.post("/api/self-tasking/request-now", json={})
-    assert resp.status_code == 400
-
-
 def test_request_batch_now_rejects_unknown_sensor_id(client_two):
-    resp = client_two.post("/api/self-tasking/request-now", json={"sensor_id": "does-not-exist"})
+    resp = client_two.post("/api/sensors/does-not-exist/self-tasking/request-now")
     assert resp.status_code == 404
 
 

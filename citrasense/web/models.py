@@ -66,14 +66,3 @@ class SystemStatus(BaseModel):
 
     # Per-sensor status: sensors[sensor_id] -> { type, connected, ... }
     sensors: dict[str, dict] = {}
-
-
-class HardwareConfig(BaseModel):
-    """Hardware configuration settings."""
-
-    adapter: str
-    indi_server_url: str | None = None
-    indi_server_port: int | None = None
-    indi_telescope_name: str | None = None
-    indi_camera_name: str | None = None
-    nina_url_prefix: str | None = None

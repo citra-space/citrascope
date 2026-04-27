@@ -123,8 +123,13 @@ class TestConfigReloadDropsInFlightStages:
         telescope_sensor.citra_record = None
 
         sensor_manager = MagicMock()
-        sensor_manager.first_of_type.return_value = telescope_sensor
         sensor_manager.iter_by_type.return_value = iter([telescope_sensor])
+        sensor_manager.get.return_value = telescope_sensor
+        sensor_manager.get_sensor.return_value = telescope_sensor
+        sensor_manager.__iter__ = lambda self: iter([telescope_sensor])
+        # first_of_type was removed — delete the MagicMock auto-attribute so
+        # callers that still reach for it fail loudly.
+        del sensor_manager.first_of_type
 
         daemon.sensor_manager = sensor_manager
         daemon.location_service = MagicMock()

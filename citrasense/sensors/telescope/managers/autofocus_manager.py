@@ -41,19 +41,24 @@ class AutofocusManager:
         logger: logging.Logger | SensorLoggerAdapter,
         hardware_adapter: AbstractAstroHardwareAdapter,
         settings: CitraSenseSettings,
+        *,
+        sensor_id: str,
+        sensor_config: SensorConfig,
         imaging_queue: BaseWorkQueue | None = None,
         location_service: LocationService | None = None,
         preview_bus: PreviewBus | None = None,
         on_toast: Callable[[str, str, str | None], None] | None = None,
     ):
+        if not sensor_id:
+            raise ValueError("AutofocusManager requires a non-empty sensor_id")
         self.logger = logger.getChild(type(self).__name__)
         self.hardware_adapter = hardware_adapter
         self.settings = settings
         self.imaging_queue = imaging_queue
         self.location_service = location_service
         self._preview_bus = preview_bus
-        self._sensor_id: str = ""
-        self._sensor_config: SensorConfig | None = None
+        self._sensor_id: str = sensor_id
+        self._sensor_config: SensorConfig = sensor_config
         self.on_toast = on_toast
         self._requested = False
         self._running = False
@@ -67,7 +72,7 @@ class AutofocusManager:
         self._cancel_event = threading.Event()
 
     @property
-    def _af_settings(self) -> SensorConfig | None:
+    def _af_settings(self) -> SensorConfig:
         """Per-sensor autofocus settings (SensorConfig)."""
         return self._sensor_config
 

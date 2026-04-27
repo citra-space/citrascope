@@ -1484,10 +1484,9 @@
                                      this.batchLoading = true;
                                      this.batchResult = null;
                                      try {
-                                         const resp = await fetch('/api/self-tasking/request-now', {
+                                         const resp = await fetch(`/api/sensors/${encodeURIComponent(sensor.id)}/self-tasking/request-now`, {
                                              method: 'POST',
-                                             headers: {'Content-Type': 'application/json'},
-                                             body: JSON.stringify({sensor_id: sensor.id})
+                                             headers: {'Content-Type': 'application/json'}
                                          });
                                          const data = await resp.json();
                                          if (resp.ok) {

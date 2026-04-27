@@ -280,7 +280,7 @@ def test_poll_tasks_adds_new_tasks(wired_dispatcher):
 
     with td.heap_lock:
         td._report_online()
-        tasks = api_client.get_telescope_tasks(td._telescope_runtimes()[0].sensor.citra_record["id"])
+        tasks = api_client.get_telescope_tasks(td.telescope_runtimes()[0].sensor.citra_record["id"])
         api_task_map = {}
         for task_dict in tasks:
             task = Task.from_dict(task_dict)
@@ -328,7 +328,7 @@ def test_poll_tasks_removes_cancelled_tasks(wired_dispatcher):
     api_client.get_telescope_tasks.return_value = [task1.__dict__]
 
     with td.heap_lock:
-        tasks = api_client.get_telescope_tasks(td._telescope_runtimes()[0].sensor.citra_record["id"])
+        tasks = api_client.get_telescope_tasks(td.telescope_runtimes()[0].sensor.citra_record["id"])
         api_task_map = {}
         for task_dict in tasks:
             task = Task.from_dict(task_dict)
@@ -373,7 +373,7 @@ def test_poll_tasks_removes_tasks_with_changed_status(wired_dispatcher):
     api_client.get_telescope_tasks.return_value = [cancelled.__dict__]
 
     with td.heap_lock:
-        tasks = api_client.get_telescope_tasks(td._telescope_runtimes()[0].sensor.citra_record["id"])
+        tasks = api_client.get_telescope_tasks(td.telescope_runtimes()[0].sensor.citra_record["id"])
         api_task_map = {}
         for td2 in tasks:
             t = Task.from_dict(td2)
@@ -413,7 +413,7 @@ def test_poll_tasks_does_not_remove_current_task(wired_dispatcher):
     api_client.get_telescope_tasks.return_value = []
 
     with td.heap_lock:
-        tasks = api_client.get_telescope_tasks(td._telescope_runtimes()[0].sensor.citra_record["id"])
+        tasks = api_client.get_telescope_tasks(td.telescope_runtimes()[0].sensor.citra_record["id"])
         api_task_map = {}
         for td2 in tasks:
             t = Task.from_dict(td2)

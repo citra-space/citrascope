@@ -67,23 +67,32 @@ def mock_settings():
 
     sc = _make_sensor_config("scope-0")
     s.sensors = [sc]
-    s.get_sensor_config.return_value = sc
+    s.get_sensor_config.side_effect = lambda sid: sc if sid == "scope-0" else None
     return s
 
 
 @pytest.fixture
-def mock_daemon(mock_settings):
+def mock_adapter():
+    a = MagicMock()
+    a.is_telescope_connected.return_value = True
+    a.is_camera_connected.return_value = True
+    a.get_telescope_direction.return_value = (180.0, 45.0)
+    a.supports_direct_camera_control.return_value = False
+    a.supports_filter_management.return_value = False
+    a.supports_autofocus.return_value = False
+    a.get_missing_dependencies.return_value = []
+    a.mount = None
+    return a
+
+
+@pytest.fixture
+def mock_daemon(mock_settings, mock_adapter):
     d = MagicMock()
     d.settings = mock_settings
-    d.hardware_adapter = MagicMock()
-    d.hardware_adapter.is_telescope_connected.return_value = True
-    d.hardware_adapter.is_camera_connected.return_value = True
-    d.hardware_adapter.get_telescope_direction.return_value = (180.0, 45.0)
-    d.hardware_adapter.supports_direct_camera_control.return_value = False
-    d.hardware_adapter.supports_filter_management.return_value = False
-    d.hardware_adapter.supports_autofocus.return_value = False
-    d.hardware_adapter.get_missing_dependencies.return_value = []
-    d.hardware_adapter.mount = None
+    # Legacy ``daemon.hardware_adapter`` no longer exists — delete the
+    # MagicMock auto-attribute so any stale production code would fail
+    # loudly rather than bind silently to a fake.
+    del d.hardware_adapter
     d.task_dispatcher = MagicMock()
     d.task_dispatcher.current_task_ids = {}
     d.task_dispatcher.autofocus_manager = MagicMock()
@@ -97,7 +106,6 @@ def mock_daemon(mock_settings):
     d.task_dispatcher.alignment_manager.progress = ""
     d.task_dispatcher.is_processing_active.return_value = True
     d.task_dispatcher.automated_scheduling = False
-    d.task_dispatcher._runtimes = {}
     d.task_dispatcher.get_tasks_by_stage.return_value = {}
     d.task_dispatcher.get_tasks_snapshot.return_value = []
     d.task_dispatcher.pending_task_count = 0
@@ -122,16 +130,17 @@ def mock_daemon(mock_settings):
     mock_sensor.sensor_id = "scope-0"
     mock_sensor.sensor_type = "telescope"
     mock_sensor.is_connected.return_value = True
-    mock_sensor.adapter = d.hardware_adapter
+    mock_sensor.adapter = mock_adapter
     mock_sensor.name = "Test Scope"
     mock_sensor.citra_record = {"id": "tel-1", "automated_scheduling": False}
 
     mock_sm = MagicMock()
     mock_sm.get.return_value = mock_sensor
     mock_sm.get_sensor.return_value = mock_sensor
-    mock_sm.first_of_type.return_value = mock_sensor
     mock_sm.__iter__ = lambda self: iter([mock_sensor])
     mock_sm.iter_by_type.return_value = iter([mock_sensor])
+    # first_of_type was removed — select by id, not "first wins".
+    del mock_sm.first_of_type
     d.sensor_manager = mock_sm
 
     mock_runtime = MagicMock()
@@ -150,7 +159,7 @@ def mock_daemon(mock_settings):
     mock_runtime.self_tasking_manager = None
     mock_runtime.paused = False
     d.task_dispatcher.get_runtime.side_effect = lambda sid: mock_runtime if sid == "scope-0" else None
-    d.task_dispatcher._telescope_runtimes.return_value = [mock_runtime]
+    d.task_dispatcher.telescope_runtimes.return_value = [mock_runtime]
     return d
 
 
@@ -167,7 +176,7 @@ def client(web_app):
 
 
 def test_toggle_observing_session_enable(client, mock_daemon):
-    resp = client.patch("/api/observing-session", json={"enabled": True, "sensor_id": "scope-0"})
+    resp = client.patch("/api/sensors/scope-0/observing-session", json={"enabled": True})
     assert resp.status_code == 200
     assert resp.json()["enabled"] is True
     assert mock_daemon.settings.sensors[0].observing_session_enabled is True
@@ -176,30 +185,30 @@ def test_toggle_observing_session_enable(client, mock_daemon):
 
 def test_toggle_observing_session_disable(client, mock_daemon):
     mock_daemon.settings.sensors[0].observing_session_enabled = True
-    resp = client.patch("/api/observing-session", json={"enabled": False, "sensor_id": "scope-0"})
+    resp = client.patch("/api/sensors/scope-0/observing-session", json={"enabled": False})
     assert resp.status_code == 200
     assert mock_daemon.settings.sensors[0].observing_session_enabled is False
 
 
 def test_toggle_observing_session_missing_field(client):
-    resp = client.patch("/api/observing-session", json={"sensor_id": "scope-0"})
+    resp = client.patch("/api/sensors/scope-0/observing-session", json={})
     assert resp.status_code == 400
 
 
-def test_toggle_observing_session_missing_sensor_id(client):
-    resp = client.patch("/api/observing-session", json={"enabled": True})
-    assert resp.status_code == 400
+def test_toggle_observing_session_unknown_sensor(client):
+    resp = client.patch("/api/sensors/does-not-exist/observing-session", json={"enabled": True})
+    assert resp.status_code == 404
 
 
 def test_toggle_observing_session_no_daemon(web_app):
     web_app.daemon = None
     client = TestClient(web_app.app)
-    resp = client.patch("/api/observing-session", json={"enabled": True, "sensor_id": "scope-0"})
+    resp = client.patch("/api/sensors/scope-0/observing-session", json={"enabled": True})
     assert resp.status_code == 503
 
 
 def test_toggle_self_tasking_enable(client, mock_daemon):
-    resp = client.patch("/api/self-tasking", json={"enabled": True, "sensor_id": "scope-0"})
+    resp = client.patch("/api/sensors/scope-0/self-tasking", json={"enabled": True})
     assert resp.status_code == 200
     data = resp.json()
     assert data["enabled"] is True
@@ -211,7 +220,7 @@ def test_toggle_self_tasking_enable_cascades_observing_session(client, mock_daem
     """Enabling self-tasking should auto-enable observing session."""
     mock_daemon.settings.sensors[0].observing_session_enabled = False
 
-    resp = client.patch("/api/self-tasking", json={"enabled": True, "sensor_id": "scope-0"})
+    resp = client.patch("/api/sensors/scope-0/self-tasking", json={"enabled": True})
     assert resp.status_code == 200
     assert mock_daemon.settings.sensors[0].observing_session_enabled is True
 
@@ -221,7 +230,7 @@ def test_toggle_self_tasking_enable_cascades_scheduling(client, mock_daemon):
     mock_daemon.task_dispatcher.automated_scheduling = False
     mock_daemon.api_client.update_telescope_automated_scheduling.return_value = True
 
-    resp = client.patch("/api/self-tasking", json={"enabled": True, "sensor_id": "scope-0"})
+    resp = client.patch("/api/sensors/scope-0/self-tasking", json={"enabled": True})
     assert resp.status_code == 200
 
     mock_daemon.api_client.update_telescope_automated_scheduling.assert_called_once_with("tel-1", True)
@@ -229,10 +238,10 @@ def test_toggle_self_tasking_enable_cascades_scheduling(client, mock_daemon):
 
 def test_toggle_self_tasking_enable_cascades_processing(client, mock_daemon):
     """Enabling self-tasking should auto-resume processing if paused."""
-    runtime = mock_daemon.task_dispatcher._telescope_runtimes.return_value[0]
+    runtime = mock_daemon.task_dispatcher.telescope_runtimes.return_value[0]
     runtime.paused = True
 
-    resp = client.patch("/api/self-tasking", json={"enabled": True, "sensor_id": "scope-0"})
+    resp = client.patch("/api/sensors/scope-0/self-tasking", json={"enabled": True})
     assert resp.status_code == 200
 
     mock_daemon.task_dispatcher.resume_sensor.assert_called_once()
@@ -242,13 +251,13 @@ def test_toggle_self_tasking_enable_skips_cascade_when_already_active(client, mo
     """No cascade calls when scheduling, processing, and session are already active."""
     mock_daemon.settings.sensors[0].observing_session_enabled = True
     mock_daemon.task_dispatcher.automated_scheduling = True
-    runtime = mock_daemon.task_dispatcher._telescope_runtimes.return_value[0]
+    runtime = mock_daemon.task_dispatcher.telescope_runtimes.return_value[0]
     runtime.paused = False
     # Telescope already has automated scheduling enabled — cascade should skip
     # the API call.
     runtime.sensor.citra_record = {"id": "tel-1", "automatedScheduling": True}
 
-    resp = client.patch("/api/self-tasking", json={"enabled": True, "sensor_id": "scope-0"})
+    resp = client.patch("/api/sensors/scope-0/self-tasking", json={"enabled": True})
     assert resp.status_code == 200
 
     mock_daemon.task_dispatcher.resume_sensor.assert_not_called()
@@ -260,7 +269,7 @@ def test_toggle_self_tasking_enable_scheduling_failure_non_blocking(client, mock
     mock_daemon.task_dispatcher.automated_scheduling = False
     mock_daemon.api_client.update_telescope_automated_scheduling.side_effect = Exception("network error")
 
-    resp = client.patch("/api/self-tasking", json={"enabled": True, "sensor_id": "scope-0"})
+    resp = client.patch("/api/sensors/scope-0/self-tasking", json={"enabled": True})
     assert resp.status_code == 200
     assert mock_daemon.settings.sensors[0].self_tasking_enabled is True
 
@@ -272,7 +281,7 @@ def test_toggle_self_tasking_disable_no_cascade(client, mock_daemon):
     mock_daemon.task_dispatcher.automated_scheduling = True
     mock_daemon.task_dispatcher.is_processing_active.return_value = True
 
-    resp = client.patch("/api/self-tasking", json={"enabled": False, "sensor_id": "scope-0"})
+    resp = client.patch("/api/sensors/scope-0/self-tasking", json={"enabled": False})
     assert resp.status_code == 200
     assert mock_daemon.settings.sensors[0].self_tasking_enabled is False
     assert mock_daemon.settings.sensors[0].observing_session_enabled is True
@@ -282,19 +291,19 @@ def test_toggle_self_tasking_disable_no_cascade(client, mock_daemon):
 
 
 def test_toggle_self_tasking_missing_field(client):
-    resp = client.patch("/api/self-tasking", json={"sensor_id": "scope-0"})
+    resp = client.patch("/api/sensors/scope-0/self-tasking", json={})
     assert resp.status_code == 400
 
 
-def test_toggle_self_tasking_missing_sensor_id(client):
-    resp = client.patch("/api/self-tasking", json={"enabled": True})
-    assert resp.status_code == 400
+def test_toggle_self_tasking_unknown_sensor(client):
+    resp = client.patch("/api/sensors/does-not-exist/self-tasking", json={"enabled": True})
+    assert resp.status_code == 404
 
 
 def test_toggle_self_tasking_no_daemon(web_app):
     web_app.daemon = None
     client = TestClient(web_app.app)
-    resp = client.patch("/api/self-tasking", json={"enabled": True})
+    resp = client.patch("/api/sensors/scope-0/self-tasking", json={"enabled": True})
     assert resp.status_code == 503
 
 
@@ -302,7 +311,7 @@ def test_status_includes_self_tasking_fields(web_app, mock_daemon):
     """Verify per-sensor status dict includes session/self-tasking fields."""
     from starlette.testclient import TestClient
 
-    runtime = mock_daemon.task_dispatcher._telescope_runtimes.return_value[0]
+    runtime = mock_daemon.task_dispatcher.telescope_runtimes.return_value[0]
     osm = MagicMock()
     osm.status_dict.return_value = {
         "observing_session_state": "daytime",

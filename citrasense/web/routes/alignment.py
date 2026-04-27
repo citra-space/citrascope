@@ -60,7 +60,7 @@ def build_alignment_router(ctx: CitraSenseWebApp) -> APIRouter:
     async def reset_pointing_model(sensor_id: str):
         """Clear the pointing model and persisted state."""
         sensor, _runtime = get_sensor_context(ctx, sensor_id)
-        if busy := ctx._require_sensor_idle(_runtime):
+        if busy := ctx.require_sensor_idle(_runtime):
             return busy
         if sensor.adapter.pointing_model:
             sensor.adapter.pointing_model.reset()
@@ -82,7 +82,7 @@ def build_alignment_router(ctx: CitraSenseWebApp) -> APIRouter:
     async def manual_sync(sensor_id: str, request: dict[str, Any]):
         """Manually sync the mount to given RA/Dec coordinates."""
         sensor, _runtime = get_sensor_context(ctx, sensor_id)
-        if busy := ctx._require_sensor_idle(_runtime):
+        if busy := ctx.require_sensor_idle(_runtime):
             return busy
 
         ra = request.get("ra")
