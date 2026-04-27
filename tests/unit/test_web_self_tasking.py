@@ -97,8 +97,7 @@ def mock_daemon(mock_settings):
     d.task_dispatcher.alignment_manager.progress = ""
     d.task_dispatcher.is_processing_active.return_value = True
     d.task_dispatcher.automated_scheduling = False
-    d.task_dispatcher.observing_session_manager = None
-    d.task_dispatcher.self_tasking_manager = None
+    d.task_dispatcher._runtimes = {}
     d.task_dispatcher.get_tasks_by_stage.return_value = {}
     d.task_dispatcher.get_tasks_snapshot.return_value = []
     d.task_dispatcher.pending_task_count = 0
@@ -229,8 +228,7 @@ def test_toggle_self_tasking_enable_cascades_processing(client, mock_daemon):
     resp = client.patch("/api/self-tasking", json={"enabled": True})
     assert resp.status_code == 200
 
-    mock_daemon.task_dispatcher.resume.assert_called_once()
-    assert mock_daemon.settings.sensors[0].task_processing_paused is False
+    mock_daemon.task_dispatcher.resume_sensor.assert_called_once()
 
 
 def test_toggle_self_tasking_enable_skips_cascade_when_already_active(client, mock_daemon):
@@ -242,7 +240,7 @@ def test_toggle_self_tasking_enable_skips_cascade_when_already_active(client, mo
     resp = client.patch("/api/self-tasking", json={"enabled": True})
     assert resp.status_code == 200
 
-    mock_daemon.task_dispatcher.resume.assert_not_called()
+    mock_daemon.task_dispatcher.resume_sensor.assert_not_called()
     mock_daemon.api_client.update_telescope_automated_scheduling.assert_not_called()
 
 
@@ -268,7 +266,7 @@ def test_toggle_self_tasking_disable_no_cascade(client, mock_daemon):
     assert mock_daemon.settings.sensors[0].self_tasking_enabled is False
     assert mock_daemon.settings.sensors[0].observing_session_enabled is True
 
-    mock_daemon.task_dispatcher.resume.assert_not_called()
+    mock_daemon.task_dispatcher.resume_sensor.assert_not_called()
     mock_daemon.api_client.update_telescope_automated_scheduling.assert_not_called()
 
 

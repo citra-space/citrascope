@@ -123,16 +123,16 @@ def test_settings_defaults(tmp_path):
     """Settings should use sensible defaults when config is empty."""
     with patch("citrasense.settings.citrasense_settings.SettingsFileManager") as MockSFM:
         instance = MockSFM.return_value
-        instance.load_config.return_value = {}
+        instance.load_config.return_value = {"sensors": [{"id": "t", "type": "telescope"}]}
 
         from citrasense.settings.citrasense_settings import CitraSenseSettings
 
         s = CitraSenseSettings.load()
 
-    assert s.hardware_adapter == ""
+    assert s.sensors[0].adapter == ""
     assert s.personal_access_token == ""
     assert s.is_configured() is False
-    assert s.autofocus_target_preset == "mirach"
+    assert s.sensors[0].autofocus_target_preset == "mirach"
     assert s.max_task_retries == 3
 
 
@@ -185,8 +185,8 @@ def test_settings_validates_custom_ra_out_of_range():
 
         s = CitraSenseSettings.load()
 
-    assert s.autofocus_target_custom_ra is None
-    assert s.autofocus_target_custom_dec is None
+    assert s.sensors[0].autofocus_target_custom_ra is None
+    assert s.sensors[0].autofocus_target_custom_dec is None
 
 
 def test_settings_validates_autofocus_interval():
@@ -197,7 +197,7 @@ def test_settings_validates_autofocus_interval():
 
         s = CitraSenseSettings.load()
 
-    assert s.autofocus_interval_minutes == 60
+    assert s.sensors[0].autofocus_interval_minutes == 60
 
 
 def test_settings_save(tmp_path):
@@ -292,12 +292,12 @@ def test_update_and_save_strips_computed_keys():
 
 def test_observation_mode_defaults_to_auto():
     with patch("citrasense.settings.citrasense_settings.SettingsFileManager") as MockSFM:
-        MockSFM.return_value.load_config.return_value = {}
+        MockSFM.return_value.load_config.return_value = {"sensors": [{"id": "t", "type": "telescope"}]}
         from citrasense.settings.citrasense_settings import CitraSenseSettings
 
         s = CitraSenseSettings.load()
 
-    assert s.observation_mode == "auto"
+    assert s.sensors[0].observation_mode == "auto"
 
 
 @pytest.mark.parametrize("mode", ["auto", "tracking", "sidereal"])
@@ -308,7 +308,7 @@ def test_observation_mode_accepts_valid_values(mode):
 
         s = CitraSenseSettings.load()
 
-    assert s.observation_mode == mode
+    assert s.sensors[0].observation_mode == mode
 
 
 def test_observation_mode_migrates_static_to_sidereal():
@@ -318,7 +318,7 @@ def test_observation_mode_migrates_static_to_sidereal():
 
         s = CitraSenseSettings.load()
 
-    assert s.observation_mode == "sidereal"
+    assert s.sensors[0].observation_mode == "sidereal"
 
 
 def test_observation_mode_rejects_invalid_value():
@@ -328,7 +328,7 @@ def test_observation_mode_rejects_invalid_value():
 
         s = CitraSenseSettings.load()
 
-    assert s.observation_mode == "auto"
+    assert s.sensors[0].observation_mode == "auto"
 
 
 def test_observation_mode_in_to_dict():
@@ -353,7 +353,7 @@ def test_plate_solve_timeout_clamps_out_of_range():
 
         s = CitraSenseSettings.load()
 
-    assert s.plate_solve_timeout == 300
+    assert s.sensors[0].plate_solve_timeout == 300
 
 
 def test_plate_solve_timeout_clamps_low():
@@ -363,7 +363,7 @@ def test_plate_solve_timeout_clamps_low():
 
         s = CitraSenseSettings.load()
 
-    assert s.plate_solve_timeout == 10
+    assert s.sensors[0].plate_solve_timeout == 10
 
 
 def test_plate_solve_timeout_falls_back_on_invalid():
@@ -373,7 +373,7 @@ def test_plate_solve_timeout_falls_back_on_invalid():
 
         s = CitraSenseSettings.load()
 
-    assert s.plate_solve_timeout == 60
+    assert s.sensors[0].plate_solve_timeout == 60
 
 
 # ---------------------------------------------------------------------------
@@ -422,12 +422,12 @@ def test_custom_log_dir_relative_path_rejected():
 
 def test_sextractor_detect_thresh_default():
     with patch("citrasense.settings.citrasense_settings.SettingsFileManager") as MockSFM:
-        MockSFM.return_value.load_config.return_value = {}
+        MockSFM.return_value.load_config.return_value = {"sensors": [{"id": "t", "type": "telescope"}]}
         from citrasense.settings.citrasense_settings import CitraSenseSettings
 
         s = CitraSenseSettings.load()
 
-    assert s.sextractor_detect_thresh == 5.0
+    assert s.sensors[0].sextractor_detect_thresh == 5.0
 
 
 def test_sextractor_detect_thresh_valid():
@@ -437,7 +437,7 @@ def test_sextractor_detect_thresh_valid():
 
         s = CitraSenseSettings.load()
 
-    assert s.sextractor_detect_thresh == 3.0
+    assert s.sensors[0].sextractor_detect_thresh == 3.0
 
 
 def test_sextractor_detect_thresh_string_coercion():
@@ -447,7 +447,7 @@ def test_sextractor_detect_thresh_string_coercion():
 
         s = CitraSenseSettings.load()
 
-    assert s.sextractor_detect_thresh == 8.5
+    assert s.sensors[0].sextractor_detect_thresh == 8.5
 
 
 def test_sextractor_detect_thresh_clamps_low():
@@ -457,7 +457,7 @@ def test_sextractor_detect_thresh_clamps_low():
 
         s = CitraSenseSettings.load()
 
-    assert s.sextractor_detect_thresh == 1.0
+    assert s.sensors[0].sextractor_detect_thresh == 1.0
 
 
 def test_sextractor_detect_thresh_clamps_high():
@@ -467,7 +467,7 @@ def test_sextractor_detect_thresh_clamps_high():
 
         s = CitraSenseSettings.load()
 
-    assert s.sextractor_detect_thresh == 20.0
+    assert s.sensors[0].sextractor_detect_thresh == 20.0
 
 
 def test_sextractor_detect_thresh_invalid_fallback():
@@ -477,17 +477,17 @@ def test_sextractor_detect_thresh_invalid_fallback():
 
         s = CitraSenseSettings.load()
 
-    assert s.sextractor_detect_thresh == 5.0
+    assert s.sensors[0].sextractor_detect_thresh == 5.0
 
 
 def test_sextractor_detect_minarea_default():
     with patch("citrasense.settings.citrasense_settings.SettingsFileManager") as MockSFM:
-        MockSFM.return_value.load_config.return_value = {}
+        MockSFM.return_value.load_config.return_value = {"sensors": [{"id": "t", "type": "telescope"}]}
         from citrasense.settings.citrasense_settings import CitraSenseSettings
 
         s = CitraSenseSettings.load()
 
-    assert s.sextractor_detect_minarea == 3
+    assert s.sensors[0].sextractor_detect_minarea == 3
 
 
 def test_sextractor_detect_minarea_valid():
@@ -497,7 +497,7 @@ def test_sextractor_detect_minarea_valid():
 
         s = CitraSenseSettings.load()
 
-    assert s.sextractor_detect_minarea == 10
+    assert s.sensors[0].sextractor_detect_minarea == 10
 
 
 def test_sextractor_detect_minarea_float_coercion():
@@ -507,7 +507,7 @@ def test_sextractor_detect_minarea_float_coercion():
 
         s = CitraSenseSettings.load()
 
-    assert s.sextractor_detect_minarea == 7
+    assert s.sensors[0].sextractor_detect_minarea == 7
 
 
 def test_sextractor_detect_minarea_clamps_low():
@@ -517,7 +517,7 @@ def test_sextractor_detect_minarea_clamps_low():
 
         s = CitraSenseSettings.load()
 
-    assert s.sextractor_detect_minarea == 1
+    assert s.sensors[0].sextractor_detect_minarea == 1
 
 
 def test_sextractor_detect_minarea_clamps_high():
@@ -527,7 +527,7 @@ def test_sextractor_detect_minarea_clamps_high():
 
         s = CitraSenseSettings.load()
 
-    assert s.sextractor_detect_minarea == 50
+    assert s.sensors[0].sextractor_detect_minarea == 50
 
 
 def test_sextractor_detect_minarea_invalid_fallback():
@@ -537,17 +537,17 @@ def test_sextractor_detect_minarea_invalid_fallback():
 
         s = CitraSenseSettings.load()
 
-    assert s.sextractor_detect_minarea == 3
+    assert s.sensors[0].sextractor_detect_minarea == 3
 
 
 def test_sextractor_filter_name_default():
     with patch("citrasense.settings.citrasense_settings.SettingsFileManager") as MockSFM:
-        MockSFM.return_value.load_config.return_value = {}
+        MockSFM.return_value.load_config.return_value = {"sensors": [{"id": "t", "type": "telescope"}]}
         from citrasense.settings.citrasense_settings import CitraSenseSettings
 
         s = CitraSenseSettings.load()
 
-    assert s.sextractor_filter_name == "default"
+    assert s.sensors[0].sextractor_filter_name == "default"
 
 
 @pytest.mark.parametrize("name", ["default", "gauss_1.5_3x3", "gauss_2.5_5x5", "tophat_3.0_3x3", "tophat_5.0_5x5"])
@@ -558,7 +558,7 @@ def test_sextractor_filter_name_accepts_valid(name):
 
         s = CitraSenseSettings.load()
 
-    assert s.sextractor_filter_name == name
+    assert s.sensors[0].sextractor_filter_name == name
 
 
 def test_sextractor_filter_name_unknown_fallback():
@@ -568,7 +568,7 @@ def test_sextractor_filter_name_unknown_fallback():
 
         s = CitraSenseSettings.load()
 
-    assert s.sextractor_filter_name == "default"
+    assert s.sensors[0].sextractor_filter_name == "default"
 
 
 def test_sextractor_filter_name_non_string_fallback():
@@ -578,7 +578,7 @@ def test_sextractor_filter_name_non_string_fallback():
 
         s = CitraSenseSettings.load()
 
-    assert s.sextractor_filter_name == "default"
+    assert s.sensors[0].sextractor_filter_name == "default"
 
 
 def test_adaptive_exposure_min_gt_max_clamps_min():

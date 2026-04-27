@@ -139,6 +139,7 @@ class SensorRuntime:
                 preview_bus=preview_bus,
             )
             self.alignment_manager._sensor_id = self.sensor_id
+            self.alignment_manager._sensor_config = self._sensor_config
             self.homing_manager = HomingManager(
                 self.logger,
                 hardware_adapter,
@@ -189,6 +190,19 @@ class SensorRuntime:
         """The SensorConfig for this runtime's sensor."""
         return self._sensor_config or self.settings.get_sensor_config(self.sensor_id)
 
+    @property
+    def paused(self) -> bool:
+        """Whether task processing is paused for this sensor."""
+        sc = self.sensor_config
+        return sc.task_processing_paused if sc else False
+
+    def set_paused(self, value: bool) -> None:
+        """Set paused state and persist to config."""
+        sc = self.sensor_config
+        if sc:
+            sc.task_processing_paused = value
+            self.settings.save()
+
     # ── Task submission ────────────────────────────────────────────────
 
     def submit_task(self, task: Task, on_complete: Callable) -> None:
@@ -212,7 +226,7 @@ class SensorRuntime:
         from citrasense.sensors.telescope.tasks.tracking_telescope_task import TrackingTelescopeTask
 
         sc = self.sensor_config
-        mode = sc.observation_mode if sc else self.settings.observation_mode
+        mode = sc.observation_mode if sc else "auto"
 
         use_tracking = False
         if mode == "tracking":

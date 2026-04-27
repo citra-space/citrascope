@@ -34,9 +34,15 @@ def build_core_router(ctx: CitraSenseWebApp) -> APIRouter:
         return ctx.status
 
     @router.get("/api/task-preview/latest")
-    async def get_latest_task_preview():
-        """Serve the latest annotated task image."""
-        ann_path = getattr(ctx.daemon, "latest_annotated_image_path", None)
+    async def get_latest_task_preview(sensor_id: str | None = None):
+        """Serve the latest annotated task image, optionally for a sensor."""
+        paths = getattr(ctx.daemon, "latest_annotated_image_paths", {})
+        if sensor_id and sensor_id in paths:
+            ann_path = paths[sensor_id]
+        elif paths:
+            ann_path = max(paths.values(), key=lambda p: Path(p).stat().st_mtime if Path(p).exists() else 0)
+        else:
+            ann_path = None
         if not ann_path or not Path(ann_path).exists():
             return JSONResponse({"error": "No preview available"}, status_code=404)
         mime = "image/jpeg" if Path(ann_path).suffix.lower() in (".jpg", ".jpeg") else "image/png"

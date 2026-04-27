@@ -80,12 +80,12 @@ class StatusCollector:
             status.system_busy_reason = ", ".join(busy_reasons)
             _mark("task_dispatcher")
 
-            # Site-level autofocus timing (global settings)
-            if self.daemon.settings:
-                settings = self.daemon.settings
-                status.last_autofocus_timestamp = settings.last_autofocus_timestamp
-                status.last_alignment_timestamp = settings.last_alignment_timestamp
-                status.autofocus_target_name = _resolve_autofocus_target_name(settings)
+            # Site-level autofocus timing (first sensor as representative)
+            if self.daemon.settings and self.daemon.settings.sensors:
+                sc0 = self.daemon.settings.sensors[0]
+                status.last_autofocus_timestamp = sc0.last_autofocus_timestamp
+                status.last_alignment_timestamp = sc0.last_alignment_timestamp
+                status.autofocus_target_name = _resolve_autofocus_target_name(sc0)
             _mark("autofocus")
 
             # Time sync status
@@ -213,9 +213,14 @@ class StatusCollector:
 
             _mark("safety_elset")
 
-            # Latest annotated task image
-            ann_path = getattr(self.daemon, "latest_annotated_image_path", None)
-            if ann_path and Path(ann_path).exists():
+            # Latest annotated task image (most recent across all sensors)
+            paths = getattr(self.daemon, "latest_annotated_image_paths", {})
+            ann_path = None
+            if paths:
+                candidates = [p for p in paths.values() if Path(p).exists()]
+                if candidates:
+                    ann_path = max(candidates, key=lambda p: Path(p).stat().st_mtime)
+            if ann_path:
                 mtime_ns = Path(ann_path).stat().st_mtime_ns
                 status.latest_task_image_url = f"/api/task-preview/latest?t={mtime_ns}"
             else:
@@ -246,6 +251,14 @@ class StatusCollector:
 
         for sensor_id, sd in status.sensors.items():
             s_runtime = td.get_runtime(sensor_id) if td else None
+
+            # Per-sensor task state
+            if td:
+                sd["current_task"] = td._current_task_ids.get(sensor_id)
+                sd["processing_active"] = not s_runtime.paused if s_runtime else False
+            else:
+                sd["current_task"] = None
+                sd["processing_active"] = False
 
             # Per-runtime pipeline stats
             if s_runtime:
@@ -289,7 +302,7 @@ class StatusCollector:
             self._collect_telescope_managers(sd, s_runtime)
             self._collect_telescope_autofocus_timing(sd, s_runtime)
             self._collect_telescope_session(sd, sensor_id, s_runtime, td)
-            self._collect_telescope_optics(sd, sensor, adapter, s_runtime)
+            self._collect_telescope_optics(sd, sensor_id, sensor, adapter, s_runtime)
 
     def _collect_telescope_hardware(self, sd: dict, adapter: Any) -> None:
         """Populate hardware connection and telemetry fields for one telescope."""
@@ -424,10 +437,6 @@ class StatusCollector:
             sd["hfr_increase_percent"] = sensor_cfg.autofocus_hfr_increase_percent
             sd["hfr_refocus_enabled"] = sensor_cfg.autofocus_on_hfr_increase_enabled
             sd["hfr_sample_window"] = sensor_cfg.autofocus_hfr_sample_window
-        elif self.daemon and self.daemon.settings:
-            sd["hfr_increase_percent"] = self.daemon.settings.autofocus_hfr_increase_percent
-            sd["hfr_refocus_enabled"] = self.daemon.settings.autofocus_on_hfr_increase_enabled
-            sd["hfr_sample_window"] = self.daemon.settings.autofocus_hfr_sample_window
 
         sd["alignment_requested"] = runtime.alignment_manager.is_requested()
         sd["alignment_running"] = runtime.alignment_manager.is_running()
@@ -442,15 +451,19 @@ class StatusCollector:
         settings = self.daemon.settings
         sensor_id = getattr(runtime, "sensor_id", None)
         sc = settings.get_sensor_config(sensor_id) if sensor_id else None
-        afs = sc or settings
-        sd["last_autofocus_timestamp"] = settings.last_autofocus_timestamp
-        sd["last_alignment_timestamp"] = settings.last_alignment_timestamp
+        if sc is None and settings.sensors:
+            sc = settings.sensors[0]
+        if sc is None:
+            return
+        afs = sc
+        sd["last_autofocus_timestamp"] = getattr(afs, "last_autofocus_timestamp", None)
+        sd["last_alignment_timestamp"] = getattr(afs, "last_alignment_timestamp", None)
         sd["autofocus_target_name"] = _resolve_autofocus_target_name(afs)
 
         if runtime and hasattr(runtime, "autofocus_manager"):
             sd["next_autofocus_minutes"] = runtime.autofocus_manager.get_next_autofocus_minutes()
         elif afs.scheduled_autofocus_enabled:
-            last_ts = settings.last_autofocus_timestamp
+            last_ts = getattr(afs, "last_autofocus_timestamp", None)
             interval_minutes = afs.autofocus_interval_minutes
             if last_ts is not None:
                 elapsed_minutes = (int(time.time()) - last_ts) / 60
@@ -495,7 +508,7 @@ class StatusCollector:
             except KeyError:
                 sd["automated_scheduling"] = False
 
-    def _collect_telescope_optics(self, sd: dict, sensor: Any, adapter: Any, runtime: Any) -> None:
+    def _collect_telescope_optics(self, sd: dict, sensor_id: str, sensor: Any, adapter: Any, runtime: Any) -> None:
         """Populate calibration, pointing model, and config health for one telescope."""
         sd["calibration_status"] = self._build_calibration_status(adapter, runtime)
         sd["pointing_model"] = adapter.get_pointing_model_status() if adapter else None
@@ -533,11 +546,11 @@ class StatusCollector:
         else:
             sd["config_health"] = None
 
-        sd["latest_task_image_url"] = getattr(self.daemon, "latest_annotated_image_path", None)
-        ann_path = sd["latest_task_image_url"]
+        paths = getattr(self.daemon, "latest_annotated_image_paths", {})
+        ann_path = paths.get(sensor_id)
         if ann_path and Path(ann_path).exists():
             mtime_ns = Path(ann_path).stat().st_mtime_ns
-            sd["latest_task_image_url"] = f"/api/task-preview/latest?t={mtime_ns}"
+            sd["latest_task_image_url"] = f"/api/task-preview/latest?sensor_id={sensor_id}&t={mtime_ns}"
         else:
             sd["latest_task_image_url"] = None
 

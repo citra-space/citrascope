@@ -55,13 +55,12 @@ class TestLegacyAutoMigration:
                 "telescope_id": "tel-2",
             }
         )
-        assert s.hardware_adapter == "dummy"
-        assert s.telescope_id == "tel-2"
+        assert s.sensors[0].adapter == "dummy"
+        assert s.sensors[0].citra_sensor_id == "tel-2"
 
     def test_empty_config_has_no_sensors(self):
         s, _ = _make_settings({})
         assert s.sensors == []
-        assert s.hardware_adapter == ""
 
     def test_forward_shape_round_trips(self):
         s, mock_sfm = _make_settings(
@@ -143,7 +142,7 @@ class TestFilterPreservationAcrossMigration:
                 "adapter_settings": {"dummy": {"key": "original"}},
             }
         )
-        s.adapter_settings["key"] = "modified"
+        s.sensors[0].adapter_settings["key"] = "modified"
         s.save()
 
         saved: dict = mock_sfm.save_config.call_args[0][0]

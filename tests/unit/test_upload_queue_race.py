@@ -158,15 +158,15 @@ class TestConfigReloadDropsInFlightStages:
             patch.object(daemon, "sync_filters_to_backend"),
         ):
             mock_td_instance = MagicMock()
-            mock_td_instance.task_dict = {}
             mock_td_instance.imaging_tasks = {}
             mock_td_instance.processing_tasks = {}
             mock_td_instance.uploading_tasks = {}
             MockTD.return_value = mock_td_instance
             MockRT.return_value = MagicMock()
 
+            old_task_dict = {"task-1": MagicMock()}
             success, _error = daemon._initialize_telescope(
-                old_task_dict={"task-1": MagicMock()},
+                old_task_dict=old_task_dict,
                 old_imaging_tasks={"task-i1": MagicMock()},
                 old_processing_tasks=old_processing,
                 old_uploading_tasks=old_uploading,
@@ -175,5 +175,5 @@ class TestConfigReloadDropsInFlightStages:
         assert success is True
         assert mock_td_instance.processing_tasks == {}
         assert mock_td_instance.uploading_tasks == {}
-        assert "task-1" in mock_td_instance.task_dict
+        mock_td_instance.restore_task_dict.assert_called_once_with(old_task_dict)
         assert "task-i1" in mock_td_instance.imaging_tasks

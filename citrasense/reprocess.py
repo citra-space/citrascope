@@ -110,9 +110,14 @@ def reprocess_bundle(
     settings = CitraSenseSettings.load()
 
     if settings_overrides:
+        from citrasense.settings.citrasense_settings import SensorConfig
+
+        sensor_fields = SensorConfig.model_fields
         settings = copy.deepcopy(settings)
         for key, value in settings_overrides.items():
-            if key in settings.model_fields:
+            if key in sensor_fields and settings.sensors:
+                setattr(settings.sensors[0], key, value)
+            elif key in settings.model_fields:
                 setattr(settings, key, value)
             else:
                 log.warning("Unknown settings override ignored: %s", key)

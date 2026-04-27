@@ -679,7 +679,7 @@ async function saveModifiedFilters() {
  */
 async function triggerAutofocus(sensorId) {
     const store = Alpine.store('citrasense');
-    const ss = store.configSensorStatus;
+    const ss = store.status?.sensors?.[sensorId] || {};
     const shouldCancel = ss?.autofocus_requested || ss?.autofocus_running;
 
     if (shouldCancel) {
@@ -736,7 +736,8 @@ export async function initFilterConfig() {
 
 async function triggerAlignment(sensorId) {
     const store = Alpine.store('citrasense');
-    const isCancel = store.configSensorStatus?.alignment_requested;
+    const ss = store.status?.sensors?.[sensorId] || {};
+    const isCancel = ss?.alignment_requested;
 
     if (isCancel) {
         try {

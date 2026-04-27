@@ -56,6 +56,7 @@ class AlignmentManager:
         self.location_service = location_service
         self._preview_bus = preview_bus
         self._sensor_id: str = ""
+        self._sensor_config = None
 
         # Quick-align state
         self._requested = False
@@ -260,8 +261,10 @@ class AlignmentManager:
             with self._lock:
                 self._running = False
                 self._progress = ""
+            ts = int(time.time())
+            if self._sensor_config:
+                self._sensor_config.last_alignment_timestamp = ts
             if self.settings:
-                self.settings.last_alignment_timestamp = int(time.time())
                 self.settings.save()
 
     # ------------------------------------------------------------------

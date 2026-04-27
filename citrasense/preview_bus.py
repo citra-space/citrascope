@@ -120,18 +120,6 @@ class PreviewBus:
             self._frames.clear()
             return frames
 
-    def pop(self) -> tuple[str, str, str] | None:
-        """Legacy single-frame pop -- returns the first pending frame.
-
-        Prefer :meth:`pop_all` for multi-sensor awareness.
-        """
-        with self._lock:
-            if not self._frames:
-                return None
-            key = next(iter(self._frames))
-            payload, source, kind, _sid = self._frames.pop(key)
-            return (payload, source, kind)
-
     def clear(self) -> None:
         """Discard all pending frames."""
         with self._lock:

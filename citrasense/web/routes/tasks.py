@@ -101,11 +101,7 @@ def build_tasks_router(ctx: CitraSenseWebApp) -> APIRouter:
             return JSONResponse({"error": "Task manager not available"}, status_code=503)
 
         sensor_id = (request or {}).get("sensor_id")
-        ctx.daemon.task_dispatcher.pause()
-        for sc in ctx.daemon.settings.sensors:
-            if sensor_id is None or sc.id == sensor_id:
-                sc.task_processing_paused = True
-        ctx.daemon.settings.save()
+        ctx.daemon.task_dispatcher.pause_sensor(sensor_id)
         await ctx.broadcast_status()
 
         return {"status": "paused", "message": "Task processing paused"}
@@ -117,11 +113,7 @@ def build_tasks_router(ctx: CitraSenseWebApp) -> APIRouter:
             return JSONResponse({"error": "Task manager not available"}, status_code=503)
 
         sensor_id = (request or {}).get("sensor_id")
-        ctx.daemon.task_dispatcher.resume()
-        for sc in ctx.daemon.settings.sensors:
-            if sensor_id is None or sc.id == sensor_id:
-                sc.task_processing_paused = False
-        ctx.daemon.settings.save()
+        ctx.daemon.task_dispatcher.resume_sensor(sensor_id)
         await ctx.broadcast_status()
 
         return {"status": "active", "message": "Task processing resumed"}
@@ -219,10 +211,7 @@ def build_tasks_router(ctx: CitraSenseWebApp) -> APIRouter:
 
         if enabled and ctx.daemon.task_dispatcher:
             if not ctx.daemon.task_dispatcher.is_processing_active():
-                ctx.daemon.task_dispatcher.resume()
-                for sc in target_configs:
-                    sc.task_processing_paused = False
-                ctx.daemon.settings.save()
+                ctx.daemon.task_dispatcher.resume_sensor(sensor_id)
                 CITRASENSE_LOGGER.info("Self-tasking: auto-enabled processing")
 
             if not ctx.daemon.task_dispatcher.automated_scheduling:

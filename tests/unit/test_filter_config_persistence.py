@@ -193,7 +193,7 @@ class TestUpdateAndSaveFilterPreservation:
             }
         )
 
-        s.adapter_settings["filters"]["0"]["focus_position"] = 9500
+        s.sensors[0].adapter_settings["filters"]["0"]["focus_position"] = 9500
 
         s.update_and_save(
             {

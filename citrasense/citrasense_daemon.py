@@ -66,7 +66,7 @@ class CitraSenseDaemon:
         self.ground_station = None
         self.safety_monitor = None
         self.configuration_error: str | None = None
-        self.latest_annotated_image_path: str | None = None
+        self.latest_annotated_image_paths: dict[str, str] = {}
         self.preview_bus = PreviewBus()
 
         self.sensor_bus: InProcessBus = InProcessBus()
@@ -105,7 +105,10 @@ class CitraSenseDaemon:
         full image through the WebSocket, keeping the socket clear for
         status/log/task updates on bandwidth-constrained links.
         """
-        self.latest_annotated_image_path = path
+        if sensor_id:
+            self.latest_annotated_image_paths[sensor_id] = path
+        else:
+            self.latest_annotated_image_paths["_site"] = path
         try:
             mtime_ns = Path(path).stat().st_mtime_ns
             self.preview_bus.push_url(f"/api/task-preview/latest?t={mtime_ns}", "task", sensor_id=sensor_id)
@@ -395,7 +398,7 @@ class CitraSenseDaemon:
             # Restore preserved task metadata
             if old_task_dict:
                 CITRASENSE_LOGGER.info(f"Restoring {len(old_task_dict)} task(s) from previous TaskDispatcher")
-                self.task_dispatcher.task_dict.update(old_task_dict)
+                self.task_dispatcher.restore_task_dict(old_task_dict)
             if old_imaging_tasks:
                 CITRASENSE_LOGGER.info(f"Restoring {len(old_imaging_tasks)} imaging task(s)")
                 self.task_dispatcher.imaging_tasks.update(old_imaging_tasks)
@@ -461,7 +464,9 @@ class CitraSenseDaemon:
         CITRASENSE_LOGGER.info(f"Hardware connected. Slew rate: {adapter.scope_slew_rate_degrees_per_second} deg/sec")
 
         if self.location_service:
-            self.location_service.set_hardware_adapter_gps_provider(adapter.get_gps_location)
+            self.location_service.set_hardware_adapter_gps_provider(
+                adapter.get_gps_location, sensor_id=telescope_sensor.sensor_id
+            )
 
         self.save_filter_config(telescope_sensor)
         self.sync_filters_to_backend(telescope_sensor)
@@ -701,16 +706,13 @@ class CitraSenseDaemon:
         except Exception as e:
             CITRASENSE_LOGGER.warning(f"Failed to sync filters to backend: {e}", exc_info=True)
 
-    def _resolve_runtime(self, sensor_id: str | None = None) -> SensorRuntime | None:
-        """Resolve a telescope runtime by sensor_id, falling back to the first registered."""
+    def _resolve_runtime(self, sensor_id: str) -> SensorRuntime | None:
+        """Resolve a telescope runtime by sensor_id."""
         if not self.task_dispatcher:
             return None
-        if sensor_id:
-            return self.task_dispatcher.get_runtime(sensor_id)
-        rts = self.task_dispatcher._telescope_runtimes()
-        return rts[0] if rts else None
+        return self.task_dispatcher.get_runtime(sensor_id)
 
-    def trigger_autofocus(self, sensor_id: str | None = None) -> tuple[bool, str | None]:
+    def trigger_autofocus(self, sensor_id: str) -> tuple[bool, str | None]:
         """Request autofocus to run at next safe point between tasks."""
         rt = self._resolve_runtime(sensor_id)
         if rt is None:
@@ -720,21 +722,21 @@ class CitraSenseDaemon:
         rt.autofocus_manager.request()
         return True, None
 
-    def cancel_autofocus(self, sensor_id: str | None = None) -> bool:
+    def cancel_autofocus(self, sensor_id: str) -> bool:
         """Cancel autofocus whether it is queued or actively running."""
         rt = self._resolve_runtime(sensor_id)
         if rt is None:
             return False
         return rt.autofocus_manager.cancel()
 
-    def is_autofocus_requested(self, sensor_id: str | None = None) -> bool:
+    def is_autofocus_requested(self, sensor_id: str) -> bool:
         """Check if autofocus is currently queued."""
         rt = self._resolve_runtime(sensor_id)
         if rt is None:
             return False
         return rt.autofocus_manager.is_requested()
 
-    def trigger_calibration(self, params: dict, sensor_id: str | None = None) -> tuple[bool, str | None]:
+    def trigger_calibration(self, params: dict, *, sensor_id: str) -> tuple[bool, str | None]:
         """Request calibration capture at next safe point between tasks."""
         rt = self._resolve_runtime(sensor_id)
         if rt is None or not rt.calibration_manager:
@@ -744,7 +746,7 @@ class CitraSenseDaemon:
             return False, "Calibration already in progress"
         return True, None
 
-    def trigger_calibration_suite(self, jobs: list[dict], sensor_id: str | None = None) -> tuple[bool, str | None]:
+    def trigger_calibration_suite(self, jobs: list[dict], *, sensor_id: str) -> tuple[bool, str | None]:
         """Request a batch calibration suite at next safe point between tasks."""
         rt = self._resolve_runtime(sensor_id)
         if rt is None or not rt.calibration_manager:
@@ -756,7 +758,7 @@ class CitraSenseDaemon:
             return False, "Calibration already in progress"
         return True, None
 
-    def cancel_calibration(self, sensor_id: str | None = None) -> bool:
+    def cancel_calibration(self, sensor_id: str) -> bool:
         """Cancel calibration whether queued or actively running."""
         rt = self._resolve_runtime(sensor_id)
         if rt is None or not rt.calibration_manager:

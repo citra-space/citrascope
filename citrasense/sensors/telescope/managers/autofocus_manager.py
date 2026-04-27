@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
     from citrasense.acquisition.base_work_queue import BaseWorkQueue
     from citrasense.location.location_service import LocationService
-    from citrasense.settings.citrasense_settings import CitraSenseSettings
+    from citrasense.settings.citrasense_settings import CitraSenseSettings, SensorConfig
 
 
 class AutofocusManager:
@@ -52,7 +52,7 @@ class AutofocusManager:
         self.location_service = location_service
         self._preview_bus = preview_bus
         self._sensor_id: str = ""
-        self._sensor_config = None
+        self._sensor_config: SensorConfig | None = None
         self.on_toast = on_toast
         self._requested = False
         self._running = False
@@ -66,9 +66,9 @@ class AutofocusManager:
         self._cancel_event = threading.Event()
 
     @property
-    def _af_settings(self):
-        """Per-sensor autofocus settings, falling back to global."""
-        return self._sensor_config or self.settings
+    def _af_settings(self) -> SensorConfig | None:
+        """Per-sensor autofocus settings (SensorConfig)."""
+        return self._sensor_config
 
     def request(self) -> bool:
         """Request autofocus to run at next safe point between tasks."""
@@ -190,7 +190,8 @@ class AutofocusManager:
         if not hfr_values:
             return
         baseline = round(min(hfr_values), 2)
-        self.settings.adapter_settings["hfr_baseline"] = baseline
+        if self._sensor_config:
+            self._sensor_config.adapter_settings["hfr_baseline"] = baseline
         self.logger.info(f"HFR baseline updated to {baseline:.2f} px")
 
     def clear_points(self) -> None:
@@ -237,7 +238,7 @@ class AutofocusManager:
         afs = self._af_settings
         if not afs or not afs.autofocus_on_hfr_increase_enabled:
             return False
-        baseline = self.settings.adapter_settings.get("hfr_baseline")
+        baseline = self._sensor_config.adapter_settings.get("hfr_baseline") if self._sensor_config else None
         if baseline is None or baseline <= 0:
             return False
         if not self.hardware_adapter.supports_autofocus():
@@ -247,7 +248,7 @@ class AutofocusManager:
         if len(self._hfr_history) < window:
             return False
 
-        last_ts = self.settings.last_autofocus_timestamp
+        last_ts = afs.last_autofocus_timestamp
         if last_ts is not None and (time.time() - last_ts) < self._HFR_REFOCUS_COOLDOWN_SECONDS:
             return False
 
@@ -315,8 +316,10 @@ class AutofocusManager:
 
     def _should_run_interval(self) -> bool:
         """Interval mode: trigger when elapsed time exceeds the configured interval."""
-        interval_minutes = self._af_settings.autofocus_interval_minutes
-        last_timestamp = self.settings.last_autofocus_timestamp
+        afs = self._af_settings
+        assert afs is not None
+        interval_minutes = afs.autofocus_interval_minutes
+        last_timestamp = afs.last_autofocus_timestamp
 
         if last_timestamp is None:
             return True
@@ -339,7 +342,9 @@ class AutofocusManager:
         if now_utc < trigger_time:
             return False
 
-        last_ts = self.settings.last_autofocus_timestamp
+        afs = self._af_settings
+        assert afs is not None
+        last_ts = afs.last_autofocus_timestamp
         if last_ts is None:
             return True
 
@@ -364,7 +369,9 @@ class AutofocusManager:
             if sunset is None:
                 self.logger.warning("Could not compute sunset for after-sunset autofocus (polar day?)")
                 return None
-            offset = self._af_settings.autofocus_after_sunset_offset_minutes
+            afs = self._af_settings
+            assert afs is not None
+            offset = afs.autofocus_after_sunset_offset_minutes
             return sunset + timedelta(minutes=offset)
         except Exception as e:
             self.logger.warning(f"Failed to compute sunset time: {e}")
@@ -387,8 +394,10 @@ class AutofocusManager:
         return self._next_minutes_interval()
 
     def _next_minutes_interval(self) -> int:
-        last_ts = self.settings.last_autofocus_timestamp
-        interval = self._af_settings.autofocus_interval_minutes
+        afs = self._af_settings
+        assert afs is not None
+        last_ts = afs.last_autofocus_timestamp
+        interval = afs.autofocus_interval_minutes
         if last_ts is None:
             return 0
         elapsed = (int(time.time()) - last_ts) / 60
@@ -404,7 +413,9 @@ class AutofocusManager:
             return None
         now_utc = datetime.now(timezone.utc)
         if now_utc >= trigger_time:
-            last_ts = self.settings.last_autofocus_timestamp
+            afs = self._af_settings
+            assert afs is not None
+            last_ts = afs.last_autofocus_timestamp
             if last_ts is not None:
                 last_dt = datetime.fromtimestamp(last_ts, tz=timezone.utc)
                 if last_dt >= trigger_time:
@@ -485,8 +496,8 @@ class AutofocusManager:
             if self.hardware_adapter.supports_filter_management():
                 try:
                     filter_config = self.hardware_adapter.get_filter_config()
-                    if filter_config and self.settings:
-                        self.settings.adapter_settings["filters"] = filter_config
+                    if filter_config and self._sensor_config:
+                        self._sensor_config.adapter_settings["filters"] = filter_config
                         self.logger.info(f"Saved filter configuration with {len(filter_config)} filters")
                 except Exception as e:
                     self.logger.warning(f"Failed to save filter configuration after autofocus: {e}")
@@ -510,6 +521,8 @@ class AutofocusManager:
             with self._lock:
                 self._running = False
                 self._progress = ""
+            ts = int(time.time())
+            if self._sensor_config:
+                self._sensor_config.last_autofocus_timestamp = ts
             if self.settings:
-                self.settings.last_autofocus_timestamp = int(time.time())
                 self.settings.save()

@@ -141,7 +141,7 @@ class PipelineRegistry:
                 "name": p.name,
                 "friendly_name": p.friendly_name,
                 "description": p.description,
-                "enabled": self.settings.enabled_processors.get(p.name, True),
+                "enabled": getattr(self.settings, "enabled_processors", {}).get(p.name, True),
             }
             for p in self.processors
         ]
@@ -163,7 +163,7 @@ class PipelineRegistry:
         for hook in self._pre_hooks:
             hook(context)
 
-        ep_map = getattr(context.settings, "enabled_processors", None) or self.settings.enabled_processors
+        ep_map = getattr(context.settings, "enabled_processors", {})
         enabled_processors = [p for p in self.processors if ep_map.get(p.name, True)]
 
         enabled_names = [p.name for p in enabled_processors]

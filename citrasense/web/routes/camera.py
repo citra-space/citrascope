@@ -67,9 +67,10 @@ def build_camera_router(ctx: CitraSenseWebApp) -> APIRouter:
         if not adapter.supports_direct_camera_control():
             return JSONResponse({"error": "Hardware adapter does not support direct camera control"}, status_code=400)
 
-        if ctx.daemon and ctx.daemon.task_dispatcher:
-            if ctx.daemon.task_dispatcher.is_processing_active():
-                return JSONResponse({"error": "Camera unavailable — task processing is active"}, status_code=503)
+        if _runtime and not _runtime.paused:
+            return JSONResponse(
+                {"error": "Camera unavailable — task processing is active for this sensor"}, status_code=503
+            )
 
         try:
             duration = request.get("duration", 1.0)

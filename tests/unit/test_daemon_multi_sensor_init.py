@@ -174,7 +174,6 @@ class TestMultiSensorDaemonInit:
             patch.object(daemon, "sync_filters_to_backend"),
         ):
             mock_td = MagicMock()
-            mock_td.task_dict = {}
             mock_td.imaging_tasks = {}
             mock_td.processing_tasks = {}
             mock_td.uploading_tasks = {}
@@ -183,8 +182,7 @@ class TestMultiSensorDaemonInit:
             old_tasks = {"t1": MagicMock(), "t2": MagicMock()}
             daemon._initialize_telescope(old_task_dict=old_tasks)
 
-        assert "t1" in mock_td.task_dict
-        assert "t2" in mock_td.task_dict
+        mock_td.restore_task_dict.assert_called_once_with(old_tasks)
 
     def test_ground_station_set_from_first_telescope_only(self):
         scope_a = _make_telescope_sensor("scope-a")

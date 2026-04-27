@@ -24,15 +24,11 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator,
 #     the model; ``load()`` migrates v1/v2 files automatically.
 # v4: operational settings (task_processing_paused, observing_session_*,
 #     self_tasking_*) moved from global to per-sensor.
-CONFIG_VERSION = 5
+CONFIG_VERSION = 6
 # Legacy scalar-only shape — synthesized ``sensors`` entries are marked with
 # this id so they round-trip cleanly on resave.
+# Migration-only: default sensor id assigned when upgrading legacy single-sensor configs.
 DEFAULT_TELESCOPE_SENSOR_ID = "telescope-0"
-
-# Application constants for platformdirs
-# Defined before imports to avoid circular dependency
-APP_NAME = "citrasense"
-APP_AUTHOR = "citra-space"
 
 from citrasense.constants import DEFAULT_API_PORT, DEFAULT_WEB_PORT, PROD_API_HOST
 from citrasense.logging import CITRASENSE_LOGGER
@@ -45,10 +41,9 @@ _VALID_SEXTRACTOR_FILTERS = frozenset({"default", "gauss_1.5_3x3", "gauss_2.5_5x
 class SensorConfig(BaseModel):
     """Per-sensor configuration block.
 
-    Introduced in phase 1 of the multi-sensor migration (issue #306). In
-    phase 1 the config list always has exactly one entry of type
-    ``"telescope"`` wrapping today's hardware adapter; follow-ups will add
-    radar and RF entries.
+    Each sensor entry carries its own adapter type, connection settings,
+    scheduling flags, and operational state.  The config list supports
+    multiple simultaneous telescope, radar, or RF sensors.
 
     Fields:
         id: Unique local sensor id (e.g. ``"telescope-0"``). Used by the
@@ -120,6 +115,10 @@ class SensorConfig(BaseModel):
     autofocus_on_hfr_increase_enabled: bool = False
     autofocus_hfr_increase_percent: int = 30
     autofocus_hfr_sample_window: int = 5
+
+    # Per-sensor timestamps (moved from global in config_version 6).
+    last_autofocus_timestamp: int | None = None
+    last_alignment_timestamp: int | None = None
 
     @field_validator("observing_session_sun_altitude_threshold", mode="before")
     @classmethod
@@ -309,8 +308,6 @@ class CitraSenseSettings(BaseModel):
 
     # Alignment
     alignment_exposure_seconds: float = 2.0
-    last_alignment_timestamp: int | None = None
-    last_autofocus_timestamp: int | None = None
 
     # Time synchronization
     time_check_interval_minutes: int = 5
@@ -396,193 +393,6 @@ class CitraSenseSettings(BaseModel):
             CITRASENSE_LOGGER.warning("custom dir path %r is not absolute. Ignoring.", v)
             return ""
         return str(p)
-
-    # ── Deprecated scalar access (delegates to sensors[0]) ───────────
-
-    @property
-    def hardware_adapter(self) -> str:
-        """Legacy compat: adapter key of the first sensor."""
-        return self.sensors[0].adapter if self.sensors else ""
-
-    @property
-    def telescope_id(self) -> str:
-        """Legacy compat: Citra sensor ID of the first sensor."""
-        return self.sensors[0].citra_sensor_id if self.sensors else ""
-
-    @property
-    def adapter_settings(self) -> dict[str, Any]:
-        """Legacy compat: adapter settings of the first sensor."""
-        return self.sensors[0].adapter_settings if self.sensors else {}
-
-    @adapter_settings.setter
-    def adapter_settings(self, value: dict[str, Any]) -> None:
-        if self.sensors:
-            self.sensors[0].adapter_settings = value
-
-    # ── Per-sensor operational compat (delegates to sensors[0]) ───────
-
-    @property
-    def task_processing_paused(self) -> bool:
-        return self.sensors[0].task_processing_paused if self.sensors else False
-
-    @task_processing_paused.setter
-    def task_processing_paused(self, value: bool) -> None:
-        if self.sensors:
-            self.sensors[0].task_processing_paused = value
-
-    @property
-    def observing_session_enabled(self) -> bool:
-        return self.sensors[0].observing_session_enabled if self.sensors else False
-
-    @observing_session_enabled.setter
-    def observing_session_enabled(self, value: bool) -> None:
-        if self.sensors:
-            self.sensors[0].observing_session_enabled = value
-
-    @property
-    def self_tasking_enabled(self) -> bool:
-        return self.sensors[0].self_tasking_enabled if self.sensors else False
-
-    @self_tasking_enabled.setter
-    def self_tasking_enabled(self, value: bool) -> None:
-        if self.sensors:
-            self.sensors[0].self_tasking_enabled = value
-
-    @property
-    def observing_session_sun_altitude_threshold(self) -> float:
-        return self.sensors[0].observing_session_sun_altitude_threshold if self.sensors else -12.0
-
-    @property
-    def observing_session_do_pointing_calibration(self) -> bool:
-        return self.sensors[0].observing_session_do_pointing_calibration if self.sensors else False
-
-    @property
-    def observing_session_do_autofocus(self) -> bool:
-        return self.sensors[0].observing_session_do_autofocus if self.sensors else True
-
-    @property
-    def observing_session_do_park(self) -> bool:
-        return self.sensors[0].observing_session_do_park if self.sensors else True
-
-    @property
-    def self_tasking_satellite_group_ids(self) -> list[str]:
-        return self.sensors[0].self_tasking_satellite_group_ids if self.sensors else []
-
-    @property
-    def self_tasking_include_orbit_regimes(self) -> list[str]:
-        return self.sensors[0].self_tasking_include_orbit_regimes if self.sensors else []
-
-    @property
-    def self_tasking_exclude_object_types(self) -> list[str]:
-        return self.sensors[0].self_tasking_exclude_object_types if self.sensors else []
-
-    @property
-    def self_tasking_collection_type(self) -> str:
-        return self.sensors[0].self_tasking_collection_type if self.sensors else "Track"
-
-    # ── Deprecated v5 shims (observation / processing / autofocus) ────
-    # These delegate to sensors[0] for code not yet updated to read
-    # per-sensor config directly.  Marked for removal.
-
-    @property
-    def observation_mode(self) -> str:  # type: ignore[override]
-        return self.sensors[0].observation_mode if self.sensors else "auto"
-
-    @property
-    def exposure_seconds(self) -> float:  # type: ignore[override]
-        return self.sensors[0].exposure_seconds if self.sensors else 2.0
-
-    @property
-    def num_exposures(self) -> int:  # type: ignore[override]
-        return self.sensors[0].num_exposures if self.sensors else 3
-
-    @property
-    def adaptive_exposure(self) -> bool:  # type: ignore[override]
-        return self.sensors[0].adaptive_exposure if self.sensors else False
-
-    @property
-    def adaptive_exposure_max_trail_pixels(self) -> float:  # type: ignore[override]
-        return self.sensors[0].adaptive_exposure_max_trail_pixels if self.sensors else 3.0
-
-    @property
-    def adaptive_exposure_min_seconds(self) -> float:  # type: ignore[override]
-        return self.sensors[0].adaptive_exposure_min_seconds if self.sensors else 0.1
-
-    @property
-    def adaptive_exposure_max_seconds(self) -> float:  # type: ignore[override]
-        return self.sensors[0].adaptive_exposure_max_seconds if self.sensors else 30.0
-
-    @property
-    def processors_enabled(self) -> bool:  # type: ignore[override]
-        return self.sensors[0].processors_enabled if self.sensors else True
-
-    @property
-    def enabled_processors(self) -> dict[str, bool]:  # type: ignore[override]
-        return self.sensors[0].enabled_processors if self.sensors else {}
-
-    @property
-    def skip_upload(self) -> bool:  # type: ignore[override]
-        return self.sensors[0].skip_upload if self.sensors else False
-
-    @property
-    def plate_solve_timeout(self) -> int:  # type: ignore[override]
-        return self.sensors[0].plate_solve_timeout if self.sensors else 60
-
-    @property
-    def astrometry_index_path(self) -> str:  # type: ignore[override]
-        return self.sensors[0].astrometry_index_path if self.sensors else ""
-
-    @property
-    def sextractor_detect_thresh(self) -> float:  # type: ignore[override]
-        return self.sensors[0].sextractor_detect_thresh if self.sensors else 5.0
-
-    @property
-    def sextractor_detect_minarea(self) -> int:  # type: ignore[override]
-        return self.sensors[0].sextractor_detect_minarea if self.sensors else 3
-
-    @property
-    def sextractor_filter_name(self) -> str:  # type: ignore[override]
-        return self.sensors[0].sextractor_filter_name if self.sensors else "default"
-
-    @property
-    def scheduled_autofocus_enabled(self) -> bool:  # type: ignore[override]
-        return self.sensors[0].scheduled_autofocus_enabled if self.sensors else False
-
-    @property
-    def autofocus_schedule_mode(self) -> str:  # type: ignore[override]
-        return self.sensors[0].autofocus_schedule_mode if self.sensors else "interval"
-
-    @property
-    def autofocus_interval_minutes(self) -> int:  # type: ignore[override]
-        return self.sensors[0].autofocus_interval_minutes if self.sensors else 60
-
-    @property
-    def autofocus_after_sunset_offset_minutes(self) -> int:  # type: ignore[override]
-        return self.sensors[0].autofocus_after_sunset_offset_minutes if self.sensors else 60
-
-    @property
-    def autofocus_target_preset(self) -> str:  # type: ignore[override]
-        return self.sensors[0].autofocus_target_preset if self.sensors else "mirach"
-
-    @property
-    def autofocus_target_custom_ra(self) -> float | None:  # type: ignore[override]
-        return self.sensors[0].autofocus_target_custom_ra if self.sensors else None
-
-    @property
-    def autofocus_target_custom_dec(self) -> float | None:  # type: ignore[override]
-        return self.sensors[0].autofocus_target_custom_dec if self.sensors else None
-
-    @property
-    def autofocus_on_hfr_increase_enabled(self) -> bool:  # type: ignore[override]
-        return self.sensors[0].autofocus_on_hfr_increase_enabled if self.sensors else False
-
-    @property
-    def autofocus_hfr_increase_percent(self) -> int:  # type: ignore[override]
-        return self.sensors[0].autofocus_hfr_increase_percent if self.sensors else 30
-
-    @property
-    def autofocus_hfr_sample_window(self) -> int:  # type: ignore[override]
-        return self.sensors[0].autofocus_hfr_sample_window if self.sensors else 5
 
     # ── Factory ───────────────────────────────────────────────────────
 
@@ -701,6 +511,14 @@ class CitraSenseSettings(BaseModel):
                 config["sensors"] = sensor_list
             for sd in sensor_list:
                 for k, v in top_v5.items():
+                    sd.setdefault(k, v)
+
+        # ── v5 → v6: move timestamps into each sensor ─────────────────
+        _V6_FIELDS = ("last_autofocus_timestamp", "last_alignment_timestamp")
+        top_v6 = {k: config.pop(k) for k in _V6_FIELDS if k in config}
+        if top_v6:
+            for sd in config.get("sensors") or []:
+                for k, v in top_v6.items():
                     sd.setdefault(k, v)
 
         instance = cls.model_validate(config)

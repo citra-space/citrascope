@@ -45,9 +45,9 @@ def build_safety_router(ctx: CitraSenseWebApp) -> APIRouter:
         cancelled = 0
         tm = ctx.daemon.task_dispatcher
         if tm:
-            tm.pause()
+            tm.pause_sensor(None)
             cancelled = tm.clear_pending_tasks()
-        if ctx.daemon.settings:
+        elif ctx.daemon.settings:
             for sc in ctx.daemon.settings.sensors:
                 sc.task_processing_paused = True
             ctx.daemon.settings.save()

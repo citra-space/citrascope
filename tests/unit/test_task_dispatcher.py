@@ -143,11 +143,13 @@ class TestStageTracking:
 
     def test_remove_task_from_all_stages(self):
         td = _make_dispatcher()
+        rt = _mock_runtime("scope-0")
+        td.register_runtime(rt)
         td.update_task_stage("t1", "uploading")
-        td.task_dict["t1"] = MagicMock()
+        td._sensor_task_dicts["scope-0"]["t1"] = MagicMock()
         td.remove_task_from_all_stages("t1")
         assert "t1" not in td.uploading_tasks
-        assert "t1" not in td.task_dict
+        assert "t1" not in td._sensor_task_dicts["scope-0"]
 
 
 # ── Stats ─────────────────────────────────────────────────────────────────
@@ -170,15 +172,17 @@ class TestStats:
 class TestDropScheduledTask:
     def test_drop_removes_from_heap(self):
         td = _make_dispatcher()
+        rt = _mock_runtime("scope-0")
+        td.register_runtime(rt)
         task = MagicMock()
-        heapq.heappush(td.task_heap, (1000, 2000, "t1", task))
-        td.task_ids.add("t1")
-        td.task_dict["t1"] = task
+        heapq.heappush(td._sensor_heaps["scope-0"], (1000, 2000, "t1", task))
+        td._sensor_task_ids["scope-0"].add("t1")
+        td._sensor_task_dicts["scope-0"]["t1"] = task
 
         assert td.drop_scheduled_task("t1") is True
-        assert "t1" not in td.task_ids
-        assert "t1" not in td.task_dict
-        assert all(entry[2] != "t1" for entry in td.task_heap)
+        assert "t1" not in td._sensor_task_ids["scope-0"]
+        assert "t1" not in td._sensor_task_dicts["scope-0"]
+        assert all(entry[2] != "t1" for entry in td._sensor_heaps["scope-0"])
 
     def test_drop_unknown_returns_false(self):
         td = _make_dispatcher()
@@ -229,6 +233,9 @@ def _create_test_task(task_id, status="Pending", start_offset_seconds=60):
     )
 
 
+WIRED_SID = "test-telescope-123"
+
+
 @pytest.fixture
 def wired_dispatcher():
     """Create a TaskDispatcher with a registered runtime, for queue management tests."""
@@ -249,20 +256,23 @@ def wired_dispatcher():
     )
 
     runtime = MagicMock()
-    runtime.sensor_id = "test-telescope-123"
+    runtime.sensor_id = WIRED_SID
     runtime.sensor_type = "telescope"
-    runtime.sensor.citra_record = {"id": "test-telescope-123", "maxSlewRate": 5.0, "automatedScheduling": False}
+    runtime.sensor.citra_record = {"id": WIRED_SID, "maxSlewRate": 5.0, "automatedScheduling": False}
     runtime.acquisition_queue = MagicMock()
     runtime.acquisition_queue.is_idle.return_value = True
     runtime.processing_queue = MagicMock()
     runtime.upload_queue = MagicMock()
     runtime.are_queues_idle.return_value = True
-    td._runtimes["test-telescope-123"] = runtime
+    td.register_runtime(runtime)
     return td, api_client
 
 
 def test_poll_tasks_adds_new_tasks(wired_dispatcher):
     td, api_client = wired_dispatcher
+    heap = td._sensor_heaps[WIRED_SID]
+    ids = td._sensor_task_ids[WIRED_SID]
+    dicts = td._sensor_task_dicts[WIRED_SID]
     task1 = _create_test_task("task-001", "Pending")
     task2 = _create_test_task("task-002", "Scheduled", start_offset_seconds=120)
 
@@ -280,21 +290,24 @@ def test_poll_tasks_adds_new_tasks(wired_dispatcher):
 
         now = int(time.time())
         for tid, task in api_task_map.items():
-            if tid not in td.task_ids and tid != td.current_task_id:
+            if tid not in ids and tid != td.current_task_id:
                 start_epoch = int(dtparser.isoparse(task.taskStart).timestamp())
                 stop_epoch = int(dtparser.isoparse(task.taskStop).timestamp()) if task.taskStop else 0
                 if not (stop_epoch and stop_epoch < now):
-                    heapq.heappush(td.task_heap, (start_epoch, stop_epoch, tid, task))
-                    td.task_ids.add(tid)
-                    td.task_dict[tid] = task
+                    heapq.heappush(heap, (start_epoch, stop_epoch, tid, task))
+                    ids.add(tid)
+                    dicts[tid] = task
 
-    assert len(td.task_heap) == 2
-    assert "task-001" in td.task_ids
-    assert "task-002" in td.task_ids
+    assert len(heap) == 2
+    assert "task-001" in ids
+    assert "task-002" in ids
 
 
 def test_poll_tasks_removes_cancelled_tasks(wired_dispatcher):
     td, api_client = wired_dispatcher
+    heap = td._sensor_heaps[WIRED_SID]
+    ids = td._sensor_task_ids[WIRED_SID]
+    dicts = td._sensor_task_dicts[WIRED_SID]
     task1 = _create_test_task("task-001", "Pending")
     task2 = _create_test_task("task-002", "Pending", start_offset_seconds=120)
 
@@ -304,12 +317,12 @@ def test_poll_tasks_removes_cancelled_tasks(wired_dispatcher):
     stop2 = int(dtparser.isoparse(task2.taskStop).timestamp())
 
     with td.heap_lock:
-        heapq.heappush(td.task_heap, (start1, stop1, "task-001", task1))
-        heapq.heappush(td.task_heap, (start2, stop2, "task-002", task2))
-        td.task_ids.update({"task-001", "task-002"})
-        td.task_dict.update({"task-001": task1, "task-002": task2})
+        heapq.heappush(heap, (start1, stop1, "task-001", task1))
+        heapq.heappush(heap, (start2, stop2, "task-002", task2))
+        ids.update({"task-001", "task-002"})
+        dicts.update({"task-001": task1, "task-002": task2})
 
-    assert len(td.task_heap) == 2
+    assert len(heap) == 2
 
     api_client.get_telescope_tasks.return_value = [task1.__dict__]
 
@@ -324,32 +337,35 @@ def test_poll_tasks_removes_cancelled_tasks(wired_dispatcher):
 
         new_heap = []
         removed = 0
-        for se, so, tid, task in td.task_heap:
+        for se, so, tid, task in heap:
             if tid == td.current_task_id or tid in api_task_map:
                 new_heap.append((se, so, tid, task))
             else:
-                td.task_ids.discard(tid)
-                td.task_dict.pop(tid, None)
+                ids.discard(tid)
+                dicts.pop(tid, None)
                 removed += 1
         if removed > 0:
-            td.task_heap = new_heap
-            heapq.heapify(td.task_heap)
+            td._sensor_heaps[WIRED_SID] = new_heap
+            heapq.heapify(td._sensor_heaps[WIRED_SID])
 
-    assert len(td.task_heap) == 1
-    assert "task-001" in td.task_ids
-    assert "task-002" not in td.task_ids
+    assert len(td._sensor_heaps[WIRED_SID]) == 1
+    assert "task-001" in ids
+    assert "task-002" not in ids
 
 
 def test_poll_tasks_removes_tasks_with_changed_status(wired_dispatcher):
     td, api_client = wired_dispatcher
+    heap = td._sensor_heaps[WIRED_SID]
+    ids = td._sensor_task_ids[WIRED_SID]
+    dicts = td._sensor_task_dicts[WIRED_SID]
     task1 = _create_test_task("task-001", "Pending")
     se = int(dtparser.isoparse(task1.taskStart).timestamp())
     so = int(dtparser.isoparse(task1.taskStop).timestamp())
 
     with td.heap_lock:
-        heapq.heappush(td.task_heap, (se, so, "task-001", task1))
-        td.task_ids.add("task-001")
-        td.task_dict["task-001"] = task1
+        heapq.heappush(heap, (se, so, "task-001", task1))
+        ids.add("task-001")
+        dicts["task-001"] = task1
 
     cancelled = _create_test_task("task-001", "Cancelled")
     api_client.get_telescope_tasks.return_value = [cancelled.__dict__]
@@ -363,30 +379,33 @@ def test_poll_tasks_removes_tasks_with_changed_status(wired_dispatcher):
                 api_task_map[t.id] = t
 
         new_heap = []
-        for se2, so2, tid, task in td.task_heap:
+        for se2, so2, tid, task in heap:
             if tid == td.current_task_id or tid in api_task_map:
                 new_heap.append((se2, so2, tid, task))
             else:
-                td.task_ids.discard(tid)
-                td.task_dict.pop(tid, None)
-        td.task_heap = new_heap
-        heapq.heapify(td.task_heap)
+                ids.discard(tid)
+                dicts.pop(tid, None)
+        td._sensor_heaps[WIRED_SID] = new_heap
+        heapq.heapify(td._sensor_heaps[WIRED_SID])
 
-    assert len(td.task_heap) == 0
-    assert "task-001" not in td.task_ids
+    assert len(td._sensor_heaps[WIRED_SID]) == 0
+    assert "task-001" not in ids
 
 
 def test_poll_tasks_does_not_remove_current_task(wired_dispatcher):
     td, api_client = wired_dispatcher
+    heap = td._sensor_heaps[WIRED_SID]
+    ids = td._sensor_task_ids[WIRED_SID]
+    dicts = td._sensor_task_dicts[WIRED_SID]
     task1 = _create_test_task("task-001", "Pending")
     se = int(dtparser.isoparse(task1.taskStart).timestamp())
     so = int(dtparser.isoparse(task1.taskStop).timestamp())
 
     with td.heap_lock:
-        heapq.heappush(td.task_heap, (se, so, "task-001", task1))
-        td.task_ids.add("task-001")
-        td.task_dict["task-001"] = task1
-        td.current_task_id = "task-001"
+        heapq.heappush(heap, (se, so, "task-001", task1))
+        ids.add("task-001")
+        dicts["task-001"] = task1
+        td._current_task_ids[WIRED_SID] = "task-001"
 
     api_client.get_telescope_tasks.return_value = []
 
@@ -399,16 +418,16 @@ def test_poll_tasks_does_not_remove_current_task(wired_dispatcher):
                 api_task_map[t.id] = t
 
         new_heap = []
-        for se2, so2, tid, task in td.task_heap:
+        for se2, so2, tid, task in heap:
             if tid == td.current_task_id or tid in api_task_map:
                 new_heap.append((se2, so2, tid, task))
             else:
-                td.task_ids.discard(tid)
-        td.task_heap = new_heap
-        heapq.heapify(td.task_heap)
+                ids.discard(tid)
+        td._sensor_heaps[WIRED_SID] = new_heap
+        heapq.heapify(td._sensor_heaps[WIRED_SID])
 
-    assert len(td.task_heap) == 1
-    assert "task-001" in td.task_ids
+    assert len(td._sensor_heaps[WIRED_SID]) == 1
+    assert "task-001" in ids
 
 
 # ── _evaluate_safety — cable wrap soft-lock regression (#239) ────────────
@@ -517,22 +536,6 @@ class TestMultiRuntime:
         statuses = api_client.put_telescope_status.call_args[0][0]
         ids = {s["id"] for s in statuses}
         assert ids == {"api-scope-0", "api-scope-1"}
-
-    def test_session_manager_from_first_telescope_runtime(self):
-        td = _make_dispatcher()
-        rt1 = _mock_runtime("scope-0", "telescope")
-        rt2 = _mock_runtime("scope-1", "telescope")
-        osm = MagicMock()
-        stm = MagicMock()
-        rt1.observing_session_manager = osm
-        rt1.self_tasking_manager = stm
-        rt2.observing_session_manager = None
-        rt2.self_tasking_manager = None
-        td.register_runtime(rt1)
-        td.register_runtime(rt2)
-
-        assert td.observing_session_manager is osm
-        assert td.self_tasking_manager is stm
 
     def test_automated_scheduling_any_telescope(self):
         td = _make_dispatcher()

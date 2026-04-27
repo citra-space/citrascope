@@ -5,10 +5,6 @@ from :class:`~citrasense.settings.citrasense_settings.SensorConfig` (via
 :mod:`citrasense.sensors.sensor_registry`) and drives bulk lifecycle
 operations (connect all, disconnect all). The daemon talks to this object
 instead of a single ``hardware_adapter`` attribute.
-
-Phase 1 always carries exactly one telescope sensor; the surface here is
-already N-sensor so phase 4/5 dispatching can build on it without another
-refactor.
 """
 
 from __future__ import annotations

@@ -444,13 +444,13 @@ def test_get_active_tasks_empty(client):
 def test_pause_tasks(client, mock_daemon):
     resp = client.post("/api/tasks/pause")
     assert resp.status_code == 200
-    mock_daemon.task_dispatcher.pause.assert_called_once()
+    mock_daemon.task_dispatcher.pause_sensor.assert_called_once_with(None)
 
 
 def test_resume_tasks(client, mock_daemon):
     resp = client.post("/api/tasks/resume")
     assert resp.status_code == 200
-    mock_daemon.task_dispatcher.resume.assert_called_once()
+    mock_daemon.task_dispatcher.resume_sensor.assert_called_once_with(None)
 
 
 def test_pause_no_daemon():
@@ -507,10 +507,8 @@ def test_emergency_stop(client, mock_daemon):
     assert data["success"] is True
     assert "2" in data["message"]
     mock_daemon.safety_monitor.activate_operator_stop.assert_called_once()
-    mock_daemon.task_dispatcher.pause.assert_called_once()
+    mock_daemon.task_dispatcher.pause_sensor.assert_called_once_with(None)
     mock_daemon.task_dispatcher.clear_pending_tasks.assert_called_once()
-    assert mock_daemon.settings.sensors[0].task_processing_paused is True
-    mock_daemon.settings.save.assert_called_once()
 
 
 def test_emergency_stop_no_daemon():
@@ -528,8 +526,8 @@ def test_emergency_stop_no_task_dispatcher(mock_daemon):
     c = TestClient(app.app)
     resp = c.post("/api/emergency-stop")
     assert resp.status_code == 202
-    assert mock_daemon.settings.sensors[0].task_processing_paused is True
     mock_daemon.safety_monitor.activate_operator_stop.assert_called_once()
+    mock_daemon.settings.save.assert_called_once()
 
 
 def test_clear_operator_stop(client, mock_daemon):
