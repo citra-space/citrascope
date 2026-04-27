@@ -84,6 +84,9 @@ class SensorRuntime:
         self._dispatcher: TaskDispatcher | None = None
         self._streaming_sub: Subscription | None = None
 
+        # Per-sensor config (observation, processing tuning, autofocus, etc.)
+        self._sensor_config = settings.get_sensor_config(sensor.sensor_id)
+
         # ── Queue trio ─────────────────────────────────────────────────
         self.acquisition_queue = AcquisitionQueue(
             num_workers=1,
@@ -125,6 +128,7 @@ class SensorRuntime:
                 preview_bus=preview_bus,
             )
             self.autofocus_manager._sensor_id = self.sensor_id
+            self.autofocus_manager._sensor_config = self._sensor_config
             self.alignment_manager = AlignmentManager(
                 self.logger,
                 hardware_adapter,
@@ -180,6 +184,11 @@ class SensorRuntime:
     def are_queues_idle(self) -> bool:
         return self.acquisition_queue.is_idle() and self.processing_queue.is_idle() and self.upload_queue.is_idle()
 
+    @property
+    def sensor_config(self):
+        """The SensorConfig for this runtime's sensor."""
+        return self._sensor_config or self.settings.get_sensor_config(self.sensor_id)
+
     # ── Task submission ────────────────────────────────────────────────
 
     def submit_task(self, task: Task, on_complete: Callable) -> None:
@@ -202,7 +211,8 @@ class SensorRuntime:
         from citrasense.sensors.telescope.tasks.sidereal_telescope_task import SiderealTelescopeTask
         from citrasense.sensors.telescope.tasks.tracking_telescope_task import TrackingTelescopeTask
 
-        mode = self.settings.observation_mode
+        sc = self.sensor_config
+        mode = sc.observation_mode if sc else self.settings.observation_mode
 
         use_tracking = False
         if mode == "tracking":

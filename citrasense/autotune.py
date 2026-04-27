@@ -509,9 +509,11 @@ def cli(processing_dir: Path, num_bundles: int, apply_settings: bool, top: int) 
     if apply_settings and results:
         best = results[0]
         settings = CitraSenseSettings.load()
-        settings.sextractor_detect_thresh = best["detect_thresh"]
-        settings.sextractor_detect_minarea = best["detect_minarea"]
-        settings.sextractor_filter_name = best["filter_name"]
+        if settings.sensors:
+            sc = settings.sensors[0]
+            sc.sextractor_detect_thresh = best["detect_thresh"]
+            sc.sextractor_detect_minarea = best["detect_minarea"]
+            sc.sextractor_filter_name = best["filter_name"]
         settings.save()
         click.echo()
         click.echo(

@@ -24,7 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator,
 #     the model; ``load()`` migrates v1/v2 files automatically.
 # v4: operational settings (task_processing_paused, observing_session_*,
 #     self_tasking_*) moved from global to per-sensor.
-CONFIG_VERSION = 4
+CONFIG_VERSION = 5
 # Legacy scalar-only shape — synthesized ``sensors`` entries are marked with
 # this id so they round-trip cleanly on resave.
 DEFAULT_TELESCOPE_SENSOR_ID = "telescope-0"
@@ -90,6 +90,37 @@ class SensorConfig(BaseModel):
     self_tasking_exclude_object_types: list[str] = Field(default_factory=list)
     self_tasking_collection_type: str = "Track"
 
+    # Per-sensor observation settings (moved from global in config_version 5).
+    observation_mode: str = "auto"
+    exposure_seconds: float = 2.0
+    num_exposures: int = 3
+    adaptive_exposure: bool = False
+    adaptive_exposure_max_trail_pixels: float = 3.0
+    adaptive_exposure_min_seconds: float = 0.1
+    adaptive_exposure_max_seconds: float = 30.0
+
+    # Per-sensor processing tuning + toggles (moved from global in config_version 5).
+    processors_enabled: bool = True
+    enabled_processors: dict[str, bool] = Field(default_factory=dict)
+    skip_upload: bool = False
+    plate_solve_timeout: int = 60
+    astrometry_index_path: str = ""
+    sextractor_detect_thresh: float = 5.0
+    sextractor_detect_minarea: int = 3
+    sextractor_filter_name: str = "default"
+
+    # Per-sensor autofocus settings (moved from global in config_version 5).
+    scheduled_autofocus_enabled: bool = False
+    autofocus_schedule_mode: str = "interval"
+    autofocus_interval_minutes: int = 60
+    autofocus_after_sunset_offset_minutes: int = 60
+    autofocus_target_preset: str = "mirach"
+    autofocus_target_custom_ra: float | None = None
+    autofocus_target_custom_dec: float | None = None
+    autofocus_on_hfr_increase_enabled: bool = False
+    autofocus_hfr_increase_percent: int = 30
+    autofocus_hfr_sample_window: int = 5
+
     @field_validator("observing_session_sun_altitude_threshold", mode="before")
     @classmethod
     def _validate_sun_altitude_threshold(cls, v: Any) -> float:
@@ -101,6 +132,134 @@ class SensorConfig(BaseModel):
         if v not in valid:
             return -12.0
         return v
+
+    @field_validator("observation_mode", mode="before")
+    @classmethod
+    def _validate_sensor_observation_mode(cls, v: Any) -> str:
+        if v == "static":
+            return "sidereal"
+        if v not in ("auto", "tracking", "sidereal"):
+            return "auto"
+        return v
+
+    @field_validator("exposure_seconds", mode="before")
+    @classmethod
+    def _validate_sensor_exposure_seconds(cls, v: Any) -> float:
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            return 2.0
+        return max(0.01, min(300.0, v))
+
+    @field_validator("num_exposures", mode="before")
+    @classmethod
+    def _validate_sensor_num_exposures(cls, v: Any) -> int:
+        try:
+            v = int(v)
+        except (TypeError, ValueError):
+            return 3
+        return max(1, min(50, v))
+
+    @field_validator("plate_solve_timeout", mode="before")
+    @classmethod
+    def _validate_sensor_plate_solve_timeout(cls, v: Any) -> int:
+        try:
+            v = int(v)
+        except (TypeError, ValueError):
+            return 60
+        return max(10, min(300, v))
+
+    @field_validator("sextractor_detect_thresh", mode="before")
+    @classmethod
+    def _validate_sensor_sextractor_thresh(cls, v: Any) -> float:
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            return 5.0
+        return max(1.0, min(20.0, v))
+
+    @field_validator("sextractor_detect_minarea", mode="before")
+    @classmethod
+    def _validate_sensor_sextractor_minarea(cls, v: Any) -> int:
+        try:
+            v = int(v)
+        except (TypeError, ValueError):
+            return 3
+        return max(1, min(50, v))
+
+    @field_validator("sextractor_filter_name", mode="before")
+    @classmethod
+    def _validate_sensor_sextractor_filter(cls, v: Any) -> str:
+        v = str(v) if v else "default"
+        if v not in _VALID_SEXTRACTOR_FILTERS:
+            return "default"
+        return v
+
+    @field_validator("autofocus_schedule_mode", mode="before")
+    @classmethod
+    def _validate_sensor_af_schedule_mode(cls, v: Any) -> str:
+        if v not in ("interval", "after_sunset"):
+            return "interval"
+        return v
+
+    @field_validator("autofocus_interval_minutes", mode="before")
+    @classmethod
+    def _validate_sensor_af_interval(cls, v: Any) -> int:
+        try:
+            v = int(v)
+        except (TypeError, ValueError):
+            return 60
+        if v < 1 or v > 1440:
+            return 60
+        return v
+
+    @field_validator("autofocus_hfr_increase_percent", mode="before")
+    @classmethod
+    def _validate_sensor_hfr_percent(cls, v: Any) -> int:
+        try:
+            v = int(v)
+        except (TypeError, ValueError):
+            return 30
+        return max(10, min(200, v))
+
+    @field_validator("autofocus_hfr_sample_window", mode="before")
+    @classmethod
+    def _validate_sensor_hfr_window(cls, v: Any) -> int:
+        try:
+            v = int(v)
+        except (TypeError, ValueError):
+            return 5
+        return max(3, min(20, v))
+
+    @field_validator("autofocus_target_custom_ra", mode="before")
+    @classmethod
+    def _validate_custom_ra(cls, v: Any) -> float | None:
+        if v is not None:
+            try:
+                v = float(v)
+            except (ValueError, TypeError):
+                return None
+            if not (0 <= v <= 360):
+                return None
+        return v
+
+    @field_validator("autofocus_target_custom_dec", mode="before")
+    @classmethod
+    def _validate_custom_dec(cls, v: Any) -> float | None:
+        if v is not None:
+            try:
+                v = float(v)
+            except (ValueError, TypeError):
+                return None
+            if not (-90 <= v <= 90):
+                return None
+        return v
+
+    @model_validator(mode="after")
+    def _validate_sensor_adaptive_range(self) -> SensorConfig:
+        if self.adaptive_exposure_min_seconds > self.adaptive_exposure_max_seconds:
+            self.adaptive_exposure_min_seconds = self.adaptive_exposure_max_seconds
+        return self
 
 
 class CitraSenseSettings(BaseModel):
@@ -132,24 +291,10 @@ class CitraSenseSettings(BaseModel):
     # Runtime / UI-configurable
     log_level: str = "INFO"
     keep_images: bool = False
+
+    # Global pipeline infrastructure (stays global in v5)
     processing_output_retention_hours: int = 0
-
-    # Processors
-    processors_enabled: bool = True
-    enabled_processors: dict[str, bool] = Field(default_factory=dict)
-    skip_upload: bool = False
     use_local_apass_catalog: bool = False
-
-    # Plate solving (astrometry.net)
-    plate_solve_timeout: int = 60
-    astrometry_index_path: str = ""
-
-    # Source extraction (SExtractor)
-    sextractor_detect_thresh: float = 5.0
-    sextractor_detect_minarea: int = 3
-    sextractor_filter_name: str = "default"
-
-    # Task retry
     max_task_retries: int = 3
     initial_retry_delay_seconds: int = 30
     max_retry_delay_seconds: int = 300
@@ -162,24 +307,10 @@ class CitraSenseSettings(BaseModel):
     custom_data_dir: str = ""
     custom_log_dir: str = ""
 
-    # Autofocus
-    scheduled_autofocus_enabled: bool = False
-    autofocus_schedule_mode: str = "interval"
-    autofocus_interval_minutes: int = 60
-    autofocus_after_sunset_offset_minutes: int = 60
-    last_autofocus_timestamp: int | None = None
-    autofocus_target_preset: str = "mirach"
-    autofocus_target_custom_ra: float | None = None
-    autofocus_target_custom_dec: float | None = None
-
-    # HFR-based auto-refocus (hfr_baseline is per-adapter, stored in adapter_settings)
-    autofocus_on_hfr_increase_enabled: bool = False
-    autofocus_hfr_increase_percent: int = 30
-    autofocus_hfr_sample_window: int = 5
-
     # Alignment
     alignment_exposure_seconds: float = 2.0
     last_alignment_timestamp: int | None = None
+    last_autofocus_timestamp: int | None = None
 
     # Time synchronization
     time_check_interval_minutes: int = 5
@@ -192,21 +323,6 @@ class CitraSenseSettings(BaseModel):
     gps_monitoring_enabled: bool = True
     gps_location_updates_enabled: bool = True
     gps_update_interval_minutes: int = 5
-
-    # Observation mode: "auto", "tracking", or "sidereal"
-    observation_mode: str = "auto"
-
-    # Exposure duration for take_image calls (seconds), used by both sidereal and tracking modes.
-    exposure_seconds: float = 2.0
-
-    # Number of images to capture per observation task (burst count).
-    num_exposures: int = 3
-
-    # Adaptive exposure (auto-compute exposure from satellite angular rate + plate scale)
-    adaptive_exposure: bool = False
-    adaptive_exposure_max_trail_pixels: float = 3.0
-    adaptive_exposure_min_seconds: float = 0.1
-    adaptive_exposure_max_seconds: float = 30.0
 
     # MSI / elset cache
     elset_refresh_interval_hours: float = 6
@@ -222,194 +338,11 @@ class CitraSenseSettings(BaseModel):
     _config_manager: SettingsFileManager = PrivateAttr()
     _dir_manager: DirectoryManager = PrivateAttr()
 
-    # ── Validators (warn-and-fallback, never raise) ───────────────────
-
-    @field_validator("autofocus_target_custom_ra", mode="before")
-    @classmethod
-    def _validate_custom_ra(cls, v: Any) -> float | None:
-        if v is not None:
-            try:
-                v = float(v)
-            except (ValueError, TypeError):
-                CITRASENSE_LOGGER.warning("Invalid autofocus_target_custom_ra (%s). Clearing.", v)
-                return None
-            if not (0 <= v <= 360):
-                CITRASENSE_LOGGER.warning("Invalid autofocus_target_custom_ra (%s). Clearing.", v)
-                return None
-        return v
-
-    @field_validator("autofocus_target_custom_dec", mode="before")
-    @classmethod
-    def _validate_custom_dec(cls, v: Any) -> float | None:
-        if v is not None:
-            try:
-                v = float(v)
-            except (ValueError, TypeError):
-                CITRASENSE_LOGGER.warning("Invalid autofocus_target_custom_dec (%s). Clearing.", v)
-                return None
-            if not (-90 <= v <= 90):
-                CITRASENSE_LOGGER.warning("Invalid autofocus_target_custom_dec (%s). Clearing.", v)
-                return None
-        return v
-
-    @field_validator("autofocus_schedule_mode", mode="before")
-    @classmethod
-    def _validate_autofocus_schedule_mode(cls, v: Any) -> str:
-        if v not in ("interval", "after_sunset"):
-            CITRASENSE_LOGGER.warning("Invalid autofocus_schedule_mode (%r). Falling back to 'interval'.", v)
-            return "interval"
-        return v
-
-    @field_validator("autofocus_after_sunset_offset_minutes", mode="before")
-    @classmethod
-    def _validate_autofocus_sunset_offset(cls, v: Any) -> int:
-        try:
-            v = int(v)
-        except (ValueError, TypeError):
-            CITRASENSE_LOGGER.warning(
-                "Invalid autofocus_after_sunset_offset_minutes (%s). Setting to default 60 minutes.", v
-            )
-            return 60
-        if v < 0 or v > 720:
-            CITRASENSE_LOGGER.warning(
-                "autofocus_after_sunset_offset_minutes (%s) out of range [0, 720]. Setting to default 60.", v
-            )
-            return 60
-        return v
-
-    @field_validator("autofocus_interval_minutes", mode="before")
-    @classmethod
-    def _validate_autofocus_interval(cls, v: Any) -> int:
-        try:
-            v = int(v)
-        except (ValueError, TypeError):
-            CITRASENSE_LOGGER.warning("Invalid autofocus_interval_minutes (%s). Setting to default 60 minutes.", v)
-            return 60
-        if v < 1 or v > 1440:
-            CITRASENSE_LOGGER.warning("Invalid autofocus_interval_minutes (%s). Setting to default 60 minutes.", v)
-            return 60
-        return v
-
-    @field_validator("autofocus_hfr_increase_percent", mode="before")
-    @classmethod
-    def _validate_hfr_increase_percent(cls, v: Any) -> int:
-        try:
-            v = int(v)
-        except (TypeError, ValueError):
-            CITRASENSE_LOGGER.warning("Invalid autofocus_hfr_increase_percent (%r). Falling back to 30.", v)
-            return 30
-        if v < 10 or v > 200:
-            clamped = max(10, min(200, v))
-            CITRASENSE_LOGGER.warning(
-                "autofocus_hfr_increase_percent %d out of range [10, 200]. Clamped to %d.", v, clamped
-            )
-            return clamped
-        return v
-
-    @field_validator("autofocus_hfr_sample_window", mode="before")
-    @classmethod
-    def _validate_hfr_sample_window(cls, v: Any) -> int:
-        try:
-            v = int(v)
-        except (TypeError, ValueError):
-            CITRASENSE_LOGGER.warning("Invalid autofocus_hfr_sample_window (%r). Falling back to 5.", v)
-            return 5
-        if v < 3 or v > 20:
-            clamped = max(3, min(20, v))
-            CITRASENSE_LOGGER.warning("autofocus_hfr_sample_window %d out of range [3, 20]. Clamped to %d.", v, clamped)
-            return clamped
-        return v
-
-    @field_validator("observation_mode", mode="before")
-    @classmethod
-    def _validate_observation_mode(cls, v: Any) -> str:
-        if v == "static":
-            return "sidereal"
-        if v not in ("auto", "tracking", "sidereal"):
-            CITRASENSE_LOGGER.warning("Invalid observation_mode (%r). Falling back to 'auto'.", v)
-            return "auto"
-        return v
-
-    @field_validator("num_exposures", mode="before")
-    @classmethod
-    def _validate_num_exposures(cls, v: Any) -> int:
-        try:
-            v = int(v)
-        except (TypeError, ValueError):
-            CITRASENSE_LOGGER.warning("Invalid num_exposures (%r). Falling back to 3.", v)
-            return 3
-        if v < 1 or v > 50:
-            clamped = max(1, min(50, v))
-            CITRASENSE_LOGGER.warning("num_exposures %d out of range [1, 50]. Clamped to %d.", v, clamped)
-            return clamped
-        return v
-
-    @field_validator("exposure_seconds", mode="before")
-    @classmethod
-    def _validate_exposure_seconds(cls, v: Any) -> float:
-        try:
-            v = float(v)
-        except (TypeError, ValueError):
-            CITRASENSE_LOGGER.warning("Invalid exposure_seconds (%r). Falling back to 2.0.", v)
-            return 2.0
-        if v < 0.01 or v > 300:
-            clamped = max(0.01, min(300.0, v))
-            CITRASENSE_LOGGER.warning("exposure_seconds %.3f out of range [0.01, 300]. Clamped to %.3f.", v, clamped)
-            return clamped
-        return v
-
-    @field_validator("adaptive_exposure_max_trail_pixels", mode="before")
-    @classmethod
-    def _validate_adaptive_max_trail(cls, v: Any) -> float:
-        try:
-            v = float(v)
-        except (TypeError, ValueError):
-            CITRASENSE_LOGGER.warning("Invalid adaptive_exposure_max_trail_pixels (%r). Falling back to 3.0.", v)
-            return 3.0
-        if v < 0.5 or v > 50.0:
-            clamped = max(0.5, min(50.0, v))
-            CITRASENSE_LOGGER.warning(
-                "adaptive_exposure_max_trail_pixels %.1f out of range [0.5, 50]. Clamped to %.1f.", v, clamped
-            )
-            return clamped
-        return v
-
-    @field_validator("adaptive_exposure_min_seconds", mode="before")
-    @classmethod
-    def _validate_adaptive_min(cls, v: Any) -> float:
-        try:
-            v = float(v)
-        except (TypeError, ValueError):
-            CITRASENSE_LOGGER.warning("Invalid adaptive_exposure_min_seconds (%r). Falling back to 0.1.", v)
-            return 0.1
-        if v < 0.01 or v > 10.0:
-            clamped = max(0.01, min(10.0, v))
-            CITRASENSE_LOGGER.warning(
-                "adaptive_exposure_min_seconds %.3f out of range [0.01, 10]. Clamped to %.3f.", v, clamped
-            )
-            return clamped
-        return v
-
-    @field_validator("adaptive_exposure_max_seconds", mode="before")
-    @classmethod
-    def _validate_adaptive_max(cls, v: Any) -> float:
-        try:
-            v = float(v)
-        except (TypeError, ValueError):
-            CITRASENSE_LOGGER.warning("Invalid adaptive_exposure_max_seconds (%r). Falling back to 30.0.", v)
-            return 30.0
-        if v < 1.0 or v > 300.0:
-            clamped = max(1.0, min(300.0, v))
-            CITRASENSE_LOGGER.warning(
-                "adaptive_exposure_max_seconds %.1f out of range [1, 300]. Clamped to %.1f.", v, clamped
-            )
-            return clamped
-        return v
+    # ── Validators (only for fields that remain on CitraSenseSettings) ─
 
     @field_validator("processing_output_retention_hours", mode="before")
     @classmethod
     def _validate_processing_output_retention(cls, v: Any) -> int:
-        # Migrate legacy bool: True → -1 (keep forever), False → 0 (delete immediately)
         if v is True:
             return -1
         if v is False:
@@ -452,60 +385,6 @@ class CitraSenseSettings(BaseModel):
             return clamped
         return v
 
-    @field_validator("plate_solve_timeout", mode="before")
-    @classmethod
-    def _validate_plate_solve_timeout(cls, v: Any) -> int:
-        try:
-            v = int(v)
-        except (TypeError, ValueError):
-            default_timeout = cls.model_fields["plate_solve_timeout"].default
-            CITRASENSE_LOGGER.warning("Invalid plate_solve_timeout (%r). Falling back to %s.", v, default_timeout)
-            return default_timeout
-        if v < 10 or v > 300:
-            clamped = max(10, min(300, v))
-            CITRASENSE_LOGGER.warning("plate_solve_timeout %d out of range [10, 300]. Clamped to %d.", v, clamped)
-            return clamped
-        return v
-
-    @field_validator("sextractor_detect_thresh", mode="before")
-    @classmethod
-    def _validate_sextractor_detect_thresh(cls, v: Any) -> float:
-        try:
-            v = float(v)
-        except (TypeError, ValueError):
-            CITRASENSE_LOGGER.warning("Invalid sextractor_detect_thresh (%r). Falling back to 5.0.", v)
-            return 5.0
-        if v < 1.0 or v > 20.0:
-            clamped = max(1.0, min(20.0, v))
-            CITRASENSE_LOGGER.warning(
-                "sextractor_detect_thresh %.1f out of range [1.0, 20.0]. Clamped to %.1f.", v, clamped
-            )
-            return clamped
-        return v
-
-    @field_validator("sextractor_detect_minarea", mode="before")
-    @classmethod
-    def _validate_sextractor_detect_minarea(cls, v: Any) -> int:
-        try:
-            v = int(v)
-        except (TypeError, ValueError):
-            CITRASENSE_LOGGER.warning("Invalid sextractor_detect_minarea (%r). Falling back to 3.", v)
-            return 3
-        if v < 1 or v > 50:
-            clamped = max(1, min(50, v))
-            CITRASENSE_LOGGER.warning("sextractor_detect_minarea %d out of range [1, 50]. Clamped to %d.", v, clamped)
-            return clamped
-        return v
-
-    @field_validator("sextractor_filter_name", mode="before")
-    @classmethod
-    def _validate_sextractor_filter_name(cls, v: Any) -> str:
-        v = str(v) if v else "default"
-        if v not in _VALID_SEXTRACTOR_FILTERS:
-            CITRASENSE_LOGGER.warning("Unknown sextractor_filter_name (%r). Falling back to 'default'.", v)
-            return "default"
-        return v
-
     @field_validator("custom_data_dir", "custom_log_dir", mode="before")
     @classmethod
     def _validate_custom_dir(cls, v: Any) -> str:
@@ -517,19 +396,6 @@ class CitraSenseSettings(BaseModel):
             CITRASENSE_LOGGER.warning("custom dir path %r is not absolute. Ignoring.", v)
             return ""
         return str(p)
-
-    # ── Cross-field validators ────────────────────────────────────────
-
-    @model_validator(mode="after")
-    def _validate_adaptive_exposure_range(self) -> CitraSenseSettings:
-        if self.adaptive_exposure_min_seconds > self.adaptive_exposure_max_seconds:
-            CITRASENSE_LOGGER.warning(
-                "adaptive_exposure_min_seconds (%.3f) > adaptive_exposure_max_seconds (%.3f). Clamping min to max.",
-                self.adaptive_exposure_min_seconds,
-                self.adaptive_exposure_max_seconds,
-            )
-            self.adaptive_exposure_min_seconds = self.adaptive_exposure_max_seconds
-        return self
 
     # ── Deprecated scalar access (delegates to sensors[0]) ───────────
 
@@ -614,6 +480,110 @@ class CitraSenseSettings(BaseModel):
     def self_tasking_collection_type(self) -> str:
         return self.sensors[0].self_tasking_collection_type if self.sensors else "Track"
 
+    # ── Deprecated v5 shims (observation / processing / autofocus) ────
+    # These delegate to sensors[0] for code not yet updated to read
+    # per-sensor config directly.  Marked for removal.
+
+    @property
+    def observation_mode(self) -> str:  # type: ignore[override]
+        return self.sensors[0].observation_mode if self.sensors else "auto"
+
+    @property
+    def exposure_seconds(self) -> float:  # type: ignore[override]
+        return self.sensors[0].exposure_seconds if self.sensors else 2.0
+
+    @property
+    def num_exposures(self) -> int:  # type: ignore[override]
+        return self.sensors[0].num_exposures if self.sensors else 3
+
+    @property
+    def adaptive_exposure(self) -> bool:  # type: ignore[override]
+        return self.sensors[0].adaptive_exposure if self.sensors else False
+
+    @property
+    def adaptive_exposure_max_trail_pixels(self) -> float:  # type: ignore[override]
+        return self.sensors[0].adaptive_exposure_max_trail_pixels if self.sensors else 3.0
+
+    @property
+    def adaptive_exposure_min_seconds(self) -> float:  # type: ignore[override]
+        return self.sensors[0].adaptive_exposure_min_seconds if self.sensors else 0.1
+
+    @property
+    def adaptive_exposure_max_seconds(self) -> float:  # type: ignore[override]
+        return self.sensors[0].adaptive_exposure_max_seconds if self.sensors else 30.0
+
+    @property
+    def processors_enabled(self) -> bool:  # type: ignore[override]
+        return self.sensors[0].processors_enabled if self.sensors else True
+
+    @property
+    def enabled_processors(self) -> dict[str, bool]:  # type: ignore[override]
+        return self.sensors[0].enabled_processors if self.sensors else {}
+
+    @property
+    def skip_upload(self) -> bool:  # type: ignore[override]
+        return self.sensors[0].skip_upload if self.sensors else False
+
+    @property
+    def plate_solve_timeout(self) -> int:  # type: ignore[override]
+        return self.sensors[0].plate_solve_timeout if self.sensors else 60
+
+    @property
+    def astrometry_index_path(self) -> str:  # type: ignore[override]
+        return self.sensors[0].astrometry_index_path if self.sensors else ""
+
+    @property
+    def sextractor_detect_thresh(self) -> float:  # type: ignore[override]
+        return self.sensors[0].sextractor_detect_thresh if self.sensors else 5.0
+
+    @property
+    def sextractor_detect_minarea(self) -> int:  # type: ignore[override]
+        return self.sensors[0].sextractor_detect_minarea if self.sensors else 3
+
+    @property
+    def sextractor_filter_name(self) -> str:  # type: ignore[override]
+        return self.sensors[0].sextractor_filter_name if self.sensors else "default"
+
+    @property
+    def scheduled_autofocus_enabled(self) -> bool:  # type: ignore[override]
+        return self.sensors[0].scheduled_autofocus_enabled if self.sensors else False
+
+    @property
+    def autofocus_schedule_mode(self) -> str:  # type: ignore[override]
+        return self.sensors[0].autofocus_schedule_mode if self.sensors else "interval"
+
+    @property
+    def autofocus_interval_minutes(self) -> int:  # type: ignore[override]
+        return self.sensors[0].autofocus_interval_minutes if self.sensors else 60
+
+    @property
+    def autofocus_after_sunset_offset_minutes(self) -> int:  # type: ignore[override]
+        return self.sensors[0].autofocus_after_sunset_offset_minutes if self.sensors else 60
+
+    @property
+    def autofocus_target_preset(self) -> str:  # type: ignore[override]
+        return self.sensors[0].autofocus_target_preset if self.sensors else "mirach"
+
+    @property
+    def autofocus_target_custom_ra(self) -> float | None:  # type: ignore[override]
+        return self.sensors[0].autofocus_target_custom_ra if self.sensors else None
+
+    @property
+    def autofocus_target_custom_dec(self) -> float | None:  # type: ignore[override]
+        return self.sensors[0].autofocus_target_custom_dec if self.sensors else None
+
+    @property
+    def autofocus_on_hfr_increase_enabled(self) -> bool:  # type: ignore[override]
+        return self.sensors[0].autofocus_on_hfr_increase_enabled if self.sensors else False
+
+    @property
+    def autofocus_hfr_increase_percent(self) -> int:  # type: ignore[override]
+        return self.sensors[0].autofocus_hfr_increase_percent if self.sensors else 30
+
+    @property
+    def autofocus_hfr_sample_window(self) -> int:  # type: ignore[override]
+        return self.sensors[0].autofocus_hfr_sample_window if self.sensors else 5
+
     # ── Factory ───────────────────────────────────────────────────────
 
     @classmethod
@@ -689,6 +659,48 @@ class CitraSenseSettings(BaseModel):
         if top_ops:
             for sd in config.get("sensors") or []:
                 for k, v in top_ops.items():
+                    sd.setdefault(k, v)
+
+        # ── v4 → v5: move observation, processing tuning, and autofocus
+        #    settings into each sensor ──────────────────────────────────
+        _V5_FIELDS = (
+            # Observation
+            "observation_mode",
+            "exposure_seconds",
+            "num_exposures",
+            "adaptive_exposure",
+            "adaptive_exposure_max_trail_pixels",
+            "adaptive_exposure_min_seconds",
+            "adaptive_exposure_max_seconds",
+            # Processing tuning + toggles
+            "processors_enabled",
+            "enabled_processors",
+            "skip_upload",
+            "plate_solve_timeout",
+            "astrometry_index_path",
+            "sextractor_detect_thresh",
+            "sextractor_detect_minarea",
+            "sextractor_filter_name",
+            # Autofocus
+            "scheduled_autofocus_enabled",
+            "autofocus_schedule_mode",
+            "autofocus_interval_minutes",
+            "autofocus_after_sunset_offset_minutes",
+            "autofocus_target_preset",
+            "autofocus_target_custom_ra",
+            "autofocus_target_custom_dec",
+            "autofocus_on_hfr_increase_enabled",
+            "autofocus_hfr_increase_percent",
+            "autofocus_hfr_sample_window",
+        )
+        top_v5 = {k: config.pop(k) for k in _V5_FIELDS if k in config}
+        if top_v5:
+            sensor_list = config.get("sensors") or []
+            if not sensor_list:
+                sensor_list = [{"id": DEFAULT_TELESCOPE_SENSOR_ID, "type": "telescope"}]
+                config["sensors"] = sensor_list
+            for sd in sensor_list:
+                for k, v in top_v5.items():
                     sd.setdefault(k, v)
 
         instance = cls.model_validate(config)

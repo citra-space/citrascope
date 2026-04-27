@@ -69,6 +69,7 @@ def _make_daemon():
         "altitude": 100.0,
     }
     daemon.runtime = MagicMock()
+    daemon.runtime.sensor_config = None
     daemon.runtime.record_task_started = MagicMock()
     daemon.runtime.record_task_succeeded = MagicMock()
     daemon.runtime.record_task_failed = MagicMock()

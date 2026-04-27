@@ -52,6 +52,7 @@ class AutofocusManager:
         self.location_service = location_service
         self._preview_bus = preview_bus
         self._sensor_id: str = ""
+        self._sensor_config = None
         self.on_toast = on_toast
         self._requested = False
         self._running = False
@@ -63,6 +64,11 @@ class AutofocusManager:
         self._hfr_history: deque[tuple[float, int, str]] = deque(maxlen=50)
         self._lock = threading.Lock()
         self._cancel_event = threading.Event()
+
+    @property
+    def _af_settings(self):
+        """Per-sensor autofocus settings, falling back to global."""
+        return self._sensor_config or self.settings
 
     def request(self) -> bool:
         """Request autofocus to run at next safe point between tasks."""
@@ -228,7 +234,8 @@ class AutofocusManager:
 
         Must be called while holding self._lock (reads _hfr_history).
         """
-        if not self.settings or not self.settings.autofocus_on_hfr_increase_enabled:
+        afs = self._af_settings
+        if not afs or not afs.autofocus_on_hfr_increase_enabled:
             return False
         baseline = self.settings.adapter_settings.get("hfr_baseline")
         if baseline is None or baseline <= 0:
@@ -236,7 +243,7 @@ class AutofocusManager:
         if not self.hardware_adapter.supports_autofocus():
             return False
 
-        window = self.settings.autofocus_hfr_sample_window
+        window = afs.autofocus_hfr_sample_window
         if len(self._hfr_history) < window:
             return False
 
@@ -251,11 +258,11 @@ class AutofocusManager:
         if len(recent) < window:
             return False
         median_hfr = statistics.median(recent)
-        threshold = baseline * (1 + self.settings.autofocus_hfr_increase_percent / 100)
+        threshold = baseline * (1 + afs.autofocus_hfr_increase_percent / 100)
         if median_hfr > threshold:
             self.logger.info(
                 f"HFR degradation detected: median {median_hfr:.2f} > threshold {threshold:.2f} "
-                f"(baseline {baseline:.2f} + {self.settings.autofocus_hfr_increase_percent}%)"
+                f"(baseline {baseline:.2f} + {afs.autofocus_hfr_increase_percent}%)"
             )
             return True
         return False
@@ -291,23 +298,24 @@ class AutofocusManager:
 
     def _should_run_scheduled(self) -> bool:
         """Check if scheduled autofocus should run based on settings."""
-        if not self.settings:
+        afs = self._af_settings
+        if not afs:
             return False
 
-        if not self.settings.scheduled_autofocus_enabled:
+        if not afs.scheduled_autofocus_enabled:
             return False
 
         if not self.hardware_adapter.supports_autofocus():
             return False
 
-        mode = self.settings.autofocus_schedule_mode
+        mode = afs.autofocus_schedule_mode
         if mode == "after_sunset":
             return self._should_run_after_sunset()
         return self._should_run_interval()
 
     def _should_run_interval(self) -> bool:
         """Interval mode: trigger when elapsed time exceeds the configured interval."""
-        interval_minutes = self.settings.autofocus_interval_minutes
+        interval_minutes = self._af_settings.autofocus_interval_minutes
         last_timestamp = self.settings.last_autofocus_timestamp
 
         if last_timestamp is None:
@@ -356,7 +364,7 @@ class AutofocusManager:
             if sunset is None:
                 self.logger.warning("Could not compute sunset for after-sunset autofocus (polar day?)")
                 return None
-            offset = self.settings.autofocus_after_sunset_offset_minutes
+            offset = self._af_settings.autofocus_after_sunset_offset_minutes
             return sunset + timedelta(minutes=offset)
         except Exception as e:
             self.logger.warning(f"Failed to compute sunset time: {e}")
@@ -367,19 +375,20 @@ class AutofocusManager:
 
         Used by the web status endpoint to display countdown.
         """
-        if not self.settings or not self.settings.scheduled_autofocus_enabled:
+        afs = self._af_settings
+        if not afs or not afs.scheduled_autofocus_enabled:
             return None
         if not self.hardware_adapter.supports_autofocus():
             return None
 
-        mode = self.settings.autofocus_schedule_mode
+        mode = afs.autofocus_schedule_mode
         if mode == "after_sunset":
             return self._next_minutes_after_sunset()
         return self._next_minutes_interval()
 
     def _next_minutes_interval(self) -> int:
         last_ts = self.settings.last_autofocus_timestamp
-        interval = self.settings.autofocus_interval_minutes
+        interval = self._af_settings.autofocus_interval_minutes
         if last_ts is None:
             return 0
         elapsed = (int(time.time()) - last_ts) / 60
@@ -406,19 +415,19 @@ class AutofocusManager:
 
     def _resolve_target(self) -> tuple[float | None, float | None]:
         """Resolve autofocus target RA/Dec from settings (preset or custom)."""
-        settings = self.settings
-        if not settings:
+        afs = self._af_settings
+        if not afs:
             return None, None
 
-        preset_key = settings.autofocus_target_preset or "mirach"
+        preset_key = afs.autofocus_target_preset or "mirach"
 
         if preset_key == "current":
             self.logger.info("Autofocus target: current position (no slew)")
             return None, None
 
         if preset_key == "custom":
-            ra = settings.autofocus_target_custom_ra
-            dec = settings.autofocus_target_custom_dec
+            ra = afs.autofocus_target_custom_ra
+            dec = afs.autofocus_target_custom_dec
             if ra is not None and dec is not None:
                 self.logger.info(f"Autofocus target: custom (RA={ra:.4f}, Dec={dec:.4f})")
                 return ra, dec

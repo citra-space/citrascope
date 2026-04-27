@@ -420,7 +420,11 @@ class StatusCollector:
         else:
             sd["hfr_baseline"] = None
 
-        if self.daemon and self.daemon.settings:
+        if sensor_cfg:
+            sd["hfr_increase_percent"] = sensor_cfg.autofocus_hfr_increase_percent
+            sd["hfr_refocus_enabled"] = sensor_cfg.autofocus_on_hfr_increase_enabled
+            sd["hfr_sample_window"] = sensor_cfg.autofocus_hfr_sample_window
+        elif self.daemon and self.daemon.settings:
             sd["hfr_increase_percent"] = self.daemon.settings.autofocus_hfr_increase_percent
             sd["hfr_refocus_enabled"] = self.daemon.settings.autofocus_on_hfr_increase_enabled
             sd["hfr_sample_window"] = self.daemon.settings.autofocus_hfr_sample_window
@@ -436,15 +440,18 @@ class StatusCollector:
         if not self.daemon or not self.daemon.settings:
             return
         settings = self.daemon.settings
+        sensor_id = getattr(runtime, "sensor_id", None)
+        sc = settings.get_sensor_config(sensor_id) if sensor_id else None
+        afs = sc or settings
         sd["last_autofocus_timestamp"] = settings.last_autofocus_timestamp
         sd["last_alignment_timestamp"] = settings.last_alignment_timestamp
-        sd["autofocus_target_name"] = _resolve_autofocus_target_name(settings)
+        sd["autofocus_target_name"] = _resolve_autofocus_target_name(afs)
 
         if runtime and hasattr(runtime, "autofocus_manager"):
             sd["next_autofocus_minutes"] = runtime.autofocus_manager.get_next_autofocus_minutes()
-        elif settings.scheduled_autofocus_enabled:
+        elif afs.scheduled_autofocus_enabled:
             last_ts = settings.last_autofocus_timestamp
-            interval_minutes = settings.autofocus_interval_minutes
+            interval_minutes = afs.autofocus_interval_minutes
             if last_ts is not None:
                 elapsed_minutes = (int(time.time()) - last_ts) / 60
                 remaining = max(0, interval_minutes - elapsed_minutes)

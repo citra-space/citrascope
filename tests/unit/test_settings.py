@@ -154,7 +154,7 @@ def test_settings_to_dict(tmp_path):
     assert d["personal_access_token"] == "tok"
     assert d["sensors"][0]["citra_sensor_id"] == "tel"
     assert d["sensors"][0]["adapter"] == "dummy"
-    assert "autofocus_target_preset" in d
+    assert "autofocus_target_preset" in d["sensors"][0]
     assert "elset_refresh_interval_hours" in d
     assert "web_port" not in d
 
@@ -255,7 +255,7 @@ def test_update_and_save_preserves_fields_not_in_payload():
 
     saved = instance.save_config.call_args[0][0]
     assert saved["elset_refresh_interval_hours"] == 12
-    assert saved["observation_mode"] == "tracking"
+    assert saved["sensors"][0]["observation_mode"] == "tracking"
     assert saved["personal_access_token"] == "new_tok"
 
 
@@ -338,7 +338,7 @@ def test_observation_mode_in_to_dict():
 
         s = CitraSenseSettings.load()
 
-    assert s.to_dict()["observation_mode"] == "tracking"
+    assert s.to_dict()["sensors"][0]["observation_mode"] == "tracking"
 
 
 # ---------------------------------------------------------------------------
@@ -583,26 +583,32 @@ def test_sextractor_filter_name_non_string_fallback():
 
 def test_adaptive_exposure_min_gt_max_clamps_min():
     """When adaptive min > max, model validator clamps min down to max."""
-    from citrasense.settings.citrasense_settings import CitraSenseSettings
+    from citrasense.settings.citrasense_settings import SensorConfig
 
-    s = CitraSenseSettings.model_validate({"adaptive_exposure_min_seconds": 20.0, "adaptive_exposure_max_seconds": 5.0})
-    assert s.adaptive_exposure_min_seconds == s.adaptive_exposure_max_seconds
-    assert s.adaptive_exposure_min_seconds == 5.0
+    sc = SensorConfig.model_validate(
+        {"id": "t", "type": "telescope", "adaptive_exposure_min_seconds": 20.0, "adaptive_exposure_max_seconds": 5.0}
+    )
+    assert sc.adaptive_exposure_min_seconds == sc.adaptive_exposure_max_seconds
+    assert sc.adaptive_exposure_min_seconds == 5.0
 
 
 def test_adaptive_exposure_min_equal_max_accepted():
     """When min == max, no clamping occurs."""
-    from citrasense.settings.citrasense_settings import CitraSenseSettings
+    from citrasense.settings.citrasense_settings import SensorConfig
 
-    s = CitraSenseSettings.model_validate({"adaptive_exposure_min_seconds": 5.0, "adaptive_exposure_max_seconds": 5.0})
-    assert s.adaptive_exposure_min_seconds == 5.0
-    assert s.adaptive_exposure_max_seconds == 5.0
+    sc = SensorConfig.model_validate(
+        {"id": "t", "type": "telescope", "adaptive_exposure_min_seconds": 5.0, "adaptive_exposure_max_seconds": 5.0}
+    )
+    assert sc.adaptive_exposure_min_seconds == 5.0
+    assert sc.adaptive_exposure_max_seconds == 5.0
 
 
 def test_adaptive_exposure_min_lt_max_accepted():
     """Normal min < max is preserved as-is."""
-    from citrasense.settings.citrasense_settings import CitraSenseSettings
+    from citrasense.settings.citrasense_settings import SensorConfig
 
-    s = CitraSenseSettings.model_validate({"adaptive_exposure_min_seconds": 0.5, "adaptive_exposure_max_seconds": 30.0})
-    assert s.adaptive_exposure_min_seconds == 0.5
-    assert s.adaptive_exposure_max_seconds == 30.0
+    sc = SensorConfig.model_validate(
+        {"id": "t", "type": "telescope", "adaptive_exposure_min_seconds": 0.5, "adaptive_exposure_max_seconds": 30.0}
+    )
+    assert sc.adaptive_exposure_min_seconds == 0.5
+    assert sc.adaptive_exposure_max_seconds == 30.0

@@ -148,28 +148,8 @@ async function loadConfiguration() {
             if (config.processing_output_retention_hours === null || config.processing_output_retention_hours === undefined) {
                 config.processing_output_retention_hours = 0;
             }
-            if (config.scheduled_autofocus_enabled === null || config.scheduled_autofocus_enabled === undefined) {
-                config.scheduled_autofocus_enabled = false; // Default to false
-            }
-            if (config.processors_enabled === null || config.processors_enabled === undefined) {
-                config.processors_enabled = true; // Default to true
-            }
             if (config.use_dummy_api === null || config.use_dummy_api === undefined) {
                 config.use_dummy_api = false; // Default to false
-            }
-            if (!config.enabled_processors) {
-                config.enabled_processors = {}; // Default to empty object
-            }
-
-            // Default autofocus target settings
-            if (!config.autofocus_target_preset) {
-                config.autofocus_target_preset = 'mirach';
-            }
-            if (!config.autofocus_schedule_mode) {
-                config.autofocus_schedule_mode = 'interval';
-            }
-            if (config.autofocus_after_sunset_offset_minutes === null || config.autofocus_after_sunset_offset_minutes === undefined) {
-                config.autofocus_after_sunset_offset_minutes = 60;
             }
 
             // Set configSensorId to the first sensor
@@ -188,7 +168,8 @@ async function loadConfiguration() {
 
             store.config = config;
             if (store.previewExposure === null) {
-                store.previewExposure = config.exposure_seconds || 2.0;
+                const firstSc = config.sensors?.[0] || {};
+                store.previewExposure = firstSc.exposure_seconds || 2.0;
             }
             // Track per-sensor saved adapter for change detection
             for (const s of (config.sensors || [])) {
@@ -311,20 +292,22 @@ async function saveConfiguration(event) {
         'images_dir_path', 'processing_dir_path'
     ];
 
+    // Coerce per-sensor numeric fields before save
+    const sc = store.config.sensors?.[sensorIndex];
+    if (sc) {
+        sc.plate_solve_timeout = parseInt(sc.plate_solve_timeout || 60, 10);
+        sc.sextractor_detect_thresh = parseFloat(sc.sextractor_detect_thresh || 5.0);
+        sc.sextractor_detect_minarea = parseInt(sc.sextractor_detect_minarea || 3, 10);
+        sc.autofocus_interval_minutes = parseInt(sc.autofocus_interval_minutes || 60, 10);
+        sc.autofocus_after_sunset_offset_minutes = parseInt(sc.autofocus_after_sunset_offset_minutes ?? 60, 10);
+    }
+
     const config = {
         ...store.config,
         host, port, use_ssl,
-        // Type coercions for form-bound numeric inputs (Alpine x-model can produce strings)
-        autofocus_interval_minutes: parseInt(store.config.autofocus_interval_minutes || 60, 10),
-        autofocus_after_sunset_offset_minutes: parseInt(store.config.autofocus_after_sunset_offset_minutes ?? 60, 10),
         time_check_interval_minutes: parseInt(store.config.time_check_interval_minutes || 5, 10),
         time_offset_pause_ms: parseFloat(store.config.time_offset_pause_ms || 500),
         gps_update_interval_minutes: parseInt(store.config.gps_update_interval_minutes || 5, 10),
-        plate_solve_timeout: parseInt(store.config.plate_solve_timeout || 60, 10),
-        astrometry_index_path: store.config.astrometry_index_path || '',
-        sextractor_detect_thresh: parseFloat(store.config.sextractor_detect_thresh || 5.0),
-        sextractor_detect_minarea: parseInt(store.config.sextractor_detect_minarea || 3, 10),
-        sextractor_filter_name: store.config.sextractor_filter_name || 'default',
     };
 
     COMPUTED_FIELDS.forEach(f => delete config[f]);
@@ -395,6 +378,7 @@ const CONFIG_TAB_LABELS = {
     calibration: 'Calibration',
     observation: 'Observation',
     processing: 'Processing',
+    pipeline: 'Pipeline',
     timelocation: 'Time & Location',
     selftasking: 'Robotic Operations',
     advanced: 'Advanced',
@@ -1094,6 +1078,25 @@ async function cancelPointingCalibration(sensorId) {
     }
 }
 
+async function removeSensor(sid) {
+    if (!confirm("Remove sensor '" + sid + "'? You will need to Save & Reload to finalize.")) return;
+    try {
+        const resp = await fetch('/api/config/sensors/' + encodeURIComponent(sid), { method: 'DELETE' });
+        const data = await resp.json();
+        if (!resp.ok) { alert(data.error || 'Failed to remove sensor'); return; }
+        const store = Alpine.store('citrasense');
+        const sensors = store.config.sensors;
+        const idx = sensors.findIndex(s => s.id === sid);
+        if (idx >= 0) sensors.splice(idx, 1);
+        delete store.savedAdapters[sid];
+        if (store.configSensorId === sid) {
+            store.configSensorId = sensors[0]?.id || null;
+        }
+    } catch (e) {
+        alert(e.message);
+    }
+}
+
 export function setupAutofocusButton() {
     window.triggerAutofocus = triggerAutofocus;
     window.triggerAlignment = triggerAlignment;
@@ -1106,6 +1109,7 @@ export function setupAutofocusButton() {
     window.cancelPointingCalibration = cancelPointingCalibration;
     window.emergencyStop = emergencyStop;
     window.clearOperatorStop = clearOperatorStop;
+    window._configRemoveSensor = removeSensor;
     window.changeFilterPosition = changeFilterPosition;
     window.moveFocuserRelative = moveFocuserRelative;
     window.moveFocuserAbsolute = moveFocuserAbsolute;
