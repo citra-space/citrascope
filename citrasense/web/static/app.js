@@ -153,6 +153,15 @@ const STATIC_PATH_SECTIONS = {
     '/config': 'config',
 };
 
+// Browser tab titles per static section.  Sensor routes are titled
+// dynamically (placeholder = sensor id, upgraded to the real name once
+// the WebSocket delivers the sensor list — see store-init.js).
+const SECTION_TITLES = {
+    monitoring: 'Monitoring',
+    analysis: 'Analysis',
+    config: 'Config',
+};
+
 // Allow hyphen, dot, underscore, and URL-encoded chars in sensor IDs.
 // SensorConfig.id validation is stricter than this, but the router just
 // needs to capture whatever the backend considers valid.
@@ -183,10 +192,20 @@ function applyRoute() {
         history.replaceState({}, '', '/monitoring');
         store.currentSection = 'monitoring';
         store.currentSensorId = null;
+        document.title = `${SECTION_TITLES.monitoring} | CitraSense`;
         return;
     }
     store.currentSection = parsed.section;
     store.currentSensorId = parsed.sensorId;
+    if (parsed.section === 'sensor') {
+        // Placeholder title: show the raw sensor id immediately so the
+        // tab is distinguishable before the WebSocket delivers sensor
+        // data.  An Alpine.effect in store-init.js upgrades this to the
+        // human-readable sensor name once ``currentSensor`` resolves.
+        document.title = `${parsed.sensorId} | CitraSense`;
+    } else {
+        document.title = `${SECTION_TITLES[parsed.section] || 'Dashboard'} | CitraSense`;
+    }
     if (parsed.section === 'config') initFilterConfig();
     if (parsed.section === 'analysis' && window.loadAnalysisData) {
         window.loadAnalysisData();

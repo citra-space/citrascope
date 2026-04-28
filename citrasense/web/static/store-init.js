@@ -688,5 +688,22 @@ function compareVersions(v1, v2) {
                 this.navigateTo('/config');
             }
         });
+
+        // Upgrade the browser tab title for sensor routes once the
+        // WebSocket-driven ``sensors`` list populates and ``currentSensor``
+        // resolves to a real enriched object.  ``applyRoute`` in app.js
+        // seeds ``document.title`` with the raw sensor id on route entry;
+        // this effect swaps it for the human-readable name when available.
+        // Re-fires automatically whenever the route changes (sensor id or
+        // back to a static section) or the sensor list refreshes.
+        window.Alpine.effect(() => {
+            const store = window.Alpine.store('citrasense');
+            if (!store) return;
+            if (store.currentSection !== 'sensor') return;
+            const sensor = store.currentSensor;
+            if (sensor?.name) {
+                document.title = `${sensor.name} | CitraSense`;
+            }
+        });
     });
 })();

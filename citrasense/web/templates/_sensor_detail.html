@@ -137,86 +137,16 @@
             <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
                 <h1 class="h4 mb-0" x-text="sensor?.name || 'Sensor'"></h1>
                 <span class="badge bg-secondary rounded-pill" x-text="sensor?.type"></span>
-                <span class="badge rounded-pill"
-                      :class="sensor?.telescope_connected ? 'bg-success' : 'bg-danger'"
-                      data-bs-toggle="tooltip" data-bs-theme="dark"
-                      :data-bs-title="sensor?.telescope_connected ? 'Telescope connected' : 'Telescope disconnected'">Telescope</span>
-                <span class="badge rounded-pill"
-                      :class="sensor?.camera_connected ? (sensor?.calibration_status?.has_bias && sensor?.calibration_status?.has_dark && sensor?.calibration_status?.has_flat ? 'bg-success' : (sensor?.calibration_status?.calibration_applicable ? 'bg-warning text-dark' : 'bg-success')) : 'bg-danger'"
-                      data-bs-toggle="tooltip" data-bs-theme="dark"
-                      :data-bs-title="sensor?.camera_connected ? ('Camera' + (sensor?.camera_temperature != null ? ' ' + sensor.camera_temperature.toFixed(1) + '\u00b0C' : '')) : 'Camera disconnected'"
-                      x-text="sensor?.camera_connected && sensor?.camera_temperature != null ? 'Camera ' + sensor.camera_temperature.toFixed(1) + '\u00b0C' : 'Camera'"></span>
-                <span class="badge rounded-pill"
-                      :class="sensor?.focuser_connected ? 'bg-success' : 'bg-secondary'"
-                      data-bs-toggle="tooltip" data-bs-theme="dark"
-                      :data-bs-title="sensor?.focuser_connected ? ('Focuser' + (sensor?.focuser_temperature != null ? ' ' + sensor.focuser_temperature.toFixed(1) + '\u00b0C' : '')) : 'No focuser'"
-                      x-text="sensor?.focuser_connected && sensor?.focuser_temperature != null ? 'Focuser ' + sensor.focuser_temperature.toFixed(1) + '\u00b0C' : 'Focuser'"></span>
+                {% include "_sensor_hardware_pills.html" %}
 
                 {# Operational switches cluster — bind to the same
                    sensor.* fields as the dashboard hero card so toggling
-                   from either place stays in sync automatically. #}
+                   from either place stays in sync automatically. The
+                   ``ms-md-auto`` pushes the whole cluster right of the
+                   status pills at md+; on smaller screens it flows
+                   flush-left on its own wrapped row. #}
                 <div class="d-flex flex-wrap align-items-center gap-2 gap-md-3 ms-md-auto">
-                    <div class="d-flex align-items-center gap-1"
-                         data-bs-toggle="tooltip" data-bs-theme="dark"
-                         title="Automated scheduling — server assigns tasks to this telescope">
-                        <small class="text-muted text-nowrap">Scheduling</small>
-                        <div class="form-check form-switch mb-0">
-                            <input class="form-check-input" type="checkbox"
-                                   :checked="sensor?.automated_scheduling"
-                                   @change="$store.citrasense.toggleAutomatedScheduling($event.target.checked, sensor.id)">
-                        </div>
-                    </div>
-                    <div class="d-flex align-items-center gap-1"
-                         data-bs-toggle="tooltip" data-bs-theme="dark"
-                         title="Task processing — daemon executes queued tasks">
-                        <small class="text-muted text-nowrap">Processing</small>
-                        <div class="form-check form-switch mb-0">
-                            <input class="form-check-input" type="checkbox"
-                                   :checked="!sensor?.task_processing_paused"
-                                   @change="$store.citrasense.toggleProcessing($event.target.checked, sensor.id)">
-                        </div>
-                    </div>
-                    <div class="d-flex align-items-center gap-1"
-                         data-bs-toggle="tooltip" data-bs-theme="dark"
-                         title="Robotic session — park/unpark and autofocus at dusk/dawn">
-                        <small class="text-muted text-nowrap">Robotic</small>
-                        <div class="form-check form-switch mb-0">
-                            <input class="form-check-input" type="checkbox"
-                                   :checked="sensor?.observing_session_enabled"
-                                   @change="$store.citrasense.toggleObservingSession($event.target.checked, sensor.id)">
-                        </div>
-                    </div>
-                    <div class="d-flex align-items-center gap-1"
-                         data-bs-toggle="tooltip" data-bs-theme="dark"
-                         title="Self-tasking — automatically request work when dark">
-                        <small class="text-muted text-nowrap">Self-Tasking</small>
-                        <div class="form-check form-switch mb-0">
-                            <input class="form-check-input" type="checkbox"
-                                   :checked="sensor?.self_tasking_enabled"
-                                   @change="$store.citrasense.toggleSelfTasking($event.target.checked, sensor.id)">
-                        </div>
-                    </div>
-                    <span class="badge rounded-pill bg-warning text-dark"
-                          style="display:inline-flex; align-items:center;"
-                          x-show="sensor?.self_tasking_enabled
-                              && (!sensor?.observing_session_enabled
-                                  || !sensor?.automated_scheduling
-                                  || sensor?.task_processing_paused)"
-                          data-bs-toggle="tooltip" data-bs-theme="dark"
-                          :data-bs-title="(() => {
-                              const issues = [];
-                              if (!sensor?.observing_session_enabled) issues.push('Robotic session is off');
-                              if (!sensor?.automated_scheduling) issues.push('Scheduling is off');
-                              if (sensor?.task_processing_paused) issues.push('Processing is off');
-                              return issues.join('\n');
-                          })()"><i class="bi bi-exclamation-triangle-fill"></i></span>
-                    <template x-for="alert in ($store.citrasense.status?.safety_status?.checks || []).filter(c => c.name === 'cable_wrap' && c.sensor_id === sensor?.id && c.action !== 'safe')" :key="'cw-detail-' + sensor.id">
-                        <span class="badge rounded-pill"
-                              :class="alert.action === 'emergency' ? 'bg-danger' : 'bg-warning text-dark'"
-                              data-bs-toggle="tooltip" data-bs-theme="dark"
-                              :data-bs-title="'Cable wrap at ' + Math.abs(alert.cumulative_deg ?? 0) + '\u00b0'">
-                            <i class="bi bi-exclamation-triangle-fill me-1"></i>Cable Wrap</span>
-                    </template>
+                    {% include "_sensor_switches.html" %}
                 </div>
             </div>
 
