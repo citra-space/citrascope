@@ -412,6 +412,32 @@ class CitraSenseDaemon:
             if self.web_server:
                 self.task_dispatcher.on_toast = self.web_server.send_toast
 
+            # Pre-flight: reject duplicate citra_sensor_id across sensors.
+            # TaskDispatcher._runtime_for_task resolves API ids by walking
+            # the runtimes and returning the *first* match, so two sensors
+            # with the same backend id silently starve one scope — the
+            # scheduler quietly sends every task to whichever registered
+            # first, and the other telescope just sits idle with no error.
+            # Fail fast with a clear message instead.
+            dupes = CitraSenseSettings.find_duplicate_citra_sensor_ids(self.settings.sensors)
+            if dupes:
+                detail = "; ".join(
+                    f"{api_id!r} claimed by {', '.join(local_ids)}" for api_id, local_ids in dupes.items()
+                )
+                error_msg = (
+                    "Duplicate citra_sensor_id detected — two local sensors cannot share "
+                    f"one backend telescope record: {detail}. Edit the config so each "
+                    "local sensor points at a distinct Citra telescope id."
+                )
+                CITRASENSE_LOGGER.critical(error_msg)
+                if self.web_server:
+                    self.web_server.send_toast(
+                        "Duplicate citra_sensor_id — one scope would be starved of tasks. Check config.",
+                        "danger",
+                        "duplicate-citra-sensor-id",
+                    )
+                return False, error_msg
+
             # Init each telescope sensor
             assert self.sensor_manager is not None
             for sensor in self.sensor_manager.iter_by_type("telescope"):

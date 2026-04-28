@@ -385,6 +385,40 @@ def test_post_config_reload_fails(client, mock_daemon):
     assert "reload failed" in resp.json()["message"]
 
 
+def test_post_config_rejects_duplicate_citra_sensor_id(client, mock_daemon):
+    """Two local sensors pointing at the same Citra telescope record is a silent
+    task-starvation bug in production. The save endpoint must reject it."""
+    resp = client.post(
+        "/api/config",
+        json={
+            "personal_access_token": "tok",
+            "sensors": [
+                {
+                    "id": "CoolScope",
+                    "type": "telescope",
+                    "adapter": "nina",
+                    "citra_sensor_id": "asdf",
+                    "adapter_settings": {"nina_api_path": "http://localhost:1888/v2/api"},
+                },
+                {
+                    "id": "LilScope",
+                    "type": "telescope",
+                    "adapter": "nina",
+                    "citra_sensor_id": "asdf",
+                    "adapter_settings": {"nina_api_path": "http://localhost:1888/v2/api"},
+                },
+            ],
+        },
+    )
+    assert resp.status_code == 400
+    body = resp.json()
+    assert "Duplicate citra_sensor_id" in body["error"]
+    assert "'asdf'" in body["error"]
+    assert "CoolScope" in body["error"]
+    assert "LilScope" in body["error"]
+    mock_daemon.reload_configuration.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # Hardware reconnect
 # ---------------------------------------------------------------------------
@@ -965,6 +999,24 @@ def test_add_sensor_config_duplicate(client, mock_daemon):
         json={"id": "scope-0", "type": "telescope", "adapter": "nina"},
     )
     assert resp.status_code == 409
+
+
+def test_add_sensor_config_rejects_duplicate_citra_sensor_id(client, mock_daemon):
+    """Adding a new sensor with an already-claimed Citra id must 409."""
+    mock_daemon.settings.sensors[0].citra_sensor_id = "asdf"
+    resp = client.post(
+        "/api/config/sensors",
+        json={
+            "id": "scope-new",
+            "type": "telescope",
+            "adapter": "nina",
+            "citra_sensor_id": "asdf",
+        },
+    )
+    assert resp.status_code == 409
+    body = resp.json()
+    assert "asdf" in body["error"]
+    assert "scope-0" in body["error"]
 
 
 def test_add_sensor_config_missing_id(client):
