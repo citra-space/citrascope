@@ -251,6 +251,13 @@ class PassiveRadarSensor(AbstractSensor):
         # Optional toast callback set by the daemon (web_server.send_toast).
         self.on_toast: Callable[[str, str, str | None], None] | None = None
         self._last_staleness_warning: float = 0.0
+        # Edge-trigger guards.  pr_sensor re-publishes its ``announce``
+        # beacon every 60s as a liveness signal, so firing an "online"
+        # toast on every announce would spam the operator once a minute.
+        # These flags track the *transition* into online / offline so
+        # toasts only fire on the edge.
+        self._announced_online: bool = False
+        self._announced_offline: bool = False
 
         # Detection ring buffer + live broadcast callback.  The buffer
         # always accumulates; the callback is only invoked when the web
@@ -631,8 +638,15 @@ class PassiveRadarSensor(AbstractSensor):
     def _on_announce(self, payload: dict[str, Any]) -> None:
         with self._state_lock:
             self._last_announce = payload
+            # Only toast on the offline→online edge — pr_sensor
+            # re-publishes its announce every 60s as a liveness
+            # heartbeat, so toasting on every message would spam the
+            # operator once a minute.
+            should_toast = not self._announced_online
+            self._announced_online = True
+            self._announced_offline = False
         self._announce_event.set()
-        if self.on_toast:
+        if should_toast and self.on_toast:
             try:
                 self.on_toast(
                     f"Radar sensor {self.sensor_id} online",
@@ -644,7 +658,11 @@ class PassiveRadarSensor(AbstractSensor):
 
     def _on_depart(self, payload: dict[str, Any]) -> None:
         self._logger.warning("pr_sensor %s departed: %s", self.sensor_id, payload.get("reason"))
-        if self.on_toast:
+        with self._state_lock:
+            should_toast = not self._announced_offline
+            self._announced_offline = True
+            self._announced_online = False
+        if should_toast and self.on_toast:
             try:
                 self.on_toast(
                     f"Radar sensor {self.sensor_id} went offline",
@@ -794,6 +812,11 @@ class PassiveRadarSensor(AbstractSensor):
         if now - self._last_staleness_warning < self._status_staleness:
             return
         self._last_staleness_warning = now
+        # Stream has lapsed; drop the "online" edge so that when
+        # pr_sensor recovers and re-announces we fire a fresh
+        # "online" toast instead of staying silent forever.
+        with self._state_lock:
+            self._announced_online = False
         self._logger.warning("No status heartbeat from pr_sensor %s in %.1fs", self.sensor_id, self._status_staleness)
         if self.on_toast:
             try:

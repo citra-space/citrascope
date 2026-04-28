@@ -112,17 +112,13 @@
                 <span class="text-muted">Illuminators </span>
                 <span class="fw-semibold" x-text="_stationsCount"></span>
             </div>
-            <!-- Host health -->
-            <div class="d-flex gap-3 small">
-                <span class="text-muted" data-bs-toggle="tooltip" data-bs-theme="dark" title="Host CPU usage as reported by pr_sensor">
-                    <i class="bi bi-cpu-fill me-1"></i>
-                    <span x-text="sensor?.radar?.health?.cpu_pct != null ? Number(sensor.radar.health.cpu_pct).toFixed(0) + '%' : '\u2014'"></span>
-                </span>
-                <span class="text-muted" data-bs-toggle="tooltip" data-bs-theme="dark" title="Host RAM usage as reported by pr_sensor">
-                    <i class="bi bi-memory me-1"></i>
-                    <span x-text="sensor?.radar?.health?.ram_mb != null ? Number(sensor.radar.health.ram_mb).toFixed(0) + ' MB' : '\u2014'"></span>
-                </span>
-            </div>
+            {#
+                Host CPU/RAM pills removed — redundant with citrasense's
+                own host monitoring (pr_sensor is co-located) and the
+                pr_sensor-specific DSP metrics (overflow rate, SDR
+                temperature, buffer depth) live on the sensor detail
+                page's engine status card.
+            #}
         </div>
     </div>
 </div>

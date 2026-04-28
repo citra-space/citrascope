@@ -233,6 +233,13 @@ function initNavigation() {
 // Camera capture moved to Alpine store method
 
 // --- Initialize ---
+// Expose showToast globally so inline Alpine x-data handlers in Jinja
+// templates can fire toasts without a dynamic import per click.  The
+// established pattern inside ES modules is still to import it directly
+// from ./config.js; only template-scoped code should reach for the
+// window-level hook.
+window.showToast = showToast;
+
 document.addEventListener('DOMContentLoaded', async () => {
     initNavigation();
     await initConfig();

@@ -344,6 +344,42 @@ class TestToasts:
         handler({"sensor_id": source.sensor_id})
         assert any(kind == "info" for _, kind, _ in toasts)
 
+    def test_repeat_announces_are_edge_triggered(self):
+        # pr_sensor re-publishes its announce beacon every 60s as a
+        # liveness signal — we should only toast on the offline→online
+        # edge, not on every heartbeat.
+        source = _StubDetectionSource()
+        sensor = _make_sensor(source)
+        toasts: list[tuple[str, str, str | None]] = []
+        sensor.on_toast = lambda msg, kind, tid: toasts.append((msg, kind, tid))
+        source.start(on_announce=sensor._on_announce)
+        handler = source.handlers["on_announce"]
+        assert handler is not None
+        for _ in range(5):
+            handler({"sensor_id": source.sensor_id})
+        online_toasts = [t for t in toasts if t[1] == "info" and "online" in t[0]]
+        assert len(online_toasts) == 1
+
+    def test_depart_then_announce_refires_online_edge(self):
+        source = _StubDetectionSource()
+        sensor = _make_sensor(source)
+        toasts: list[tuple[str, str, str | None]] = []
+        sensor.on_toast = lambda msg, kind, tid: toasts.append((msg, kind, tid))
+        source.start(on_announce=sensor._on_announce, on_depart=sensor._on_depart)
+        announce_h = source.handlers["on_announce"]
+        depart_h = source.handlers["on_depart"]
+        assert announce_h is not None
+        assert depart_h is not None
+        announce_h({"sensor_id": source.sensor_id})
+        announce_h({"sensor_id": source.sensor_id})  # duplicate, suppressed
+        depart_h({"reason": "shutdown"})
+        depart_h({"reason": "shutdown"})  # duplicate, suppressed
+        announce_h({"sensor_id": source.sensor_id})  # re-fire after offline edge
+        online_toasts = [t for t in toasts if t[1] == "info" and "online" in t[0]]
+        offline_toasts = [t for t in toasts if t[1] == "warning" and "offline" in t[0]]
+        assert len(online_toasts) == 2
+        assert len(offline_toasts) == 1
+
 
 class TestLiveStatus:
     def test_live_status_reports_offline_when_stale(self):
