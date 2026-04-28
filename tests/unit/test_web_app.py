@@ -506,6 +506,33 @@ def test_spa_catchall_does_not_swallow_api_404(client):
     assert resp.status_code == 404
 
 
+def test_spa_catchall_serves_dashboard_for_paths_starting_with_ws(client):
+    """Paths whose first segment merely *starts* with ``ws`` (e.g. ``/wstools``)
+    are not the websocket endpoint and must fall through to the SPA shell.
+
+    Regression for a bare ``"ws"`` entry in the backend-prefix list that
+    used ``startswith`` without a path-segment boundary, yanking any
+    ``/ws*`` path into a backend 404.
+    """
+    for path in ("/wstools", "/wssomething"):
+        resp = client.get(path)
+        assert resp.status_code == 200, path
+        assert "CitraSense Dashboard" in resp.text
+
+
+def test_spa_catchall_still_rejects_exact_ws_path(client):
+    """``/ws`` itself is the websocket upgrade endpoint; a plain GET should
+    still surface as a non-200 (the WS handler rejects non-upgrade GETs).
+
+    We don't assert a specific status code — Starlette's WebSocket route
+    can legitimately respond with 404 or 403 to a bare GET depending on
+    version — only that we're *not* silently painting the SPA shell
+    over the websocket route.
+    """
+    resp = client.get("/ws")
+    assert resp.status_code != 200 or "CitraSense Dashboard" not in resp.text
+
+
 # ---------------------------------------------------------------------------
 # Tasks
 # ---------------------------------------------------------------------------

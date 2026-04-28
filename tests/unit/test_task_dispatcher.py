@@ -682,3 +682,71 @@ class TestPerSensorSafetyGate:
         assert total == 2
         rt_a.acquisition_queue.clear.assert_called_once()
         rt_b.acquisition_queue.clear.assert_not_called()
+
+    def test_sensor_scoped_emergency_abort_fires_only_on_transition(self):
+        """A persistent sensor-scoped EMERGENCY calls abort_slew exactly once.
+
+        Regression: ``_handle_emergency`` used to call ``abort_slew()``
+        before the ``is_new`` edge-detection guard, so every subsequent
+        evaluation tick while the check was still tripped re-aborted the
+        same adapter and respammed the logs.
+        """
+        td = _make_dispatcher()
+        rt_a = _mock_runtime("scope-a", "telescope")
+        rt_a.hardware_adapter = MagicMock()
+        td.register_runtime(rt_a)
+
+        check_a = MagicMock()
+        check_a.name = "cable_wrap"
+        check_a.sensor_id = "scope-a"
+
+        td.safety_monitor = self._scoped_monitor({"scope-a": (SafetyAction.EMERGENCY, check_a)})
+
+        # Three ticks, same EMERGENCY — abort should only fire on the first.
+        td._evaluate_safety_for("scope-a")
+        td._evaluate_safety_for("scope-a")
+        td._evaluate_safety_for("scope-a")
+
+        assert rt_a.hardware_adapter.abort_slew.call_count == 1
+        # And the one-shot corrective action must also only run on the edge.
+        check_a.execute_action.assert_called_once()
+
+    def test_site_scoped_emergency_abort_fires_only_on_transition(self):
+        """A persistent site-level EMERGENCY aborts every runtime exactly once.
+
+        Regression: with ``_evaluate_safety_for`` now called once per
+        runtime per cycle, a site-level EMERGENCY without the edge guard
+        would invoke the abort loop N times per cycle — fanning out to
+        N×N abort calls on every adapter.  The guard must collapse that
+        back to a single transition-time sweep.
+        """
+        td = _make_dispatcher()
+        rt_a = _mock_runtime("scope-a", "telescope")
+        rt_b = _mock_runtime("scope-b", "telescope")
+        rt_a.hardware_adapter = MagicMock()
+        rt_b.hardware_adapter = MagicMock()
+        td.register_runtime(rt_a)
+        td.register_runtime(rt_b)
+
+        # Site-level check has no sensor_id — scope_key falls back to _SITE_SAFETY_KEY.
+        site_check = MagicMock()
+        site_check.name = "disk_space"
+        site_check.sensor_id = None
+
+        td.safety_monitor = self._scoped_monitor(
+            {
+                "scope-a": (SafetyAction.EMERGENCY, site_check),
+                "scope-b": (SafetyAction.EMERGENCY, site_check),
+            }
+        )
+
+        # Two full cycles over both runtimes — four ``_evaluate_safety_for``
+        # calls — but all four map onto the same ``_SITE_SAFETY_KEY`` scope,
+        # so only the first should fire the abort loop.
+        for _ in range(2):
+            td._evaluate_safety_for("scope-a")
+            td._evaluate_safety_for("scope-b")
+
+        assert rt_a.hardware_adapter.abort_slew.call_count == 1
+        assert rt_b.hardware_adapter.abort_slew.call_count == 1
+        site_check.execute_action.assert_called_once()

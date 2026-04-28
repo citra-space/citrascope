@@ -655,6 +655,18 @@ class TaskDispatcher:
         """
         trigger_sid = scope_key if scope_key != _SITE_SAFETY_KEY else None
 
+        # Edge-detect *before* any side effect.  Without this guard, a
+        # persistent EMERGENCY fires ``abort_slew()`` every poll cycle —
+        # and because ``_evaluate_safety_for`` is now called once per
+        # runtime per cycle, a site-level EMERGENCY in a fleet of N
+        # sensors would rain N×N abort calls per cycle on every adapter.
+        # Everything below (abort, queue-clear, logger.critical, toast,
+        # execute_action) belongs to the "we just transitioned into
+        # EMERGENCY" bucket, so it all sits under the same guard.
+        is_new = self._last_safety_action_by_key.get(scope_key) != SafetyAction.EMERGENCY
+        if not is_new:
+            return
+
         if trigger_sid is not None:
             rt = self._runtimes.get(trigger_sid)
             runtimes_to_abort = [rt] if rt is not None else []
@@ -667,10 +679,6 @@ class TaskDispatcher:
                     adapter.abort_slew()
                 except Exception:
                     pass
-
-        is_new = self._last_safety_action_by_key.get(scope_key) != SafetyAction.EMERGENCY
-        if not is_new:
-            return
 
         self.clear_pending_tasks(sensor_id=trigger_sid)
         trigger_name = triggered_check.name if triggered_check else "unknown"

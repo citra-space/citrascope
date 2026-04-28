@@ -28,10 +28,16 @@ if TYPE_CHECKING:
 # Prefixes that are backend-owned.  A GET here that didn't match a
 # specific route is a real 404 (a stale client hitting a removed
 # endpoint, a typo, a misconfigured proxy) — not a client-side path we
-# should silently paint the dashboard shell for.  Keeping this list
-# explicit beats relying on path shape alone: "/apistuff" shouldn't be
-# rejected just because it starts with "api".
-_BACKEND_PATH_PREFIXES: tuple[str, ...] = ("api/", "static/", "ws", "images/")
+# should silently paint the dashboard shell for.
+#
+# Every entry ends in ``/`` so ``startswith`` only fires on a true path
+# segment boundary — ``/wstools`` and ``/apispecific`` don't get yanked
+# into a 404 just because their names happen to start with one of our
+# reserved segments.  Exact single-segment paths we also own (``/ws``
+# for the websocket upgrade) live in ``_BACKEND_EXACT_PATHS`` so the
+# boundary check and the bare-path check stay independently tunable.
+_BACKEND_PATH_PREFIXES: tuple[str, ...] = ("api/", "static/", "ws/", "images/")
+_BACKEND_EXACT_PATHS: frozenset[str] = frozenset({"ws"})
 
 
 def build_spa_fallback_router(ctx: CitraSenseWebApp) -> APIRouter:
@@ -42,9 +48,8 @@ def build_spa_fallback_router(ctx: CitraSenseWebApp) -> APIRouter:
     async def spa_shell(request: Request, full_path: str):
         # ``full_path`` is captured *without* the leading slash, e.g.
         # "api/nonexistent" for GET /api/nonexistent.
-        for prefix in _BACKEND_PATH_PREFIXES:
-            if full_path == prefix.rstrip("/") or full_path.startswith(prefix):
-                raise HTTPException(status_code=404, detail="Not Found")
+        if full_path in _BACKEND_EXACT_PATHS or any(full_path.startswith(prefix) for prefix in _BACKEND_PATH_PREFIXES):
+            raise HTTPException(status_code=404, detail="Not Found")
         return ctx.templates.TemplateResponse(request, "dashboard.html")
 
     return router

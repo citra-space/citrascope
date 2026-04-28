@@ -326,8 +326,15 @@ document.addEventListener('alpine:init', () => {
         // bad until the startup backfill fills the column in.
         pointingClass(deg, task) {
             const store = Alpine.store('citrasense');
-            const sensors = store.status?.sensors || {};
-            const sensorList = Object.values(sensors).filter(s => s && s.type === 'telescope');
+            // ``store.sensors`` is the enriched array maintained by
+            // updateStoreFromStatus() in app.js — each entry is
+            // ``{ id, ...status.sensors[id] }``.  The raw
+            // ``store.status.sensors`` dict is keyed by id but the
+            // values don't carry ``id``, so the old
+            // ``Object.values(...).find(s => s.id === sid)`` lookup
+            // never matched and every row fell back to the widest-FOV
+            // heuristic.
+            const sensorList = (store.sensors || []).filter(s => s && s.type === 'telescope');
             let fov = null;
             const sid = task?.sensor_id;
             if (sid) {

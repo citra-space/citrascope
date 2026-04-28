@@ -207,8 +207,13 @@
                         // Resolve this sensor's SensorConfig so the label
                         // reflects the card's sensor, not whichever sensor
                         // happens to sit at root of config in a multi-sensor
-                        // deployment.
-                        const sensorId = this.sensor?.id;
+                        // deployment.  ``this.ss`` is the local getter defined
+                        // on this x-data component above; ``this.sensor`` does
+                        // not exist here (``sensor`` is only visible on the
+                        // *outer* Alpine scope), which is why using it left
+                        // ``sensorId`` as undefined and every card silently
+                        // rendered the default collection label.
+                        const sensorId = this.ss?.id;
                         const sensorCfgs = ($store.citrasense.config?.sensors || []);
                         const cfg = sensorCfgs.find(s => s.id === sensorId) || {};
                         const collType = cfg.self_tasking_collection_type || 'Track';
