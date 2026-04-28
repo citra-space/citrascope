@@ -105,11 +105,18 @@ function compareVersions(v1, v2) {
              * server-side ring buffer on page entry.  Idempotent — the
              * first caller sets ``_radarDetectionsHydrated[sensorId]``
              * so repeated includes of the same partial don't refetch.
-             * Pass ``force: true`` to clear the hydration flag (e.g.
-             * after a reconnect or a deliberate refresh).
+             * Pass ``{ force: true }`` to clear the hydration flag
+             * and refetch (e.g. after a reconnect or a deliberate
+             * refresh).
              */
-            async hydrateRadarDetections(sensorId, secondsBack = 300) {
+            async hydrateRadarDetections(sensorId, secondsBack = 300, options = {}) {
                 if (!sensorId) return;
+                const force = !!options.force;
+                if (force) {
+                    const next = { ...this._radarDetectionsHydrated };
+                    delete next[sensorId];
+                    this._radarDetectionsHydrated = next;
+                }
                 if (this._radarDetectionsHydrated[sensorId]) return;
                 this._radarDetectionsHydrated = {
                     ...this._radarDetectionsHydrated,

@@ -90,18 +90,25 @@ async function onConfigSensorSwitch(sensorId) {
  * fails so existing sites keep working.
  */
 async function loadSensorTypes() {
+    const fallbackSensorTypes = [
+        { value: 'telescope', label: 'Telescope', description: '' },
+    ];
     try {
         const resp = await fetch('/api/sensor-types');
+        if (!resp.ok) {
+            throw new Error(`sensor-types HTTP ${resp.status} ${resp.statusText}`);
+        }
         const data = await resp.json();
+        if (!Array.isArray(data?.types)) {
+            throw new Error('sensor-types response missing types[] array');
+        }
         if (typeof Alpine !== 'undefined' && Alpine.store) {
-            Alpine.store('citrasense').sensorTypes = data.types || [];
+            Alpine.store('citrasense').sensorTypes = data.types;
         }
     } catch (error) {
         console.error('Failed to load sensor types:', error);
         if (typeof Alpine !== 'undefined' && Alpine.store) {
-            Alpine.store('citrasense').sensorTypes = [
-                { value: 'telescope', label: 'Telescope', description: '' },
-            ];
+            Alpine.store('citrasense').sensorTypes = fallbackSensorTypes;
         }
     }
 }

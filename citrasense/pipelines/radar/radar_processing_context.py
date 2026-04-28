@@ -9,7 +9,7 @@ JSON that ``pr_sensor`` published on ``radar.sensor.{id}.observations``.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -43,7 +43,9 @@ class RadarProcessingContext:
     artifact_dir:
         Site-wide per-sensor artifact directory
         (``<analysis_dir>/radar/<sensor_id>``).  Created by the
-        runtime; processors write sanitised JSON into it.
+        runtime; processors write sanitised JSON into it.  ``None``
+        means "don't persist artifacts" — the writer becomes a no-op
+        rather than falling back to CWD.
     detection_min_snr_db:
         SNR floor gate — observations with ``quality.snr_db`` below
         this threshold are dropped before upload formatting.
@@ -66,7 +68,7 @@ class RadarProcessingContext:
     event: RadarObservationEvent
     antenna_id: str = ""
     api_client: AbstractCitraApiClient | None = None
-    artifact_dir: Path = field(default_factory=Path)
+    artifact_dir: Path | None = None
     detection_min_snr_db: float = 0.0
     forward_only_tasked_satellites: bool = False
     task_index: Any = None

@@ -189,7 +189,7 @@ class CitraSenseWebApp:
         range-Doppler plot and tracks table, small enough to push at
         10+ Hz without saturating the WebSocket.  Callers run on the
         NATS asyncio thread; the thread-safe hand-off happens in
-        :meth:`CitraSenseWebServer.bridge_radar_broadcast` via
+        :meth:`CitraSenseWebServer.send_radar_detection` via
         :func:`asyncio.run_coroutine_threadsafe`.
         """
         await self.connection_manager.broadcast({"type": "radar_detection", "sensor_id": sensor_id, "data": slim})

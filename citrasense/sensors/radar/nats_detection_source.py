@@ -29,6 +29,7 @@ and dropped rather than blowing up the dispatcher thread.
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import json
 import logging
 import threading
@@ -303,6 +304,16 @@ class NatsDetectionSource:
             return future.result(timeout=timeout + 1.0)
         except NatsTimeoutError as exc:
             raise TimeoutError(f"NATS request {subject!r} timed out") from exc
+        except concurrent.futures.TimeoutError as exc:
+            # The asyncio loop didn't complete the coroutine within our
+            # grace window — most likely the loop thread is blocked.
+            # Cancel the pending coroutine and surface a consistent
+            # TimeoutError so callers can handle both transport-level
+            # and loop-level stalls uniformly.
+            future.cancel()
+            raise TimeoutError(
+                f"NATS request {subject!r} did not complete within {timeout + 1.0:.1f}s (loop stalled?)"
+            ) from exc
         except NoRespondersError as exc:
             raise ConnectionError(f"No responders for {subject!r} — pr_sensor not reachable") from exc
 

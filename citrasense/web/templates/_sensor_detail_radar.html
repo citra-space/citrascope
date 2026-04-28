@@ -99,7 +99,7 @@
                     this._timer = setInterval(() => this.refresh(), 5000);
                 },
                 destroy() { if (this._timer) clearInterval(this._timer); },
-            }" x-init="init()" x-destroy="destroy()">
+            }" x-init="init(); $cleanup(() => destroy())">
 
                 <!-- Header row: state + controls -->
                 <div class="card bg-dark text-light border-secondary mb-3">

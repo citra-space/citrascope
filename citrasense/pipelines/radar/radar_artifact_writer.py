@@ -38,7 +38,7 @@ class RadarArtifactWriter:
 
     def process(self, ctx: RadarProcessingContext) -> bool:
         artifact_dir = ctx.artifact_dir
-        if not artifact_dir:
+        if artifact_dir is None:
             return True  # no-op when deployed without a configured dir
 
         try:
