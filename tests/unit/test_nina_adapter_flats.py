@@ -38,21 +38,21 @@ def adapter() -> NinaAdvancedHttpAdapter:
     )
 
 
-def test_supports_flat_automation_true_when_flat_device_connected(adapter):
+def test_supports_flat_automation_true_with_camera_and_flats_endpoint(adapter):
     with patch("citrasense.hardware.nina.nina_adapter.requests.get") as mock_get:
         mock_get.side_effect = [
             _ok({"Connected": True}),  # camera info
-            _ok({"Connected": True, "Name": "Flatbox"}),  # flatdevice info
+            _ok({"State": "Finished"}),  # /flats/status
         ]
         assert adapter.supports_flat_automation() is True
 
 
-def test_supports_flat_automation_false_without_flat_device(adapter):
+def test_supports_flat_automation_false_when_flats_endpoint_fails(adapter):
     with patch("citrasense.hardware.nina.nina_adapter.requests.get") as mock_get:
-        mock_get.side_effect = [
-            _ok({"Connected": True}),  # camera info
-            _ok({"Connected": False}),  # flatdevice info — no panel
-        ]
+        resp_cam = _ok({"Connected": True})
+        resp_flats = MagicMock()
+        resp_flats.json.return_value = {"Success": False, "Error": "not available"}
+        mock_get.side_effect = [resp_cam, resp_flats]
         assert adapter.supports_flat_automation() is False
 
 

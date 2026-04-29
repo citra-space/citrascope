@@ -774,10 +774,15 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
                 return default
 
         def _as_float_or_none(v) -> float | None:
+            import math
+
             try:
-                return float(v) if v is not None else None
+                f = float(v) if v is not None else None
             except (TypeError, ValueError):
                 return None
+            if f is not None and not math.isfinite(f):
+                return None
+            return f
 
         bx, _by = self.get_current_binning()
 
@@ -809,28 +814,23 @@ class NinaAdvancedHttpAdapter(AbstractAstroHardwareAdapter):
         return self._event_listener
 
     def supports_flat_automation(self) -> bool:
-        """Whether NINA can run trained flats against a connected flat panel.
+        """Whether NINA can run trained flats.
 
-        Requires both a connected camera (to actually shoot) and a
-        connected flat device (to illuminate).  Failures on either
-        endpoint return ``False`` — we never want to attempt a trained
-        flat against a disconnected panel because the operator will
-        come back to a pile of useless exposures of whatever is in the
-        tube at the time.
+        Requires a connected camera and reachable ``/flats/status``
+        endpoint.  A flat *device* (panel) is not required — NINA's
+        trained flat wizard works with sky flats or any illumination
+        source the operator has trained against.
         """
         if not self.is_camera_connected():
             return False
         try:
             resp = requests.get(
-                f"{self.nina_api_path}{self.FLATDEVICE_URL}info",
+                f"{self.nina_api_path}{self.FLATS_URL}status",
                 timeout=self.HEALTH_CHECK_TIMEOUT,
             ).json()
         except Exception:
             return False
-        if not resp.get("Success"):
-            return False
-        info = resp.get("Response", {}) or {}
-        return bool(info.get("Connected"))
+        return bool(resp.get("Success"))
 
     def run_trained_flat(
         self,

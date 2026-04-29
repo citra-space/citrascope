@@ -129,6 +129,13 @@ def build_calibration_router(ctx: CitraSenseWebApp) -> APIRouter:
             return {"available": False}
         summary: dict[str, Any] = raw_summary
 
+        import math
+
+        for key in ("current_temperature", "target_temperature"):
+            val = summary.get(key)
+            if isinstance(val, float) and not math.isfinite(val):
+                summary[key] = None
+
         return {
             "available": True,
             "capture_mode": "upload_only",
