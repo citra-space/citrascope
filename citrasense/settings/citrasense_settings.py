@@ -164,7 +164,10 @@ class SensorConfig(BaseModel):
     # window.  ``last_flats_capture_iso`` records the UTC ISO timestamp
     # at which the most recent auto-capture completed so we do not
     # re-fire within the same window after a daemon restart.
+    # ``flat_capture_interval_days`` controls how often flats run
+    # (0 = every window, 7 = weekly, 30 = monthly).
     auto_capture_flats_enabled: bool = False
+    flat_capture_interval_days: int = 7
     last_flats_capture_iso: str | None = None
 
     @field_validator("observing_session_sun_altitude_threshold", mode="before")

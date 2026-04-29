@@ -595,12 +595,27 @@ class CalibrationManager:
             return False
 
         window_start = str(twilight.flat_window.start)
-        last_served = getattr(sc, "last_flats_capture_iso", None)
-        if last_served and str(last_served) >= window_start:
-            # We already served this (or a later) window — wait for the next one.
-            return False
         if self._last_served_window_start == window_start:
             return False
+
+        last_served = getattr(sc, "last_flats_capture_iso", None)
+        if last_served:
+            interval_days = max(0, int(getattr(sc, "flat_capture_interval_days", 7) or 7))
+            if interval_days > 0:
+                from datetime import datetime, timezone
+
+                try:
+                    last_dt = datetime.fromisoformat(str(last_served))
+                    if last_dt.tzinfo is None:
+                        last_dt = last_dt.replace(tzinfo=timezone.utc)
+                    elapsed = datetime.now(timezone.utc) - last_dt
+                    if elapsed.days < interval_days:
+                        return False
+                except (ValueError, TypeError):
+                    pass
+            elif str(last_served) >= window_start:
+                # interval_days=0 means "every window" — only dedup within same window.
+                return False
 
         filters: list[FilterSlot] = []
         if self.hardware_adapter.supports_filter_management():

@@ -703,14 +703,27 @@
                                                     :title="calStatus?.filters?.length ? 'Run NINA Flat Wizard for all ' + calStatus.filters.length + ' enabled filters' : 'No filters configured'">
                                                 <i class="bi bi-magic me-1"></i>Run Flat Wizard
                                             </button>
-                                            <div class="form-check form-switch mb-0">
+                                            <div class="form-check form-switch mb-2">
                                                 <input class="form-check-input" type="checkbox"
                                                        :id="'autoCaptureFlats-' + ($store.citrasense.configSensorId || 'default')"
                                                        x-model="$store.citrasense.config.sensors[$store.citrasense.configSensorIndex].auto_capture_flats_enabled">
                                                 <label class="form-check-label small"
                                                        :for="'autoCaptureFlats-' + ($store.citrasense.configSensorId || 'default')">
-                                                    Automatically capture flats at the next flat window
+                                                    Automatically capture flats during flat windows
                                                 </label>
+                                            </div>
+                                            <div class="d-flex align-items-center gap-2 mb-0"
+                                                 x-show="$store.citrasense.config.sensors[$store.citrasense.configSensorIndex].auto_capture_flats_enabled">
+                                                <label class="form-label small mb-0 text-nowrap">Capture every</label>
+                                                <select class="form-select form-select-sm" style="width: auto;"
+                                                        x-model.number="$store.citrasense.config.sensors[$store.citrasense.configSensorIndex].flat_capture_interval_days">
+                                                    <option value="0">Every flat window</option>
+                                                    <option value="1">Daily</option>
+                                                    <option value="3">Every 3 days</option>
+                                                    <option value="7">Weekly</option>
+                                                    <option value="14">Every 2 weeks</option>
+                                                    <option value="30">Monthly</option>
+                                                </select>
                                             </div>
                                         </div>
                                         <template x-if="calStatus?.last_flats_capture_iso">
