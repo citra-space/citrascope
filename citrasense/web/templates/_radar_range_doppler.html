@@ -92,6 +92,10 @@
              const rateAbsMax = rrAbsMax > 0 ? rrAbsMax * 1.1 : 10;
              const nowS = Date.now() / 1000;
              const parts = [];
+             // Track the leading (most-recent) detection per sat so we
+             // can paint a name label next to its head dot after the
+             // main loop.  Keyed by sat_uuid with sat_name fallback.
+             const leading = new Map();
              for (let i = 0; i < dets.length; i++) {
                  const d = dets[i];
                  const r = Number(d?.range_km);
@@ -116,7 +120,38 @@
                      + '<title>' + this._htmlEscape(title) + '</title>'
                      + '</circle>'
                  );
+                 {% if _size == 'full' %}
+                 const key = d.sat_uuid || d.sat_name;
+                 if (key) {
+                     const prev = leading.get(key);
+                     if (!prev || ts > prev.ts) {
+                         leading.set(key, {
+                             ts,
+                             cx,
+                             cy,
+                             fill,
+                             name: d.sat_name || d.sat_uuid,
+                         });
+                     }
+                 }
+                 {% endif %}
              }
+             {% if _size == 'full' %}
+             // Label each sat's leading point with its name.  Positioned
+             // slightly above-right of the dot; ``pointer-events=none``
+             // so labels don't steal the circle tooltips.  Label colour
+             // tracks dot colour (SNR) so labels visually belong to
+             // their dots.
+             for (const [, info] of leading) {
+                 parts.push(
+                     '<text x=\x22' + (info.cx + 8).toFixed(1)
+                     + '\x22 y=\x22' + (info.cy - 6).toFixed(1)
+                     + '\x22 fill=\x22' + info.fill + '\x22 font-size=\x2211\x22 '
+                     + 'font-family=\x22monospace\x22 pointer-events=\x22none\x22>'
+                     + this._htmlEscape(info.name) + '</text>'
+                 );
+             }
+             {% endif %}
              return parts.join('');
          },
          // Plot geometry.  When no detections are available we still
