@@ -42,7 +42,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from citrasense.elset_cache import ElsetCache
+from citrasense.astro.elset_cache import ElsetCache
 from citrasense.pipelines.optical.optical_processing_context import OpticalProcessingContext
 from citrasense.tasks.task import Task
 

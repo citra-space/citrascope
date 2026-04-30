@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from citrasense.preview_bus import PreviewBus, array_to_jpeg_data_url
+from citrasense.sensors.preview_bus import PreviewBus, array_to_jpeg_data_url
 
 
 def _pop_first(bus: PreviewBus) -> tuple[str, str, str] | None:

@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from citrasense.logging.sensor_logger import SensorLoggerAdapter
-from citrasense.preview_bus import PreviewBus
+from citrasense.sensors.preview_bus import PreviewBus
 
 if TYPE_CHECKING:
     from citrasense.acquisition.base_work_queue import BaseWorkQueue

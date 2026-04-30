@@ -379,6 +379,7 @@ class TestSchemaMigration:
         }
         idx.record_task(task=task, result=_make_result(), pointing_report=pointing, timing_info=_make_timing())
         row = idx.get_task("task-001")
+        assert row is not None
         assert row["exposure_seconds"] == pytest.approx(2.5)
         assert row["num_exposures"] == 3
         assert row["adaptive_exposure_active"] == 1
@@ -419,5 +420,6 @@ class TestSchemaMigration:
         pointing["slew_ahead"] = {"adaptive_exposure_active": False}
         idx.record_task(task=task, result=_make_result(), pointing_report=pointing, timing_info=_make_timing())
         row = idx.get_task("task-001")
+        assert row is not None
         assert row["adaptive_exposure_active"] == 0
         idx.close()

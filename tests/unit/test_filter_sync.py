@@ -78,8 +78,10 @@ class TestSyncFiltersToBackend:
         assert sync_filters_to_backend(MagicMock(), "t1", {}, logger) is False
 
     def test_none_config_returns_false(self):
+        from typing import Any, cast
+
         logger = MagicMock()
-        assert sync_filters_to_backend(MagicMock(), "t1", None, logger) is False
+        assert sync_filters_to_backend(MagicMock(), "t1", cast(Any, None), logger) is False
 
     def test_no_enabled_filters_returns_false(self):
         logger = MagicMock()

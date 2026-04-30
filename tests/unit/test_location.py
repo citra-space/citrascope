@@ -205,6 +205,7 @@ def test_gps_monitor_satellite_count_fallback():
     with patch("subprocess.run", return_value=mock_result):
         fix = gm._query_gpsd()
 
+    assert fix is not None
     assert fix.satellites == 2
 
 
@@ -317,6 +318,7 @@ def test_location_service_get_current_location_from_ground_station():
         ls = LocationService()
     ls.set_ground_station({"id": "gs1", "latitude": 40.0, "longitude": -74.0, "altitude": 100.0})
     loc = ls.get_current_location()
+    assert loc is not None
     assert loc["source"] == "ground_station"
     assert loc["latitude"] == 40.0
 
@@ -408,6 +410,7 @@ def test_location_service_hardware_adapter_gps_provider():
     ls.set_hardware_adapter_gps_provider(lambda: adapter_fix)
 
     result = ls._query_hardware_adapter_gps()
+    assert result is not None
     assert result is adapter_fix
     assert result.device_driver == "moravian"
 
@@ -421,6 +424,7 @@ def test_location_service_hardware_adapter_gps_provider_no_coords():
     ls.set_hardware_adapter_gps_provider(lambda: no_fix)
 
     result = ls._query_hardware_adapter_gps()
+    assert result is not None
     assert result is no_fix
     assert result.latitude is None
     assert result.device_driver == "moravian"
@@ -488,6 +492,7 @@ def test_location_service_get_best_gps_fix_falls_back_to_hardware_adapter():
     with patch.object(GPSMonitor, "get_current_fix", return_value=gpsd_meta):
         result = ls.get_best_gps_fix(allow_blocking=False)
 
+    assert result is not None
     assert result is adapter_fix
     assert result.device_driver == "moravian"
 

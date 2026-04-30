@@ -19,8 +19,11 @@ _HEALPIX_ORDER = "nested"
 
 def _healpix_for(ra: float, dec: float) -> int:
     """Return the HEALPix pixel (NSIDE=64, nested) containing (ra, dec)."""
+    from typing import Any, cast
+
     hp = HEALPix(nside=_HEALPIX_NSIDE, order=_HEALPIX_ORDER)
-    return int(hp.lonlat_to_healpix(ra * u.deg, dec * u.deg))
+    pixel = cast(Any, hp.lonlat_to_healpix(ra * u.deg, dec * u.deg))  # type: ignore[attr-defined]
+    return int(pixel)
 
 
 @pytest.fixture

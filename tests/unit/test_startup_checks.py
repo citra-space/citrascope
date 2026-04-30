@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -15,7 +16,7 @@ def _settings(
     processors_enabled: bool = True,
     use_local_apass_catalog: bool = False,
     enabled_processors: dict[str, bool] | None = None,
-):
+) -> Any:
     """Build a minimal settings stub — the only fields the function touches."""
     sensor = SimpleNamespace(
         processors_enabled=processors_enabled,

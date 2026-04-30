@@ -90,4 +90,6 @@ class TestNinaSequenceProvidesTracking:
     def test_nina_adapter_reports_sequence_provides_tracking(self):
         from citrasense.hardware.nina.nina_adapter import NinaAdvancedHttpAdapter
 
-        assert NinaAdvancedHttpAdapter.sequence_provides_tracking.fget(None) is True
+        fget = NinaAdvancedHttpAdapter.sequence_provides_tracking.fget
+        assert fget is not None
+        assert fget(None) is True

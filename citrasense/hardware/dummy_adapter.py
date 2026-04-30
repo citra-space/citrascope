@@ -1629,7 +1629,7 @@ class DummyAdapter(AbstractAstroHardwareAdapter):
         """Return a synthetic preview image as a JPEG data URL."""
         import time
 
-        from citrasense.preview_bus import array_to_jpeg_data_url
+        from citrasense.sensors.preview_bus import array_to_jpeg_data_url
 
         start = time.monotonic()
         ra, dec = self._mount.get_radec()

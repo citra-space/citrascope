@@ -3,7 +3,7 @@
  * Load this script before Alpine.js so the alpine:init listener is attached in time.
  */
 import * as formatters from './formatters.js';
-import * as components from './components.js';
+import * as components from './components/shared.js';
 import { FILTER_COLORS } from './filters.js';
 import { toggleMethods } from './store/toggles.js';
 import { cameraMethods } from './store/camera.js';
@@ -11,8 +11,10 @@ import { versionCheckMethods } from './store/version-check.js';
 import { clipboardMethods } from './store/clipboard.js';
 import { radarMethods } from './store/radar.js';
 import { hardwareControlMethods } from './store/hardware-control.js';
+import { configMethods } from './store/config-methods.js';
 import { calibrationPane } from './components/calibration.js';
 import { radarControl } from './components/radar-control.js';
+import { analysisTab } from './analysis.js';
 
 (() => {
     document.addEventListener('alpine:init', () => {
@@ -23,6 +25,7 @@ import { radarControl } from './components/radar-control.js';
         window.Alpine.data('logEntry', components.logEntry);
         window.Alpine.data('calibrationPane', calibrationPane);
         window.Alpine.data('radarControl', radarControl);
+        window.Alpine.data('analysisTab', analysisTab);
 
         // Register store
         window.Alpine.store('citrasense', {
@@ -321,6 +324,7 @@ import { radarControl } from './components/radar-control.js';
             ...versionCheckMethods,
             ...clipboardMethods,
             ...hardwareControlMethods,
+            ...configMethods,
 
             /**
              * Client-side path navigation.  Pushes the new URL into the

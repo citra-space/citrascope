@@ -69,7 +69,9 @@ def ground_station():
 def test_enrich_adds_origin(fits_file, mock_location_service):
     enrich_fits_metadata(fits_file, location_service=mock_location_service)
     with fits.open(fits_file) as hdul:
-        assert hdul[0].header["ORIGIN"] == "Citra.space"
+        hdu = hdul[0]
+        assert isinstance(hdu, fits.PrimaryHDU)
+        assert hdu.header["ORIGIN"] == "Citra.space"
 
 
 def test_enrich_adds_task_metadata(fits_file, mock_task, mock_location_service, telescope_record, ground_station):
@@ -81,7 +83,9 @@ def test_enrich_adds_task_metadata(fits_file, mock_task, mock_location_service, 
         ground_station=ground_station,
     )
     with fits.open(fits_file) as hdul:
-        h = hdul[0].header
+        hdu = hdul[0]
+        assert isinstance(hdu, fits.PrimaryHDU)
+        h = hdu.header
         assert h["TASKID"] == "task-uuid-123"
         assert h["OBJECT"] == "ISS (ZARYA)"
         assert h["FILTER"] == "Luminance"
@@ -91,7 +95,9 @@ def test_enrich_adds_task_metadata(fits_file, mock_task, mock_location_service, 
 def test_enrich_adds_location_from_gps(fits_file, mock_location_service):
     enrich_fits_metadata(fits_file, location_service=mock_location_service)
     with fits.open(fits_file) as hdul:
-        h = hdul[0].header
+        hdu = hdul[0]
+        assert isinstance(hdu, fits.PrimaryHDU)
+        h = hdu.header
         assert h["SITELAT"] == pytest.approx(34.05)
         assert h["SITELONG"] == pytest.approx(-118.25)
 
@@ -112,7 +118,9 @@ def test_enrich_idempotent(fits_file, mock_task, mock_location_service, telescop
         ground_station=ground_station,
     )
     with fits.open(fits_file) as hdul:
-        assert hdul[0].header["TASKID"] == "task-uuid-123"
+        hdu = hdul[0]
+        assert isinstance(hdu, fits.PrimaryHDU)
+        assert hdu.header["TASKID"] == "task-uuid-123"
 
 
 def test_enrich_missing_file():
@@ -122,8 +130,10 @@ def test_enrich_missing_file():
 def test_enrich_no_task_no_daemon(fits_file):
     enrich_fits_metadata(fits_file)
     with fits.open(fits_file) as hdul:
-        assert hdul[0].header["ORIGIN"] == "Citra.space"
-        assert "TASKID" not in hdul[0].header
+        hdu = hdul[0]
+        assert isinstance(hdu, fits.PrimaryHDU)
+        assert hdu.header["ORIGIN"] == "Citra.space"
+        assert "TASKID" not in hdu.header
 
 
 def test_enrich_corrupted_file(tmp_path):

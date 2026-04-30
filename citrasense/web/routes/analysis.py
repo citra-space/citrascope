@@ -215,7 +215,7 @@ def build_analysis_router(ctx: CitraSenseWebApp) -> APIRouter:
         body = await request.json() if await request.body() else {}
         settings_overrides = body.get("settings_overrides")
 
-        from citrasense.reprocess import reprocess_bundle
+        from citrasense.cli.reprocess import reprocess_bundle
 
         try:
             output_dir = debug_dir / "reprocessed"
@@ -269,7 +269,7 @@ def build_analysis_router(ctx: CitraSenseWebApp) -> APIRouter:
         processing_dir = ctx.daemon.settings.directories.processing_dir
 
         def _batch_worker(status):
-            from citrasense.reprocess import reprocess_bundle
+            from citrasense.cli.reprocess import reprocess_bundle
 
             for i, tid in enumerate(task_ids):
                 safe_id = Path(tid).name
@@ -399,14 +399,14 @@ def build_analysis_router(ctx: CitraSenseWebApp) -> APIRouter:
                 if resolve_task_dir(processing_dir, Path(tid).name).is_dir()
             ]
         else:
-            from citrasense.autotune import _discover_bundles
+            from citrasense.cli.autotune import _discover_bundles
 
             debug_dirs = _discover_bundles(bundle_search_root, max_bundles=num_bundles)
 
         if not debug_dirs:
             return JSONResponse({"error": "No debug bundles found"}, status_code=404)
 
-        from citrasense.autotune import PARAM_GRID, autotune_extraction
+        from citrasense.cli.autotune import PARAM_GRID, autotune_extraction
 
         n_thresh = len(PARAM_GRID["detect_thresh"])
         n_area = len(PARAM_GRID["detect_minarea"])

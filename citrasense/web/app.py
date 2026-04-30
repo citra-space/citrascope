@@ -42,7 +42,7 @@ class CitraSenseWebApp:
         self._status_collector = StatusCollector(daemon)
         self.web_log_handler = web_log_handler
 
-        from citrasense.jobs import BackgroundJobRunner
+        from citrasense.web.jobs import BackgroundJobRunner
 
         self.job_runner = BackgroundJobRunner()
 
