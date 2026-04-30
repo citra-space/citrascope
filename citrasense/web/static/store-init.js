@@ -10,6 +10,9 @@ import { cameraMethods } from './store/camera.js';
 import { versionCheckMethods } from './store/version-check.js';
 import { clipboardMethods } from './store/clipboard.js';
 import { radarMethods } from './store/radar.js';
+import { hardwareControlMethods } from './store/hardware-control.js';
+import { calibrationPane } from './components/calibration.js';
+import { radarControl } from './components/radar-control.js';
 
 (() => {
     document.addEventListener('alpine:init', () => {
@@ -18,6 +21,8 @@ import { radarMethods } from './store/radar.js';
         window.Alpine.data('taskRow', components.taskRow);
         window.Alpine.data('filterRow', components.filterRow);
         window.Alpine.data('logEntry', components.logEntry);
+        window.Alpine.data('calibrationPane', calibrationPane);
+        window.Alpine.data('radarControl', radarControl);
 
         // Register store
         window.Alpine.store('citrasense', {
@@ -315,6 +320,7 @@ import { radarMethods } from './store/radar.js';
 
             ...versionCheckMethods,
             ...clipboardMethods,
+            ...hardwareControlMethods,
 
             /**
              * Client-side path navigation.  Pushes the new URL into the

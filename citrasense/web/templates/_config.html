@@ -64,7 +64,7 @@
                                     <button type="button"
                                             class="btn btn-link btn-sm text-danger p-0 ms-1"
                                             x-show="($store.citrasense.config?.sensors?.length || 0) > 1"
-                                            @click.stop="window._configRemoveSensor && window._configRemoveSensor(sensor.id)"
+                                            @click.stop="$store.citrasense.removeSensor(sensor.id)"
                                             title="Remove sensor">
                                         <i class="bi bi-trash" style="font-size: 0.75rem;"></i>
                                     </button>

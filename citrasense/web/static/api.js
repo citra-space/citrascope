@@ -112,8 +112,8 @@ export async function reconnectHardware() {
     return post('/api/hardware/reconnect');
 }
 
-export async function scanHardware(adapterName) {
-    return jsonPost('/api/hardware/scan', { adapter: adapterName });
+export async function scanHardware(adapterName, currentSettings = {}) {
+    return jsonPost('/api/hardware/scan', { adapter_name: adapterName, current_settings: currentSettings });
 }
 
 // ─── Sensor Types ─────────────────────────────────────────────────────────────
@@ -208,14 +208,18 @@ export async function syncFilters(sensorId) {
     return post(sensorUrl(sensorId, '/filters/sync'));
 }
 
-export async function setFilter(sensorId, filterName) {
-    return jsonPost(sensorUrl(sensorId, '/filter/set'), { filter_name: filterName });
+export async function setFilter(sensorId, position) {
+    return jsonPost(sensorUrl(sensorId, '/filter/set'), { position: parseInt(position) });
 }
 
 // ─── Focuser ──────────────────────────────────────────────────────────────────
 
 export async function moveFocuser(sensorId, position) {
     return jsonPost(sensorUrl(sensorId, '/focuser/move'), { position: parseInt(position) });
+}
+
+export async function moveFocuserRelative(sensorId, steps) {
+    return jsonPost(sensorUrl(sensorId, '/focuser/move'), { relative: parseInt(steps) });
 }
 
 export async function abortFocuser(sensorId) {

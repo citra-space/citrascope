@@ -164,20 +164,3 @@
                             </div>
                         </div>
                     </div>
-
-
-                    <!-- Save Button (sticky) -->
-                    <div class="config-save-bar">
-                        <button type="submit" class="btn btn-primary" :disabled="$store.citrasense.isSavingConfig">
-                            <span x-text="$store.citrasense.isSavingConfig ? 'Saving...' : 'Save Configuration'"></span>
-                            <span x-show="$store.citrasense.isSavingConfig" class="spinner-border spinner-border-sm ms-2" role="status"></span>
-                        </button>
-                        <small class="text-muted ms-3">
-                            Config file: <span class="text-secondary" x-text="$store.citrasense.config.config_file_path || 'Loading...'">Loading...</span>
-                        </small>
-                    </div>
-
-                </div>
-            </div>
-        </form>
-    </div>

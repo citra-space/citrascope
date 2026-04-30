@@ -1,6 +1,6 @@
 // CitraSense Dashboard - Main Application (Alpine.js)
 import { connectWebSocket } from './websocket.js';
-import { initConfig, initFilterConfig, setupAutofocusButton } from './config.js';
+import { initConfig, initFilterConfig } from './config.js';
 import { showToast } from './toast.js';
 import * as api from './api.js';
 
@@ -125,8 +125,9 @@ function startCountdownUpdater() {
 // --- Version checking ---
 async function fetchVersion() {
     try {
-        const response = await fetch('/api/version');
-        const data = await response.json();
+        const result = await api.getVersion();
+        if (!result.ok) return;
+        const data = result.data;
         const store = Alpine.store('citrasense');
         store.versionData = data;
         if (data.version) {
@@ -248,7 +249,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     initNavigation();
     await initConfig();
     await initFilterConfig();
-    setupAutofocusButton();
     fetchVersion();
     Alpine.store('citrasense').checkForUpdates();
     setInterval(() => Alpine.store('citrasense').checkForUpdates(), 3600000);

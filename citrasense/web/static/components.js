@@ -1,4 +1,5 @@
 import { showToast } from './toast.js';
+import * as api from './api.js';
 
 /**
  * Alpine.js Component Definitions for CitraSense Dashboard
@@ -102,21 +103,12 @@ export function taskRow(task) {
             }
             this.cancelling = true;
             try {
-                const resp = await fetch('/api/tasks/' + encodeURIComponent(this.task.id) + '/cancel', {
-                    method: 'POST',
-                });
+                const result = await api.cancelTask(this.task.id);
 
-                if (resp.ok) {
+                if (result.ok) {
                     showToast('Cancelled ' + label, 'success');
-                    // No need to mutate local state — the server will broadcast
-                    // an updated task list over the WebSocket.
                 } else {
-                    let msg = 'Cancel failed (' + resp.status + ')';
-                    try {
-                        const body = await resp.json();
-                        if (body && body.error) msg = body.error;
-                    } catch (_) { /* keep generic message */ }
-                    showToast(msg, 'danger');
+                    showToast(result.error || 'Cancel failed (' + result.status + ')', 'danger');
                 }
             } catch (e) {
 
