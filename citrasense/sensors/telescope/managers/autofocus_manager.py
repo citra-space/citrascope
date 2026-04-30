@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 from citrasense.constants import AUTOFOCUS_TARGET_PRESETS
 from citrasense.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
 from citrasense.logging.sensor_logger import SensorLoggerAdapter
-from citrasense.preview_bus import PreviewBus
+from citrasense.sensors.preview_bus import PreviewBus
 
 if TYPE_CHECKING:
     import numpy as np
@@ -467,7 +467,7 @@ class AutofocusManager:
         if not self._preview_bus:
             return
         try:
-            from citrasense.preview_bus import array_to_jpeg_data_url
+            from citrasense.sensors.preview_bus import array_to_jpeg_data_url
 
             data_url = array_to_jpeg_data_url(image)
             self._preview_bus.push(data_url, "autofocus", sensor_id=self._sensor_id)

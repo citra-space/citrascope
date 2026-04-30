@@ -23,7 +23,7 @@
         "./api.js": "/static/api.js?v={{ cache_bust }}",
         "./config.js": "/static/config.js?v={{ cache_bust }}",
         "./formatters.js": "/static/formatters.js?v={{ cache_bust }}",
-        "./components.js": "/static/components.js?v={{ cache_bust }}",
+        "./components/shared.js": "/static/components/shared.js?v={{ cache_bust }}",
         "./websocket.js": "/static/websocket.js?v={{ cache_bust }}",
         "./filters.js": "/static/filters.js?v={{ cache_bust }}",
         "./store/camera.js": "/static/store/camera.js?v={{ cache_bust }}",
@@ -32,6 +32,8 @@
         "./store/clipboard.js": "/static/store/clipboard.js?v={{ cache_bust }}",
         "./store/radar.js": "/static/store/radar.js?v={{ cache_bust }}",
         "./store/hardware-control.js": "/static/store/hardware-control.js?v={{ cache_bust }}",
+        "./store/config-methods.js": "/static/store/config-methods.js?v={{ cache_bust }}",
+        "./analysis.js": "/static/analysis.js?v={{ cache_bust }}",
         "./components/calibration.js": "/static/components/calibration.js?v={{ cache_bust }}",
         "./components/radar-control.js": "/static/components/radar-control.js?v={{ cache_bust }}",
         "../toast.js": "/static/toast.js?v={{ cache_bust }}",
@@ -40,7 +42,6 @@
     }
     </script>
     <script type="module" src="/static/store-init.js?v={{ cache_bust }}"></script>
-    <script type="module" src="/static/analysis.js?v={{ cache_bust }}"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/persist@3.x.x/dist/cdn.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.10/dist/cdn.min.js"></script>
 

@@ -3,6 +3,7 @@
 import threading
 import time
 from datetime import datetime, timezone
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -19,9 +20,14 @@ def mount():
     return m
 
 
+def _mock_transport(mount: ZwoAmMount) -> MagicMock:
+    return cast(MagicMock, mount._transport)
+
+
 class TestSyncDatetime:
     def test_sends_tz_time_then_date_last(self, mount: ZwoAmMount):
-        mount._transport.send_command_bool_with_retry.return_value = True
+        transport = _mock_transport(mount)
+        transport.send_command_bool_with_retry.return_value = True
 
         frozen = datetime(2026, 2, 24, 19, 45, 30, tzinfo=timezone.utc)
         mock_dt = MagicMock(wraps=datetime)
@@ -31,25 +37,26 @@ class TestSyncDatetime:
 
         assert result is True
 
-        calls = mount._transport.send_command_bool_with_retry.call_args_list
+        calls = transport.send_command_bool_with_retry.call_args_list
         assert len(calls) == 3
 
         assert calls[0].args[0] == ":SG+00#"
         assert calls[1].args[0] == ":SL19:45:30#"
         assert calls[2].args[0] == ":SC02/24/26#"
 
-        # :SC goes last; verify buffer is drained for subsequent callers
-        mount._transport._clear_input.assert_called_once()
+        transport._clear_input.assert_called_once()
 
     def test_returns_false_on_partial_failure(self, mount: ZwoAmMount):
-        mount._transport.send_command_bool_with_retry.side_effect = [True, False, True]
+        transport = _mock_transport(mount)
+        transport.send_command_bool_with_retry.side_effect = [True, False, True]
 
         result = mount.sync_datetime()
 
         assert result is False
 
     def test_returns_false_when_all_fail(self, mount: ZwoAmMount):
-        mount._transport.send_command_bool_with_retry.return_value = False
+        transport = _mock_transport(mount)
+        transport.send_command_bool_with_retry.return_value = False
 
         result = mount.sync_datetime()
 
@@ -58,31 +65,35 @@ class TestSyncDatetime:
 
 class TestCustomTrackingRates:
     def test_set_custom_tracking_rates_sends_commands(self, mount: ZwoAmMount):
-        mount._transport.send_command_with_retry.return_value = "NG#"  # tracking=True
+        transport = _mock_transport(mount)
+        transport.send_command_with_retry.return_value = "NG#"  # tracking=True
         result = mount.set_custom_tracking_rates(50.0, -10.0)
 
         assert result is True
-        no_resp_calls = [c.args[0] for c in mount._transport.send_command_no_response.call_args_list]
+        no_resp_calls = [c.args[0] for c in transport.send_command_no_response.call_args_list]
         assert ":RA+050.000000#" in no_resp_calls
         assert ":RE-010.000000#" in no_resp_calls
 
     def test_set_custom_tracking_rates_starts_tracking_if_not_active(self, mount: ZwoAmMount):
-        mount._transport.send_command_with_retry.return_value = "nN#"  # tracking=False
+        transport = _mock_transport(mount)
+        transport.send_command_with_retry.return_value = "nN#"  # tracking=False
         mount.set_custom_tracking_rates(1.0, 2.0)
 
-        no_resp_calls = [c.args[0] for c in mount._transport.send_command_no_response.call_args_list]
+        no_resp_calls = [c.args[0] for c in transport.send_command_no_response.call_args_list]
         assert ":TQ#" in no_resp_calls  # sidereal rate set
         assert ":Te#" in no_resp_calls  # tracking enabled
 
     def test_reset_tracking_rates_zeros_offsets(self, mount: ZwoAmMount):
+        transport = _mock_transport(mount)
         mount.reset_tracking_rates()
 
-        no_resp_calls = [c.args[0] for c in mount._transport.send_command_no_response.call_args_list]
+        no_resp_calls = [c.args[0] for c in transport.send_command_no_response.call_args_list]
         assert ":RA+000.000000#" in no_resp_calls
         assert ":RE+000.000000#" in no_resp_calls
 
     def test_get_mount_info_supports_custom_tracking(self, mount: ZwoAmMount):
-        mount._transport.send_command_with_retry.return_value = "NG#"
+        transport = _mock_transport(mount)
+        transport.send_command_with_retry.return_value = "NG#"
         info = mount.get_mount_info()
         assert info["supports_custom_tracking"] is False
 

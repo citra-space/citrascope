@@ -32,8 +32,10 @@ class TestSaveFitsTimestamp:
         moravian_camera._save_fits(buf, 10, 10, 5.0, 0, 1, out, exposure_start=ts)
 
         with fits.open(out) as hdul:
-            assert hdul[0].header["DATE-OBS"] == ts.isoformat()
-            assert hdul[0].header["DATE-SRC"] == "host"
+            primary = hdul[0]
+            assert isinstance(primary, fits.PrimaryHDU)
+            assert primary.header["DATE-OBS"] == ts.isoformat()
+            assert primary.header["DATE-SRC"] == "host"
 
     def test_uses_gps_date_src(self, moravian_camera, tmp_path):
         ts = datetime(2026, 3, 10, 2, 0, 0, 123456, tzinfo=timezone.utc)
@@ -43,8 +45,10 @@ class TestSaveFitsTimestamp:
         moravian_camera._save_fits(buf, 10, 10, 5.0, 0, 1, out, exposure_start=ts, date_src="gps")
 
         with fits.open(out) as hdul:
-            assert hdul[0].header["DATE-SRC"] == "gps"
-            assert "2026-03-10T02:00:00.123456" in hdul[0].header["DATE-OBS"]
+            primary = hdul[0]
+            assert isinstance(primary, fits.PrimaryHDU)
+            assert primary.header["DATE-SRC"] == "gps"
+            assert "2026-03-10T02:00:00.123456" in str(primary.header["DATE-OBS"])
 
     def test_falls_back_to_now_when_no_exposure_start(self, moravian_camera, tmp_path):
         buf = np.zeros((10, 10), dtype=np.uint16).tobytes()
@@ -55,7 +59,9 @@ class TestSaveFitsTimestamp:
         after = datetime.now(timezone.utc)
 
         with fits.open(out) as hdul:
-            date_obs = datetime.fromisoformat(hdul[0].header["DATE-OBS"])
+            primary = hdul[0]
+            assert isinstance(primary, fits.PrimaryHDU)
+            date_obs = datetime.fromisoformat(str(primary.header["DATE-OBS"]))
             assert before <= date_obs <= after
 
 

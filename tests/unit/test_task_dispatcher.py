@@ -595,6 +595,8 @@ class TestPerSensorSafetyGate:
         monitor = MagicMock()
 
         def _evaluate(sensor_id: str | None = None):
+            if sensor_id is None:
+                return (SafetyAction.SAFE, None)
             return actions_by_sensor.get(sensor_id, (SafetyAction.SAFE, None))
 
         monitor.evaluate.side_effect = _evaluate

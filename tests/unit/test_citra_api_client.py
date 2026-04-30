@@ -363,6 +363,7 @@ def test_discrete_filter_sets_wavelength(client, mock_response):
     obs = [{**_OBS_BASE, "filter": "r"}]
     ok, payload = _capture_payload(client, mock_response, obs, _tel_discrete())
     assert ok is True
+    assert payload is not None
     assert payload[0]["minWavelength"] == pytest.approx(623.0 - 137.0 / 2)
     assert payload[0]["maxWavelength"] == pytest.approx(623.0 + 137.0 / 2)
 
@@ -371,6 +372,7 @@ def test_discrete_filter_unmatched_omits_wavelength(client, mock_response):
     obs = [{**_OBS_BASE, "filter": "z"}]
     ok, payload = _capture_payload(client, mock_response, obs, _tel_discrete())
     assert ok is True
+    assert payload is not None
     assert "minWavelength" not in payload[0]
     assert "maxWavelength" not in payload[0]
 
@@ -379,6 +381,7 @@ def test_discrete_filter_no_filter_key_omits_wavelength(client, mock_response):
     obs = [{**_OBS_BASE}]  # no "filter" key
     ok, payload = _capture_payload(client, mock_response, obs, _tel_discrete())
     assert ok is True
+    assert payload is not None
     assert "minWavelength" not in payload[0]
     assert "maxWavelength" not in payload[0]
 
@@ -397,6 +400,7 @@ def test_static_bounds_take_priority(client, mock_response):
     obs = [{**_OBS_BASE, "filter": "r"}]
     ok, payload = _capture_payload(client, mock_response, obs, tel)
     assert ok is True
+    assert payload is not None
     assert payload[0]["minWavelength"] == 400.0
     assert payload[0]["maxWavelength"] == 700.0
 
@@ -406,6 +410,7 @@ def test_no_spectral_config_omits_wavelength(client, mock_response):
     obs = [{**_OBS_BASE, "filter": "r"}]
     ok, payload = _capture_payload(client, mock_response, obs, tel)
     assert ok is True
+    assert payload is not None
     assert "minWavelength" not in payload[0]
     assert "maxWavelength" not in payload[0]
 
@@ -417,5 +422,6 @@ def test_multiple_obs_different_filters(client, mock_response):
     ]
     ok, payload = _capture_payload(client, mock_response, obs, _tel_discrete())
     assert ok is True
+    assert payload is not None
     assert payload[0]["minWavelength"] == pytest.approx(623.0 - 137.0 / 2)
     assert payload[1]["minWavelength"] == pytest.approx(477.0 - 137.0 / 2)

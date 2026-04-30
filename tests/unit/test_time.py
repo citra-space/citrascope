@@ -63,6 +63,7 @@ def test_from_offset_with_metadata():
         message="GPS lock",
         metadata={"satellites": 8},
     )
+    assert h.metadata is not None
     assert h.metadata["satellites"] == 8
     assert h.message == "GPS lock"
 
@@ -221,4 +222,5 @@ def test_time_monitor_check_failure_sets_unknown():
         tm._check_time_sync()
 
     health = tm.get_current_health()
+    assert health is not None
     assert health.status == TimeStatus.UNKNOWN

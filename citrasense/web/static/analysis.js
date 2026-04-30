@@ -22,8 +22,8 @@ const PROCESSOR_LABELS = {
     annotated_image_s:    'Annotate',
 };
 
-document.addEventListener('alpine:init', () => {
-    Alpine.data('analysisTab', () => ({
+export function analysisTab() {
+    return {
         stats: {},
         tasks: [],
         total: 0,
@@ -782,8 +782,8 @@ document.addEventListener('alpine:init', () => {
                 showToast('Apply auto-tune failed: ' + e, 'danger');
             }
         },
-    }));
-});
+    };
+}
 
 window.loadAnalysisData = function () {
     const el = document.querySelector('#analysisSection');

@@ -20,33 +20,7 @@ const PROD_API_HOST = 'api.citra.space';
 const DEV_API_HOST = 'dev.api.citra.space';
 const DEFAULT_API_PORT = 443;
 
-/**
- * Handle adapter selection change (called from Alpine store)
- */
-async function handleAdapterChange(adapter) {
-    const store = Alpine.store('citrasense');
-    if (adapter) {
-        const sensorCfg = store.config.sensors?.[store.configSensorIndex] || {};
-        const currentSettings = sensorCfg.adapter_settings || {};
-
-        console.log(`Switching to adapter: ${adapter}`);
-        console.log('Settings for this adapter:', currentSettings);
-
-        await loadAdapterSchema(adapter, currentSettings);
-        await loadFilterConfig();
-    } else {
-        store.adapterFields = [];
-        store.filterConfigVisible = false;
-    }
-}
-
 export async function initConfig() {
-    // Attach config methods to Alpine store
-    const store = Alpine.store('citrasense');
-    store.handleAdapterChange = handleAdapterChange;
-    store.reloadAdapterSchema = reloadAdapterSchema;
-    store.scanHardware = scanHardware;
-
     // Populate hardware adapter + sensor type dropdowns used by the
     // Add Sensor form before the config finishes loading.
     await loadAdapterOptions();
@@ -284,7 +258,7 @@ function getDefaultForType(type) {
 /**
  * Build reactive Alpine field objects from a raw schema + current values.
  */
-function buildAdapterFields(schema, currentSettings = {}) {
+export function buildAdapterFields(schema, currentSettings = {}) {
     return schema
         .filter(field => !field.readonly)
         .map(field => Alpine.reactive({
@@ -678,53 +652,4 @@ async function saveModifiedFilters() {
  */
 export async function initFilterConfig() {
     await loadFilterConfig();
-}
-
-/**
- * Reload adapter schema (called from Alpine components when device type changes)
- */
-async function reloadAdapterSchema() {
-    const store = Alpine.store('citrasense');
-    const adapter = store.config.sensors?.[store.configSensorIndex]?.adapter;
-    if (!adapter) return;
-
-    // Convert current adapterFields back to flat settings object
-    const currentSettings = {};
-    (store.adapterFields || []).forEach(field => {
-        currentSettings[field.name] = field.value;
-    });
-
-    await loadAdapterSchema(adapter, currentSettings);
-}
-
-/**
- * Clear hardware probe caches and re-enumerate devices.
- * Called from the "Scan Hardware" button.
- */
-async function scanHardware() {
-    const store = Alpine.store('citrasense');
-    const adapter = store.config.sensors?.[store.configSensorIndex]?.adapter;
-    if (!adapter) return;
-
-    store.isScanning = true;
-    try {
-        const currentSettings = {};
-        (store.adapterFields || []).forEach(field => {
-            currentSettings[field.name] = field.value;
-        });
-
-        const result = await api.scanHardware(adapter, currentSettings);
-
-        if (!result.ok) {
-            showConfigError(result.error || 'Hardware scan failed');
-            return;
-        }
-
-        store.adapterFields = buildAdapterFields(result.data?.schema || [], currentSettings);
-    } catch (error) {
-        console.error('Hardware scan failed:', error);
-        showConfigError('Hardware scan failed — check connection');
-    } finally {
-        store.isScanning = false;
-    }
 }

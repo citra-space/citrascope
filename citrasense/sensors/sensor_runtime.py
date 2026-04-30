@@ -30,9 +30,9 @@ if TYPE_CHECKING:
     from citrasense.hardware.abstract_astro_hardware_adapter import AbstractAstroHardwareAdapter
     from citrasense.pipelines.radar.radar_pipeline import RadarPipeline
     from citrasense.pipelines.radar.radar_processing_context import RadarProcessingContext
-    from citrasense.preview_bus import PreviewBus
     from citrasense.sensors.abstract_sensor import AbstractSensor
     from citrasense.sensors.bus import SensorBus, Subscription
+    from citrasense.sensors.preview_bus import PreviewBus
     from citrasense.sensors.telescope.observing_session import ObservingSessionManager
     from citrasense.sensors.telescope.self_tasking_manager import SelfTaskingManager
     from citrasense.settings.citrasense_settings import CitraSenseSettings

@@ -9,6 +9,7 @@ Verifies that _initialize_telescopes correctly:
 
 from __future__ import annotations
 
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 from citrasense.citrasense_daemon import CitraSenseDaemon
@@ -68,7 +69,7 @@ def _make_daemon(sensors):
     daemon.task_dispatcher = None
     daemon.safety_monitor = MagicMock()
     daemon.ground_station = None
-    daemon.latest_annotated_image_path = None
+    daemon.latest_annotated_image_paths = {}
     daemon.preview_bus = MagicMock()
     daemon.task_index = MagicMock()
     daemon.sensor_bus = MagicMock()
@@ -159,6 +160,7 @@ class TestMultiSensorDaemonInit:
             success, error = daemon._initialize_telescopes()
 
         assert success is False
+        assert error is not None
         assert "Failed to connect" in error
 
     def test_task_dict_restored_once_for_site(self):
@@ -207,4 +209,4 @@ class TestMultiSensorDaemonInit:
 
         assert daemon.ground_station is not None
         assert daemon.ground_station["id"] == "gs-1"
-        daemon.location_service.set_ground_station.assert_called_once()
+        cast(MagicMock, daemon.location_service).set_ground_station.assert_called_once()

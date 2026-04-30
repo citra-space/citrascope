@@ -1,5 +1,6 @@
 """Tests for SensorRuntime._create_telescope_task observation mode selection."""
 
+from typing import cast
 from unittest.mock import MagicMock, PropertyMock
 
 import pytest
@@ -70,6 +71,7 @@ class TestCreateTelescopeTask:
     def test_all_modes_log_selection(self, mode):
         rt = _make_runtime(mode, supports_custom_tracking=True)
         rt._create_telescope_task(_telescope_mock_task())
-        rt.logger.info.assert_called()
-        logged = rt.logger.info.call_args[0][0]
+        mock_info = cast(MagicMock, rt.logger.info)
+        mock_info.assert_called()
+        logged = mock_info.call_args[0][0]
         assert "TelescopeTask" in logged

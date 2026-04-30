@@ -24,7 +24,7 @@ def run_from_repo_root():
         os.chdir(prev)
 
 
-from citrasense.elset_cache import ElsetCache
+from citrasense.astro.elset_cache import ElsetCache
 from citrasense.pipelines.common.pipeline_registry import PipelineRegistry
 from citrasense.pipelines.common.processor_result import ProcessorResult
 from citrasense.pipelines.optical.optical_processing_context import OpticalProcessingContext
@@ -368,10 +368,13 @@ class TestAstrometryDemoFits:
         assert wcs_path.exists()
 
         with fits.open(wcs_path) as hdul:
-            header = hdul[0].header
+            primary = hdul[0]
+            assert isinstance(primary, fits.PrimaryHDU)
+            header = primary.header
             assert "CRVAL1" in header
             assert "CRVAL2" in header
-            ra, dec = header["CRVAL1"], header["CRVAL2"]
+            ra = float(header["CRVAL1"])  # type: ignore[arg-type]
+            dec = float(header["CRVAL2"])  # type: ignore[arg-type]
         assert 0 <= ra <= 360
         assert -90 <= dec <= 90
 
@@ -471,10 +474,12 @@ def _make_reference_wcs_fits(src: Path, dst: Path) -> None:
     from astropy.io import fits as _fits
 
     with _fits.open(src) as hdul:
-        new_header = hdul[0].header.copy()
+        primary = hdul[0]
+        assert isinstance(primary, _fits.PrimaryHDU)
+        new_header = primary.header.copy()
         for k, v in _REFERENCE_WCS.items():
             new_header[k] = v
-        _fits.writeto(dst, hdul[0].data, new_header, overwrite=True)
+        _fits.writeto(dst, primary.data, new_header, overwrite=True)
 
 
 def _all_elsets_from_file(tle_path: Path) -> list:

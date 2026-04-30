@@ -1,13 +1,15 @@
 """Unit tests for TelescopeTaskView."""
 
+from typing import Any
+
 import pytest
 
 from citrasense.tasks.task import Task
 from citrasense.tasks.views.telescope_task_view import TelescopeTaskView
 
 
-def _telescope_task(**overrides) -> Task:
-    defaults = {
+def _telescope_task(**overrides: Any) -> Task:
+    defaults: dict[str, Any] = {
         "id": "task-abc-123",
         "type": "Track",
         "status": "Scheduled",

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
 from pydantic import BaseModel
 
 from citrasense.sensors.abstract_sensor import (
+    AbstractSensor,
     AcquisitionContext,
     SensorAcquisitionMode,
     SensorCapabilities,
@@ -83,7 +85,7 @@ def _make_runtime(
     if sensor is None:
         sensor = _FakeTelescopeSensor()
     return SensorRuntime(
-        sensor,
+        cast(AbstractSensor, sensor),
         logger=MagicMock(),
         settings=_mock_settings(),
         api_client=MagicMock(),

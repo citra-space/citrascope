@@ -8,6 +8,7 @@ handling, backlash/reverse settings, and device registry integration.
 from __future__ import annotations
 
 import logging
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -281,8 +282,8 @@ class TestZwoEafSettingsSchema:
     def test_schema_has_required_fields(self):
         from citrasense.hardware.devices.focuser.zwo_eaf import ZwoEafFocuser
 
-        ZwoEafFocuser._focuser_cache = None
-        schema = ZwoEafFocuser.get_settings_schema()
+        ZwoEafFocuser._focuser_cache = None  # type: ignore[reportAttributeAccessIssue]
+        schema = cast(list[dict[str, Any]], ZwoEafFocuser.get_settings_schema())
 
         names = [s["name"] for s in schema]
         assert "focuser_id" in names
@@ -293,8 +294,8 @@ class TestZwoEafSettingsSchema:
     def test_focuser_id_has_auto_option(self):
         from citrasense.hardware.devices.focuser.zwo_eaf import ZwoEafFocuser
 
-        ZwoEafFocuser._focuser_cache = None
-        schema = ZwoEafFocuser.get_settings_schema()
+        ZwoEafFocuser._focuser_cache = None  # type: ignore[reportAttributeAccessIssue]
+        schema = cast(list[dict[str, Any]], ZwoEafFocuser.get_settings_schema())
 
         focuser_id_entry = next(s for s in schema if s["name"] == "focuser_id")
         options = focuser_id_entry["options"]

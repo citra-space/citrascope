@@ -1,5 +1,5 @@
-import { showToast } from './toast.js';
-import * as api from './api.js';
+import { showToast } from '../toast.js';
+import * as api from '../api.js';
 
 /**
  * Alpine.js Component Definitions for CitraSense Dashboard

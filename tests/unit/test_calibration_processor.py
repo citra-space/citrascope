@@ -69,6 +69,7 @@ class TestCalibrationMath:
         assert "dark" in result.extracted_data.get("calibration_applied", [])
 
         calibrated = fits.getdata(ctx.working_image_path)
+        assert calibrated is not None
         np.testing.assert_array_almost_equal(calibrated, 200.0)
 
     def test_dark_and_flat(self, library: CalibrationLibrary, working_dir: Path, tmp_path: Path):
@@ -97,6 +98,7 @@ class TestCalibrationMath:
         proc.process(ctx)
 
         calibrated = fits.getdata(ctx.working_image_path)
+        assert isinstance(calibrated, np.ndarray)
         # Left half: (130 - 30) / 1.0 = 100
         np.testing.assert_array_almost_equal(calibrated[:, :5], 100.0)
         # Right half: (130 - 30) / 0.5 = 200
@@ -132,6 +134,7 @@ class TestCalibrationMath:
         assert "dark" in result.extracted_data.get("calibration_applied", [])
 
         calibrated = fits.getdata(ctx.working_image_path)
+        assert calibrated is not None
         # Expected: 603.33 - 100 (bias) - 50 * (2/30) (scaled thermal) = 500
         np.testing.assert_array_almost_equal(calibrated, 500.0, decimal=1)
 
@@ -177,6 +180,7 @@ class TestCalibrationMath:
         assert "dark" in result.extracted_data.get("calibration_applied", [])
 
         calibrated = fits.getdata(ctx.working_image_path)
+        assert calibrated is not None
         # raw - bias - (dark - bias) * scale = 603.33 - 100 - 50*(2/30) = 500
         np.testing.assert_array_almost_equal(calibrated, 500.0, decimal=1)
 
@@ -217,6 +221,7 @@ class TestCalibrationMath:
         assert "dark" in result.extracted_data.get("calibration_applied", [])
 
         calibrated = fits.getdata(ctx.working_image_path)
+        assert calibrated is not None
         # 610 - 150 * (2/30) = 610 - 10 = 600
         np.testing.assert_array_almost_equal(calibrated, 600.0, decimal=1)
 
@@ -243,6 +248,7 @@ class TestUncooledCameraDark:
 
         assert "dark" in result.extracted_data.get("calibration_applied", [])
         calibrated = fits.getdata(ctx.working_image_path)
+        assert calibrated is not None
         np.testing.assert_array_almost_equal(calibrated, 200.0)
 
     def test_temp_matched_dark_preferred_over_noTemp(
@@ -271,6 +277,7 @@ class TestUncooledCameraDark:
         proc.process(ctx)
 
         calibrated = fits.getdata(ctx.working_image_path)
+        assert calibrated is not None
         # Should use the -10C dark (40), not the noTemp dark (20)
         np.testing.assert_array_almost_equal(calibrated, 200.0)
 
@@ -325,6 +332,7 @@ class TestGracefulSkip:
 
         assert "bias" in result.extracted_data.get("calibration_applied", [])
         calibrated = fits.getdata(ctx.working_image_path)
+        assert calibrated is not None
         np.testing.assert_array_almost_equal(calibrated, 100.0)
 
 

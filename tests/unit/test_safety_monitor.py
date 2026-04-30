@@ -1,5 +1,7 @@
 """Tests for SafetyMonitor framework."""
 
+from __future__ import annotations
+
 import time
 from unittest.mock import MagicMock
 
@@ -55,14 +57,14 @@ class TestSafetyMonitorEvaluate:
         assert check is None
 
     def test_all_safe_returns_safe(self):
-        checks = [_StubCheck("a"), _StubCheck("b")]
+        checks: list[SafetyCheck] = [_StubCheck("a"), _StubCheck("b")]
         monitor = SafetyMonitor(MagicMock(), checks)
         action, check = monitor.evaluate()
         assert action == SafetyAction.SAFE
         assert check is None
 
     def test_returns_most_severe(self):
-        checks = [
+        checks: list[SafetyCheck] = [
             _StubCheck("safe", SafetyAction.SAFE),
             _StubCheck("warn", SafetyAction.WARN),
             _StubCheck("stop", SafetyAction.QUEUE_STOP),
@@ -74,24 +76,25 @@ class TestSafetyMonitorEvaluate:
         assert check.name == "stop"
 
     def test_emergency_trumps_queue_stop(self):
-        checks = [
+        checks: list[SafetyCheck] = [
             _StubCheck("stop", SafetyAction.QUEUE_STOP),
             _StubCheck("emergency", SafetyAction.EMERGENCY),
         ]
         monitor = SafetyMonitor(MagicMock(), checks)
         action, check = monitor.evaluate()
         assert action == SafetyAction.EMERGENCY
+        assert check is not None
         assert check.name == "emergency"
 
     def test_exploding_check_treated_as_queue_stop(self):
         """A check that raises is treated as QUEUE_STOP (fail-closed)."""
-        checks = [_ExplodingCheck(), _StubCheck("ok", SafetyAction.WARN)]
+        checks: list[SafetyCheck] = [_ExplodingCheck(), _StubCheck("ok", SafetyAction.WARN)]
         monitor = SafetyMonitor(MagicMock(), checks)
         action, _check = monitor.evaluate()
         assert action == SafetyAction.QUEUE_STOP
 
     def test_exploding_check_alone_is_queue_stop(self):
-        checks = [_ExplodingCheck()]
+        checks: list[SafetyCheck] = [_ExplodingCheck()]
         monitor = SafetyMonitor(MagicMock(), checks)
         action, _check = monitor.evaluate()
         assert action == SafetyAction.QUEUE_STOP
@@ -99,19 +102,19 @@ class TestSafetyMonitorEvaluate:
 
 class TestSafetyMonitorPreActionGate:
     def test_all_safe_allows_action(self):
-        checks = [_StubCheck("a"), _StubCheck("b")]
+        checks: list[SafetyCheck] = [_StubCheck("a"), _StubCheck("b")]
         monitor = SafetyMonitor(MagicMock(), checks)
         assert monitor.is_action_safe("slew", ra=10, dec=20) is True
 
     def test_blocker_rejects_action(self):
-        checks = [_BlockingCheck()]
+        checks: list[SafetyCheck] = [_BlockingCheck()]
         monitor = SafetyMonitor(MagicMock(), checks)
         assert monitor.is_action_safe("slew") is False
         assert monitor.is_action_safe("capture") is True
 
     def test_exploding_check_blocks_action(self):
         """A check that raises during pre-action gate blocks the action (fail-closed)."""
-        checks = [_ExplodingCheck()]
+        checks: list[SafetyCheck] = [_ExplodingCheck()]
         monitor = SafetyMonitor(MagicMock(), checks)
         assert monitor.is_action_safe("slew") is False
 
@@ -126,7 +129,7 @@ class TestSafetyMonitorWatchdog:
 
     def test_watchdog_fires_abort_on_emergency(self):
         abort = MagicMock()
-        checks = [_StubCheck("crit", SafetyAction.EMERGENCY)]
+        checks: list[SafetyCheck] = [_StubCheck("crit", SafetyAction.EMERGENCY)]
         monitor = SafetyMonitor(MagicMock(), checks, abort_callback=abort)
         monitor.start_watchdog(interval_seconds=0.1)
         time.sleep(0.3)
@@ -134,7 +137,7 @@ class TestSafetyMonitorWatchdog:
         assert abort.called
 
     def test_watchdog_survives_exploding_check(self):
-        checks = [_ExplodingCheck()]
+        checks: list[SafetyCheck] = [_ExplodingCheck()]
         monitor = SafetyMonitor(MagicMock(), checks)
         monitor.start_watchdog(interval_seconds=0.1)
         time.sleep(0.3)
@@ -161,7 +164,7 @@ class TestSafetyMonitorGetStatus:
                 call_count += 1
                 return SafetyAction.WARN
 
-        checks = [_CountingCheck()]
+        checks: list[SafetyCheck] = [_CountingCheck()]
         monitor = SafetyMonitor(MagicMock(), checks)
         monitor.evaluate()
         assert call_count == 1
@@ -171,7 +174,7 @@ class TestSafetyMonitorGetStatus:
         assert status["checks"][1]["action"] == "warn"
 
     def test_get_status_before_evaluate_defaults_safe(self):
-        checks = [_StubCheck("a", SafetyAction.EMERGENCY)]
+        checks: list[SafetyCheck] = [_StubCheck("a", SafetyAction.EMERGENCY)]
         monitor = SafetyMonitor(MagicMock(), checks)
         status = monitor.get_status()
         # checks[0] is operator_stop (safe), registered checks follow
@@ -195,7 +198,7 @@ class TestSafetyMonitorGetStatus:
 
 class TestSafetyMonitorGetCheck:
     def test_get_check_found(self):
-        checks = [_StubCheck("a"), _StubCheck("b")]
+        checks: list[SafetyCheck] = [_StubCheck("a"), _StubCheck("b")]
         monitor = SafetyMonitor(MagicMock(), checks)
         assert monitor.get_check("b") is checks[1]
 

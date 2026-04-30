@@ -243,7 +243,6 @@ Common type-checking patterns used in this codebase:
 | *(none)* | Normal unit test | Yes | Yes |
 | `@pytest.mark.slow` | Expensive tests (plate solving, real FITS processing) | **No** (skipped by default) | Yes |
 | `@pytest.mark.e2e` | Browser tests (Playwright against a live daemon) | **No** (skipped by default) | Yes (own CI job) |
-| `@pytest.mark.integration` | Requires live hardware or services | No | No (opt-in) |
 
 Slow tests are skipped locally via `addopts = ["-m", "not slow"]` in `pyproject.toml`. CI overrides this with `--override-ini="addopts="` to run the full suite.
 

@@ -141,7 +141,7 @@ class TestConfigReloadDropsInFlightStages:
         daemon.task_dispatcher = None
         daemon.safety_monitor = MagicMock()
         daemon.ground_station = None
-        daemon.latest_annotated_image_path = None
+        daemon.latest_annotated_image_paths = {}
         daemon.preview_bus = MagicMock()
         daemon.task_index = MagicMock()
         daemon.sensor_bus = MagicMock()

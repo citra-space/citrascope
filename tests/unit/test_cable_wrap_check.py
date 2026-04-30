@@ -1,7 +1,11 @@
 """Tests for CableWrapCheck — shortest-arc math, accumulation, limits, persistence."""
 
+from __future__ import annotations
+
 import json
+from collections.abc import Sequence
 from pathlib import Path
+from typing import cast
 from unittest.mock import MagicMock, PropertyMock
 
 import pytest
@@ -50,7 +54,7 @@ class TestShortestArc:
 # ------------------------------------------------------------------
 
 
-def _snapshot_property(frames: list[tuple[float | None, bool]]) -> PropertyMock:
+def _snapshot_property(frames: Sequence[tuple[float | None, bool]]) -> PropertyMock:
     """Build a PropertyMock that yields a fresh MountSnapshot per access.
 
     Both ``az_deg`` and ``is_at_home`` are baked into the returned snapshot,
@@ -61,7 +65,7 @@ def _snapshot_property(frames: list[tuple[float | None, bool]]) -> PropertyMock:
     return PropertyMock(side_effect=lambda: next(it, MountSnapshot()))
 
 
-def _make_mount(mode: str = "altaz", azimuths: list[float | None] | None = None):
+def _make_mount(mode: str = "altaz", azimuths: Sequence[float | None] | None = None):
     class _Mount(MagicMock):
         pass
 
@@ -319,7 +323,7 @@ class TestCableWrapStallDetection:
 
         check.execute_action()
         mount.stop_move.assert_called_once()
-        logger = check._logger
+        logger = cast(MagicMock, check._logger)
         for call in logger.error.call_args_list:
             assert "stall" not in str(call).lower()
 
@@ -592,7 +596,7 @@ class TestCableWrapObserverLifecycle:
 # ------------------------------------------------------------------
 
 
-def _make_mount_with_frames(frames: list[tuple[float | None, bool]]):
+def _make_mount_with_frames(frames: Sequence[tuple[float | None, bool]]):
     """Create a mock mount that yields (az, is_at_home) per observation tick."""
 
     class _Mount(MagicMock):

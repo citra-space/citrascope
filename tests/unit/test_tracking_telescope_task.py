@@ -1,5 +1,6 @@
 """Tests for TrackingTelescopeTask — custom tracking rate lifecycle."""
 
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -65,6 +66,7 @@ def _make_tracking_task():
 class TestTrackingRateReset:
     def test_reset_called_after_successful_exposure(self):
         ct = _make_tracking_task()
+        mock_adapter = cast(MagicMock, ct.hardware_adapter)
 
         ra_rate = MagicMock()
         ra_rate.arcseconds.per_second = 50.0
@@ -78,11 +80,12 @@ class TestTrackingRateReset:
         ):
             ct.execute()
 
-        ct.hardware_adapter.reset_tracking_rates.assert_called_once()
+        mock_adapter.reset_tracking_rates.assert_called_once()
 
     def test_reset_called_even_when_tracking_fails(self):
         ct = _make_tracking_task()
-        ct.hardware_adapter.set_custom_tracking_rate.return_value = False
+        mock_adapter = cast(MagicMock, ct.hardware_adapter)
+        mock_adapter.set_custom_tracking_rate.return_value = False
 
         ra_rate = MagicMock()
         ra_rate.arcseconds.per_second = 50.0
@@ -95,16 +98,17 @@ class TestTrackingRateReset:
         ):
             ct.execute()
 
-        ct.hardware_adapter.reset_tracking_rates.assert_called_once()
+        mock_adapter.reset_tracking_rates.assert_called_once()
 
     def test_reset_called_even_when_exposure_raises(self):
         ct = _make_tracking_task()
+        mock_adapter = cast(MagicMock, ct.hardware_adapter)
 
         ra_rate = MagicMock()
         ra_rate.arcseconds.per_second = 50.0
         dec_rate = MagicMock()
         dec_rate.arcseconds.per_second = -10.0
-        ct.hardware_adapter.take_image.side_effect = RuntimeError("camera error")
+        mock_adapter.take_image.side_effect = RuntimeError("camera error")
 
         with (
             patch.object(ct, "point_to_lead_position"),
@@ -113,17 +117,18 @@ class TestTrackingRateReset:
         ):
             ct.execute()
 
-        ct.hardware_adapter.reset_tracking_rates.assert_called_once()
+        mock_adapter.reset_tracking_rates.assert_called_once()
 
     def test_reset_not_called_before_tracking_set(self):
         """If the task fails before reaching the tracking block, reset should not be called."""
         ct = _make_tracking_task()
+        mock_adapter = cast(MagicMock, ct.hardware_adapter)
 
         with patch.object(ct, "fetch_satellite", return_value=None):
             with pytest.raises(ValueError, match="satellite data"):
                 ct.execute()
 
-        ct.hardware_adapter.reset_tracking_rates.assert_not_called()
+        mock_adapter.reset_tracking_rates.assert_not_called()
 
 
 class TestDirectAdapterTrackingReturn:

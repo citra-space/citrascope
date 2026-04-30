@@ -240,6 +240,7 @@ class TestPixelScale:
         assert chk is not None
         # sqrt(2) ~ 1.414 vs observed 2.0 -> ~41% off, firmly a warning.
         assert chk.status == "warning"
+        assert chk.pct_diff is not None
         assert chk.pct_diff > 10.0
 
 

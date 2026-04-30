@@ -18,7 +18,7 @@ Usage (CLI)::
 
 Usage (library)::
 
-    from citrasense.autotune import autotune_extraction, score_extraction
+    from citrasense.cli.autotune import autotune_extraction, score_extraction
 """
 
 from __future__ import annotations
@@ -49,7 +49,8 @@ from citrasense.settings.citrasense_settings import CitraSenseSettings
 
 logger = logging.getLogger("citrasense.Autotune")
 
-SEXTRACTOR_CONFIG_DIR = Path(__file__).parent / "pipelines" / "optical" / "sextractor_configs"
+_PACKAGE_ROOT = Path(__file__).resolve().parent.parent
+SEXTRACTOR_CONFIG_DIR = _PACKAGE_ROOT / "pipelines" / "optical" / "sextractor_configs"
 
 PARAM_GRID: dict[str, list] = {
     "detect_thresh": [1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 7.0, 10.0],

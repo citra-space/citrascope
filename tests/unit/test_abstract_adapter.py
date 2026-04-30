@@ -250,6 +250,7 @@ def test_select_filters_no_clear_uses_first(tmp_path):
     task.assigned_filter_name = None
     task.id = "t1"
     result = a.select_filters_for_task(task)
+    assert result is not None
     assert 5 in result
 
 

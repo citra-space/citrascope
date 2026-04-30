@@ -4,7 +4,7 @@ import json
 import time
 from unittest.mock import MagicMock
 
-from citrasense.elset_cache import ElsetCache, _normalize_api_response
+from citrasense.astro.elset_cache import ElsetCache, _normalize_api_response
 
 # ---------------------------------------------------------------------------
 # _normalize_api_response
@@ -53,7 +53,9 @@ def test_normalize_non_dict_items():
 
 
 def test_normalize_none():
-    assert _normalize_api_response(None) == []
+    from typing import Any, cast
+
+    assert _normalize_api_response(cast(Any, None)) == []
 
 
 # ---------------------------------------------------------------------------

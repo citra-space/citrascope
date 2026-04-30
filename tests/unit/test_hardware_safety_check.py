@@ -111,7 +111,7 @@ class TestHardwareSafetyCheck:
         assert logger.critical.call_count == 0
 
     def test_critical_logged_on_transition_to_unreachable(self):
-        state = {"safe": True}
+        state: dict[str, bool | None] = {"safe": True}
         logger = MagicMock()
         check = HardwareSafetyCheck(logger, lambda: state["safe"])
 
@@ -143,7 +143,7 @@ class TestHardwareSafetyCheck:
         assert logger.critical.call_count == 1
 
     def test_recovery_from_unknown_to_safe(self):
-        state = {"safe": None}
+        state: dict[str, bool | None] = {"safe": None}
         check = HardwareSafetyCheck(MagicMock(), lambda: state["safe"])
         assert check.check() == SafetyAction.EMERGENCY
 

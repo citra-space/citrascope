@@ -87,6 +87,7 @@ class TestClearPendingTasks:
     def test_calls_imaging_queue_clear(self):
         td = _make_task_dispatcher()
         rt = td.get_runtime("test-scope")
+        assert rt is not None
         rt.acquisition_queue.clear = MagicMock(return_value=2)
 
         count = td.clear_pending_tasks()
