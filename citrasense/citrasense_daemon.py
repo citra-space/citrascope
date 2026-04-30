@@ -89,10 +89,13 @@ class CitraSenseDaemon:
         self.processor_registry = PipelineRegistry(settings=self.settings, logger=CITRASENSE_LOGGER)
 
         # Elset cache for satellite matcher (file-backed; warm-start from disk, full refresh at init)
-        self.elset_cache = ElsetCache()
+        self.elset_cache = ElsetCache(cache_path=self.settings.directories.elset_cache_path)
 
         # APASS catalog for local photometry (file-backed; downloaded on first authenticated startup)
-        self.apass_catalog = ApassCatalog(logger=CITRASENSE_LOGGER)
+        self.apass_catalog = ApassCatalog(
+            db_path=self.settings.directories.catalogs_dir / "apass_dr10.db",
+            logger=CITRASENSE_LOGGER,
+        )
 
         # Local analysis index — persists pipeline metrics across restarts
         db_path = self.settings.directories.analysis_dir / "task_index.db"
@@ -168,6 +171,8 @@ class CitraSenseDaemon:
                 self.settings.sensors,
                 logger=CITRASENSE_LOGGER,
                 images_dir=images_dir,
+                data_dir=self.settings.directories.data_dir,
+                cache_dir=self.settings.directories.cache_dir,
             )
         except ImportError as e:
             adapter_keys = sorted({s.adapter for s in self.settings.sensors}) or ["unknown"]
@@ -199,8 +204,8 @@ class CitraSenseDaemon:
                 CITRASENSE_LOGGER.info("\u2500" * 60)
                 CITRASENSE_LOGGER.info("Configuration reload requested")
                 CITRASENSE_LOGGER.info("\u2500" * 60)
-                # Reload settings from file (preserving web_port)
-                new_settings = CitraSenseSettings.load(web_port=self.settings.web_port)
+                # Reload settings from file (preserving web_port and base_dir)
+                new_settings = CitraSenseSettings.load(web_port=self.settings.web_port, base_dir=self.settings.base_dir)
                 self.settings = new_settings
                 CITRASENSE_LOGGER.setLevel(self.settings.log_level)
 
@@ -260,7 +265,10 @@ class CitraSenseDaemon:
             # Initialize API client
             if self.settings.use_dummy_api:
                 CITRASENSE_LOGGER.info("Using DummyApiClient for local testing")
-                self.api_client = DummyApiClient(logger=CITRASENSE_LOGGER)
+                self.api_client = DummyApiClient(
+                    logger=CITRASENSE_LOGGER,
+                    cache_path=self.settings.directories.cache_dir / "dummy_tle_cache.json",
+                )
             else:
                 self.api_client = CitraApiClient(
                     self.settings.host,
@@ -694,7 +702,7 @@ class CitraSenseDaemon:
             FlatCaptureBackend,
         )
 
-        library = CalibrationLibrary()
+        library = CalibrationLibrary(root=self.settings.directories.calibration_dir)
         telescope_runtime.attach_calibration_library(library)
 
         flat_backend: FlatCaptureBackend | None = None
@@ -970,6 +978,20 @@ class CitraSenseDaemon:
         if rt is None or not rt.calibration_manager:
             return False
         return rt.calibration_manager.cancel()
+
+    def start_headless(self) -> None:
+        """Start the web server and initialize components without signal handling.
+
+        Intended for E2E tests and embedded usage where the caller manages
+        the lifecycle (e.g. running in a background thread).
+        """
+        assert self.web_server is not None
+        self.web_server.start()
+        self._initialize_components()
+
+    def request_stop(self) -> None:
+        """Request a graceful shutdown of the daemon loop."""
+        self._stop_requested = True
 
     def run(self):
         assert self.web_server is not None
