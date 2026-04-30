@@ -46,7 +46,8 @@
 
     <div class="container">
         <header class="d-flex flex-wrap justify-content-center pt-3 pb-2 align-items-center">
-            <span class="d-flex align-items-center mb-3 mb-md-0 me-md-auto link-body-emphasis text-decoration-none">
+            <a href="/" class="d-flex align-items-center mb-3 mb-md-0 me-md-auto link-body-emphasis text-decoration-none"
+               @click="$store.citrasense.navigateOnClick($event, '/monitoring')">
                 <span class="fs-4 d-flex align-items-baseline gap-2">
                     <img src="/static/img/citra.png" alt="CitraSense Logo" class="logo-img" />
                     CitraSense
@@ -59,7 +60,7 @@
                             @click="$store.citrasense.showVersionModal()"></span>
                     </small>
                 </span>
-            </span>
+            </a>
 
             <ul class="nav" id="mainNav">
                 <li class="nav-item"><a href="/monitoring" class="nav-link px-2" :class="$store.citrasense.currentSection === 'monitoring' ? 'text-white' : ''"

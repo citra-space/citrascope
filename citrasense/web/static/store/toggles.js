@@ -15,7 +15,7 @@ export const toggleMethods = {
             if (!result.ok) {
                 showToast(result.error || 'Failed to toggle task processing', 'danger');
                 if (sensorId && this.status?.sensors?.[sensorId]) {
-                    this.status.sensors[sensorId].task_processing_paused = enabled;
+                    this.status.sensors[sensorId].task_processing_paused = !enabled;
                 }
             }
         } catch (error) {
